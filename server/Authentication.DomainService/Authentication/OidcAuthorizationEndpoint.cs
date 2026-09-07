@@ -133,7 +133,12 @@ namespace Authentication.DomainService.Authentication
 
                 string? resolvedUserId = blocksUserId;
 
-                if (!string.IsNullOrWhiteSpace(effectiveSessionId))
+                // prompt=login demands fresh authentication, so an existing session must not sign
+                // the user in silently. blocksUserId is set only when the login orchestrator has just
+                // verified credentials, and that call passes no prompt, so this cannot loop.
+                var forceLogin = string.IsNullOrWhiteSpace(blocksUserId) && HasPromptValue(prompt, "login");
+
+                if (!forceLogin && !string.IsNullOrWhiteSpace(effectiveSessionId))
                 {
                     var session = await _sessionRepo.GetBySessionIdAsync(effectiveSessionId);
                     if (session != null && !session.RevokedAt.HasValue && !session.IsExpired())
@@ -419,6 +424,11 @@ namespace Authentication.DomainService.Authentication
             return session.SessionId;
         }
 
+        private static bool HasPromptValue(string? prompt, string value) =>
+            !string.IsNullOrWhiteSpace(prompt)
+            && prompt.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Any(p => string.Equals(p, value, StringComparison.OrdinalIgnoreCase));
+
         private void SetIdpSessionCookie(
             HttpRequest httpRequest,
             HttpResponse response,
@@ -426,29 +436,12 @@ namespace Authentication.DomainService.Authentication
             string sessionId,
             DateTime absoluteExpiry)
         {
-            var isLocal = DomainResolver.IsLocalhost();
-            var domain = BlocksContext.ResolveApplicationDomain(httpRequest);
             var effectiveExpiry = absoluteExpiry == default
                 ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout())
                 : absoluteExpiry;
 
-            string? resolvedDomain = null;
-            if (!string.IsNullOrWhiteSpace(domain) && !string.IsNullOrWhiteSpace(tenantId))
-            {
-                var tenant = _tenants.GetTenantByID(tenantId);
-                resolvedDomain = tenant.IsRootTenant
-                    ? DomainResolver.GetRootDomain(domain)
-                    : domain;
-            }
-
-            var cookieOptions = isLocal
-                ? DomainResolver.CreateLoopbackCookieOptions(resolvedDomain, effectiveExpiry)
-                : DomainResolver.CreateProductionCookieOptions(resolvedDomain, effectiveExpiry);
-
-            response.Cookies.Append(
-                IdpConstants.BuildIdpSessionCookieKey(tenantId),
-                sessionId,
-                cookieOptions);
+            var tenant = string.IsNullOrWhiteSpace(tenantId) ? null : _tenants.GetTenantByID(tenantId);
+            IdpSessionCookie.Append(httpRequest, response, tenant, tenantId, sessionId, effectiveExpiry);
         }
 
         private async Task PersistLastUsedOrganizationAsync(User user, string? organizationId)

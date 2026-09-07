@@ -40,6 +40,13 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<int> RevokeAllBySessionIdAsync(string sessionId, string reason);
 
         /// <summary>
+        /// Re-points every still-unrevoked token of <paramref name="fromSessionId"/> at
+        /// <paramref name="toSessionId"/>. Called when an IdP session is rotated so the tokens keep
+        /// resolving to the live session. Returns the number of documents updated.
+        /// </summary>
+        Task<int> ReassignSessionAsync(string fromSessionId, string toSessionId);
+
+        /// <summary>
         /// Revokes every still-unrevoked token in one refresh-token lineage. Reuse detection is scoped
         /// here rather than to <c>SessionId</c>, because one IdP session can span several logins.
         /// </summary>

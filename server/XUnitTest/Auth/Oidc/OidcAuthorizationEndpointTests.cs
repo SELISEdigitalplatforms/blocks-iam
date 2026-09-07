@@ -249,6 +249,33 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
+        public async Task AuthorizeAsync_PromptLogin_IgnoresLiveSessionCookie_AndRedirectsToLogin()
+        {
+            ClientExists();
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "" }));
+
+            var result = await Authorize(prompt: "login", ctx: Ctx("idp_session_id=SID"));
+
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            _sessionRepo.Verify(s => s.GetBySessionIdAsync(It.IsAny<string>()), Times.Never);
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_PromptLogin_StillIssuesCode_WhenCredentialsJustVerified()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync("user-1")).ReturnsAsync(ValidUser());
+
+            var result = await Authorize(prompt: "login", blocksUserId: "user-1");
+
+            result.Should().BeOfType<RedirectResult>();
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.UserId == "user-1")), Times.Once);
+        }
+
+        [Fact]
         public async Task AuthorizeAsync_AddsAccountToSession_WhenUserNotInSession()
         {
             ClientExists();

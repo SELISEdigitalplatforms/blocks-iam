@@ -331,6 +331,156 @@ namespace XUnitTest.Auth
             result.Should().BeFalse();
         }
 
+        private static IdpSessionModel LiveSession(string sessionId, params (string UserId, string TenantId)[] accounts) => new()
+        {
+            SessionId = sessionId,
+            TenantId = TenantId,
+            Accounts = accounts.Select(a => new IdpSessionAccount { UserId = a.UserId, TenantId = a.TenantId, LoginAt = DateTime.UtcNow }).ToList(),
+            IdleExpiry = DateTime.UtcNow.AddHours(1),
+            AbsoluteExpiry = DateTime.UtcNow.AddDays(1)
+        };
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_LastAccountForTenant_RevokesWholeSession()
+        {
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-1");
+            var revoked = LiveSession("sess-1", ("actor-1", TenantId));
+            revoked.RevokedAt = DateTime.UtcNow;
+            _session.SetupSequence(s => s.GetSessionAsync("sess-1"))
+                .ReturnsAsync(LiveSession("sess-1", ("actor-1", TenantId)))
+                .ReturnsAsync(revoked);
+            _session.Setup(s => s.RevokeSessionAsync("sess-1", "logout")).ReturnsAsync(true);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(ctx, new System.Security.Claims.ClaimsPrincipal(), false);
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RevokeSessionAsync("sess-1", "logout"), Times.Once);
+            _session.Verify(s => s.RemoveAccountAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_OtherAccountRemains_RemovesAccountAndKeepsCookie()
+        {
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-1");
+            _session.Setup(s => s.GetSessionAsync("sess-1"))
+                .ReturnsAsync(LiveSession("sess-1", ("actor-1", TenantId), ("other-1", TenantId)));
+            _session.Setup(s => s.RemoveAccountAsync("sess-1", "actor-1", TenantId)).ReturnsAsync(true);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(ctx, new System.Security.Claims.ClaimsPrincipal(), false);
+
+            result.Should().BeFalse();
+            _session.Verify(s => s.RemoveAccountAsync("sess-1", "actor-1", TenantId), Times.Once);
+            _session.Verify(s => s.RevokeSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        /// <summary>
+        /// The user's other browsers and devices hold their own IdP sessions. A normal logout must
+        /// leave them alone: signing out on one device is not signing out everywhere.
+        /// </summary>
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_NormalLogout_DoesNotTouchSessionsOnOtherDevices()
+        {
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-laptop");
+            _session.Setup(s => s.GetUserSessionsAsync("actor-1", TenantId))
+                .ReturnsAsync(new[] { LiveSession("sess-laptop", ("actor-1", TenantId)), LiveSession("sess-phone", ("actor-1", TenantId)) });
+            _session.Setup(s => s.GetSessionAsync("sess-laptop")).ReturnsAsync(LiveSession("sess-laptop", ("actor-1", TenantId)));
+            _session.Setup(s => s.RevokeSessionAsync("sess-laptop", "logout")).ReturnsAsync(true);
+
+            await Create().UpdateIdpSessionForLogoutAsync(ctx, new System.Security.Claims.ClaimsPrincipal(), false);
+
+            _session.Verify(s => s.RevokeSessionAsync("sess-laptop", "logout"), Times.Once);
+            _session.Verify(s => s.RevokeSessionAsync("sess-phone", It.IsAny<string>()), Times.Never);
+            _session.Verify(s => s.RemoveAccountAsync("sess-phone", It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _session.Verify(s => s.GetUserSessionsAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_GlobalLogout_AlsoRevokesSessionsResolvedByUser()
+        {
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-1");
+            var dead = LiveSession("sess-dead", ("actor-1", TenantId));
+            dead.RevokedAt = DateTime.UtcNow.AddMinutes(-5);
+            _session.Setup(s => s.GetUserSessionsAsync("actor-1", TenantId))
+                .ReturnsAsync(new[] { LiveSession("sess-2", ("actor-1", TenantId)), dead });
+            _session.Setup(s => s.RevokeSessionAsync(It.IsAny<string>(), "logout_all")).ReturnsAsync(true);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(ctx, new System.Security.Claims.ClaimsPrincipal(), true);
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RevokeSessionAsync("sess-1", "logout_all"), Times.Once);
+            _session.Verify(s => s.RevokeSessionAsync("sess-2", "logout_all"), Times.Once);
+            _session.Verify(s => s.RevokeSessionAsync("sess-dead", It.IsAny<string>()), Times.Never);
+        }
+
+        /// <summary>
+        /// An impersonating admin holds accounts under the root and the target tenant, and the logout
+        /// arrives with the context reset to the root tenant. Matching by user across tenants revokes
+        /// the whole session instead of leaving the target-tenant account behind.
+        /// </summary>
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_AccountsAcrossTenantsForSameUser_RevokesWholeSession()
+        {
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-1");
+            var revoked = LiveSession("sess-1", ("actor-1", TenantId), ("actor-1", "target-tenant"));
+            revoked.RevokedAt = DateTime.UtcNow;
+            _session.SetupSequence(s => s.GetSessionAsync("sess-1"))
+                .ReturnsAsync(LiveSession("sess-1", ("actor-1", TenantId), ("actor-1", "target-tenant")))
+                .ReturnsAsync(revoked);
+            _session.Setup(s => s.RevokeSessionAsync("sess-1", "logout")).ReturnsAsync(true);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(ctx, new System.Security.Claims.ClaimsPrincipal(), false);
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RevokeSessionAsync("sess-1", "logout"), Times.Once);
+            _session.Verify(s => s.RemoveAccountAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_OtherUserRemains_RemovesEveryAccountOfThisUser()
+        {
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-1");
+            _session.Setup(s => s.GetSessionAsync("sess-1"))
+                .ReturnsAsync(LiveSession("sess-1", ("actor-1", TenantId), ("actor-1", "target-tenant"), ("other-1", TenantId)));
+            _session.Setup(s => s.RemoveAccountAsync("sess-1", "actor-1", It.IsAny<string>())).ReturnsAsync(true);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(ctx, new System.Security.Claims.ClaimsPrincipal(), false);
+
+            result.Should().BeFalse();
+            _session.Verify(s => s.RemoveAccountAsync("sess-1", "actor-1", TenantId), Times.Once);
+            _session.Verify(s => s.RemoveAccountAsync("sess-1", "actor-1", "target-tenant"), Times.Once);
+            _session.Verify(s => s.RevokeSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        // ---------- ClearIdpSessionCookie ----------
+
+        /// <summary>
+        /// A browser deletes a cookie only when name, Domain and Path match exactly. Older builds
+        /// wrote the cookie under several Domain scopes, so the clear has to expire all of them.
+        /// </summary>
+        [Fact]
+        public void ClearIdpSessionCookie_ExpiresEveryHistoricalScope()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(TenantWithApps());
+            var ctx = new DefaultHttpContext();
+            ctx.Request.Headers["Origin"] = AppOrigin;
+
+            Create().ClearIdpSessionCookie(ctx.Response);
+
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var setCookies = ctx.Response.Headers.SetCookie.ToArray();
+            setCookies.Should().OnlyContain(c => c!.StartsWith(cookieKey + "=", StringComparison.Ordinal));
+            setCookies.Should().Contain(c => !c!.Contains("domain=", StringComparison.OrdinalIgnoreCase));
+            setCookies.Should().Contain(c => c!.Contains("domain=.example.com", StringComparison.OrdinalIgnoreCase));
+            setCookies.Should().Contain(c => c!.Contains("domain=app.example.com", StringComparison.OrdinalIgnoreCase));
+            setCookies.Should().Contain(c => c!.Contains("domain=example.com", StringComparison.OrdinalIgnoreCase));
+        }
+
         // ---------- ProcessLogout ----------
 
         [Fact]
@@ -729,6 +879,58 @@ namespace XUnitTest.Auth
 
             result.Should().BeOfType<OkObjectResult>();
             ctx.Response.Headers.Should().ContainKey("Set-Cookie");
+        }
+
+        /// <summary>
+        /// The token mint has already created the IdP session and recorded it on the refresh token.
+        /// The login flow must reuse that id rather than create a second live session the logout
+        /// can never reach.
+        /// </summary>
+        [Fact]
+        public async Task BuildFlowResult_NoCookie_ReusesSessionRecordedOnRefreshToken()
+        {
+            var jwt = BuildJwt("client-1", "user-1", TenantId);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("client-1"))
+                .ReturnsAsync(new OidcClientRegistration { ItemId = "client-1", ClientId = "client-1", UseTokensCookie = false });
+            _cache.Setup(c => c.GetStringValueAsync("refresh-token"))
+                .ReturnsAsync(JsonSerializer.Serialize(new RefreshTokenCache { RefreshToken = "refresh-token", SessionId = "sess-mint", UserId = "user-1", TenantId = TenantId }));
+            _session.Setup(s => s.GetSessionAsync("sess-mint")).ReturnsAsync(LiveSession("sess-mint", ("user-1", TenantId)));
+            _session.Setup(s => s.RotateSessionAsync("sess-mint", It.IsAny<string>())).ReturnsAsync("sess-rotated");
+
+            var ctx = new DefaultHttpContext();
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult { TokenResponse = ValidTokenResponse(jwt) }, ctx);
+
+            result.Should().BeOfType<OkObjectResult>();
+            _session.Verify(s => s.CreateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _session.Verify(s => s.RotateSessionAsync("sess-mint", It.IsAny<string>()), Times.Once);
+            ctx.Response.Headers.SetCookie.ToString().Should().Contain("sess-rotated");
+        }
+
+        /// <summary>
+        /// A cookie naming a dead session must not win over the token: the mint already replaced that
+        /// session and recorded the replacement on the refresh token.
+        /// </summary>
+        [Fact]
+        public async Task BuildFlowResult_DeadCookie_UsesSessionRecordedOnRefreshToken_InsteadOfCreatingAnother()
+        {
+            var jwt = BuildJwt("client-1", "user-1", TenantId);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("client-1"))
+                .ReturnsAsync(new OidcClientRegistration { ItemId = "client-1", ClientId = "client-1", UseTokensCookie = false });
+            _cache.Setup(c => c.GetStringValueAsync("refresh-token"))
+                .ReturnsAsync(JsonSerializer.Serialize(new RefreshTokenCache { RefreshToken = "refresh-token", SessionId = "sess-mint", UserId = "user-1", TenantId = TenantId }));
+            var dead = LiveSession("sess-dead", ("user-1", TenantId));
+            dead.RevokedAt = DateTime.UtcNow.AddMinutes(-1);
+            _session.Setup(s => s.GetSessionAsync("sess-dead")).ReturnsAsync(dead);
+            _session.Setup(s => s.GetSessionAsync("sess-mint")).ReturnsAsync(LiveSession("sess-mint", ("user-1", TenantId)));
+            _session.Setup(s => s.RotateSessionAsync("sess-mint", It.IsAny<string>())).ReturnsAsync("sess-rotated");
+
+            var ctx = HttpContextWithCookie(IdpConstants.BuildIdpSessionCookieKey(TenantId), "sess-dead");
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult { TokenResponse = ValidTokenResponse(jwt) }, ctx);
+
+            result.Should().BeOfType<OkObjectResult>();
+            _session.Verify(s => s.CreateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _session.Verify(s => s.GetSessionAsync("sess-dead"), Times.Never);
+            ctx.Response.Headers.SetCookie.ToString().Should().Contain("sess-rotated");
         }
 
         [Fact]
