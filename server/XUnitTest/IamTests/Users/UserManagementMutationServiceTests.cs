@@ -116,6 +116,104 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
+        public async Task CreateUser_EmailIsInAnotherOrganization_GrantsTheOrganizationInsteadOfDuplicating()
+        {
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _resourceRepo.Setup(r => r.GetOrganizationById("org-2")).ReturnsAsync(new Organization { Name = "Org2" });
+            var existing = new User
+            {
+                ItemId = "existing-1",
+                Email = "dupe@test.com",
+                OrganizationIds = new List<string> { "org-1" },
+                Roles = new Dictionary<string, List<string>> { ["org-1"] = new() { "admin" } }
+            };
+            _userRepo.Setup(r => r.GetUserByEmailAsync("dupe@test.com")).ReturnsAsync(existing);
+
+            var result = await Create().CreateUserAsync(new CreateUserRequest
+            {
+                Email = "dupe@test.com", OrganizationId = "org-2", Roles = new List<string> { "member" }
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            result.ItemId.Should().Be("existing-1");
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+            _userRepo.Verify(r => r.UpdateUserAsync(existing), Times.Once);
+            existing.OrganizationIds.Should().BeEquivalentTo(new[] { "org-1", "org-2" });
+            existing.Roles["org-1"].Should().BeEquivalentTo(new[] { "admin" }, "the org they already belonged to is untouched");
+            existing.Roles["org-2"].Should().BeEquivalentTo(new[] { "member" });
+        }
+
+        [Fact]
+        public async Task CreateUser_EmailBelongsToAnAccountWithNoOrganizations_GrantsTheOrganizationInsteadOfDuplicating()
+        {
+            // The shape that actually produced a duplicate in production: an SSO-provisioned
+            // account with an empty OrganizationIds list. No organization id can ever match an
+            // empty list, so an organization-scoped lookup answers "not found" for every invite.
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _resourceRepo.Setup(r => r.GetOrganizationById("org-2")).ReturnsAsync(new Organization { Name = "Org2" });
+            var orphan = new User { ItemId = "orphan-1", Email = "orphan@test.com", OrganizationIds = new List<string>() };
+            _userRepo.Setup(r => r.GetUserByEmailAsync("orphan@test.com")).ReturnsAsync(orphan);
+
+            var result = await Create().CreateUserAsync(new CreateUserRequest
+            {
+                Email = "orphan@test.com", OrganizationId = "org-2", Roles = new List<string> { "member" }
+            });
+
+            result.ItemId.Should().Be("orphan-1");
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+            orphan.OrganizationIds.Should().BeEquivalentTo(new[] { "org-2" });
+        }
+
+        [Fact]
+        public async Task CreateUser_EmailAlreadyInTheTargetOrganization_UpdatesAccessWithoutDuplicating()
+        {
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _resourceRepo.Setup(r => r.GetOrganizationById("org-1")).ReturnsAsync(new Organization { Name = "Org1" });
+            var existing = new User
+            {
+                ItemId = "existing-1",
+                Email = "member@test.com",
+                OrganizationIds = new List<string> { "org-1" },
+                Roles = new Dictionary<string, List<string>> { ["org-1"] = new() { "member" } }
+            };
+            _userRepo.Setup(r => r.GetUserByEmailAsync("member@test.com")).ReturnsAsync(existing);
+
+            var result = await Create().CreateUserAsync(new CreateUserRequest
+            {
+                Email = "member@test.com", OrganizationId = "org-1", Roles = new List<string> { "admin" }
+            });
+
+            result.ItemId.Should().Be("existing-1");
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+            existing.OrganizationIds.Should().BeEquivalentTo(new[] { "org-1" }, "re-inviting must not list the organization twice");
+            existing.Roles["org-1"].Should().BeEquivalentTo(new[] { "admin" });
+        }
+
+        [Fact]
+        public async Task CreateUser_CallerScopedToAnotherOrganization_IsRefused()
+        {
+            // Without this the merge above becomes an escalation route: org-1's admin could name
+            // org-2 in the body and hand roles inside org-2 to an account they do not administer.
+            InstallContext(orgId: "org-1");
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _resourceRepo.Setup(r => r.GetOrganizationById("org-2")).ReturnsAsync(new Organization { Name = "Org2" });
+
+            var result = await Create().CreateUserAsync(new CreateUserRequest
+            {
+                Email = "victim@test.com", OrganizationId = "org-2", Roles = new List<string> { "admin" }
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey(nameof(CreateUserRequest.OrganizationId));
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+            _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
         public async Task CreateUser_TooManyPermissions_ReturnsValidationError()
         {
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
@@ -535,8 +633,39 @@ namespace XUnitTest.IamTests.Users
             });
 
             ok.Should().BeTrue();
-            _userRepo.Verify(r => r.GetUserByUserNameOrgIdAsync("emailed@test.com", "default"), Times.Once);
+            // Tenant-wide, not organization-scoped: an organization-scoped lookup reports "no such
+            // user" for an account that lives in a different organization, which is what allowed
+            // one email to end up with several accounts.
+            _userRepo.Verify(r => r.GetUserByEmailAsync("emailed@test.com"), Times.Once);
             _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task CreateUserByEmail_EmailIsInAnotherOrganization_GrantsTheInvitedOrgInsteadOfDuplicating()
+        {
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            var existing = new User
+            {
+                ItemId = "existing-1",
+                Email = "emailed@test.com",
+                Active = true,
+                IsVerified = true,
+                OrganizationIds = new List<string> { "org-1" }
+            };
+            _userRepo.Setup(r => r.GetUserByEmailAsync("emailed@test.com")).ReturnsAsync(existing);
+            _iam.Setup(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<CreateUserByEmailPostEvent>())).Returns(Task.CompletedTask);
+
+            var ok = await Create().CreateUserByEmailAsync(new CreateUserByEmailEvent
+            {
+                Email = "emailed@test.com", EventType = "AccountActivation", EventQueue = "q",
+                OrganizationId = "org-2", Roles = new List<string> { "member" }
+            });
+
+            ok.Should().BeTrue();
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+            existing.OrganizationIds.Should().BeEquivalentTo(new[] { "org-1", "org-2" });
+            existing.Roles["org-2"].Should().BeEquivalentTo(new[] { "member" });
         }
 
         // ---------- CreateUserFromSsoAsync ----------
@@ -552,6 +681,31 @@ namespace XUnitTest.IamTests.Users
             result.IsSuccess.Should().BeTrue();
             _userRepo.Verify(r => r.CreateUserAsync(It.Is<User>(u => u.Email == "sso@test.com" && u.UserName == "sso@test.com" && u.ProvisioningSource == UserProvisioningSource.Social)), Times.Once);
             _message.Verify(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<CreateUserViaSsoEvent>>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task CreateUserFromSso_EmailAlreadyHasAnAccount_GrantsTheOrganizationInsteadOfDuplicating()
+        {
+            // SSO consent calls this on every exchange, not only for unknown emails, so without a
+            // lookup each sign-in minted another account for the same person.
+            var existing = new User
+            {
+                ItemId = "existing-1",
+                Email = "sso@test.com",
+                OrganizationIds = new List<string> { "default" }
+            };
+            _userRepo.Setup(r => r.GetUserByEmailAsync("sso@test.com")).ReturnsAsync(existing);
+
+            var result = await Create().CreateUserFromSsoAsync(new CreateUserViaSsoRequest
+            {
+                Email = "sso@test.com", Platform = "microsoft", OrganizationId = "default", ExternalUserId = "ext-1"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            result.ItemId.Should().Be("existing-1");
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+            _message.Verify(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<CreateUserViaSsoEvent>>()), Times.Never,
+                "an existing account is signing in, not signing up, so no welcome mail is due");
         }
 
         [Fact]
