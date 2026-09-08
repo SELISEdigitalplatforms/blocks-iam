@@ -1193,6 +1193,7 @@ namespace Iam.DomainService.Accounts
             {
                 return new ActivationCodeValidationResponse
                 {
+                    Status = ActivationCodeStatus.Invalid,
                     Errors = new Dictionary<string, string>
                     {
                         { "ActivationCode", "ActivationCode_Required" }
@@ -1200,29 +1201,64 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            var isCodeExists = await _cacheClient.KeyExistsAsync(validateActivationCodeRequest.ActivationCode);
-
-            if (!isCodeExists)
-                return new ActivationCodeValidationResponse { IsSuccess = false };
-
+            // The key map is the durable record and outlives the cache entry, so it still answers
+            // for a code that has already been spent. Consulting it before the cache is what lets
+            // a used link be told apart from one that never existed.
             var userId = await _repository.GetUserIdFromKeyMapByKeyAsync(validateActivationCodeRequest.ActivationCode);
-            var isValid = !string.IsNullOrWhiteSpace(userId);
+
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return new ActivationCodeValidationResponse
+                {
+                    Status = ActivationCodeStatus.Invalid,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "ActivationCode", "Invalid_ActivationCode" }
+                    }
+                };
+            }
 
             // A self-service signup already gave a name; returning it lets the activation
             // form prefill instead of asking twice. Holding the code already grants the
             // right to set this account's password, so the name is no new exposure.
-            var user = isValid ? await _repository.GetUserByIdAsync(userId) : null;
+            var user = await _repository.GetUserByIdAsync(userId);
+
+            if (user == null)
+            {
+                return new ActivationCodeValidationResponse
+                {
+                    Status = ActivationCodeStatus.Invalid,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "ActivationCode", "Invalid_ActivationCode" }
+                    }
+                };
+            }
+
+            // The account is the authority on whether activation already happened. The key map's
+            // own Activated flag is per-user rather than per-key, so it cannot say which of a
+            // resent link's codes was the one spent.
+            if (user.Active)
+            {
+                return new ActivationCodeValidationResponse
+                {
+                    UserId = userId,
+                    FirstName = user.FirstName ?? string.Empty,
+                    LastName = user.LastName ?? string.Empty,
+                    Status = ActivationCodeStatus.AlreadyActivated,
+                    IsSuccess = false
+                };
+            }
+
+            var isCodeLive = await _cacheClient.KeyExistsAsync(validateActivationCodeRequest.ActivationCode);
 
             return new ActivationCodeValidationResponse
             {
                 UserId = userId,
-                FirstName = user?.FirstName ?? string.Empty,
-                LastName = user?.LastName ?? string.Empty,
-                IsSuccess = isValid,
-                Errors = isValid ? null : new Dictionary<string, string>
-                {
-                    { "ActivationCode", "Invalid_ActivationCode" }
-                }
+                FirstName = user.FirstName ?? string.Empty,
+                LastName = user.LastName ?? string.Empty,
+                Status = isCodeLive ? ActivationCodeStatus.Valid : ActivationCodeStatus.Expired,
+                IsSuccess = isCodeLive
             };
         }
 

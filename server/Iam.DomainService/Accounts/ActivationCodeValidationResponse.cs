@@ -13,5 +13,12 @@ namespace Iam.DomainService.Accounts
         /// </summary>
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Why the code is or is not usable. IsSuccess stays true only for
+        /// <see cref="ActivationCodeStatus.Valid"/>, so existing callers are unaffected; this
+        /// tells the ones that care apart from each other.
+        /// </summary>
+        public ActivationCodeStatus Status { get; set; } = ActivationCodeStatus.Invalid;
     }
 }

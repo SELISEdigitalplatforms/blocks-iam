@@ -175,15 +175,18 @@ public class AuthenticationController : ControllerBase
     /// Use to verify code before user interaction
     /// </summary>
     /// <param name="command">Request with email and activation code</param>
-    /// <returns>Validation result indicating code validity</returns>
-    /// <response code="200">Activation code is valid</response>
-    /// <response code="400">Invalid or expired activation code</response>
+    /// <returns>Validation result carrying the code's status</returns>
+    /// <response code="200">Status of the code: Valid, Expired, AlreadyActivated or Invalid</response>
     [HttpPost("validate-activation")]
     [AllowAnonymous]
     public async Task<IActionResult> ValidateActivationCode([FromBody] ValidateActivationCodeRequest command)
     {
+        // Always 200: the caller asked what a code is, and "expired" or "already activated" is an
+        // answer, not a failed request. A non-2xx costs the client the body -- the status and the
+        // user id it needs to offer a resend -- and leaves it with nothing but "invalid".
+        // IsSuccess still marks a usable code, so callers reading that are unaffected.
         var result = await _accountService.ValidateAccountActivationCodeAsync(command);
-        return result.IsSuccess ? Ok(result) : BadRequest(result);
+        return Ok(result);
     }
 
     #endregion

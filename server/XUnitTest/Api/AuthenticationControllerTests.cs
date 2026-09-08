@@ -258,15 +258,27 @@ namespace XUnitTest.ApiTests
             result.Should().BeOfType<OkObjectResult>();
         }
 
+        /// <summary>
+        /// An unusable code is still an answer to the question asked. A non-2xx would strip the
+        /// body on the way out, leaving the caller unable to tell a spent code from a fabricated
+        /// one or to offer the resend the expired one deserves.
+        /// </summary>
         [Fact]
-        public async Task ValidateActivationCode_Failure_ReturnsBadRequest()
+        public async Task ValidateActivationCode_UnusableCode_StillReturnsOkWithTheStatus()
         {
             _accountService.Setup(s => s.ValidateAccountActivationCodeAsync(It.IsAny<ValidateActivationCodeRequest>()))
-                .ReturnsAsync(new ActivationCodeValidationResponse { IsSuccess = false });
+                .ReturnsAsync(new ActivationCodeValidationResponse
+                {
+                    IsSuccess = false,
+                    Status = ActivationCodeStatus.AlreadyActivated,
+                    UserId = "u-99"
+                });
 
             var result = await CreateController().ValidateActivationCode(new ValidateActivationCodeRequest());
 
-            result.Should().BeOfType<BadRequestObjectResult>();
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            ok.Value.Should().BeOfType<ActivationCodeValidationResponse>()
+                .Which.Status.Should().Be(ActivationCodeStatus.AlreadyActivated);
         }
 
         // ---------- InitiateSocialAuthentication ----------

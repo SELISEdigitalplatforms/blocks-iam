@@ -5,8 +5,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Captcha } from "@/components/captcha";
 import { useNavigate } from "react-router";
-import { useEffect, useRef, useState } from "react";
-import { useAccountActivation } from "@blocks-idp/iam/hooks/use-account";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useAccountActivation,
+  useAccountActivationCodeExpiration,
+} from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
@@ -14,6 +17,17 @@ import { PasswordStrengthChecker } from "../../components/password-strength-chec
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
 import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
+import { resolveActivationCodeStatus } from "./activation-status";
+
+/** Pulls a readable message out of the several shapes an activation failure arrives in. */
+const readErrorMessage = (source: unknown, fallback: string): string => {
+  if (Array.isArray(source)) return (source[0] as string) ?? fallback;
+  if (source && typeof source === "object") {
+    return Object.values(source as Record<string, string>)[0] ?? fallback;
+  }
+  return (source as string) || fallback;
+};
 
 type ActivationFormProps = {
   code: string;
@@ -69,6 +83,51 @@ export const ActivationForm = ({
     generator: oidcUiConfig?.captcha?.generator,
   });
   const { isPending, mutateAsync } = useAccountActivation();
+  const { mutateAsync: revalidateCode } = useAccountActivationCodeExpiration();
+  const [autoActivationError, setAutoActivationError] = useState<string | null>(null);
+
+  const successUrl = appendTenantId(
+    buildOIDCNavigationUrl("/oidc/activate-success"),
+    tenantId,
+  );
+
+  /**
+   * A failed activation is worth a second look before it is shown as one: a link scanner, another
+   * tab or a retried request may have already finished the job, in which case the account is
+   * active and the code is spent -- which is what the failure actually was.
+   */
+  const settleFailure = useCallback(
+    async (message: string) => {
+      // Only the automatic path renders this; the form shows its failure through the animation.
+      const report = (text: string) => {
+        if (!collectPassword) setAutoActivationError(text);
+      };
+
+      try {
+        const check = await revalidateCode({ activationCode: code, tenantId });
+        if (resolveActivationCodeStatus(check) === "AlreadyActivated") {
+          // Nothing was lost when no password was being collected, so the success page is the
+          // truthful end. With a password in hand it was not applied, and saying so beats
+          // implying it was.
+          if (!collectPassword) {
+            await animCtx?.succeedAnimation();
+            navigate(successUrl, { replace: true });
+            return;
+          }
+          const alreadyActive = "This account is already active. Please sign in to continue.";
+          report(alreadyActive);
+          await animCtx?.failAnimation(alreadyActive);
+          return;
+        }
+      } catch {
+        // The re-check is a courtesy; its own failure must not replace the real one.
+      }
+
+      report(message);
+      await animCtx?.failAnimation(message);
+    },
+    [revalidateCode, code, tenantId, collectPassword, animCtx, navigate, successUrl],
+  );
 
   // Without a password there are no strength requirements to meet, and this guard would
   // otherwise throw away every solved captcha the moment it arrives.
@@ -127,49 +186,123 @@ export const ActivationForm = ({
     formRef.current.classList.add("oidc-animate-shake");
   }
 
-  const onSubmitHandler = async (values: z.infer<typeof activationFormSchema>) => {
-    animCtx?.startAnimation();
-    try {
-      const res = await mutateAsync({
-        code: code,
-        preventPostEvent: true,
-        firstName: values.firstname,
-        lastName: values.lastname,
+  /**
+   * The activation request itself, shared by the form and by the automatic path. `onFailure`
+   * differs between them: the form has something to shake and a captcha to reset, the automatic
+   * path has neither.
+   */
+  const runActivation = useCallback(
+    async (
+      values: { firstname?: string; lastname?: string; password?: string },
+      onFailure?: () => void,
+    ) => {
+      animCtx?.startAnimation();
+      setAutoActivationError(null);
+      try {
+        const res = await mutateAsync({
+          code: code,
+          preventPostEvent: true,
+          firstName: values.firstname,
+          lastName: values.lastname,
+          password: values.password,
+          captchaCode,
+          tenantId,
+        });
+        if (!res.isSuccess) {
+          onFailure?.();
+          await settleFailure(readErrorMessage(res.errors, "Activation failed"));
+          return;
+        }
+        await animCtx?.succeedAnimation();
+        // The activation link carries the originating app's clientId/redirect_uri; keep
+        // them so the success page's "Log in" re-enters that OIDC flow. tenantId is a
+        // path segment here, which buildOIDCNavigationUrl cannot see, so add it by hand.
+        navigate(successUrl);
+      } catch (error: unknown) {
+        onFailure?.();
+        await settleFailure(
+          isErrorWithErrors(error)
+            ? readErrorMessage(error.errors, "Something went wrong")
+            : "Something went wrong",
+        );
+      }
+    },
+    [animCtx, mutateAsync, code, captchaCode, tenantId, settleFailure, navigate, successUrl],
+  );
+
+  /**
+   * With the password step off there is nothing to fill in, so confirming the emailed link is the
+   * whole flow: activate on arrival and hand the user to the success page.
+   *
+   * The latch holds that to once per page load. The effect re-runs on any render -- StrictMode
+   * double-invokes it in development, a configuration refetch or the captcha token arriving does
+   * it in production -- and the first call spends the code, so a second would report a failure
+   * over a success.
+   */
+  const autoActivateStarted = useRef(false);
+  useEffect(() => {
+    if (collectPassword || !code) return;
+    // Captcha stays a real gate: wait for the widget's token, then go without asking for a
+    // second gesture. There is no invisible provider wired up, so no token means no check ran.
+    if (captchaEnabled && !captchaCode) return;
+    if (autoActivateStarted.current) return;
+    autoActivateStarted.current = true;
+
+    void runActivation({});
+  }, [collectPassword, code, captchaEnabled, captchaCode, runActivation]);
+
+  const onSubmitHandler = async (values: z.infer<typeof activationFormSchema>) =>
+    runActivation(
+      {
+        firstname: values.firstname,
+        lastname: values.lastname,
         password: collectPassword ? values.password : undefined,
-        captchaCode,
-        tenantId,
-      });
-      if (!res.isSuccess) {
+      },
+      () => {
         resetCaptcha();
-        const msg = Array.isArray(res.errors)
-          ? res.errors[0]
-          : res.errors && typeof res.errors === "object"
-            ? (Object.values(res.errors as Record<string, string>)[0] ?? "Activation failed")
-            : (res.errors as string) || "Activation failed";
         shake();
-        await animCtx?.failAnimation(msg);
-        return;
-      }
-      await animCtx?.succeedAnimation();
-      // The activation link carries the originating app's clientId/redirect_uri; keep
-      // them so the success page's "Log in" re-enters that OIDC flow. tenantId is a
-      // path segment here, which buildOIDCNavigationUrl cannot see, so add it by hand.
-      navigate(appendTenantId(buildOIDCNavigationUrl("/oidc/activate-success"), tenantId));
-    } catch (error: unknown) {
-      resetCaptcha();
-      shake();
-      if (isErrorWithErrors(error)) {
-        const msg = Array.isArray(error.errors)
-          ? (error.errors[0] as string)
-          : error.errors && typeof error.errors === "object"
-            ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
-            : (error.errors as unknown as string) || "Something went wrong";
-        await animCtx?.failAnimation(msg);
-      } else {
-        await animCtx?.failAnimation("Something went wrong");
-      }
-    }
-  };
+      },
+    );
+
+  // Nothing is asked for when the password step is off, so there is no form to render: either the
+  // captcha is waiting for its one gesture, or the activation is already on its way.
+  if (!collectPassword) {
+    const waitingForCaptcha = captchaEnabled && !captchaCode;
+
+    return (
+      <div className="flex flex-col gap-5">
+        <p
+          className="text-sm"
+          style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}
+        >
+          {autoActivationError
+            ? autoActivationError
+            : waitingForCaptcha
+              ? "Confirm you are not a robot to finish activating your account."
+              : "Confirming your activation link and setting up your account."}
+        </p>
+
+        {waitingForCaptcha && !autoActivationError && <Captcha {...captcha} />}
+
+        {!waitingForCaptcha && !autoActivationError && (
+          <div
+            className="flex items-center justify-center gap-2 py-2 text-sm"
+            style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}
+            role="status"
+          >
+            <Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} />
+            <span>Activating…</span>
+          </div>
+        )}
+
+        {autoActivationError && (
+          <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
+            Back to login
+          </LoginReturnLink>
+        )}
+      </div>
+    );
+  }
 
   return (
     <form

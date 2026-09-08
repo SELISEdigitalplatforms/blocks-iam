@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   navigateMock: vi.fn(),
   mutateAsync: vi.fn(),
+  revalidate: vi.fn(),
   resetCaptcha: vi.fn(),
   animCtx: null as Record<string, unknown> | null,
   oidcUiConfig: undefined as unknown,
@@ -16,6 +17,10 @@ vi.mock("react-router", () => ({ useNavigate: () => h.navigateMock }));
 vi.mock("@/components/captcha", () => ({ Captcha: () => null }));
 vi.mock("@blocks-idp/iam/hooks/use-account", () => ({
   useAccountActivation: vi.fn(() => ({ isPending: false, mutateAsync: h.mutateAsync })),
+  useAccountActivationCodeExpiration: vi.fn(() => ({ mutateAsync: h.revalidate })),
+}));
+vi.mock("@blocks-idp/authentication/components/login-return-link", () => ({
+  LoginReturnLink: ({ children }: { children: React.ReactNode }) => <a href="/login">{children}</a>,
 }));
 vi.mock("@blocks-idp/captcha/hooks/use-captcha", () => ({
   useCaptcha: vi.fn(() => ({ captcha: {}, code: h.captchaCode, reset: h.resetCaptcha })),
@@ -46,6 +51,8 @@ beforeEach(() => {
   h.captchaCode = "";
   h.captchaEnabled = false;
   h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
+  h.mutateAsync.mockResolvedValue({ isSuccess: true });
+  h.revalidate.mockResolvedValue({ isSuccess: false, status: "Expired" });
 });
 
 const fillNames = () => {
@@ -143,44 +150,34 @@ describe("ActivationForm", () => {
   });
 
   describe("when the tenant turns the activation password step off", () => {
-    it("renders no password fields", () => {
-      const { container } = render(
-        <ActivationForm code="activation-code" tenantId="tenant-1" collectPassword={false} />,
+    const renderAuto = (props: Record<string, unknown> = {}) =>
+      render(
+        <ActivationForm
+          code="activation-code"
+          tenantId="tenant-1"
+          collectPassword={false}
+          {...props}
+        />,
       );
-      expect(screen.getByText("First Name")).toBeInTheDocument();
-      expect(screen.getByText("Last Name")).toBeInTheDocument();
+
+    it("asks for nothing and activates on arrival", async () => {
+      const { container } = renderAuto();
+
+      expect(screen.queryByText("First Name")).not.toBeInTheDocument();
+      expect(screen.queryByText("Last Name")).not.toBeInTheDocument();
       expect(passwordInputs(container)).toHaveLength(0);
-      expect(screen.queryByText("Password")).not.toBeInTheDocument();
-      expect(screen.queryByText("Confirm Password")).not.toBeInTheDocument();
-    });
-
-    it("enables the activate button on the names alone", async () => {
-      render(<ActivationForm code="activation-code" tenantId="tenant-1" collectPassword={false} />);
-      expect(screen.getByRole("button", { name: /activate/i })).toBeDisabled();
-
-      fillNames();
+      expect(screen.queryByRole("button", { name: /activate/i })).not.toBeInTheDocument();
 
       await vi.waitFor(() =>
-        expect(screen.getByRole("button", { name: /activate/i })).toBeEnabled(),
-      );
-    });
-
-    it("activates without sending a password", async () => {
-      h.mutateAsync.mockResolvedValue({ isSuccess: true });
-      const { container } = render(
-        <ActivationForm code="activation-code" tenantId="tenant-1" collectPassword={false} />,
-      );
-      fillNames();
-      fireEvent.submit(container.querySelector("form") as HTMLFormElement);
-
-      await vi.waitFor(() => expect(h.mutateAsync).toHaveBeenCalled());
-      expect(h.mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({
-          code: "activation-code",
-          firstName: "Grace",
-          lastName: "Hopper",
-          password: undefined,
-        }),
+        expect(h.mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            code: "activation-code",
+            tenantId: "tenant-1",
+            password: undefined,
+            firstName: undefined,
+            lastName: undefined,
+          }),
+        ),
       );
       await vi.waitFor(() =>
         expect(h.navigateMock).toHaveBeenCalledWith(
@@ -189,13 +186,75 @@ describe("ActivationForm", () => {
       );
     });
 
+    it("activates once however many times the effect re-runs", async () => {
+      const { rerender } = renderAuto();
+      await vi.waitFor(() => expect(h.mutateAsync).toHaveBeenCalledTimes(1));
+
+      rerender(
+        <ActivationForm code="activation-code" tenantId="tenant-1" collectPassword={false} />,
+      );
+      rerender(
+        <ActivationForm code="activation-code" tenantId="tenant-1" collectPassword={false} />,
+      );
+
+      await vi.waitFor(() => expect(h.mutateAsync).toHaveBeenCalledTimes(1));
+    });
+
+    it("waits for the captcha, then activates without asking for a button press", async () => {
+      h.captchaEnabled = true;
+      const { rerender } = renderAuto();
+
+      expect(h.mutateAsync).not.toHaveBeenCalled();
+      expect(
+        screen.getByText("Confirm you are not a robot to finish activating your account."),
+      ).toBeInTheDocument();
+
+      h.captchaCode = "solved-captcha";
+      rerender(
+        <ActivationForm code="activation-code" tenantId="tenant-1" collectPassword={false} />,
+      );
+
+      await vi.waitFor(() =>
+        expect(h.mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ captchaCode: "solved-captcha" }),
+        ),
+      );
+    });
+
     it("keeps a solved captcha instead of discarding it for unmet password rules", () => {
       h.captchaEnabled = true;
       h.captchaCode = "solved-captcha";
 
-      render(<ActivationForm code="activation-code" tenantId="tenant-1" collectPassword={false} />);
+      renderAuto();
 
       expect(h.resetCaptcha).not.toHaveBeenCalled();
+    });
+
+    it("treats an already-active account as success rather than a failure", async () => {
+      h.mutateAsync.mockResolvedValue({ isSuccess: false, errors: { code: "Expired" } });
+      h.revalidate.mockResolvedValue({ isSuccess: false, status: "AlreadyActivated" });
+
+      renderAuto();
+
+      await vi.waitFor(() =>
+        expect(h.navigateMock).toHaveBeenCalledWith(
+          expect.stringContaining("/oidc/activate-success"),
+          { replace: true },
+        ),
+      );
+    });
+
+    it("surfaces the failure when the account is not already active", async () => {
+      h.mutateAsync.mockResolvedValue({ isSuccess: false, errors: { code: "Link is dead" } });
+      h.revalidate.mockResolvedValue({ isSuccess: false, status: "Invalid" });
+
+      renderAuto();
+
+      expect(await screen.findByText("Link is dead")).toBeInTheDocument();
+      expect(screen.getByText("Back to login")).toBeInTheDocument();
+      expect(h.navigateMock).not.toHaveBeenCalledWith(
+        expect.stringContaining("/oidc/activate-success"),
+      );
     });
   });
 

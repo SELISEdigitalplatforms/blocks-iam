@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router";
 const h = vi.hoisted(() => ({
   validate: vi.fn(),
   resend: vi.fn(),
+  navigate: vi.fn(),
   isActivationPending: false,
   isResendPending: false,
   oidcUiConfig: undefined as unknown,
@@ -14,6 +15,10 @@ const h = vi.hoisted(() => ({
   formProps: null as Record<string, unknown> | null,
 }));
 
+vi.mock("react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router")>()),
+  useNavigate: () => h.navigate,
+}));
 vi.mock("@blocks-idp/iam/hooks/use-account", () => ({
   useAccountActivationCodeExpiration: () => ({
     isPending: h.isActivationPending,
@@ -70,6 +75,7 @@ beforeEach(() => {
   h.isUiConfigLoading = false;
   h.shellProps = null;
   h.formProps = null;
+  h.navigate.mockClear();
 });
 
 describe("Activation", () => {
@@ -141,6 +147,50 @@ describe("Activation", () => {
     await waitFor(() => expect(screen.getByTestId("activation-form")).toBeInTheDocument());
     expect(h.formProps?.collectPassword).toBe(false);
     expect(h.shellProps?.panelConfig).toEqual({ panel: "confirm-only" });
+  });
+
+  it("sends an already-active account straight to the success page when no password is collected", async () => {
+    h.validate.mockResolvedValue({ isSuccess: false, status: "AlreadyActivated", userId: "u1" });
+    h.collectPasswordOnActivation = false;
+
+    renderCmp({ code: "spent", tenantId: "t1" });
+
+    await waitFor(() =>
+      expect(h.navigate).toHaveBeenCalledWith(
+        expect.stringContaining("/oidc/activate-success"),
+        { replace: true },
+      ),
+    );
+  });
+
+  it("explains an already-active account instead of calling the link invalid", async () => {
+    h.validate.mockResolvedValue({ isSuccess: false, status: "AlreadyActivated", userId: "u1" });
+    h.collectPasswordOnActivation = true;
+
+    renderCmp({ code: "spent", tenantId: "t1" });
+
+    await waitFor(() => expect(screen.getByText("Already Activated")).toBeInTheDocument());
+    expect(screen.queryByTestId("activation-form")).not.toBeInTheDocument();
+    expect(h.navigate).not.toHaveBeenCalled();
+  });
+
+  it("offers a resend for an expired code, using the user id the status carries", async () => {
+    h.validate.mockResolvedValue({ isSuccess: false, status: "Expired", userId: "u9" });
+    h.resend.mockResolvedValue({ isSuccess: true });
+
+    renderCmp({ code: "old", tenantId: "t1" });
+
+    await waitFor(() => expect(screen.getByText("Link Expired")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Resend activation link" }));
+    await waitFor(() => expect(h.resend).toHaveBeenCalledWith({ userId: "u9", tenantId: "t1" }));
+  });
+
+  it("calls an unissued code invalid", async () => {
+    h.validate.mockResolvedValue({ isSuccess: false, status: "Invalid", userId: null });
+
+    renderCmp({ code: "nonsense", tenantId: "t1" });
+
+    await waitFor(() => expect(screen.getByText("Invalid Activation Link")).toBeInTheDocument());
   });
 
   it("holds the form back until the ui configuration has settled", async () => {
