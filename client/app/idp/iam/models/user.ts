@@ -216,7 +216,8 @@ export const status = [
 
 export interface IAccountActivationPayload {
   code: string;
-  password: string;
+  /** Omitted when the tenant turns off the activation password step; the account activates without one. */
+  password?: string;
   /** Supplied by invited users who were created without a name. Ignored server-side if the account already has one. */
   firstName?: string;
   lastName?: string;
@@ -279,10 +280,17 @@ export interface IActivationCodeValidationPayload {
   tenantId?: string;
 }
 
+/**
+ * What the code turned out to be. Only "Valid" may be activated; the other three each get their
+ * own screen instead of the single "invalid link" they used to collapse into.
+ */
+export type ActivationCodeStatus = "Valid" | "Expired" | "AlreadyActivated" | "Invalid";
+
 export interface IActivationCodeValidationResponse {
   errors: unknown | null;
   isSuccess: boolean;
   userId: string | null;
+  status?: ActivationCodeStatus;
   // Present when the account already has them (self-service signup); empty for
   // invited users, who are asked on the activation form.
   firstName?: string;

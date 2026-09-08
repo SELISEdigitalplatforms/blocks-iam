@@ -17,6 +17,7 @@ namespace Authentication.DomainService.Entities
         public const int DefaultMaxTokenRotationAttempts = 3;
         public const int DefaultActivationUrlLifetimeInMinutes = 60 * 24;
         public const int DefaultRecoverAccountUrlLifetimeInMinutes = 10;
+        public const bool DefaultCollectPasswordOnActivation = true;
 
 
         [BsonId]
@@ -43,5 +44,13 @@ namespace Authentication.DomainService.Entities
         public int RecoverAccountUrlLifetimeInMinutes { get; set; } = DefaultRecoverAccountUrlLifetimeInMinutes;
         public bool LogoutOnPasswordChange { get; set; } = true;
         public string PasswordStrengthCheckerRegex { get; set; }
+
+        /// <summary>
+        /// Whether the activation page asks the user to create a password before the account
+        /// becomes usable. When false, confirming the emailed link is enough to activate and the
+        /// user is sent straight to login. Only the IAM-hosted OIDC activation page consumes
+        /// this, so it has no effect while <see cref="IsOidcEnabled"/> is false.
+        /// </summary>
+        public bool CollectPasswordOnActivation { get; set; } = DefaultCollectPasswordOnActivation;
     }
 }

@@ -88,9 +88,8 @@
             Use to verify code before user interaction
             </summary>
             <param name="command">Request with email and activation code</param>
-            <returns>Validation result indicating code validity</returns>
-            <response code="200">Activation code is valid</response>
-            <response code="400">Invalid or expired activation code</response>
+            <returns>Validation result carrying the code's status</returns>
+            <response code="200">Status of the code: Valid, Expired, AlreadyActivated or Invalid</response>
         </member>
         <member name="M:Api.Controllers.AuthenticationController.InitiateSocialAuthentication(System.String,System.String)">
             <summary>
