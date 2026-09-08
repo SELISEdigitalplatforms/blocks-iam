@@ -93,6 +93,13 @@ namespace Iam.DomainService.Users
                 return organizationGuardFailure;
             }
 
+            var permissionCountFailure = ValidatePermissionCount(command.Permissions);
+            if (permissionCountFailure != null)
+            {
+                _logger.LogInformation("User creation end -- Permission Count Error");
+                return permissionCountFailure;
+            }
+
             var existingUser = await TryGrantOrganizationToExistingUserAsync(
                 command.Email,
                 organizationId,
@@ -207,6 +214,11 @@ namespace Iam.DomainService.Users
         /// Returns the existing account with the requested organization granted, or <c>null</c> when the
         /// email is new and the caller should go on to create one.
         /// </para>
+        /// <para>
+        /// Account lifecycle is deliberately not consulted here. There is no way to disable an account
+        /// yet, and when that feature arrives the intended answer is to reactivate on invite rather
+        /// than refuse -- so the decision belongs with that feature, not with this lookup.
+        /// </para>
         /// </summary>
         private async Task<User?> TryGrantOrganizationToExistingUserAsync(
             string email,
@@ -220,24 +232,7 @@ namespace Iam.DomainService.Users
                 return null;
             }
 
-            if (!existingUser.OrganizationIds.Contains(organizationId))
-            {
-                existingUser.OrganizationIds.Add(organizationId);
-                existingUser.Roles[organizationId] = roles ?? [];
-                existingUser.Permissions[organizationId] = permissions ?? [];
-            }
-            else
-            {
-                // Already a member: this is an access update, not a join. An empty request keeps
-                // what the user has rather than silently stripping their roles.
-                existingUser.Roles[organizationId] = roles?.Count > 0
-                    ? roles
-                    : existingUser.Roles.GetValueOrDefault(organizationId, []);
-
-                existingUser.Permissions[organizationId] = permissions?.Count > 0
-                    ? permissions
-                    : existingUser.Permissions.GetValueOrDefault(organizationId, []);
-            }
+            GrantOrganization(existingUser, organizationId, roles, permissions);
 
             existingUser.LastUpdatedDate = DateTime.UtcNow;
             existingUser.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? existingUser.ItemId;
@@ -245,6 +240,56 @@ namespace Iam.DomainService.Users
             await _userRepository.UpdateUserAsync(existingUser);
 
             return existingUser;
+        }
+
+        /// <summary>
+        /// Places <paramref name="user"/> in <paramref name="organizationId"/> and sets that
+        /// organization's roles and permissions.
+        /// <para>
+        /// Membership is read the same three ways <c>OrganizationAccessResolver.HasOrganizationAccess</c>
+        /// reads it -- an organization can have been granted through a <c>Roles</c> or <c>Permissions</c>
+        /// key without ever reaching <c>OrganizationIds</c>. Testing <c>OrganizationIds</c> alone would
+        /// read such a member as a new joiner and overwrite the roles they already hold with an empty
+        /// list. Falling back to what is already stored means an empty request never clears anything,
+        /// while <c>OrganizationIds</c> is brought back in step with the other two.
+        /// </para>
+        /// </summary>
+        private static void GrantOrganization(User user, string organizationId, List<string>? roles, List<string>? permissions)
+        {
+            if (!user.OrganizationIds.Contains(organizationId))
+            {
+                user.OrganizationIds.Add(organizationId);
+            }
+
+            user.Roles[organizationId] = roles?.Count > 0
+                ? roles
+                : user.Roles.GetValueOrDefault(organizationId, []);
+
+            user.Permissions[organizationId] = permissions?.Count > 0
+                ? permissions
+                : user.Permissions.GetValueOrDefault(organizationId, []);
+        }
+
+        /// <summary>
+        /// The per-organization permission cap, as a check the grant paths can run before writing.
+        /// <c>ProcessCreateUserAsync</c> enforces the same rule for a brand new account by throwing;
+        /// granting an organization to an existing account has to enforce it too, or an invite
+        /// becomes a way around the cap.
+        /// </summary>
+        private static BaseMutationResponse? ValidatePermissionCount(List<string>? permissions)
+        {
+            if (permissions is not { Count: > MaxPermissionsPerUser })
+            {
+                return null;
+            }
+
+            return new BaseMutationResponse
+            {
+                Errors = new Dictionary<string, string>
+                {
+                    { nameof(CreateUserRequest.Permissions), $"A maximum of {MaxPermissionsPerUser} permissions can be added with any user permission." }
+                }
+            };
         }
 
         /// <summary>
@@ -261,10 +306,20 @@ namespace Iam.DomainService.Users
         /// </summary>
         private static BaseMutationResponse? ValidateCallerMayWriteToOrganization(string? organizationId)
         {
-            var callerOrganizationId = BlocksContext.GetContext()?.OrganizationId;
+            var context = BlocksContext.GetContext();
 
-            if (string.IsNullOrWhiteSpace(callerOrganizationId)
-                || string.Equals(callerOrganizationId, DefaultOrganizationId, StringComparison.Ordinal)
+            // The exemption is keyed on having no identity at all -- anonymous signup, queue
+            // consumers, the SSO consent exchange -- not on a blank organization. An *authenticated*
+            // caller whose token carries no organization, or carries the "no-org" sentinel, is
+            // refused like any other, so a token cannot buy tenant-wide reach by omitting the claim.
+            if (context is null || !context.IsAuthenticated)
+            {
+                return null;
+            }
+
+            var callerOrganizationId = context.OrganizationId;
+
+            if (string.Equals(callerOrganizationId, DefaultOrganizationId, StringComparison.Ordinal)
                 || string.Equals(callerOrganizationId, organizationId, StringComparison.Ordinal))
             {
                 return null;
@@ -942,6 +997,20 @@ namespace Iam.DomainService.Users
                 ? blocksContext?.OrganizationId
                 : command.OrganizationId;
 
+            // Named explicitly, the way the revoke side already does. Without it a caller carrying
+            // no organization reaches the write with a null key and the roles dictionary throws.
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                _logger.LogInformation("Update User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.OrganizationId), "OrganizationId is required" }
+                    }
+                };
+            }
+
             if (!string.Equals(blocksContext?.OrganizationId, DefaultOrganizationId, StringComparison.Ordinal)
                 && !string.Equals(blocksContext?.OrganizationId, organizationId, StringComparison.Ordinal))
             {
@@ -983,24 +1052,7 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            var isAddToOrganization = !user.OrganizationIds.Contains(organizationId);
-
-            if (isAddToOrganization)
-            {
-                user.OrganizationIds.Add(organizationId);
-                user.Roles[organizationId] = command.Roles?.Count > 0 ? command.Roles : new List<string>();
-                user.Permissions[organizationId] = command.Permissions ?? new List<string>();
-            }
-            else
-            {
-                user.Roles[organizationId] = command.Roles?.Count > 0
-                    ? command.Roles
-                    : user.Roles.GetValueOrDefault(organizationId, new List<string>());
-
-                user.Permissions[organizationId] = command.Permissions?.Count > 0
-                    ? command.Permissions
-                    : user.Permissions.GetValueOrDefault(organizationId, new List<string>());
-            }
+            GrantOrganization(user, organizationId, command.Roles, command.Permissions);
 
             user.LastUpdatedDate = DateTime.UtcNow;
             user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
@@ -1189,6 +1241,12 @@ namespace Iam.DomainService.Users
 
             var roles = @event.Roles ?? tenantConfig?.DefaultRolesForNewUserOnSignUp ?? new List<string>();
             var permissions = @event.Permissions ?? tenantConfig?.DefaultPermissionsForNewUserOnSignUp ?? new List<string>();
+
+            if (ValidatePermissionCount(permissions) != null)
+            {
+                _logger.LogInformation("User creation end -- Permission Count Error -- CreateUserByEmail");
+                return false;
+            }
 
             // Inviting an email that already has an account is a join, not a signup: the invited
             // organization is granted on that account rather than opening a second one for the

@@ -193,6 +193,69 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
+        public async Task CreateUser_MembershipHeldOnlyViaRolesKey_KeepsThoseRolesInsteadOfWipingThem()
+        {
+            // Membership is a three-way test (OrganizationIds / Roles keys / Permissions keys).
+            // Reading OrganizationIds alone sees this account as a new joiner and overwrites the
+            // roles it already holds with an empty list.
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _resourceRepo.Setup(r => r.GetOrganizationById("org-1")).ReturnsAsync(new Organization { Name = "Org1" });
+            var existing = new User
+            {
+                ItemId = "existing-1",
+                Email = "skewed@test.com",
+                OrganizationIds = new List<string>(),
+                Roles = new Dictionary<string, List<string>> { ["org-1"] = new() { "admin" } }
+            };
+            _userRepo.Setup(r => r.GetUserByEmailAsync("skewed@test.com")).ReturnsAsync(existing);
+
+            var result = await Create().CreateUserAsync(new CreateUserRequest
+            {
+                Email = "skewed@test.com", OrganizationId = "org-1", Roles = new List<string>()
+            });
+
+            result.ItemId.Should().Be("existing-1");
+            existing.Roles["org-1"].Should().BeEquivalentTo(new[] { "admin" });
+            existing.OrganizationIds.Should().BeEquivalentTo(new[] { "org-1" }, "the record is brought back in step while we are here");
+        }
+
+        [Fact]
+        public async Task CreateUser_GrantingAnExistingAccount_StillHonoursThePermissionCap()
+        {
+            // The cap lives in ProcessCreateUserAsync, which the grant path skips -- without a
+            // check of its own an invite would be a way around it.
+            var existing = new User { ItemId = "existing-1", Email = "capped@test.com", OrganizationIds = new List<string>() };
+            _userRepo.Setup(r => r.GetUserByEmailAsync("capped@test.com")).ReturnsAsync(existing);
+
+            var result = await Create().CreateUserAsync(new CreateUserRequest
+            {
+                Email = "capped@test.com",
+                Permissions = new List<string> { "p1", "p2", "p3", "p4", "p5", "p6" }
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey(nameof(CreateUserRequest.Permissions));
+            _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdateUserAccessControl_NoOrganizationAnywhere_IsRefusedRatherThanThrowing()
+        {
+            InstallContext(orgId: null!);
+            _userRepo.Setup(r => r.GetUserByIdAsync("u-1"))
+                .ReturnsAsync(new User { ItemId = "u-1", OrganizationIds = new List<string>() });
+
+            var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "u-1", OrganizationId = null
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey(nameof(UpdateUserAccessControlRequest.OrganizationId));
+        }
+
+        [Fact]
         public async Task CreateUser_CallerScopedToAnotherOrganization_IsRefused()
         {
             // Without this the merge above becomes an escalation route: org-1's admin could name
@@ -211,6 +274,46 @@ namespace XUnitTest.IamTests.Users
             result.Errors.Should().ContainKey(nameof(CreateUserRequest.OrganizationId));
             _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
             _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("no-org")]
+        [InlineData("")]
+        [InlineData(null)]
+        public async Task CreateUser_AuthenticatedCallerWithoutARealOrganization_IsRefused(string? tokenOrganizationId)
+        {
+            // "no-org" and a missing org claim must not read as tenant-wide reach. Only the
+            // explicit "default" scope may name an arbitrary organization.
+            InstallContext(orgId: tokenOrganizationId!);
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _resourceRepo.Setup(r => r.GetOrganizationById("org-2")).ReturnsAsync(new Organization { Name = "Org2" });
+
+            var result = await Create().CreateUserAsync(new CreateUserRequest
+            {
+                Email = "victim@test.com", OrganizationId = "org-2", Roles = new List<string> { "admin" }
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey(nameof(CreateUserRequest.OrganizationId));
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+            _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task CreateUser_UnauthenticatedCaller_IsAllowed_SoAnonymousSignupStillWorks()
+        {
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: "tenant-1", roles: null, userId: null, impersonated: false,
+                isAuthenticated: false, requestUri: "https://test", organizationId: null,
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: null,
+                userName: null, phoneNumber: null, displayName: null, oauthToken: null,
+                originalTenantId: "tenant-1", impersonationSessionId: null, applicationDomain: "test"));
+
+            var result = await Create().CreateUserAsync(new CreateUserRequest { Email = "signup@test.com" });
+
+            result.IsSuccess.Should().BeTrue();
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Once);
         }
 
         [Fact]
