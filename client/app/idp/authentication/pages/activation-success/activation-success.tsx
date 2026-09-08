@@ -3,11 +3,16 @@ import { Separator } from "@/components/ui-kits/separator/separator"
 import { SuccessConfirmationCardHeader } from "@blocks-idp/authentication/components/success-confirmation-card-header"
 import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/success-confirmation-icon"
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link"
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config"
 import { HelpCircle, LogIn } from "lucide-react"
 
 const SUPPORT_URL = "https://docs.seliseblocks.com/"
 
 export const ActivationSuccess = () => {
+  // A tenant that turns off the activation password step has users who never set one, so
+  // the copy must not send them looking for it.
+  const { collectPasswordOnActivation } = useOidcUiConfig()
+
   return (
     <div className="min-h-dvh overflow-x-hidden bg-surface-app">
       <main className="flex min-h-dvh w-full items-center justify-center px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-6 sm:py-8 md:py-10">
@@ -22,8 +27,9 @@ export const ActivationSuccess = () => {
             </h1>
 
             <p className="mt-3 w-full text-base leading-relaxed text-muted-foreground sm:mt-4 sm:text-lg">
-              Your account has been successfully activated. Sign in with your password to
-              continue and unlock the Blocks IAM platform.
+              {collectPasswordOnActivation
+                ? "Your account has been successfully activated. Sign in with your password to continue and unlock the Blocks IAM platform."
+                : "Your account has been successfully activated. Sign in to continue and unlock the Blocks IAM platform."}
             </p>
           </div>
 
@@ -40,7 +46,9 @@ export const ActivationSuccess = () => {
                   Ready to sign in?
                 </p>
                 <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-                  Use your password to access your workspace.
+                  {collectPasswordOnActivation
+                    ? "Use your password to access your workspace."
+                    : "Sign in to access your workspace."}
                 </p>
               </div>
             </div>

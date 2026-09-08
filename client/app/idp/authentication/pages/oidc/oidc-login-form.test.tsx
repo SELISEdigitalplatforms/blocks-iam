@@ -457,18 +457,78 @@ describe("OidcLoginForm", () => {
     expect(screen.getByText("Create an account")).toBeInTheDocument();
   });
 
-  it("shows an error carried back from a failed SSO round trip", () => {
-    h.loginOption = { ssoInfo: [{ provider: "microsoft" }] };
-    renderForm({
-      initialError:
-        "No account exists for this email, and signing up with SSO is turned off.",
+  describe("an error carried back from a failed SSO round trip", () => {
+    const SSO_ERROR =
+      "No account exists for this email, and signing up with SSO is turned off.";
+
+    it("states it in a modal rather than a line under the form", async () => {
+      h.loginOption = { ssoInfo: [{ provider: "microsoft" }] };
+
+      renderForm({ initialError: SSO_ERROR });
+
+      const dialog = await screen.findByRole("alertdialog");
+      expect(dialog).toHaveTextContent(SSO_ERROR);
+      expect(dialog).toHaveTextContent("Sign-in Unavailable");
     });
-    expect(
-      screen.getByText(
-        "No account exists for this email, and signing up with SSO is turned off.",
-      ),
-    ).toBeInTheDocument();
-    // The SSO buttons stay available so another provider can be tried.
-    expect(screen.getByTestId("sso-signin")).toBeInTheDocument();
+
+    it("labels the way out with the tenant's own copy", async () => {
+      h.oidcUiConfig = {
+        captcha: null,
+        template: {
+          ...OIDC_UI_TEMPLATE_FIXTURE,
+          pages: {
+            ...OIDC_UI_TEMPLATE_FIXTURE.pages,
+            login: { ...OIDC_UI_TEMPLATE_FIXTURE.pages.login, backToLoginButton: "Return to Acme" },
+          },
+        },
+      };
+
+      renderForm({ initialError: SSO_ERROR });
+
+      expect(await screen.findByRole("button", { name: "Return to Acme" })).toBeInTheDocument();
+    });
+
+    it("hands the user back to the application that sent them", async () => {
+      renderForm({
+        initialError: SSO_ERROR,
+        redirectUri: "https://app.example.com/login/callback",
+      });
+
+      fireEvent.click(await screen.findByRole("button", { name: "Back to Login" }));
+
+      expect(window.location.href).toBe("https://app.example.com/login/callback");
+    });
+
+    it("cannot be escaped past, since the message still applies to the page behind it", async () => {
+      renderForm({ initialError: SSO_ERROR });
+      const dialog = await screen.findByRole("alertdialog");
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      expect(dialog).toBeInTheDocument();
+    });
+
+    it("falls back to revealing the form when there is nowhere to send the user", async () => {
+      renderForm({ initialError: SSO_ERROR, redirectUri: "" });
+
+      fireEvent.click(await screen.findByRole("button", { name: "Back to Login" }));
+
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+      expect(screen.getByPlaceholderText("name@company.com")).toBeInTheDocument();
+    });
+
+    it("leaves an ordinary sign-in failure inline", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => jsonResponse(400, { error_description: "Invalid credentials" })),
+      );
+
+      renderForm();
+      fillValid();
+      fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+      await waitFor(() => expect(screen.getByText("Invalid credentials")).toBeInTheDocument());
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
   });
 });

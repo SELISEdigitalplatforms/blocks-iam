@@ -44,7 +44,8 @@ namespace Authentication.DomainService.Authentication
                 config?.ActivationUrlLifetimeInMinutes,
                 config?.RecoverAccountUrlLifetimeInMinutes,
                 config?.LogoutOnPasswordChange,
-                config?.PasswordStrengthCheckerRegex
+                config?.PasswordStrengthCheckerRegex,
+                config?.CollectPasswordOnActivation
             });
         }
 
@@ -69,6 +70,11 @@ namespace Authentication.DomainService.Authentication
                 configuration.LogoutOnPasswordChange
                 ?? current?.LogoutOnPasswordChange
                 ?? true;
+
+            var collectPasswordOnActivation =
+                configuration.CollectPasswordOnActivation
+                ?? current?.CollectPasswordOnActivation
+                ?? IdentityConfiguration.DefaultCollectPasswordOnActivation;
 
             var accountActionBaseUrl =
                 !string.IsNullOrWhiteSpace(configuration.AccountActionBaseUrl)
@@ -172,6 +178,7 @@ namespace Authentication.DomainService.Authentication
                 IsOidcEnabled = isOidcEnabled,
                 UseAccountActionBaseUrlAsDefault = useAccountActionBaseUrlAsDefault,
                 LogoutOnPasswordChange = logoutOnPasswordChange,
+                CollectPasswordOnActivation = collectPasswordOnActivation,
                 AccountActionBaseUrl = accountActionBaseUrl
             };
 

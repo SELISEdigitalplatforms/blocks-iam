@@ -63,9 +63,17 @@ namespace Authentication.DomainService.Authentication
         {
             var captchaConfiguration = await _captchaConfigurationRepository.GetCaptchaConfigurationAsync();
             var savedTemplate = await _authenticationRepository.GetOidcUiTemplateAsync();
+            var authenticationConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
 
             return new OkObjectResult(new OidcUiConfigResponse
             {
+                // Only the IAM-hosted OIDC pages honour this. With OIDC off the activation page
+                // that owns the account lifecycle lives in the tenant's own application, so the
+                // safe default -- collect a password -- applies here regardless of what is stored.
+                CollectPasswordOnActivation =
+                    authenticationConfiguration is not { IsOidcEnabled: true }
+                    || authenticationConfiguration.CollectPasswordOnActivation,
+
                 Captcha = captchaConfiguration == null || !captchaConfiguration.IsEnable ? null : new OidcUiCaptchaResponse
                 {
                     Key = captchaConfiguration.CaptchaKey,

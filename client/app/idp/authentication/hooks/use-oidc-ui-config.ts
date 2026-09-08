@@ -19,6 +19,11 @@ export interface IOidcUiCaptchaConfig {
 export interface IOidcUiConfig {
   captcha: IOidcUiCaptchaConfig | null;
   template: IOidcUiTemplate | null;
+  /**
+   * Whether the activation page must collect a password. Absent on servers predating the
+   * setting, so anything other than an explicit `false` is treated as "collect one".
+   */
+  collectPasswordOnActivation?: boolean;
 }
 
 const OIDC_UI_CONFIG_ENDPOINT = "/api/idp/oidc-ui-config";
@@ -68,5 +73,10 @@ export const useOidcUiConfig = (tenantIdOverride?: string) => {
     ? { ...query.data, template: query.data.template ?? DEFAULT_OIDC_UI_TEMPLATE }
     : { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE };
 
-  return { ...query, data, captchaEnabled: data.captcha != null };
+  return {
+    ...query,
+    data,
+    captchaEnabled: data.captcha != null,
+    collectPasswordOnActivation: data.collectPasswordOnActivation !== false,
+  };
 };
