@@ -28,6 +28,7 @@ import { useAuthStore } from "@seliseblocks/genesis-os";
 import { sha256 } from "js-sha256";
 import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 import { useOidcAuthAnimation } from "./oidc-auth-shell";
+import { OidcErrorDialog } from "./oidc-error-dialog";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 
 const base64UrlEncode = (bytes: Uint8Array) => {
@@ -111,7 +112,10 @@ export const OidcLoginForm = ({
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(initialError ?? null);
+  const [serverError, setServerError] = useState<string | null>(null);
+  // Kept apart from serverError: this one arrives from a round trip the form cannot retry, and
+  // it is shown as a modal rather than a line under the password field.
+  const [roundTripError, setRoundTripError] = useState<string | null>(initialError ?? null);
   const [lastAttemptedEmail, setLastAttemptedEmail] = useState("");
   const [showActivationError, setShowActivationError] = useState(false);
   const [activeCodeChallenge, setActiveCodeChallenge] = useState(codeChallenge);
@@ -422,6 +426,19 @@ shake();
   const showPasswordLogin = true;
   const showSocialLogin = !!loginOption?.ssoInfo?.length;
 
+  /**
+   * Hands the user back to the application that sent them. Falls back to dismissing the modal
+   * when the request carried no redirect_uri, since there is nowhere to send them and the form
+   * behind is better than a dead modal.
+   */
+  const leaveToApplication = () => {
+    if (redirectUri) {
+      window.location.href = redirectUri;
+      return;
+    }
+    setRoundTripError(null);
+  };
+
   if (showActivationError) {
     return (
       <div className="flex flex-col gap-4">
@@ -459,6 +476,15 @@ shake();
 
   return (
     <>
+      {roundTripError && (
+        <OidcErrorDialog
+          title="Sign-in Unavailable"
+          message={roundTripError}
+          actionLabel={loginCopy.backToLoginButton}
+          onAction={leaveToApplication}
+        />
+      )}
+
       {showPasswordLogin && (
         <Form {...form}>
           <form
