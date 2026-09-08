@@ -592,7 +592,10 @@ namespace XUnitTest.Auth.Shared
             });
 
             result.IsSuccess.Should().BeTrue();
-            _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Once);
+            // Pin the classification, not just the call: "blocks-oidc" is the value the Identity
+            // Provider gallery filters on, so a wrong type here hides the provider entirely.
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.Is<IdentityProvider>(p =>
+                p.Provider == "my-app" && p.ProviderType == "blocks-oidc")), Times.Once);
         }
 
         [Fact]
