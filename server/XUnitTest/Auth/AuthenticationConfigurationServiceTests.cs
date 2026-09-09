@@ -5,6 +5,7 @@ using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using MongoDB.Bson;
 using Moq;
 
@@ -32,7 +33,22 @@ namespace XUnitTest.Auth
             BlocksContext.IsTestMode = false;
         }
 
-        private AuthenticationConfigurationService Create() => new(_repo.Object, _tenants.Object);
+        private const string IamBaseUrl = "https://dev-iam.blocksdevelopers.com";
+
+        private AuthenticationConfigurationService Create(string? iamBaseUrl = IamBaseUrl)
+            => new(_repo.Object, _tenants.Object, BuildConfiguration(iamBaseUrl));
+
+        private static IConfiguration BuildConfiguration(string? iamBaseUrl)
+        {
+            var values = new Dictionary<string, string?>();
+
+            if (iamBaseUrl != null)
+            {
+                values["FrontendRuntime:BLOCKS_IAM_BASE_URL"] = iamBaseUrl;
+            }
+
+            return new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+        }
 
         private static Tenant TenantWithApps(params string[] domains)
         {
@@ -90,7 +106,8 @@ namespace XUnitTest.Auth
             var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
             {
                 ItemId = "507f1f77bcf86cd799439011",
-                IsOidcEnabled = true,
+                IsOidcEnabled = false,
+                UseAccountActionBaseUrlAsDefault = true,
                 AccountActionBaseUrl = "https://evil.attacker.com"
             });
 
@@ -227,6 +244,98 @@ namespace XUnitTest.Auth
 
             result.IsSuccess.Should().BeTrue();
             saved!.CollectPasswordOnActivation.Should().BeTrue();
+        }
+        [Fact]
+        public async Task Update_ForcesConfiguredIamBaseUrl_AndIgnoresPayload_WhenOidcEnabled()
+        {
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
+            IdentityConfiguration? saved = null;
+            _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
+                .Callback<IdentityConfiguration>(c => saved = c)
+                .Returns(Task.CompletedTask);
+
+            var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
+            {
+                ItemId = "507f1f77bcf86cd799439011",
+                IsOidcEnabled = true,
+                AccountActionBaseUrl = "https://whatever.the-caller-asked-for.com"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved!.AccountActionBaseUrl.Should().Be(IamBaseUrl);
+        }
+
+        [Fact]
+        public async Task Update_AcceptsIamBaseUrlOutsideTenantDomains_WhenOidcEnabled()
+        {
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            // The IAM host is deliberately not one of the tenant's application domains.
+            _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
+            IdentityConfiguration? saved = null;
+            _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
+                .Callback<IdentityConfiguration>(c => saved = c)
+                .Returns(Task.CompletedTask);
+
+            var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
+            {
+                ItemId = "507f1f77bcf86cd799439011",
+                IsOidcEnabled = true,
+                UseAccountActionBaseUrlAsDefault = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved!.AccountActionBaseUrl.Should().Be(IamBaseUrl);
+        }
+
+        [Fact]
+        public async Task Update_KeepsStoredBaseUrl_WhenOidcEnabled_AndIamBaseUrlUnresolvable()
+        {
+            var current = new IdentityConfiguration
+            {
+                ItemId = ObjectId.GenerateNewId(),
+                AccountActionBaseUrl = "https://already-stored.example.com",
+                IsOidcEnabled = true
+            };
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
+            IdentityConfiguration? saved = null;
+            _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
+                .Callback<IdentityConfiguration>(c => saved = c)
+                .Returns(Task.CompletedTask);
+
+            var result = await Create(iamBaseUrl: null).UpdateAuthenticationConfigAsync(
+                new UpdateAuthenticationConfigurationRequest
+                {
+                    ItemId = "507f1f77bcf86cd799439011",
+                    IsOidcEnabled = true,
+                    AccountActionBaseUrl = "https://whatever.the-caller-asked-for.com"
+                });
+
+            result.IsSuccess.Should().BeTrue();
+            saved!.AccountActionBaseUrl.Should().Be("https://already-stored.example.com");
+        }
+
+        [Fact]
+        public async Task Update_StillHonoursPayloadBaseUrl_WhenOidcDisabled()
+        {
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
+            IdentityConfiguration? saved = null;
+            _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
+                .Callback<IdentityConfiguration>(c => saved = c)
+                .Returns(Task.CompletedTask);
+
+            var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
+            {
+                ItemId = "507f1f77bcf86cd799439011",
+                IsOidcEnabled = false,
+                UseAccountActionBaseUrlAsDefault = true,
+                AccountActionBaseUrl = "https://app.example.com"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved!.AccountActionBaseUrl.Should().Be("https://app.example.com");
         }
     }
 }

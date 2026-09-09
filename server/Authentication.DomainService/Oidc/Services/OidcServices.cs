@@ -528,16 +528,11 @@ public sealed class DiscoveryService : IDiscoveryService
     private string GetConfiguredIssuerFallback()
     {
 
-        var configuredBaseUrl = Environment.GetEnvironmentVariable("BLOCKS_IAM_BASE_URL")
-            ?? _configuration["BLOCKS_IAM_BASE_URL"]
-            ?? _configuration["FrontendRuntime:BLOCKS_IAM_BASE_URL"];
+        var configuredBaseUrl = IamHelper.GetConfiguredIamBaseUrl(_configuration);
 
-        if (Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var uri))
-        {
-            return $"{uri.Scheme}://{uri.Authority}";
-        }
-
-        return IdpConstants.FallbackIssuer;
+        return string.IsNullOrWhiteSpace(configuredBaseUrl)
+            ? IdpConstants.FallbackIssuer
+            : configuredBaseUrl;
     }
 
     private static string BuildUrl(string issuer, params string[] segments)

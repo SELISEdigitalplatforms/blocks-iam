@@ -15,6 +15,7 @@ using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
 using Iam.DomainService.Users.ResponseModel;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
@@ -68,6 +69,7 @@ namespace Iam.DomainService.Accounts
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
         private readonly IValidator<SignupOrganizationInfo>? _signupOrganizationValidator;
         private readonly IOrganizationNameResolver? _organizationNameResolver;
+        private readonly IConfiguration? _configuration;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -89,7 +91,8 @@ namespace Iam.DomainService.Accounts
             // Trailing and optional, matching the two above, so the many existing call sites and
             // test fixtures that construct this service keep compiling. DI supplies both.
             IValidator<SignupOrganizationInfo>? signupOrganizationValidator = null,
-            IOrganizationNameResolver? organizationNameResolver = null)
+            IOrganizationNameResolver? organizationNameResolver = null,
+            IConfiguration? configuration = null)
         {
             _logger = logger;
             _repository = repository;
@@ -109,6 +112,7 @@ namespace Iam.DomainService.Accounts
             _defaultOidcClientResolver = defaultOidcClientResolver;
             _signupOrganizationValidator = signupOrganizationValidator;
             _organizationNameResolver = organizationNameResolver;
+            _configuration = configuration;
         }
 
         public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
@@ -916,7 +920,9 @@ namespace Iam.DomainService.Accounts
                 path = await IamHelper.AppendOidcReturnContextAsync(path, clientId, redirectUri, _defaultOidcClientResolver);
             }
 
-            if (!IamHelper.TryBuildUserActionUrl(config, path, out var recoverAccountUrl, _httpContextAccessor, logger: _logger))
+            if (!IamHelper.TryBuildUserActionUrl(
+                    config, path, out var recoverAccountUrl, _httpContextAccessor,
+                    logger: _logger, appConfiguration: _configuration))
             {
                 _logger.LogWarning("Recover account URL could not be built for user {UserId}", user.ItemId);
                 return false;
@@ -1125,7 +1131,9 @@ namespace Iam.DomainService.Accounts
                 path = await IamHelper.AppendOidcReturnContextAsync(path, clientId, redirectUri, _defaultOidcClientResolver);
             }
 
-            if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
+            if (!IamHelper.TryBuildUserActionUrl(
+                    config, path, out var accountActivationUri, _httpContextAccessor,
+                    logger: _logger, appConfiguration: _configuration))
             {
                 _logger.LogWarning("Activation URL could not be built for user {UserId}", user.ItemId);
                 return false;
