@@ -3,7 +3,11 @@ using Authentication.DomainService.Authentication.RequestModel;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Iam.DomainService.Utilities;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 
 namespace Authentication.DomainService.Authentication
@@ -12,11 +16,22 @@ namespace Authentication.DomainService.Authentication
     {
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
+        private readonly IConfiguration? _configuration;
+        private readonly IHttpContextAccessor? _httpContextAccessor;
+        private readonly ILogger<AuthenticationConfigurationService>? _logger;
 
-        public AuthenticationConfigurationService(IAuthenticationRepository authenticationRepository, ITenants tenants)
+        public AuthenticationConfigurationService(
+            IAuthenticationRepository authenticationRepository,
+            ITenants tenants,
+            IConfiguration? configuration = null,
+            IHttpContextAccessor? httpContextAccessor = null,
+            ILogger<AuthenticationConfigurationService>? logger = null)
         {
             _authenticationRepository = authenticationRepository;
             _tenants = tenants;
+            _configuration = configuration;
+            _httpContextAccessor = httpContextAccessor;
+            _logger = logger;
         }
 
         public async Task<IActionResult> GetAuthenticationConfigAsync()
@@ -76,29 +91,52 @@ namespace Authentication.DomainService.Authentication
                 ?? current?.CollectPasswordOnActivation
                 ?? IdentityConfiguration.DefaultCollectPasswordOnActivation;
 
-            var accountActionBaseUrl =
-                !string.IsNullOrWhiteSpace(configuration.AccountActionBaseUrl)
-                    ? configuration.AccountActionBaseUrl
-                    : current?.AccountActionBaseUrl;
+            string? accountActionBaseUrl;
 
-            if ((!isOidcEnabled
-                    && useAccountActionBaseUrlAsDefault
-                    && string.IsNullOrWhiteSpace(accountActionBaseUrl))
-                ||
-                (!string.IsNullOrWhiteSpace(accountActionBaseUrl)
-                    && !IsAllowedAccountActionBaseUrl(accountActionBaseUrl, tenant)))
+            if (isOidcEnabled)
             {
-                return new BaseResponse
+                // Under OIDC, activation and recovery land on IAM's own hosted pages, so the
+                // base URL is a property of this deployment (dev / stg / prod), not something
+                // the caller gets to choose. Take it from BLOCKS_IAM_BASE_URL and ignore the
+                // payload; there is nothing tenant-scoped left to validate against.
+                accountActionBaseUrl = ResolveIamBaseUrl();
+
+                if (string.IsNullOrWhiteSpace(accountActionBaseUrl))
                 {
-                    IsSuccess = false,
-                    Errors = new Dictionary<string, string>
+                    // Neither configured nor derivable from the request - leave whatever is
+                    // stored rather than clearing a working value.
+                    _logger?.LogWarning(
+                        "OIDC is enabled but BLOCKS_IAM_BASE_URL could not be resolved. "
+                        + "Keeping the stored AccountActionBaseUrl.");
+
+                    accountActionBaseUrl = current?.AccountActionBaseUrl;
+                }
+            }
+            else
+            {
+                accountActionBaseUrl =
+                    !string.IsNullOrWhiteSpace(configuration.AccountActionBaseUrl)
+                        ? configuration.AccountActionBaseUrl
+                        : current?.AccountActionBaseUrl;
+
+                if ((useAccountActionBaseUrlAsDefault
+                        && string.IsNullOrWhiteSpace(accountActionBaseUrl))
+                    ||
+                    (!string.IsNullOrWhiteSpace(accountActionBaseUrl)
+                        && !IsAllowedAccountActionBaseUrl(accountActionBaseUrl, tenant)))
+                {
+                    return new BaseResponse
                     {
+                        IsSuccess = false,
+                        Errors = new Dictionary<string, string>
                         {
-                            "AccountActionBaseUrl",
-                            "AccountActionBaseUrl_Must_Be_In_Tenant_Allowed_Domains"
+                            {
+                                "AccountActionBaseUrl",
+                                "AccountActionBaseUrl_Must_Be_In_Tenant_Allowed_Domains"
+                            }
                         }
-                    }
-                };
+                    };
+                }
             }
 
             static int ResolveInt(int requested, int? currentValue, int defaultValue)
@@ -188,6 +226,20 @@ namespace Authentication.DomainService.Authentication
             {
                 IsSuccess = true
             };
+        }
+
+        /// <summary>
+        /// This IAM deployment's own base URL: the environment's configured
+        /// <c>BLOCKS_IAM_BASE_URL</c>, falling back to the host the request arrived on
+        /// (the config endpoint is served by IAM itself, so that host is IAM's).
+        /// </summary>
+        private string ResolveIamBaseUrl()
+        {
+            var configured = IamHelper.GetConfiguredIamBaseUrl(_configuration);
+
+            return !string.IsNullOrWhiteSpace(configured)
+                ? configured
+                : IamHelper.GetOidcRequestBaseUrl(_httpContextAccessor);
         }
 
         private static bool IsAllowedAccountActionBaseUrl(string accountActionBaseUrl, dynamic? tenant)

@@ -11,6 +11,7 @@ using Iam.DomainService.Shared.Serialization;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Users.RequestModel;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -34,6 +35,7 @@ namespace Iam.DomainService.Users
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
+        private readonly IConfiguration? _configuration;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -48,7 +50,8 @@ namespace Iam.DomainService.Users
             IIdentityAccessManagementRepository? identityAccessManagementRepository = null,
             IResourceRepository? resourceRepository = null,
             IHttpContextAccessor? httpContextAccessor = null,
-            IDefaultOidcClientResolver? defaultOidcClientResolver = null
+            IDefaultOidcClientResolver? defaultOidcClientResolver = null,
+            IConfiguration? configuration = null
         )
         {
             _logger = logger;
@@ -65,6 +68,7 @@ namespace Iam.DomainService.Users
             _resourceRepository = resourceRepository;
             _httpContextAccessor = httpContextAccessor;
             _defaultOidcClientResolver = defaultOidcClientResolver;
+            _configuration = configuration;
         }
 
         public async Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command)
@@ -935,7 +939,9 @@ namespace Iam.DomainService.Users
                 path = await IamHelper.AppendOidcReturnContextAsync(path, clientId, redirectUri, _defaultOidcClientResolver);
             }
 
-            if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
+            if (!IamHelper.TryBuildUserActionUrl(
+                    config, path, out var accountActivationUri, _httpContextAccessor,
+                    logger: _logger, appConfiguration: _configuration))
             {
                 _logger.LogWarning("Activation URL could not be built for user {Id}", user.ItemId);
                 return false;
