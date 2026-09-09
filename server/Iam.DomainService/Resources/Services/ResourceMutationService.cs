@@ -8,6 +8,7 @@ using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Shared.Serialization;
+using Iam.DomainService.Users;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
@@ -43,6 +44,7 @@ namespace Iam.DomainService.Resources
         private readonly IValidator<CreateRoleRequest> _roleValidator;
         private readonly ITenantPermissionPropagator _tenantPermissionPropagator;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
+        private readonly IUserRepository _userRepository;
 
         public ResourceMutationService(
             ILogger<ResourceMutationService> logger,
@@ -52,7 +54,8 @@ namespace Iam.DomainService.Resources
             IValidator<UpdatePermissionRequest> updatepPermissionValidator,
             IValidator<CreateRoleRequest> roleValidator,
             ITenantPermissionPropagator tenantPermissionPropagator,
-            IUserActivityDispatcher userActivityDispatcher
+            IUserActivityDispatcher userActivityDispatcher,
+            IUserRepository userRepository
         )
         {
             _logger = logger;
@@ -63,6 +66,7 @@ namespace Iam.DomainService.Resources
             _roleValidator = roleValidator;
             _tenantPermissionPropagator = tenantPermissionPropagator;
             _userActivityDispatcher = userActivityDispatcher;
+            _userRepository = userRepository;
         }
 
         public async Task<BaseMutationResponse> CreatePermissionAsync(CreatePermissionRequest command)
@@ -1962,7 +1966,8 @@ namespace Iam.DomainService.Resources
             }
 
             // Create organization
-            var contextUserId = BlocksContext.GetContext()?.UserId;
+            var blocksContext = BlocksContext.GetContext();
+            var contextUserId = blocksContext?.UserId;
             var createdByUserId = creatorId ?? contextUserId;
             var organization = new Organization
             {
@@ -2027,19 +2032,149 @@ namespace Iam.DomainService.Resources
 
             if (request.CreatedFrom == CreatedFrom.ConstructPortal && tenantConfig.AllowOrgCreationFromPortal)
             {
-                await _identityAccessManagementService.SendToQueueAsync(
-                    IdpConstants.IamUserQueue,
-                    new UpdateOrganizationUserEvent
-                    {
-                        OrganizationId = organization.ItemId,
-                        UserId = creatorId ?? contextUserId,
-                        Roles = request.DefaultRoleForMembers,
-                        Permissions = request.DefaultPermissionsForMembers
-                    }
-                );
+                await GrantCreatorMembershipAsync(organization.ItemId, createdByUserId, blocksContext, request);
             }
 
             return new BaseMutationResponse { IsSuccess = true, ItemId = organization.ItemId };
+        }
+
+        /// <summary>
+        /// Adds the caller who just created an organization to it, so the organization does not
+        /// start out with no members at all.
+        /// </summary>
+        /// <remarks>
+        /// Written here rather than queued through <c>UpdateUserAccessControlAsync</c>, which is
+        /// the body of the <c>POST iam/users/access</c> admin endpoint. That method carries a
+        /// cross-organization guard ("the caller's organization must be <c>default</c> or the
+        /// target") whose whole purpose is to stop an organization-scoped administrator from
+        /// granting access in some other organization. A brand-new organization can never satisfy
+        /// it, so the queued grant only ever landed for a caller whose scope happened to be the
+        /// literal <c>default</c> -- and failed silently otherwise, because the consumer discards
+        /// the response. Relaxing that guard was not an option: it protects the admin endpoint.
+        /// Granting the creator is a different act with a different justification -- the caller
+        /// created this organization moments ago, so no cross-organization access is being handed
+        /// out -- and doing it inline also makes every failure observable in the request that
+        /// caused it.
+        /// <para>
+        /// Never runs for an impersonated caller. An impersonated token is minted from the root
+        /// tenant's user document while its tenant claim points at the impersonated tenant, so
+        /// both its user id and its roles describe an identity that does not belong to the tenant
+        /// this organization was created in: the lookup below would miss, and copying those roles
+        /// would write the root tenant's slugs into a tenant that has no such roles. An absent
+        /// <c>impersonated</c> claim reads as false, which is the go-ahead case.
+        /// </para>
+        /// </remarks>
+        private async Task GrantCreatorMembershipAsync(
+            string organizationId,
+            string? creatorUserId,
+            BlocksContext? blocksContext,
+            CreateOrganizationRequest request)
+        {
+            if (blocksContext?.Impersonated == true)
+            {
+                _logger.LogInformation(
+                    "Organization {OrganizationId} was created by an impersonated caller, so no creator membership was granted. Impersonated callers are not members of the tenant they act in.",
+                    organizationId);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(creatorUserId))
+            {
+                _logger.LogWarning(
+                    "Organization {OrganizationId} was created with no resolvable creator, so no creator membership was granted. The organization has no members until one is added explicitly.",
+                    organizationId);
+                return;
+            }
+
+            var creator = await _userRepository.GetUserByIdAsync(creatorUserId);
+            if (creator == null)
+            {
+                _logger.LogError(
+                    "Organization {OrganizationId} was created by user {UserId}, who has no user document in this tenant, so no creator membership was granted. The organization has no members until one is added explicitly.",
+                    organizationId,
+                    creatorUserId);
+                return;
+            }
+
+            // The request's member defaults win. The creator's own grants, in whichever
+            // organization they were acting in, are the fallback -- so a payload that omits them
+            // still produces a member who can do something, rather than a member with nothing.
+            // Copied, not aliased: the request's lists are already held by the organization
+            // document saved above, and by the creator's own other organizations in the fallback
+            // case. Sharing one list instance across two documents is a mutation hazard that
+            // costs nothing to avoid here.
+            var callerScope = blocksContext?.OrganizationId;
+            var roles = request.DefaultRoleForMembers.Count > 0
+                ? new List<string>(request.DefaultRoleForMembers)
+                : GrantsInScope(creator.Roles, callerScope);
+            var permissions = request.DefaultPermissionsForMembers.Count > 0
+                ? new List<string>(request.DefaultPermissionsForMembers)
+                : GrantsInScope(creator.Permissions, callerScope);
+
+            if (roles.Count == 0 && permissions.Count == 0)
+            {
+                // Worth a line of its own: the membership below is still written, but it grants
+                // nothing, and the two causes look identical from the outside -- the request
+                // carried no member defaults, and the creator holds nothing in the organization
+                // they were acting in (or that organization is a scope sentinel with no grants).
+                _logger.LogWarning(
+                    "Organization {OrganizationId}: creator {UserId} is being added with no roles and no permissions. The request carried no member defaults and the creator holds none in scope '{CallerScope}'.",
+                    organizationId,
+                    creatorUserId,
+                    callerScope ?? "(none)");
+            }
+
+            if (!creator.OrganizationIds.Contains(organizationId))
+            {
+                creator.OrganizationIds.Add(organizationId);
+            }
+
+            // Assigned unconditionally, matching how the queued path's GrantOrganization wrote
+            // them: the key marks the membership even when the list behind it is empty.
+            creator.Roles[organizationId] = roles;
+            creator.Permissions[organizationId] = permissions;
+            creator.LastUpdatedDate = DateTime.UtcNow;
+            creator.LastUpdatedBy = creatorUserId;
+
+            if (!await _userRepository.UpdateUserAsync(creator))
+            {
+                _logger.LogError(
+                    "Organization {OrganizationId} was created but the creator membership write for user {UserId} was not acknowledged. The organization has no members until one is added explicitly.",
+                    organizationId,
+                    creatorUserId);
+                return;
+            }
+
+            _logger.LogInformation(
+                "Organization {OrganizationId}: creator {UserId} added with {RoleCount} role(s) and {PermissionCount} permission(s).",
+                organizationId,
+                creatorUserId,
+                roles.Count,
+                permissions.Count);
+        }
+
+        /// <summary>
+        /// The creator's own roles or permissions in the organization they were acting in, or an
+        /// empty list when that organization contributes nothing.
+        /// </summary>
+        /// <remarks>
+        /// <c>"no-org"</c> is rejected explicitly: it is the sentinel for "authenticated, member of
+        /// nothing", so a user document should never hold grants under it, and treating it as a
+        /// lookup key would silently turn a non-membership into a source of privilege.
+        /// <c>"default"</c> is accepted -- it is the tenant-wide scope, and grants held there are
+        /// real.
+        /// </remarks>
+        private static List<string> GrantsInScope(Dictionary<string, List<string>> grants, string? organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(organizationId)
+                || string.Equals(organizationId, IdpConstants.NoOrganizationId, StringComparison.Ordinal))
+            {
+                return [];
+            }
+
+            return grants.TryGetValue(organizationId, out var inScope) && inScope is not null
+                ? new List<string>(inScope)
+                : [];
         }
 
 

@@ -198,7 +198,7 @@ namespace Authentication.DomainService.Services
                     else
                     {
                         existingProvider.Provider = providerName;
-                        existingProvider.ProviderType = IdpConstants.BlocksProviderType;
+                        existingProvider.ProviderType = IdpConstants.BlocksOidcProviderType;
                         existingProvider.Protocol = IdpConstants.OidcProtocol;
                         existingProvider.ClientId = credential.ClientId;
                         existingProvider.ClientSecret = credential.ClientSecret;
@@ -828,6 +828,20 @@ namespace Authentication.DomainService.Services
             credential.LastUpdatedDate = rotatedAt;
 
             await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
+
+            // The linked Blocks IdentityProvider keeps its own copy of the secret, so a rotation
+            // that only wrote OidcClientRegistrations would leave federation presenting the old
+            // one at the token endpoint. Keep the mirror current — same ClientId link the
+            // RegisterAsIdentityProvider sync in SaveOIDCClientAsync uses.
+            if (credential.RegisterAsIdentityProvider && !string.IsNullOrWhiteSpace(credential.ClientId))
+            {
+                var linkedProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(credential.ClientId);
+                if (linkedProvider != null && !string.IsNullOrWhiteSpace(linkedProvider.ItemId))
+                {
+                    linkedProvider.ClientSecret = credential.ClientSecret;
+                    await _authenticationRepository.UpdateIdentityProviderAsync(linkedProvider);
+                }
+            }
 
             return new RotateOidcClientSecretResponse
             {
