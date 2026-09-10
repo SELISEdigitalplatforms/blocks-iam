@@ -288,6 +288,42 @@
             right to create new ones. Unlike the update, this endpoint has no organization scope to
             apply: the permission is the whole gate.
             </summary>
+            <remarks>
+            <para>
+            <b>createdFrom</b> names the surface the request came from. It is sent as a
+            <b>number</b> — the enum names are not accepted — and it decides which tenant
+            configuration flag gates the call. Omitting it means <c>1</c>.
+            </para>
+            <list type="bullet">
+            <item><description>
+            <c>1</c> — Cloud: the blocks-os portal. Gated by <c>allowOrgCreationFromCloud</c>.
+            The caller is not added to the new organization.
+            </description></item>
+            <item><description>
+            <c>2</c> — ConstructSignup: set by the signup and SSO provisioning flows themselves.
+            Clients should not send it. Gated by <c>allowOrgCreationFromSignup</c>.
+            </description></item>
+            <item><description>
+            <c>3</c> — ConstructPortal: the Construct portal. Gated by
+            <c>allowOrgCreationFromPortal</c>. The caller is added to the new organization as its
+            first member — see below.
+            </description></item>
+            </list>
+            <para>
+            The three flags are independent, so moving from <c>1</c> to <c>3</c> needs
+            <c>allowOrgCreationFromPortal</c> enabled first (<c>POST iam/organizations/config</c>);
+            until then the call returns <c>org_creation_disabled</c>. Every value additionally
+            requires multi-organization mode, or the call returns <c>multi_org_disabled</c>.
+            </para>
+            <para>
+            With <c>createdFrom: 3</c> the caller is granted membership of the organization they
+            just created, taking <c>defaultRoleForMembers</c> and <c>defaultPermissionsForMembers</c>
+            when supplied and falling back to the caller's own roles and permissions in the
+            organization they are currently scoped to. The grant is skipped for an impersonated
+            token, whose identity belongs to the root tenant rather than to the tenant being
+            written to; the organization is still created.
+            </para>
+            </remarks>
         </member>
         <member name="M:Api.Controllers.IamController.GetOrganizationConfig">
             <summary>
