@@ -5,13 +5,31 @@ import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/s
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link"
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config"
 import { HelpCircle, LogIn } from "lucide-react"
+import { useLocation } from "react-router"
+import { OidcThemedConfirmation } from "../oidc/oidc-themed-confirmation"
 
 const SUPPORT_URL = "https://docs.seliseblocks.com/"
 
 export const ActivationSuccess = () => {
   // A tenant that turns off the activation password step has users who never set one, so
   // the copy must not send them looking for it.
-  const { collectPasswordOnActivation } = useOidcUiConfig()
+  const { data: oidcUiConfig, collectPasswordOnActivation } = useOidcUiConfig()
+  const isOidc = useLocation().pathname.startsWith("/oidc")
+
+  if (isOidc && oidcUiConfig?.template) {
+    const template = oidcUiConfig.template
+    const copy = template.pages.activation
+    return (
+      <OidcThemedConfirmation
+        template={template}
+        title={copy.successTitle}
+        subtitle={copy.successSubtitle}
+        actionTitle={copy.readyTitle}
+        actionSubtitle={collectPasswordOnActivation ? copy.readyWithPasswordSubtitle : copy.readySubtitle}
+        action={<LoginReturnLink className="oidc-sci-fi-btn px-5 py-2.5 no-underline">{copy.loginButton}</LoginReturnLink>}
+      />
+    )
+  }
 
   return (
     <div className="min-h-dvh overflow-x-hidden bg-surface-app">

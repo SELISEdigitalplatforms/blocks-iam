@@ -11,7 +11,7 @@ namespace Authentication.DomainService.Entities
     [BsonIgnoreExtraElements]
     public sealed class OidcUiTemplate
     {
-        public const int CurrentSchemaVersion = 2;
+        public const int CurrentSchemaVersion = 3;
 
         /// <summary>
         /// Identifies the persisted template value for mutation responses. This is storage
@@ -106,6 +106,7 @@ namespace Authentication.DomainService.Entities
         public string? SubmitButton { get; set; }
         public string? SignupPrompt { get; set; }
         public string? SignupLink { get; set; }
+        public string? SsoSeparatorText { get; set; }
         public string? ActivationErrorTitle { get; set; }
         public string? ActivationErrorMessage { get; set; }
         public string? ActivateAccountButton { get; set; }
@@ -119,22 +120,42 @@ namespace Authentication.DomainService.Entities
         public string? FirstNameLabel { get; set; }
         public string? LastNameLabel { get; set; }
         public string? EmailLabel { get; set; }
+        public string? OrganizationNameLabel { get; set; }
         public string? SubmitButton { get; set; }
+        public string? CreatingButton { get; set; }
         public string? TermsPrefix { get; set; }
         public string? TermsLinkText { get; set; }
         public string? PrivacyLinkText { get; set; }
+        public string? TermsConjunction { get; set; }
         public string? LoginPrompt { get; set; }
         public string? LoginLink { get; set; }
+        public string? SsoSeparatorText { get; set; }
         public string? SuccessTitle { get; set; }
         public string? SuccessSubtitle { get; set; }
+        public string? EmailSentTitle { get; set; }
+        public string? EmailSentSubtitle { get; set; }
+        public string? ResendPromptTitle { get; set; }
+        public string? ResendPromptSubtitle { get; set; }
+        public string? ResendButton { get; set; }
+        public string? LoginSentPrompt { get; set; }
+        public string? LoginSentLink { get; set; }
     }
 
     [BsonIgnoreExtraElements]
     public sealed class OidcUiForgotPasswordPage
     {
         public string? Heading { get; set; }
+        public string? IntroText { get; set; }
         public string? EmailLabel { get; set; }
         public string? SubmitButton { get; set; }
+        public string? BackToLoginButton { get; set; }
+        public string? SuccessTitle { get; set; }
+        public string? SuccessSubtitle { get; set; }
+        public string? ResendPromptTitle { get; set; }
+        public string? ResendPromptSubtitle { get; set; }
+        public string? ResendButton { get; set; }
+        public string? LoginPrompt { get; set; }
+        public string? LoginLink { get; set; }
     }
 
     [BsonIgnoreExtraElements]
@@ -145,19 +166,46 @@ namespace Authentication.DomainService.Entities
         public string? ConfirmPasswordLabel { get; set; }
         public string? LogoutFromDevicesLabel { get; set; }
         public string? SubmitButton { get; set; }
+        public string? ResettingButton { get; set; }
+        public string? MissingCodeMessage { get; set; }
+        public string? RequestNewLinkButton { get; set; }
+        public string? BackToLoginButton { get; set; }
         public string? SuccessTitle { get; set; }
         public string? SuccessSubtitle { get; set; }
+        public string? ReadyTitle { get; set; }
+        public string? ReadySubtitle { get; set; }
+        public string? LoginButton { get; set; }
     }
 
     [BsonIgnoreExtraElements]
     public sealed class OidcUiActivationPage
     {
         public string? Heading { get; set; }
+        public string? FirstNameLabel { get; set; }
+        public string? LastNameLabel { get; set; }
         public string? PasswordLabel { get; set; }
         public string? ConfirmPasswordLabel { get; set; }
         public string? SubmitButton { get; set; }
+        public string? ActivatingButton { get; set; }
         public string? SuccessTitle { get; set; }
         public string? SuccessSubtitle { get; set; }
+        public string? InvalidHeading { get; set; }
+        public string? InvalidMessage { get; set; }
+        public string? ExpiredHeading { get; set; }
+        public string? ExpiredMessage { get; set; }
+        public string? AlreadyActiveHeading { get; set; }
+        public string? AlreadyActiveMessage { get; set; }
+        public string? ResendButton { get; set; }
+        public string? ResendSuccessMessage { get; set; }
+        public string? ResendFailureMessage { get; set; }
+        public string? AutoConfirmCaptchaText { get; set; }
+        public string? AutoConfirmProgressText { get; set; }
+        public string? AutoActivatingLabel { get; set; }
+        public string? ReadyTitle { get; set; }
+        public string? ReadyWithPasswordSubtitle { get; set; }
+        public string? ReadySubtitle { get; set; }
+        public string? LoginButton { get; set; }
+        public string? BackToLoginButton { get; set; }
     }
 
     [BsonIgnoreExtraElements]
@@ -173,11 +221,14 @@ namespace Authentication.DomainService.Entities
     {
         public string? Heading { get; set; }
         public string? Subheading { get; set; }
+        public string? BodyText { get; set; }
     }
 
     [BsonIgnoreExtraElements]
     public sealed class OidcUiSharedPage
     {
         public string? FooterText { get; set; }
+        public string? HelpPrompt { get; set; }
+        public string? SupportLinkText { get; set; }
     }
 }

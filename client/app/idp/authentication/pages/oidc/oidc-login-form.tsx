@@ -608,7 +608,7 @@ shake();
           className="my-2 mt-4 flex items-center gap-3"
         >
           <div className="flex-1 border-t" style={{ borderColor: "var(--border)" }} />
-          <span className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>or</span>
+          <span className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>{loginCopy.ssoSeparatorText}</span>
           <div className="flex-1 border-t" style={{ borderColor: "var(--border)" }} />
         </div>
       )}

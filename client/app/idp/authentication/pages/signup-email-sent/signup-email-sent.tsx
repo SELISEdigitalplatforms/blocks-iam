@@ -5,6 +5,8 @@ import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/s
 import { buildOIDCNavigationUrl, extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils"
 import { ChevronRight, HelpCircle, Mail, RotateCw } from "lucide-react"
 import { Link, useLocation } from "react-router"
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config"
+import { OidcThemedConfirmation } from "../oidc/oidc-themed-confirmation"
 
 type SignupEmailSentProps = {
   email: string
@@ -16,6 +18,7 @@ export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
   const location = useLocation()
   const isOidc = location.pathname.startsWith("/oidc")
   const { tenantId } = extractOIDCParams()
+  const { data: oidcUiConfig } = useOidcUiConfig(tenantId)
 
   // Signing in has to re-enter the OIDC flow the user came from, otherwise they
   // land on the IAM login with no clientId/redirect_uri and never get back to
@@ -36,6 +39,21 @@ export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
     const separator = baseUrl.includes("?") ? "&" : "?"
     return `${baseUrl}${separator}email=${encodeURIComponent(email)}`
   })()
+
+  if (isOidc && oidcUiConfig?.template) {
+    const template = oidcUiConfig.template
+    const copy = template.pages.signup
+    return (
+      <OidcThemedConfirmation
+        template={template}
+        title={copy.emailSentTitle}
+        subtitle={copy.emailSentSubtitle.replace("{email}", email || "your email address")}
+        actionTitle={copy.resendPromptTitle}
+        actionSubtitle={copy.resendPromptSubtitle}
+        action={<Link className="oidc-sci-fi-btn px-5 py-2.5 no-underline" to={signupUrl}>{copy.resendButton}</Link>}
+      />
+    )
+  }
 
   return (
     <div className="min-h-dvh overflow-x-hidden bg-surface-app">

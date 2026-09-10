@@ -273,7 +273,7 @@ export const SignupForm = ({
                   <FormItem>
                     <div className="flex flex-col gap-2">
                       <label htmlFor="signup-organization-name" className="oidc-sci-fi-label">
-                        Organization Name
+                        {signupCopy.organizationNameLabel}
                       </label>
                       <FormControl>
                         <input
@@ -332,7 +332,7 @@ export const SignupForm = ({
                 >
                   {signupCopy.termsLinkText}
                 </Link>{" "}
-                and the{" "}
+                {signupCopy.termsConjunction}{" "}
                 <Link
                   to="https://selisegroup.com/privacy-policy/"
                   className="oidc-sci-fi-link"
@@ -365,7 +365,7 @@ export const SignupForm = ({
               {isAuthenticating ? (
                 <>
                   <Loader size={16} className="oidc-spin-slow" />
-                  <span>Creating Account…</span>
+                  <span>{signupCopy.creatingButton}</span>
                 </>
               ) : (
                 <>
@@ -381,7 +381,7 @@ export const SignupForm = ({
       {emailSignUpEnabled && showSocialLogin && (
         <div className="my-2 mt-4 flex items-center gap-3">
           <div className="flex-1 border-t" style={{ borderColor: "var(--border)" }} />
-          <span className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>or</span>
+          <span className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>{signupCopy.ssoSeparatorText}</span>
           <div className="flex-1 border-t" style={{ borderColor: "var(--border)" }} />
         </div>
       )}

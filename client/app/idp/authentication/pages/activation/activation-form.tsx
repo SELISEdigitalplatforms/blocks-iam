@@ -278,8 +278,8 @@ export const ActivationForm = ({
           {autoActivationError
             ? autoActivationError
             : waitingForCaptcha
-              ? "Confirm you are not a robot to finish activating your account."
-              : "Confirming your activation link and setting up your account."}
+              ? activationCopy.autoConfirmCaptchaText
+              : activationCopy.autoConfirmProgressText}
         </p>
 
         {waitingForCaptcha && !autoActivationError && <Captcha {...captcha} />}
@@ -291,13 +291,13 @@ export const ActivationForm = ({
             role="status"
           >
             <Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} />
-            <span>Activating…</span>
+            <span>{activationCopy.autoActivatingLabel}</span>
           </div>
         )}
 
         {autoActivationError && (
           <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
-            Back to login
+            {activationCopy.backToLoginButton}
           </LoginReturnLink>
         )}
       </div>
@@ -314,7 +314,7 @@ export const ActivationForm = ({
       className="flex flex-col gap-5"
     >
       <div className="flex flex-col gap-2">
-        <label className="oidc-sci-fi-label">First Name</label>
+        <label className="oidc-sci-fi-label">{activationCopy.firstNameLabel}</label>
         <input
           type="text"
           placeholder="First name"
@@ -332,7 +332,7 @@ export const ActivationForm = ({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="oidc-sci-fi-label">Last Name</label>
+        <label className="oidc-sci-fi-label">{activationCopy.lastNameLabel}</label>
         <input
           type="text"
           placeholder="Last name"
@@ -425,7 +425,7 @@ export const ActivationForm = ({
         {isAuthenticating ? (
           <>
             <Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} />
-            <span>Activating…</span>
+            <span>{activationCopy.activatingButton}</span>
           </>
         ) : (
           <>
