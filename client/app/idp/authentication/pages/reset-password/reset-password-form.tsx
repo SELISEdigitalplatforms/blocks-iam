@@ -228,7 +228,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
           className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
         >
           {isAuthenticating ? (
-            <><Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} /><span>Resetting…</span></>
+            <><Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} /><span>{resetPasswordCopy.resettingButton}</span></>
           ) : (
             <><span>{resetPasswordCopy.submitButton}</span><ArrowRight size={16} /></>
           )}
@@ -236,7 +236,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
       </form>
 
       <LoginReturnLink className="oidc-sci-fi-link text-sm text-center">
-        Back to login
+        {resetPasswordCopy.backToLoginButton}
       </LoginReturnLink>
     </div>
   );

@@ -6,6 +6,8 @@ import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/s
 import { ChevronRight, HelpCircle, Mail, RotateCw } from "lucide-react"
 import { Link, useLocation } from "react-router"
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link"
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config"
+import { OidcThemedConfirmation } from "../oidc/oidc-themed-confirmation"
 
 type ForgotEmailSentProps = {
   email: string
@@ -16,6 +18,7 @@ const SUPPORT_URL = "https://docs.seliseblocks.com/"
 export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
   const location = useLocation()
   const isOidc = location.pathname.startsWith("/oidc")
+  const { data: oidcUiConfig } = useOidcUiConfig()
 
   const forgotPasswordPath = isOidc ? "/oidc/forgot-password" : "/forgot-password"
   const forgotPasswordUrl = (() => {
@@ -25,6 +28,21 @@ export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
     const separator = baseUrl.includes("?") ? "&" : "?"
     return `${baseUrl}${separator}email=${encodeURIComponent(email)}`
   })()
+
+  if (isOidc && oidcUiConfig?.template) {
+    const template = oidcUiConfig.template
+    const copy = template.pages.forgotPassword
+    return (
+      <OidcThemedConfirmation
+        template={template}
+        title={copy.successTitle}
+        subtitle={copy.successSubtitle.replace("{email}", email || "your email address")}
+        actionTitle={copy.resendPromptTitle}
+        actionSubtitle={copy.resendPromptSubtitle}
+        action={<Link className="oidc-sci-fi-btn px-5 py-2.5 no-underline" to={forgotPasswordUrl}>{copy.resendButton}</Link>}
+      />
+    )
+  }
 
   return (
     <div className="min-h-dvh overflow-x-hidden bg-surface-app">

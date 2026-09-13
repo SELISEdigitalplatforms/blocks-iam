@@ -5,7 +5,7 @@ import { showErrorToast } from "@/hooks/use-toast";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { Loader } from "lucide-react";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { OidcFooter } from "./oidc-auth-shell";
+import { buildOidcThemeStyle, OidcBrand, OidcFooter, useOidcResolvedTheme } from "./oidc-auth-shell";
 
 export interface OidcAccountInfo {
   user_id: string;
@@ -24,6 +24,7 @@ export interface OidcAccountSelectorProps {
 export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = false }: OidcAccountSelectorProps) => {
   const { data: oidcUiConfig } = useOidcUiConfig();
   const template = oidcUiConfig?.template;
+  const resolvedTheme = useOidcResolvedTheme();
   const [selectedAccount, setSelectedAccount] = useState<OidcAccountInfo | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -48,13 +49,14 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
 
   if (isLoading) {
     return (
-      <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
+      <Card style={buildOidcThemeStyle(template.theme[resolvedTheme])} className="flex h-full flex-col rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--fg)] shadow-none md:min-w-[448px] lg:max-w-md">
         <CardHeader className="text-center">
+          <OidcBrand {...template.branding} />
           <CardTitle className="text-3xl">{template.pages.accountSelector.heading}</CardTitle>
           <CardDescription className="text-xl text-foreground">{template.pages.accountSelector.subheading}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-1 flex-col items-center justify-center">
-          <Loader className="h-12 w-12 animate-spin text-gray-500" />
+          <Loader className="h-12 w-12 animate-spin text-[var(--accent)]" />
         </CardContent>
         <OidcFooter footerText={template.pages.shared.footerText} />
       </Card>
@@ -62,32 +64,33 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
   }
 
   return (
-    <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
+    <Card style={buildOidcThemeStyle(template.theme[resolvedTheme])} className="flex h-full flex-col rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--fg)] shadow-none md:min-w-[448px] lg:max-w-md">
       <CardHeader className="text-center">
+        <OidcBrand {...template.branding} />
         <CardTitle className="text-3xl">{template.pages.accountSelector.heading}</CardTitle>
         <CardDescription className="text-xl text-foreground">{template.pages.accountSelector.subheading}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-between">
         <div className="flex flex-1 flex-col gap-3">
-          <p className="text-sm text-medium-emphasis mb-2">You have multiple accounts. Please select one to continue.</p>
+          <p className="mb-2 text-sm text-[var(--muted)]">{template.pages.accountSelector.bodyText}</p>
           {accounts.map((account) => (
             <button
               key={`${account.user_id}-${account.tenant_id}`}
               onClick={() => handleSelect(account)}
               disabled={isSubmitting}
-              className={`rounded-lg border-2 p-4 text-left transition-all ${
+              className={`rounded border-2 p-4 text-left transition-all ${
                 selectedAccount?.user_id === account.user_id && selectedAccount?.tenant_id === account.tenant_id
-                  ? "border-primary bg-primary/5"
-                  : "border-input hover:border-primary hover:bg-background/50"
+                  ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                  : "border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
               } disabled:opacity-50`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  {account.display_name && <p className="font-semibold text-foreground">{account.display_name}</p>}
-                  <p className="text-sm text-medium-emphasis">{account.email}</p>
+                  {account.display_name && <p className="font-semibold text-[var(--fg)]">{account.display_name}</p>}
+                  <p className="text-sm text-[var(--muted)]">{account.email}</p>
                 </div>
                 {selectedAccount?.user_id === account.user_id && selectedAccount?.tenant_id === account.tenant_id && isSubmitting && (
-                  <Loader className="ml-2 h-5 w-5 animate-spin text-primary" />
+                  <Loader className="ml-2 h-5 w-5 animate-spin text-[var(--accent)]" />
                 )}
               </div>
             </button>
