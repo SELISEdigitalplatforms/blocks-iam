@@ -112,7 +112,7 @@ export const OIDCForgotPasswordForm = () => {
           {forgotPasswordCopy.heading}
         </h2>
         <p className="text-sm font-sans text-[var(--muted)]">
-          Enter your email and we&apos;ll dispatch a recovery link.
+          {forgotPasswordCopy.introText}
         </p>
       </div>
 
@@ -159,7 +159,7 @@ export const OIDCForgotPasswordForm = () => {
       </Form>
 
       <LoginReturnLink className="oidc-sci-fi-link text-sm text-center">
-        Back to login
+        {forgotPasswordCopy.backToLoginButton}
       </LoginReturnLink>
     </div>
   );

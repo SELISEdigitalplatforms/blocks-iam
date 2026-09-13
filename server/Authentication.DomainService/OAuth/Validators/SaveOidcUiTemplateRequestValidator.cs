@@ -102,6 +102,7 @@ namespace Authentication.DomainService.OAuth
                 RuleFor(x => x.SubmitButton).RequiredText(200);
                 RuleFor(x => x.SignupPrompt).RequiredText(200);
                 RuleFor(x => x.SignupLink).RequiredText(200);
+                RuleFor(x => x.SsoSeparatorText).RequiredText(200);
                 RuleFor(x => x.ActivationErrorTitle).RequiredText(200);
                 RuleFor(x => x.ActivationErrorMessage).RequiredText(200);
                 RuleFor(x => x.ActivateAccountButton).RequiredText(200);
@@ -117,14 +118,25 @@ namespace Authentication.DomainService.OAuth
                 RuleFor(x => x.FirstNameLabel).RequiredText(200);
                 RuleFor(x => x.LastNameLabel).RequiredText(200);
                 RuleFor(x => x.EmailLabel).RequiredText(200);
+                RuleFor(x => x.OrganizationNameLabel).RequiredText(200);
                 RuleFor(x => x.SubmitButton).RequiredText(200);
+                RuleFor(x => x.CreatingButton).RequiredText(200);
                 RuleFor(x => x.TermsPrefix).RequiredText(200);
                 RuleFor(x => x.TermsLinkText).RequiredText(200);
                 RuleFor(x => x.PrivacyLinkText).RequiredText(200);
+                RuleFor(x => x.TermsConjunction).RequiredText(200);
                 RuleFor(x => x.LoginPrompt).RequiredText(200);
                 RuleFor(x => x.LoginLink).RequiredText(200);
+                RuleFor(x => x.SsoSeparatorText).RequiredText(200);
                 RuleFor(x => x.SuccessTitle).RequiredText(200);
                 RuleFor(x => x.SuccessSubtitle).RequiredText(200);
+                RuleFor(x => x.EmailSentTitle).RequiredText(200);
+                RuleFor(x => x.EmailSentSubtitle).RequiredText(500);
+                RuleFor(x => x.ResendPromptTitle).RequiredText(200);
+                RuleFor(x => x.ResendPromptSubtitle).RequiredText(500);
+                RuleFor(x => x.ResendButton).RequiredText(200);
+                RuleFor(x => x.LoginSentPrompt).RequiredText(200);
+                RuleFor(x => x.LoginSentLink).RequiredText(200);
             }
         }
 
@@ -133,8 +145,17 @@ namespace Authentication.DomainService.OAuth
             public ForgotPasswordValidator()
             {
                 RuleFor(x => x.Heading).RequiredText(200);
+                RuleFor(x => x.IntroText).RequiredText(500);
                 RuleFor(x => x.EmailLabel).RequiredText(200);
                 RuleFor(x => x.SubmitButton).RequiredText(200);
+                RuleFor(x => x.BackToLoginButton).RequiredText(200);
+                RuleFor(x => x.SuccessTitle).RequiredText(200);
+                RuleFor(x => x.SuccessSubtitle).RequiredText(500);
+                RuleFor(x => x.ResendPromptTitle).RequiredText(200);
+                RuleFor(x => x.ResendPromptSubtitle).RequiredText(500);
+                RuleFor(x => x.ResendButton).RequiredText(200);
+                RuleFor(x => x.LoginPrompt).RequiredText(200);
+                RuleFor(x => x.LoginLink).RequiredText(200);
             }
         }
 
@@ -147,8 +168,15 @@ namespace Authentication.DomainService.OAuth
                 RuleFor(x => x.ConfirmPasswordLabel).RequiredText(200);
                 RuleFor(x => x.LogoutFromDevicesLabel).RequiredText(200);
                 RuleFor(x => x.SubmitButton).RequiredText(200);
+                RuleFor(x => x.ResettingButton).RequiredText(200);
+                RuleFor(x => x.MissingCodeMessage).RequiredText(500);
+                RuleFor(x => x.RequestNewLinkButton).RequiredText(200);
+                RuleFor(x => x.BackToLoginButton).RequiredText(200);
                 RuleFor(x => x.SuccessTitle).RequiredText(200);
                 RuleFor(x => x.SuccessSubtitle).RequiredText(200);
+                RuleFor(x => x.ReadyTitle).RequiredText(200);
+                RuleFor(x => x.ReadySubtitle).RequiredText(500);
+                RuleFor(x => x.LoginButton).RequiredText(200);
             }
         }
 
@@ -157,11 +185,31 @@ namespace Authentication.DomainService.OAuth
             public ActivationValidator()
             {
                 RuleFor(x => x.Heading).RequiredText(200);
+                RuleFor(x => x.FirstNameLabel).RequiredText(200);
+                RuleFor(x => x.LastNameLabel).RequiredText(200);
                 RuleFor(x => x.PasswordLabel).RequiredText(200);
                 RuleFor(x => x.ConfirmPasswordLabel).RequiredText(200);
                 RuleFor(x => x.SubmitButton).RequiredText(200);
+                RuleFor(x => x.ActivatingButton).RequiredText(200);
                 RuleFor(x => x.SuccessTitle).RequiredText(200);
                 RuleFor(x => x.SuccessSubtitle).RequiredText(200);
+                RuleFor(x => x.InvalidHeading).RequiredText(200);
+                RuleFor(x => x.InvalidMessage).RequiredText(500);
+                RuleFor(x => x.ExpiredHeading).RequiredText(200);
+                RuleFor(x => x.ExpiredMessage).RequiredText(500);
+                RuleFor(x => x.AlreadyActiveHeading).RequiredText(200);
+                RuleFor(x => x.AlreadyActiveMessage).RequiredText(500);
+                RuleFor(x => x.ResendButton).RequiredText(200);
+                RuleFor(x => x.ResendSuccessMessage).RequiredText(500);
+                RuleFor(x => x.ResendFailureMessage).RequiredText(500);
+                RuleFor(x => x.AutoConfirmCaptchaText).RequiredText(500);
+                RuleFor(x => x.AutoConfirmProgressText).RequiredText(500);
+                RuleFor(x => x.AutoActivatingLabel).RequiredText(200);
+                RuleFor(x => x.ReadyTitle).RequiredText(200);
+                RuleFor(x => x.ReadyWithPasswordSubtitle).RequiredText(500);
+                RuleFor(x => x.ReadySubtitle).RequiredText(500);
+                RuleFor(x => x.LoginButton).RequiredText(200);
+                RuleFor(x => x.BackToLoginButton).RequiredText(200);
             }
         }
 
@@ -181,6 +229,7 @@ namespace Authentication.DomainService.OAuth
             {
                 RuleFor(x => x.Heading).RequiredText(200);
                 RuleFor(x => x.Subheading).OptionalText(200);
+                RuleFor(x => x.BodyText).RequiredText(500);
             }
         }
 
@@ -189,6 +238,8 @@ namespace Authentication.DomainService.OAuth
             public SharedValidator()
             {
                 RuleFor(x => x.FooterText).RequiredText(200);
+                RuleFor(x => x.HelpPrompt).RequiredText(200);
+                RuleFor(x => x.SupportLinkText).RequiredText(200);
             }
         }
     }

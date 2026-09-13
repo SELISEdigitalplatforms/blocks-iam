@@ -4,6 +4,7 @@ import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
 import { RESET_PASSWORD_PANEL } from "../oidc/oidc-panel-config";
 import { ResetPasswordForm } from "./reset-password-form";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 
 type ResetPasswordProps = {
   code?: string;
@@ -47,14 +48,14 @@ export const ResetPassword = ({ code, tenantId }: ResetPasswordProps) => {
             <AlertTriangle size={22} style={{ color: "var(--warn)" }} />
           </div>
           <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-            The reset code is missing or invalid. Please request a new reset link.
+            {template.pages.resetPassword.missingCodeMessage}
           </p>
           <Link
-            to="/forgot-password"
+            to={appendTenantId(buildOIDCNavigationUrl("/oidc/forgot-password"), tenantId)}
             className="oidc-sci-fi-btn"
             style={{ textDecoration: "none", display: "inline-block", textAlign: "center", padding: "10px 20px" }}
           >
-            Request new reset link
+            {template.pages.resetPassword.requestNewLinkButton}
           </Link>
         </div>
       )}

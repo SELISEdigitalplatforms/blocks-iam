@@ -4,6 +4,7 @@ import { getRuntimeEnv } from "@/lib/runtime-env";
 import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 import {
   DEFAULT_OIDC_UI_TEMPLATE,
+  normalizeOidcUiTemplate,
   type IOidcUiTemplate,
 } from "@blocks-idp/authentication/models/oidc-ui-template";
 
@@ -70,7 +71,12 @@ export const useOidcUiConfig = (tenantIdOverride?: string) => {
   });
 
   const data: IOidcUiConfig = query.data
-    ? { ...query.data, template: query.data.template ?? DEFAULT_OIDC_UI_TEMPLATE }
+    ? {
+        ...query.data,
+        template: query.data.template
+          ? normalizeOidcUiTemplate(query.data.template)
+          : DEFAULT_OIDC_UI_TEMPLATE,
+      }
     : { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE };
 
   return {

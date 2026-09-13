@@ -139,26 +139,26 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
 
       if (response?.isSuccess) {
         setResendSuccess(true);
-        setResendMessage("A new activation link has been sent to your email.");
+        setResendMessage(template.pages.activation.resendSuccessMessage);
       } else {
         setResendSuccess(false);
-        setResendMessage("Failed to resend activation link. Please try again later.");
+        setResendMessage(template.pages.activation.resendFailureMessage);
       }
     } catch (error) {
       setResendSuccess(false);
       setResendMessage(
-        error instanceof Error ? error.message : "Failed to resend activation link.",
+        error instanceof Error ? error.message : template.pages.activation.resendFailureMessage,
       );
     }
   };
 
   const heading =
     activationError === "invalid"
-      ? "Invalid Activation Link"
+      ? template.pages.activation.invalidHeading
       : activationError === "expired"
-        ? "Link Expired"
+        ? template.pages.activation.expiredHeading
         : activationError === "already-active"
-          ? "Already Activated"
+          ? template.pages.activation.alreadyActiveHeading
           : template.pages.activation.heading;
 
   const headingDimFirst = 2;
@@ -171,7 +171,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
       brandName={template.branding.brandName}
       heading={heading}
       headingDimFirst={headingDimFirst}
-      headingAlign={heading === "Invalid Activation Link" ? "center" : "left"}
+      headingAlign={activationError === "invalid" ? "center" : "left"}
       successTitle={template.pages.activation.successTitle}
       successSubtitle={template.pages.activation.successSubtitle}
       showCorners={false}
@@ -193,45 +193,42 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
         <div className="flex flex-col items-center gap-3 py-2 text-center">
           <div
             className="w-12 h-12 rounded-full flex items-center justify-center"
-            style={{ background: "rgba(234,179,8,.1)", border: "1px solid rgba(234,179,8,.25)" }}
+            style={{ background: "var(--accent-soft)", border: "1px solid var(--border-strong)" }}
           >
-            <AlertTriangle size={22} style={{ color: "var(--warn)" }} />
+            <AlertTriangle size={22} style={{ color: "var(--danger)" }} />
           </div>
           <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-            The activation code is invalid. Please check the link or request a
-            new activation email from your administrator.
+            {template.pages.activation.invalidMessage}
           </p>
           <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
-            Back to login
+            {template.pages.activation.backToLoginButton}
           </LoginReturnLink>
         </div>
       ) : activationError === "already-active" ? (
         <div className="flex flex-col items-center gap-3 py-2 text-center">
           <div
             className="w-12 h-12 rounded-full flex items-center justify-center"
-            style={{ background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.25)" }}
+            style={{ background: "var(--accent-soft)", border: "1px solid var(--border-strong)" }}
           >
             <CheckCircle2 size={22} style={{ color: "var(--success)" }} />
           </div>
           <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-            This account is already active, so there is nothing left to confirm. Sign in to
-            continue -- use the forgot-password link if you have not set a password yet.
+            {template.pages.activation.alreadyActiveMessage}
           </p>
           <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
-            Go to login
+            {template.pages.activation.loginButton}
           </LoginReturnLink>
         </div>
       ) : (
         <div className="flex flex-col items-center gap-3 py-2 text-center">
           <div
             className="w-12 h-12 rounded-full flex items-center justify-center"
-            style={{ background: "rgba(234,179,8,.1)", border: "1px solid rgba(234,179,8,.25)" }}
+            style={{ background: "var(--accent-soft)", border: "1px solid var(--border-strong)" }}
           >
-            <AlertTriangle size={22} style={{ color: "var(--warn)" }} />
+            <AlertTriangle size={22} style={{ color: "var(--danger)" }} />
           </div>
           <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-            This activation link has expired and can&apos;t be used anymore.
-            Please request a new link to complete your account activation.
+            {template.pages.activation.expiredMessage}
           </p>
           <button
             type="button"
@@ -239,7 +236,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
             disabled={!activationUserId || isResendPending || resendSuccess}
             className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
           >
-            {isResendPending ? "Sending..." : "Resend activation link"}
+            {isResendPending ? template.pages.activation.activatingButton : template.pages.activation.resendButton}
           </button>
           {resendMessage && (
             <div className="flex items-center gap-2 text-sm">

@@ -32,32 +32,51 @@ namespace XUnitTest.Auth
                 {
                     Heading = "Test login", EmailLabel = "Email", PasswordLabel = "Password",
                     ForgotPasswordLink = "Forgot?", SubmitButton = "Sign in", SignupPrompt = "New here?",
-                    SignupLink = "Create account", ActivationErrorTitle = "Activation required",
+                    SignupLink = "Create account", SsoSeparatorText = "or", ActivationErrorTitle = "Activation required",
                     ActivationErrorMessage = "Activate your account first.", ActivateAccountButton = "Activate",
                     BackToLoginButton = "Back"
                 },
                 Signup = new OidcUiSignupPage
                 {
                     Heading = "Test signup", FirstNameLabel = "First name", LastNameLabel = "Last name",
-                    EmailLabel = "Email", SubmitButton = "Create account", TermsPrefix = "I accept",
-                    TermsLinkText = "Terms", PrivacyLinkText = "Privacy", LoginPrompt = "Have an account?",
-                    LoginLink = "Sign in", SuccessTitle = "Created", SuccessSubtitle = "Check your email"
+                    EmailLabel = "Email", OrganizationNameLabel = "Organization", SubmitButton = "Create account",
+                    CreatingButton = "Creating", TermsPrefix = "I accept", TermsLinkText = "Terms",
+                    PrivacyLinkText = "Privacy", TermsConjunction = "and", LoginPrompt = "Have an account?",
+                    LoginLink = "Sign in", SsoSeparatorText = "or", SuccessTitle = "Created",
+                    SuccessSubtitle = "Check your email", EmailSentTitle = "Sent", EmailSentSubtitle = "Sent to {email}",
+                    ResendPromptTitle = "Not received?", ResendPromptSubtitle = "Try again", ResendButton = "Resend",
+                    LoginSentPrompt = "Have an account?", LoginSentLink = "Sign in"
                 },
-                ForgotPassword = new OidcUiForgotPasswordPage { Heading = "Recover", EmailLabel = "Email", SubmitButton = "Send" },
+                ForgotPassword = new OidcUiForgotPasswordPage
+                {
+                    Heading = "Recover", IntroText = "Enter email", EmailLabel = "Email", SubmitButton = "Send",
+                    BackToLoginButton = "Back", SuccessTitle = "Sent", SuccessSubtitle = "Sent to {email}",
+                    ResendPromptTitle = "Not received?", ResendPromptSubtitle = "Try again", ResendButton = "Resend",
+                    LoginPrompt = "Remember?", LoginLink = "Sign in"
+                },
                 ResetPassword = new OidcUiResetPasswordPage
                 {
                     Heading = "Reset", PasswordLabel = "New password", ConfirmPasswordLabel = "Confirm password",
-                    LogoutFromDevicesLabel = "Log out devices", SubmitButton = "Save", SuccessTitle = "Updated",
-                    SuccessSubtitle = "Password updated"
+                    LogoutFromDevicesLabel = "Log out devices", SubmitButton = "Save", ResettingButton = "Saving",
+                    MissingCodeMessage = "Missing code", RequestNewLinkButton = "Request link", BackToLoginButton = "Back",
+                    SuccessTitle = "Updated", SuccessSubtitle = "Password updated", ReadyTitle = "Ready?",
+                    ReadySubtitle = "Sign in", LoginButton = "Log in"
                 },
                 Activation = new OidcUiActivationPage
                 {
-                    Heading = "Activate", PasswordLabel = "Password", ConfirmPasswordLabel = "Confirm password",
-                    SubmitButton = "Activate", SuccessTitle = "Activated", SuccessSubtitle = "Account ready"
+                    Heading = "Activate", FirstNameLabel = "First", LastNameLabel = "Last", PasswordLabel = "Password",
+                    ConfirmPasswordLabel = "Confirm password", SubmitButton = "Activate", ActivatingButton = "Activating",
+                    SuccessTitle = "Activated", SuccessSubtitle = "Account ready", InvalidHeading = "Invalid",
+                    InvalidMessage = "Invalid link", ExpiredHeading = "Expired", ExpiredMessage = "Expired link",
+                    AlreadyActiveHeading = "Active", AlreadyActiveMessage = "Already active", ResendButton = "Resend",
+                    ResendSuccessMessage = "Resent", ResendFailureMessage = "Failed", AutoConfirmCaptchaText = "Confirm",
+                    AutoConfirmProgressText = "Confirming", AutoActivatingLabel = "Activating", ReadyTitle = "Ready?",
+                    ReadyWithPasswordSubtitle = "Use password", ReadySubtitle = "Sign in", LoginButton = "Log in",
+                    BackToLoginButton = "Back"
                 },
                 Mfa = new OidcUiMfaPage { Heading = "Verify", SubmitButton = "Verify", ResendButton = "Resend" },
-                AccountSelector = new OidcUiAccountSelectorPage { Heading = "Accounts", Subheading = "Choose one" },
-                Shared = new OidcUiSharedPage { FooterText = "Test footer {year}" }
+                AccountSelector = new OidcUiAccountSelectorPage { Heading = "Accounts", Subheading = "Choose one", BodyText = "Choose an account" },
+                Shared = new OidcUiSharedPage { FooterText = "Test footer {year}", HelpPrompt = "Help?", SupportLinkText = "Support" }
             }
         };
 
