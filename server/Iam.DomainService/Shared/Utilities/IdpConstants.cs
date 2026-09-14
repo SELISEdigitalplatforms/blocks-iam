@@ -84,6 +84,15 @@ namespace Iam.DomainService.Utilities
 
         #endregion
 
+        #region Initiate flow
+
+        // Value of the `flow` query parameter on /api/idp/initiate that asks for a link to
+        // the signup page instead of an authorize URL. Any other value (including none)
+        // keeps the login behaviour.
+        public const string InitiateFlowSignup = "signup";
+
+        #endregion
+
         #region Session timeouts
 
         public const int MaxIdpSessionHours = 168;

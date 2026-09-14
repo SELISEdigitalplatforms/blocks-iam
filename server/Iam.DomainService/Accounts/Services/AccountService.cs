@@ -15,6 +15,7 @@ using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
 using Iam.DomainService.Users.ResponseModel;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
@@ -68,6 +69,7 @@ namespace Iam.DomainService.Accounts
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
         private readonly IValidator<SignupOrganizationInfo>? _signupOrganizationValidator;
         private readonly IOrganizationNameResolver? _organizationNameResolver;
+        private readonly IConfiguration? _configuration;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -89,7 +91,8 @@ namespace Iam.DomainService.Accounts
             // Trailing and optional, matching the two above, so the many existing call sites and
             // test fixtures that construct this service keep compiling. DI supplies both.
             IValidator<SignupOrganizationInfo>? signupOrganizationValidator = null,
-            IOrganizationNameResolver? organizationNameResolver = null)
+            IOrganizationNameResolver? organizationNameResolver = null,
+            IConfiguration? configuration = null)
         {
             _logger = logger;
             _repository = repository;
@@ -109,6 +112,7 @@ namespace Iam.DomainService.Accounts
             _defaultOidcClientResolver = defaultOidcClientResolver;
             _signupOrganizationValidator = signupOrganizationValidator;
             _organizationNameResolver = organizationNameResolver;
+            _configuration = configuration;
         }
 
         public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
@@ -916,7 +920,9 @@ namespace Iam.DomainService.Accounts
                 path = await IamHelper.AppendOidcReturnContextAsync(path, clientId, redirectUri, _defaultOidcClientResolver);
             }
 
-            if (!IamHelper.TryBuildUserActionUrl(config, path, out var recoverAccountUrl, _httpContextAccessor, logger: _logger))
+            if (!IamHelper.TryBuildUserActionUrl(
+                    config, path, out var recoverAccountUrl, _httpContextAccessor,
+                    logger: _logger, appConfiguration: _configuration))
             {
                 _logger.LogWarning("Recover account URL could not be built for user {UserId}", user.ItemId);
                 return false;
@@ -1125,7 +1131,9 @@ namespace Iam.DomainService.Accounts
                 path = await IamHelper.AppendOidcReturnContextAsync(path, clientId, redirectUri, _defaultOidcClientResolver);
             }
 
-            if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
+            if (!IamHelper.TryBuildUserActionUrl(
+                    config, path, out var accountActivationUri, _httpContextAccessor,
+                    logger: _logger, appConfiguration: _configuration))
             {
                 _logger.LogWarning("Activation URL could not be built for user {UserId}", user.ItemId);
                 return false;
@@ -1193,6 +1201,7 @@ namespace Iam.DomainService.Accounts
             {
                 return new ActivationCodeValidationResponse
                 {
+                    Status = ActivationCodeStatus.Invalid,
                     Errors = new Dictionary<string, string>
                     {
                         { "ActivationCode", "ActivationCode_Required" }
@@ -1200,29 +1209,64 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            var isCodeExists = await _cacheClient.KeyExistsAsync(validateActivationCodeRequest.ActivationCode);
-
-            if (!isCodeExists)
-                return new ActivationCodeValidationResponse { IsSuccess = false };
-
+            // The key map is the durable record and outlives the cache entry, so it still answers
+            // for a code that has already been spent. Consulting it before the cache is what lets
+            // a used link be told apart from one that never existed.
             var userId = await _repository.GetUserIdFromKeyMapByKeyAsync(validateActivationCodeRequest.ActivationCode);
-            var isValid = !string.IsNullOrWhiteSpace(userId);
+
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return new ActivationCodeValidationResponse
+                {
+                    Status = ActivationCodeStatus.Invalid,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "ActivationCode", "Invalid_ActivationCode" }
+                    }
+                };
+            }
 
             // A self-service signup already gave a name; returning it lets the activation
             // form prefill instead of asking twice. Holding the code already grants the
             // right to set this account's password, so the name is no new exposure.
-            var user = isValid ? await _repository.GetUserByIdAsync(userId) : null;
+            var user = await _repository.GetUserByIdAsync(userId);
+
+            if (user == null)
+            {
+                return new ActivationCodeValidationResponse
+                {
+                    Status = ActivationCodeStatus.Invalid,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "ActivationCode", "Invalid_ActivationCode" }
+                    }
+                };
+            }
+
+            // The account is the authority on whether activation already happened. The key map's
+            // own Activated flag is per-user rather than per-key, so it cannot say which of a
+            // resent link's codes was the one spent.
+            if (user.Active)
+            {
+                return new ActivationCodeValidationResponse
+                {
+                    UserId = userId,
+                    FirstName = user.FirstName ?? string.Empty,
+                    LastName = user.LastName ?? string.Empty,
+                    Status = ActivationCodeStatus.AlreadyActivated,
+                    IsSuccess = false
+                };
+            }
+
+            var isCodeLive = await _cacheClient.KeyExistsAsync(validateActivationCodeRequest.ActivationCode);
 
             return new ActivationCodeValidationResponse
             {
                 UserId = userId,
-                FirstName = user?.FirstName ?? string.Empty,
-                LastName = user?.LastName ?? string.Empty,
-                IsSuccess = isValid,
-                Errors = isValid ? null : new Dictionary<string, string>
-                {
-                    { "ActivationCode", "Invalid_ActivationCode" }
-                }
+                FirstName = user.FirstName ?? string.Empty,
+                LastName = user.LastName ?? string.Empty,
+                Status = isCodeLive ? ActivationCodeStatus.Valid : ActivationCodeStatus.Expired,
+                IsSuccess = isCodeLive
             };
         }
 

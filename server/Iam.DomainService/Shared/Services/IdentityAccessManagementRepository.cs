@@ -128,7 +128,10 @@ namespace Iam.DomainService.Services
         {
             var collection = GetCollection<UserKeyMap>();
             var update = Builders<UserKeyMap>.Update.Set(u => u.Activated, true);
-            var result = await collection.UpdateOneAsync(u => u.UserId == userId && !u.Activated, update);
+            // Every outstanding code for the user, not one of them: the cache side of this
+            // invalidation drops them all, and leaving rows behind would let a resent link still
+            // look unused.
+            var result = await collection.UpdateManyAsync(u => u.UserId == userId && !u.Activated, update);
 
             return result.IsAcknowledged;
         }

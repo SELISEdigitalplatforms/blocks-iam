@@ -5,12 +5,20 @@ import { MemoryRouter } from "react-router";
 const h = vi.hoisted(() => ({
   validate: vi.fn(),
   resend: vi.fn(),
+  navigate: vi.fn(),
   isActivationPending: false,
   isResendPending: false,
   oidcUiConfig: undefined as unknown,
+  collectPasswordOnActivation: true,
+  isUiConfigLoading: false,
   shellProps: null as Record<string, unknown> | null,
+  formProps: null as Record<string, unknown> | null,
 }));
 
+vi.mock("react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router")>()),
+  useNavigate: () => h.navigate,
+}));
 vi.mock("@blocks-idp/iam/hooks/use-account", () => ({
   useAccountActivationCodeExpiration: () => ({
     isPending: h.isActivationPending,
@@ -22,7 +30,10 @@ vi.mock("@blocks-idp/iam/hooks/use-account", () => ({
   }),
 }));
 vi.mock("./activation-form", () => ({
-  ActivationForm: ({ code }: { code: string }) => <div data-testid="activation-form">{code}</div>,
+  ActivationForm: (props: { code: string }) => {
+    h.formProps = props;
+    return <div data-testid="activation-form">{props.code}</div>;
+  },
 }));
 vi.mock("../oidc/oidc-auth-shell", () => ({
   OidcAuthShell: (props: Record<string, unknown>) => {
@@ -31,9 +42,15 @@ vi.mock("../oidc/oidc-auth-shell", () => ({
   },
   OidcFooter: ({ footerText }: { footerText: string }) => <span>{footerText}</span>,
 }));
-vi.mock("../oidc/oidc-panel-config", () => ({ ACTIVATE_PANEL: {} }));
+vi.mock("../oidc/oidc-panel-config", () => ({
+  getActivatePanel: (collectPassword: boolean) => ({ panel: collectPassword ? "with-password" : "confirm-only" }),
+}));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
-  useOidcUiConfig: () => ({ data: h.oidcUiConfig }),
+  useOidcUiConfig: () => ({
+    data: h.oidcUiConfig,
+    collectPasswordOnActivation: h.collectPasswordOnActivation,
+    isLoading: h.isUiConfigLoading,
+  }),
 }));
 
 import { Activation } from "./activation";
@@ -54,7 +71,11 @@ beforeEach(() => {
   h.isActivationPending = false;
   h.isResendPending = false;
   h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
+  h.collectPasswordOnActivation = true;
+  h.isUiConfigLoading = false;
   h.shellProps = null;
+  h.formProps = null;
+  h.navigate.mockClear();
 });
 
 describe("Activation", () => {
@@ -115,5 +136,70 @@ describe("Activation", () => {
     h.validate.mockResolvedValue({ errors: { code: "bad" } });
     renderCmp({ code: "bad", tenantId: "t1" });
     await waitFor(() => expect(screen.getByText("Invalid Activation Link")).toBeInTheDocument());
+  });
+
+  it("passes the tenant's password setting to the form and picks the matching panel copy", async () => {
+    h.validate.mockResolvedValue({ isSuccess: true, userId: "u1" });
+    h.collectPasswordOnActivation = false;
+
+    renderCmp({ code: "good", tenantId: "t1" });
+
+    await waitFor(() => expect(screen.getByTestId("activation-form")).toBeInTheDocument());
+    expect(h.formProps?.collectPassword).toBe(false);
+    expect(h.shellProps?.panelConfig).toEqual({ panel: "confirm-only" });
+  });
+
+  it("sends an already-active account straight to the success page when no password is collected", async () => {
+    h.validate.mockResolvedValue({ isSuccess: false, status: "AlreadyActivated", userId: "u1" });
+    h.collectPasswordOnActivation = false;
+
+    renderCmp({ code: "spent", tenantId: "t1" });
+
+    await waitFor(() =>
+      expect(h.navigate).toHaveBeenCalledWith(
+        expect.stringContaining("/oidc/activate-success"),
+        { replace: true },
+      ),
+    );
+  });
+
+  it("explains an already-active account instead of calling the link invalid", async () => {
+    h.validate.mockResolvedValue({ isSuccess: false, status: "AlreadyActivated", userId: "u1" });
+    h.collectPasswordOnActivation = true;
+
+    renderCmp({ code: "spent", tenantId: "t1" });
+
+    await waitFor(() => expect(screen.getByText("Already Activated")).toBeInTheDocument());
+    expect(screen.queryByTestId("activation-form")).not.toBeInTheDocument();
+    expect(h.navigate).not.toHaveBeenCalled();
+  });
+
+  it("offers a resend for an expired code, using the user id the status carries", async () => {
+    h.validate.mockResolvedValue({ isSuccess: false, status: "Expired", userId: "u9" });
+    h.resend.mockResolvedValue({ isSuccess: true });
+
+    renderCmp({ code: "old", tenantId: "t1" });
+
+    await waitFor(() => expect(screen.getByText("Link Expired")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Resend activation link" }));
+    await waitFor(() => expect(h.resend).toHaveBeenCalledWith({ userId: "u9", tenantId: "t1" }));
+  });
+
+  it("calls an unissued code invalid", async () => {
+    h.validate.mockResolvedValue({ isSuccess: false, status: "Invalid", userId: null });
+
+    renderCmp({ code: "nonsense", tenantId: "t1" });
+
+    await waitFor(() => expect(screen.getByText("Invalid Activation Link")).toBeInTheDocument());
+  });
+
+  it("holds the form back until the ui configuration has settled", async () => {
+    h.validate.mockResolvedValue({ isSuccess: true, userId: "u1" });
+    h.isUiConfigLoading = true;
+
+    renderCmp({ code: "good", tenantId: "t1" });
+
+    await waitFor(() => expect(h.validate).toHaveBeenCalled());
+    expect(screen.queryByTestId("activation-form")).not.toBeInTheDocument();
   });
 });

@@ -10,6 +10,7 @@ using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
+using Iam.DomainService.Services;
 using FluentValidation.Results;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Mvc;
@@ -181,6 +182,7 @@ namespace XUnitTest.Auth.Shared
                 new IdpTokenExchangeClient(httpService.Object),
                 _tenants.Object,
                 Mock.Of<ICaptchaConfigurationRepository>(),
+                Mock.Of<IIdentityAccessManagementRepository>(),
                 NullLogger<IdpService>.Instance);
             var publicResult = await idpService.GetUiConfigAsync();
             var publicConfig = ((OkObjectResult)publicResult).Value.Should().BeOfType<OidcUiConfigResponse>().Subject;

@@ -258,15 +258,27 @@ namespace XUnitTest.ApiTests
             result.Should().BeOfType<OkObjectResult>();
         }
 
+        /// <summary>
+        /// An unusable code is still an answer to the question asked. A non-2xx would strip the
+        /// body on the way out, leaving the caller unable to tell a spent code from a fabricated
+        /// one or to offer the resend the expired one deserves.
+        /// </summary>
         [Fact]
-        public async Task ValidateActivationCode_Failure_ReturnsBadRequest()
+        public async Task ValidateActivationCode_UnusableCode_StillReturnsOkWithTheStatus()
         {
             _accountService.Setup(s => s.ValidateAccountActivationCodeAsync(It.IsAny<ValidateActivationCodeRequest>()))
-                .ReturnsAsync(new ActivationCodeValidationResponse { IsSuccess = false });
+                .ReturnsAsync(new ActivationCodeValidationResponse
+                {
+                    IsSuccess = false,
+                    Status = ActivationCodeStatus.AlreadyActivated,
+                    UserId = "u-99"
+                });
 
             var result = await CreateController().ValidateActivationCode(new ValidateActivationCodeRequest());
 
-            result.Should().BeOfType<BadRequestObjectResult>();
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            ok.Value.Should().BeOfType<ActivationCodeValidationResponse>()
+                .Which.Status.Should().Be(ActivationCodeStatus.AlreadyActivated);
         }
 
         // ---------- InitiateSocialAuthentication ----------
@@ -747,14 +759,17 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
-        public async Task GetClientCredentials_DelegatesToRepository()
+        public async Task GetClientCredentials_DelegatesToDomainService()
         {
+            // Through the domain service, not the repository: that is where the caller's
+            // organization scope is applied, and the listed documents carry ClientSecret.
             var list = new List<ClientCredential>();
-            _authRepo.Setup(r => r.GetClientCredentialsAsync()).ReturnsAsync(list);
+            _domainService.Setup(d => d.GetClientCredentialsAsync(It.IsAny<GetAllClientCredentialsRequest>())).ReturnsAsync(list);
 
             var result = await CreateController().GetClientCredentials();
 
             result.Should().BeSameAs(list);
+            _authRepo.Verify(r => r.GetClientCredentialsAsync(It.IsAny<string?>()), Times.Never);
         }
     }
 }

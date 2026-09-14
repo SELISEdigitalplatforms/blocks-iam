@@ -78,12 +78,20 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
-        public async Task Email_AlreadyInUse_Fails()
+        public async Task Email_AlreadyHasAnAccount_PassesValidation_SoTheServiceCanGrantTheOrganization()
         {
+            // The validator deliberately carries no uniqueness rule. An email that already has an
+            // account is not an error: UserManagementMutationService grants the requested
+            // organization to that account. A validator can only reject, so rejecting here would
+            // make the merge unreachable and send the caller back to creating a duplicate.
+            _userRepo.Setup(r => r.GetUserByEmailAsync("valid.user@example.com"))
+                .ReturnsAsync(new User { ItemId = "existing" });
             _userRepo.Setup(r => r.GetUserByUserNameOrgIdAsync("valid.user@example.com", It.IsAny<string>()))
                 .ReturnsAsync(new User { ItemId = "existing" });
+
             var result = await Create().TestValidateAsync(ValidRequest());
-            result.ShouldHaveValidationErrorFor(x => x.Email);
+
+            result.ShouldNotHaveValidationErrorFor(x => x.Email);
         }
 
         [Fact]

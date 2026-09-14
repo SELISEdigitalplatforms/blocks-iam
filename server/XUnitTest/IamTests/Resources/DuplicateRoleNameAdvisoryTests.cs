@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -10,6 +10,7 @@ using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
+using Iam.DomainService.Users;
 using Moq;
 
 namespace XUnitTest.IamTests.Resources
@@ -72,7 +73,7 @@ namespace XUnitTest.IamTests.Resources
         private ResourceMutationService Create() =>
             new(NullLogger<ResourceMutationService>.Instance, _repo.Object, _iam.Object,
                 _permValidator.Object, _updatePermValidator.Object, _roleValidator.Object,
-                _propagator.Object, _activity.Object);
+                _propagator.Object, _activity.Object, Mock.Of<IUserRepository>());
 
         private static CreateRoleRequest RoleReq(bool confirm = false) => new()
         {

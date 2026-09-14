@@ -11,6 +11,7 @@ using Iam.DomainService.Shared.Serialization;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Users.RequestModel;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -34,6 +35,7 @@ namespace Iam.DomainService.Users
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
+        private readonly IConfiguration? _configuration;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -48,7 +50,8 @@ namespace Iam.DomainService.Users
             IIdentityAccessManagementRepository? identityAccessManagementRepository = null,
             IResourceRepository? resourceRepository = null,
             IHttpContextAccessor? httpContextAccessor = null,
-            IDefaultOidcClientResolver? defaultOidcClientResolver = null
+            IDefaultOidcClientResolver? defaultOidcClientResolver = null,
+            IConfiguration? configuration = null
         )
         {
             _logger = logger;
@@ -65,6 +68,7 @@ namespace Iam.DomainService.Users
             _resourceRepository = resourceRepository;
             _httpContextAccessor = httpContextAccessor;
             _defaultOidcClientResolver = defaultOidcClientResolver;
+            _configuration = configuration;
         }
 
         public async Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command)
@@ -78,6 +82,44 @@ namespace Iam.DomainService.Users
                 return new BaseMutationResponse
                 {
                     Errors = validationResult.Errors.ToDictionary(x => x.PropertyName, x => x.ErrorMessage)
+                };
+            }
+
+            // Resolved before the existence check because both the caller guard and the merge below
+            // need the normalized organization and its member defaults.
+            await ApplyOrganizationDefaultsAsync(command);
+            var organizationId = command.OrganizationId ?? DefaultOrganizationId;
+
+            var organizationGuardFailure = ValidateCallerMayWriteToOrganization(organizationId);
+            if (organizationGuardFailure != null)
+            {
+                _logger.LogInformation("User creation end -- Organization Guard Error");
+                return organizationGuardFailure;
+            }
+
+            var permissionCountFailure = ValidatePermissionCount(command.Permissions);
+            if (permissionCountFailure != null)
+            {
+                _logger.LogInformation("User creation end -- Permission Count Error");
+                return permissionCountFailure;
+            }
+
+            var existingUser = await TryGrantOrganizationToExistingUserAsync(
+                command.Email,
+                organizationId,
+                command.Roles,
+                command.Permissions);
+
+            if (existingUser != null)
+            {
+                _logger.LogInformation(
+                    "User creation end -- email already has an account; granted organization {OrganizationId} instead of creating a duplicate",
+                    organizationId);
+
+                return new BaseMutationResponse
+                {
+                    IsSuccess = true,
+                    ItemId = existingUser.ItemId
                 };
             }
 
@@ -131,10 +173,16 @@ namespace Iam.DomainService.Users
             _logger.LogInformation("User mutation event -- sent");
         }
 
-        public async Task<string> ProcessCreateUserAsync(CreateUserRequest command)
+        /// <summary>
+        /// Pins the command to a concrete organization and fills in that organization's member
+        /// defaults. Shared by the create path and the grant-to-existing-user path so a user ends
+        /// up with the same roles whichever way they were added. Idempotent: running it twice on
+        /// the same command changes nothing.
+        /// </summary>
+        private async Task ApplyOrganizationDefaultsAsync(CreateUserRequest command)
         {
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            command.OrganizationId = tenantConfig?.IsMultiOrgEnabled ?? false 
+            command.OrganizationId = tenantConfig?.IsMultiOrgEnabled ?? false
             ? string.IsNullOrWhiteSpace(command.OrganizationId) ? DefaultOrganizationId : command.OrganizationId
             : DefaultOrganizationId;
 
@@ -154,6 +202,145 @@ namespace Iam.DomainService.Users
             command.Permissions ??= organization != null && organization.DefaultPermissionsForMembers != null && organization.DefaultPermissionsForMembers.Count > 0
                     ? organization.DefaultPermissionsForMembers
                     : [];
+        }
+
+        /// <summary>
+        /// The single place every creation path asks "does this email already have an account?".
+        /// <para>
+        /// The lookup is deliberately tenant-wide rather than organization-scoped. <c>User.OrganizationIds</c>
+        /// is a list and <c>Roles</c> / <c>Permissions</c> are dictionaries keyed by organization, so one
+        /// account is meant to span organizations. An organization-scoped lookup answers "no such user"
+        /// for an account that exists in a different organization -- and answers it for *every*
+        /// organization when <c>OrganizationIds</c> is empty -- which is what produced two documents
+        /// for one email.
+        /// </para>
+        /// <para>
+        /// Returns the existing account with the requested organization granted, or <c>null</c> when the
+        /// email is new and the caller should go on to create one.
+        /// </para>
+        /// <para>
+        /// Account lifecycle is deliberately not consulted here. There is no way to disable an account
+        /// yet, and when that feature arrives the intended answer is to reactivate on invite rather
+        /// than refuse -- so the decision belongs with that feature, not with this lookup.
+        /// </para>
+        /// </summary>
+        private async Task<User?> TryGrantOrganizationToExistingUserAsync(
+            string email,
+            string organizationId,
+            List<string>? roles,
+            List<string>? permissions)
+        {
+            var existingUser = await _userRepository.GetUserByEmailAsync(email);
+            if (existingUser == null)
+            {
+                return null;
+            }
+
+            GrantOrganization(existingUser, organizationId, roles, permissions);
+
+            existingUser.LastUpdatedDate = DateTime.UtcNow;
+            existingUser.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? existingUser.ItemId;
+
+            await _userRepository.UpdateUserAsync(existingUser);
+
+            return existingUser;
+        }
+
+        /// <summary>
+        /// Places <paramref name="user"/> in <paramref name="organizationId"/> and sets that
+        /// organization's roles and permissions.
+        /// <para>
+        /// Membership is read the same three ways <c>OrganizationAccessResolver.HasOrganizationAccess</c>
+        /// reads it -- an organization can have been granted through a <c>Roles</c> or <c>Permissions</c>
+        /// key without ever reaching <c>OrganizationIds</c>. Testing <c>OrganizationIds</c> alone would
+        /// read such a member as a new joiner and overwrite the roles they already hold with an empty
+        /// list. Falling back to what is already stored means an empty request never clears anything,
+        /// while <c>OrganizationIds</c> is brought back in step with the other two.
+        /// </para>
+        /// </summary>
+        private static void GrantOrganization(User user, string organizationId, List<string>? roles, List<string>? permissions)
+        {
+            if (!user.OrganizationIds.Contains(organizationId))
+            {
+                user.OrganizationIds.Add(organizationId);
+            }
+
+            user.Roles[organizationId] = roles?.Count > 0
+                ? roles
+                : user.Roles.GetValueOrDefault(organizationId, []);
+
+            user.Permissions[organizationId] = permissions?.Count > 0
+                ? permissions
+                : user.Permissions.GetValueOrDefault(organizationId, []);
+        }
+
+        /// <summary>
+        /// The per-organization permission cap, as a check the grant paths can run before writing.
+        /// <c>ProcessCreateUserAsync</c> enforces the same rule for a brand new account by throwing;
+        /// granting an organization to an existing account has to enforce it too, or an invite
+        /// becomes a way around the cap.
+        /// </summary>
+        private static BaseMutationResponse? ValidatePermissionCount(List<string>? permissions)
+        {
+            if (permissions is not { Count: > MaxPermissionsPerUser })
+            {
+                return null;
+            }
+
+            return new BaseMutationResponse
+            {
+                Errors = new Dictionary<string, string>
+                {
+                    { nameof(CreateUserRequest.Permissions), $"A maximum of {MaxPermissionsPerUser} permissions can be added with any user permission." }
+                }
+            };
+        }
+
+        /// <summary>
+        /// Mirrors the guard in <see cref="UpdateUserAccessControlAsync"/>: an organization-scoped
+        /// caller may only place a user in its own organization, and only the tenant-wide "default"
+        /// context may name any organization. Needed here because the create paths now grant access
+        /// to an *existing* account, so an unchecked <c>OrganizationId</c> from a request body would
+        /// let one organization's admin hand out roles inside another's.
+        /// <para>
+        /// A caller carrying no organization at all -- anonymous signup, queue consumers, the SSO
+        /// consent exchange -- is left alone: there is no caller organization to compare against, and
+        /// those paths do not take the organization from a browser-supplied body.
+        /// </para>
+        /// </summary>
+        private static BaseMutationResponse? ValidateCallerMayWriteToOrganization(string? organizationId)
+        {
+            var context = BlocksContext.GetContext();
+
+            // The exemption is keyed on having no identity at all -- anonymous signup, queue
+            // consumers, the SSO consent exchange -- not on a blank organization. An *authenticated*
+            // caller whose token carries no organization, or carries the "no-org" sentinel, is
+            // refused like any other, so a token cannot buy tenant-wide reach by omitting the claim.
+            if (context is null || !context.IsAuthenticated)
+            {
+                return null;
+            }
+
+            var callerOrganizationId = context.OrganizationId;
+
+            if (string.Equals(callerOrganizationId, DefaultOrganizationId, StringComparison.Ordinal)
+                || string.Equals(callerOrganizationId, organizationId, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return new BaseMutationResponse
+            {
+                Errors = new Dictionary<string, string>
+                {
+                    { nameof(CreateUserRequest.OrganizationId), "Other org user can not add/update" }
+                }
+            };
+        }
+
+        public async Task<string> ProcessCreateUserAsync(CreateUserRequest command)
+        {
+            await ApplyOrganizationDefaultsAsync(command);
 
             if (command.Permissions != null && command.Permissions.Count > MaxPermissionsPerUser)
             {
@@ -752,7 +939,9 @@ namespace Iam.DomainService.Users
                 path = await IamHelper.AppendOidcReturnContextAsync(path, clientId, redirectUri, _defaultOidcClientResolver);
             }
 
-            if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
+            if (!IamHelper.TryBuildUserActionUrl(
+                    config, path, out var accountActivationUri, _httpContextAccessor,
+                    logger: _logger, appConfiguration: _configuration))
             {
                 _logger.LogWarning("Activation URL could not be built for user {Id}", user.ItemId);
                 return false;
@@ -814,6 +1003,20 @@ namespace Iam.DomainService.Users
                 ? blocksContext?.OrganizationId
                 : command.OrganizationId;
 
+            // Named explicitly, the way the revoke side already does. Without it a caller carrying
+            // no organization reaches the write with a null key and the roles dictionary throws.
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                _logger.LogInformation("Update User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.OrganizationId), "OrganizationId is required" }
+                    }
+                };
+            }
+
             if (!string.Equals(blocksContext?.OrganizationId, DefaultOrganizationId, StringComparison.Ordinal)
                 && !string.Equals(blocksContext?.OrganizationId, organizationId, StringComparison.Ordinal))
             {
@@ -855,24 +1058,7 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            var isAddToOrganization = !user.OrganizationIds.Contains(organizationId);
-
-            if (isAddToOrganization)
-            {
-                user.OrganizationIds.Add(organizationId);
-                user.Roles[organizationId] = command.Roles?.Count > 0 ? command.Roles : new List<string>();
-                user.Permissions[organizationId] = command.Permissions ?? new List<string>();
-            }
-            else
-            {
-                user.Roles[organizationId] = command.Roles?.Count > 0
-                    ? command.Roles
-                    : user.Roles.GetValueOrDefault(organizationId, new List<string>());
-
-                user.Permissions[organizationId] = command.Permissions?.Count > 0
-                    ? command.Permissions
-                    : user.Permissions.GetValueOrDefault(organizationId, new List<string>());
-            }
+            GrantOrganization(user, organizationId, command.Roles, command.Permissions);
 
             user.LastUpdatedDate = DateTime.UtcNow;
             user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
@@ -1059,14 +1245,23 @@ namespace Iam.DomainService.Users
                 ? (string.IsNullOrWhiteSpace(@event.OrganizationId) ? DefaultOrganizationId : @event.OrganizationId)
                 : DefaultOrganizationId;
 
-            // This path bypasses _createValidator (and its BeAnUniqueEmail rule), so the uniqueness check has
-            // to happen here: without it a caller whose lookup missed would have a second account created for
-            // an email that already has one.
-            var existingUser = await _userRepository.GetUserByUserNameOrgIdAsync(email, organizationId);
+            var roles = @event.Roles ?? tenantConfig?.DefaultRolesForNewUserOnSignUp ?? new List<string>();
+            var permissions = @event.Permissions ?? tenantConfig?.DefaultPermissionsForNewUserOnSignUp ?? new List<string>();
+
+            if (ValidatePermissionCount(permissions) != null)
+            {
+                _logger.LogInformation("User creation end -- Permission Count Error -- CreateUserByEmail");
+                return false;
+            }
+
+            // Inviting an email that already has an account is a join, not a signup: the invited
+            // organization is granted on that account rather than opening a second one for the
+            // same person.
+            var existingUser = await TryGrantOrganizationToExistingUserAsync(email, organizationId, roles, permissions);
 
             if (existingUser != null)
             {
-                _logger.LogInformation("User already exists for CreateUserByEmail; reusing existing user instead of creating a duplicate");
+                _logger.LogInformation("User already exists for CreateUserByEmail; granted the invited organization instead of creating a duplicate");
 
                 // An account that cannot sign in yet still needs an activation key, even though it exists.
                 if (RequiresActivation(existingUser))
@@ -1088,8 +1283,8 @@ namespace Iam.DomainService.Users
                 UserCreationType = UserCreationType.Service,
                 MailPurpose = @event.EventType,
                 OrganizationId = organizationId,
-                Roles = @event.Roles ?? tenantConfig.DefaultRolesForNewUserOnSignUp ?? new List<string>(),
-                Permissions = @event.Permissions ?? tenantConfig.DefaultPermissionsForNewUserOnSignUp ?? new List<string>()
+                Roles = roles,
+                Permissions = permissions
             };
 
             string itemId;
@@ -1192,6 +1387,28 @@ namespace Iam.DomainService.Users
                 command.Permissions = organization != null && organization.DefaultPermissionsForMembers != null && organization.DefaultPermissionsForMembers.Count > 0
                     ? organization.DefaultPermissionsForMembers
                     : new List<string>();
+            }
+
+            // SSO consent reaches this method on every exchange, not only for unknown emails, so
+            // without a lookup here each sign-in minted another account. An email that already has
+            // one is signing in, not signing up: grant the organization and skip the welcome mail.
+            var existingUser = await TryGrantOrganizationToExistingUserAsync(
+                command.Email,
+                command.OrganizationId,
+                command.Roles,
+                command.Permissions);
+
+            if (existingUser != null)
+            {
+                _logger.LogInformation(
+                    "User creation end -- email already has an account; granted organization {OrganizationId} instead of creating a duplicate via SSO",
+                    command.OrganizationId);
+
+                return new BaseMutationResponse
+                {
+                    IsSuccess = true,
+                    ItemId = existingUser.ItemId
+                };
             }
 
             var itemId = await ProcessSsoUserAsync(command);

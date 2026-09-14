@@ -67,7 +67,7 @@ export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
         <div className="flex flex-col gap-2">
           <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
             {template.pages.signup.loginPrompt}{" "}
-            <LoginReturnLink className="oidc-sci-fi-link">
+            <LoginReturnLink className="oidc-sci-fi-link" preferOidcLogin>
               {template.pages.signup.loginLink}
             </LoginReturnLink>
           </p>

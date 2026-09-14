@@ -27,6 +27,7 @@ namespace Authentication.DomainService.Shared
         Task<bool> RemoveAccountAsync(string sessionId, string userId, string? tenantId = null);
         Task<string?> RotateSessionAsync(string sessionId, string reason);
         Task<bool> RevokeSessionAsync(string sessionId, string reason);
+        Task<IEnumerable<IdpSessionModel>> GetUserSessionsAsync(string userId, string tenantId);
 
         // Impersonation
         Task<string> CreateAndBackupImpersonationSessionAsync(string userId, string rootTenantId, string targetTenantId, string clientId, string organizationId);

@@ -7,6 +7,12 @@ namespace Authentication.DomainService.Shared.ResponseModel
     {
         public OidcUiCaptchaResponse? Captcha { get; set; }
         public OidcUiTemplate? Template { get; set; }
+
+        /// <summary>
+        /// Whether the activation page must collect a password. False lets the emailed
+        /// confirmation activate the account on its own.
+        /// </summary>
+        public bool CollectPasswordOnActivation { get; set; } = true;
     }
 
     /// <summary>

@@ -10,6 +10,7 @@ using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
+using Iam.DomainService.Users;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -26,6 +27,7 @@ namespace XUnitTest.IamTests.Resources
         private readonly Mock<IValidator<CreateRoleRequest>> _roleValidator = new();
         private readonly Mock<ITenantPermissionPropagator> _propagator = new();
         private readonly Mock<IUserActivityDispatcher> _activity = new();
+        private readonly Mock<IUserRepository> _users = new();
 
         public ResourceMutationServiceTests()
         {
@@ -50,12 +52,13 @@ namespace XUnitTest.IamTests.Resources
             _repo.Setup(r => r.UpdateAllSamePermissionAsync(It.IsAny<Permission>())).ReturnsAsync(true);
             _iam.Setup(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<object>())).Returns(Task.CompletedTask);
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
+            _users.Setup(u => u.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
         }
 
-        private static void InstallContext(string userId = "actor-1", string orgId = "default")
+        private static void InstallContext(string userId = "actor-1", string orgId = "default", bool impersonated = false)
         {
             BlocksContext.SetContext(BlocksContext.Create(
-                tenantId: "tenant-1", roles: null, userId: userId, impersonated: false,
+                tenantId: "tenant-1", roles: null, userId: userId, impersonated: impersonated,
                 isAuthenticated: true, requestUri: "https://test", organizationId: orgId,
                 permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
                 userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
@@ -71,12 +74,12 @@ namespace XUnitTest.IamTests.Resources
         private ResourceMutationService Create() =>
             new(NullLogger<ResourceMutationService>.Instance, _repo.Object, _iam.Object,
                 _permValidator.Object, _updatePermValidator.Object, _roleValidator.Object,
-                _propagator.Object, _activity.Object);
+                _propagator.Object, _activity.Object, _users.Object);
 
         private ResourceMutationService Create(ILogger<ResourceMutationService> logger) =>
             new(logger, _repo.Object, _iam.Object,
                 _permValidator.Object, _updatePermValidator.Object, _roleValidator.Object,
-                _propagator.Object, _activity.Object);
+                _propagator.Object, _activity.Object, _users.Object);
 
         /// <summary>
         /// Captures warning-level messages, so tests can assert that a failure the caller cannot
@@ -429,17 +432,144 @@ namespace XUnitTest.IamTests.Resources
             _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<OrganizationProvisioningEvent>()), Times.Once);
         }
 
-        [Fact]
-        public async Task CreateOrganization_Portal_QueuesUserUpdate()
+        /// <summary>
+        /// Arranges the portal create path: multi-org on, portal creation allowed, the name free,
+        /// and a creator that exists in this tenant carrying <paramref name="creatorGrants"/> in
+        /// the organization the caller is scoped to.
+        /// </summary>
+        private User ArrangePortalCreate(
+            string creatorUserId = "actor-1",
+            string callerScope = "default",
+            List<string>? creatorRoles = null,
+            List<string>? creatorPermissions = null)
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromPortal = true });
             _repo.Setup(r => r.GetOrganizationByNameAsync("Org")).ReturnsAsync((Organization)null!);
             _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
 
-            var result = await Create().CreateOrganizationAsync(new CreateOrganizationRequest { Name = "Org", CreatedFrom = CreatedFrom.ConstructPortal }, "creator-9");
+            var creator = new User { ItemId = creatorUserId };
+            if (creatorRoles != null) creator.Roles[callerScope] = creatorRoles;
+            if (creatorPermissions != null) creator.Permissions[callerScope] = creatorPermissions;
+            _users.Setup(u => u.GetUserByIdAsync(creatorUserId)).ReturnsAsync(creator);
+            return creator;
+        }
+
+        private static CreateOrganizationRequest PortalReq(
+            List<string>? roles = null,
+            List<string>? permissions = null) =>
+            new()
+            {
+                Name = "Org",
+                CreatedFrom = CreatedFrom.ConstructPortal,
+                DefaultRoleForMembers = roles ?? [],
+                DefaultPermissionsForMembers = permissions ?? []
+            };
+
+        [Fact]
+        public async Task CreateOrganization_Portal_AddsCreatorWithPayloadRolesAndPermissions()
+        {
+            var creator = ArrangePortalCreate(creatorUserId: "creator-9");
+
+            var result = await Create().CreateOrganizationAsync(
+                PortalReq(roles: ["admin"], permissions: ["res-a"]), "creator-9");
 
             result.IsSuccess.Should().BeTrue();
-            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<UpdateOrganizationUserEvent>()), Times.Once);
+            creator.OrganizationIds.Should().Contain(result.ItemId!);
+            creator.Roles[result.ItemId!].Should().Equal("admin");
+            creator.Permissions[result.ItemId!].Should().Equal("res-a");
+            _users.Verify(u => u.UpdateUserAsync(creator), Times.Once);
+        }
+
+        [Fact]
+        public async Task CreateOrganization_Portal_NoPayloadDefaults_FallsBackToCallerScopeGrants()
+        {
+            var creator = ArrangePortalCreate(
+                callerScope: "default",
+                creatorRoles: ["owner"],
+                creatorPermissions: ["res-own"]);
+
+            var result = await Create().CreateOrganizationAsync(PortalReq());
+
+            result.IsSuccess.Should().BeTrue();
+            creator.Roles[result.ItemId!].Should().Equal("owner");
+            creator.Permissions[result.ItemId!].Should().Equal("res-own");
+        }
+
+        [Fact]
+        public async Task CreateOrganization_Portal_FallbackReadsTheCallersOwnOrganization()
+        {
+            InstallContext(orgId: "org-7");
+            var creator = ArrangePortalCreate(callerScope: "org-7", creatorRoles: ["manager"]);
+
+            var result = await Create().CreateOrganizationAsync(PortalReq());
+
+            creator.Roles[result.ItemId!].Should().Equal("manager");
+        }
+
+        [Fact]
+        public async Task CreateOrganization_Portal_Impersonated_DoesNotTouchTheUser()
+        {
+            InstallContext(impersonated: true);
+            ArrangePortalCreate();
+
+            var result = await Create().CreateOrganizationAsync(PortalReq(roles: ["admin"]));
+
+            result.IsSuccess.Should().BeTrue();
+            _users.Verify(u => u.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+            _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task CreateOrganization_Portal_CreatorMissingInTenant_StillCreatesTheOrganization()
+        {
+            ArrangePortalCreate();
+            _users.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync((User)null!);
+
+            var result = await Create().CreateOrganizationAsync(PortalReq(roles: ["admin"]));
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationAsync(It.IsAny<Organization>()), Times.Once);
+            _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task CreateOrganization_Portal_NoOrgScope_GrantsMembershipWithNothing()
+        {
+            // "no-org" is the sentinel for "member of nothing", so it must never be read as a
+            // source of grants -- the membership is written, but empty.
+            InstallContext(orgId: "no-org");
+            var creator = ArrangePortalCreate(callerScope: "no-org", creatorRoles: ["should-not-be-copied"]);
+
+            var result = await Create().CreateOrganizationAsync(PortalReq());
+
+            creator.OrganizationIds.Should().Contain(result.ItemId!);
+            creator.Roles[result.ItemId!].Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task CreateOrganization_Portal_PreservesGrantsInTheCallersOtherOrganizations()
+        {
+            var creator = ArrangePortalCreate(callerScope: "default", creatorRoles: ["owner"]);
+
+            var result = await Create().CreateOrganizationAsync(PortalReq(roles: ["admin"]));
+
+            creator.Roles["default"].Should().Equal("owner");
+            creator.Roles[result.ItemId!].Should().Equal("admin");
+        }
+
+        [Fact]
+        public async Task CreateOrganization_Cloud_DoesNotAddTheCreator()
+        {
+            // The blocks-os portal sends Cloud; its behaviour must not change.
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true });
+            _repo.Setup(r => r.GetOrganizationByNameAsync("Org")).ReturnsAsync((Organization)null!);
+            _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
+
+            var result = await Create().CreateOrganizationAsync(new CreateOrganizationRequest { Name = "Org", CreatedFrom = CreatedFrom.Cloud });
+
+            result.IsSuccess.Should().BeTrue();
+            _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<UpdateOrganizationUserEvent>()), Times.Never);
         }
 
         // ---------- UpdateOrganizationAsync ----------

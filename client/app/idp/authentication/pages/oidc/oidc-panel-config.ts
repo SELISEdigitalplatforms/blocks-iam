@@ -1,4 +1,4 @@
-import type { OidcPanelConfig } from "./nodes-panel-oidc";
+import type { OidcPanelConfig, OidcServiceNode } from "./nodes-panel-oidc";
 
 /* ──────────────────────────────────────────────────────────────
    OIDC LOGIN — real service flow:
@@ -205,6 +205,22 @@ export const RESET_PASSWORD_PANEL: OidcPanelConfig = {
   ],
 };
 
+const SETTING_PASSWORD_NODE: OidcServiceNode = {
+  icon:         "shield-check",
+  service:      "IAM Service",
+  title:        "Setting Password",
+  activeLabel:  "Applying password hash to user record…",
+  successLabel: "Password set successfully",
+};
+
+const ACTIVATING_ACCOUNT_NODE: OidcServiceNode = {
+  icon:         "user-check",
+  service:      "IAM Service",
+  title:        "Activating Account",
+  activeLabel:  "Marking account as active…",
+  successLabel: "Account activated",
+};
+
 export const ACTIVATE_PANEL: OidcPanelConfig = {
   heading: "Account Activation Pipeline",
   subtext:
@@ -230,22 +246,7 @@ export const ACTIVATE_PANEL: OidcPanelConfig = {
     failLabel:    "Activation code rejected by IAM",
   },
 
-  successNodes: [
-    {
-      icon:         "shield-check",
-      service:      "IAM Service",
-      title:        "Setting Password",
-      activeLabel:  "Applying password hash to user record…",
-      successLabel: "Password set successfully",
-    },
-    {
-      icon:         "user-check",
-      service:      "IAM Service",
-      title:        "Activating Account",
-      activeLabel:  "Marking account as active…",
-      successLabel: "Account activated",
-    },
-  ],
+  successNodes: [SETTING_PASSWORD_NODE, ACTIVATING_ACCOUNT_NODE],
 
   terminalMessages: [
     { text: "$ POST /api/account/activate",        color: "var(--accent2)" },
@@ -263,3 +264,33 @@ export const ACTIVATE_PANEL: OidcPanelConfig = {
     { text: "  > content-type: application/json",  color: "var(--muted)"   },
   ],
 };
+
+/**
+ * Same pipeline with the password step removed, for tenants whose IAM configuration turns
+ * off `collectPasswordOnActivation`: confirming the emailed link is the whole flow.
+ */
+export const ACTIVATE_PANEL_WITHOUT_PASSWORD: OidcPanelConfig = {
+  ...ACTIVATE_PANEL,
+  subtext:
+    "Your activation code is validated by the Blocks IAM service. The account is confirmed and becomes ready to use.",
+
+  idleNode: {
+    ...ACTIVATE_PANEL.idleNode,
+    description: "Confirm your details to begin the activation flow.",
+  },
+
+  successNodes: [ACTIVATING_ACCOUNT_NODE],
+
+  terminalMessages: [
+    { text: "$ POST /api/account/activate",        color: "var(--accent2)" },
+    { text: "  > content-type: application/json",  color: "var(--muted)"   },
+    { text: "200 OK — activation code verified",   color: "var(--success)" },
+    { text: "$ iam.activateAccount(user_id)",      color: "var(--fg)"      },
+    { text: "  > is_active = true",                color: "var(--muted)"   },
+    { text: "account activation complete",         color: "var(--success)" },
+  ],
+};
+
+/** Picks the activation panel copy that matches the tenant's password setting. */
+export const getActivatePanel = (collectPassword: boolean): OidcPanelConfig =>
+  collectPassword ? ACTIVATE_PANEL : ACTIVATE_PANEL_WITHOUT_PASSWORD;

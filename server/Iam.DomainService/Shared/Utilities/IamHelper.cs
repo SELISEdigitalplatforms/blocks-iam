@@ -1,6 +1,7 @@
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Iam.DomainService.Utilities
@@ -17,6 +18,24 @@ namespace Iam.DomainService.Utilities
             }
 
             return $"https://{request.Host}".TrimEnd('/');
+        }
+
+        /// <summary>
+        /// The base URL of this IAM deployment, as configured for the environment
+        /// (dev / stg / prod). Read from <c>BLOCKS_IAM_BASE_URL</c>, which the host loads
+        /// from the Mongo <c>blocks-secret-iam</c> secret and also bakes into the SPA's
+        /// runtime env, so server and client always agree on the same host.
+        ///
+        /// Returns an empty string when the key is unset or is not an absolute URL;
+        /// callers decide their own fallback.
+        /// </summary>
+        public static string GetConfiguredIamBaseUrl(IConfiguration? configuration)
+        {
+            var configured = Environment.GetEnvironmentVariable("BLOCKS_IAM_BASE_URL")
+                ?? configuration?["BLOCKS_IAM_BASE_URL"]
+                ?? configuration?["FrontendRuntime:BLOCKS_IAM_BASE_URL"];
+
+            return TryGetBaseUrl(configured ?? string.Empty) ?? string.Empty;
         }
 
         public static string GetOriginOrRefererBaseUrl(IHttpContextAccessor? httpContextAccessor)
@@ -73,7 +92,10 @@ namespace Iam.DomainService.Utilities
             string path,
             out string url,
             IHttpContextAccessor? httpContextAccessor = null,
-            ILogger? logger = null)
+            ILogger? logger = null,
+            // Trailing and optional so existing call sites keep compiling. Supplies the
+            // deployment's own base URL for the OIDC branch of ResolveActionBaseUrl.
+            IConfiguration? appConfiguration = null)
         {
             url = string.Empty;
 
@@ -84,7 +106,7 @@ namespace Iam.DomainService.Utilities
                 return false;
             }
 
-            var actionBaseUrl = ResolveActionBaseUrl(config, httpContextAccessor, logger);
+            var actionBaseUrl = ResolveActionBaseUrl(config, httpContextAccessor, appConfiguration, logger);
 
             if (string.IsNullOrWhiteSpace(actionBaseUrl))
             {
@@ -105,23 +127,41 @@ namespace Iam.DomainService.Utilities
         private static string ResolveActionBaseUrl(
             IamConfiguration config,
             IHttpContextAccessor? httpContextAccessor,
+            IConfiguration? appConfiguration,
             ILogger? logger)
         {
+            if (config.IsOidcEnabled)
+            {
+                // Under OIDC the activation and recovery pages are served by IAM itself, so
+                // the host is a property of this deployment and never of the caller. Reading
+                // it from the request's Host header would let a forged header aim a recovery
+                // link at someone else's domain, and would make one tenant produce two
+                // different links depending on whether the mail was built in the API (Host
+                // present) or in the Worker (no HttpContext at all).
+                var deploymentBaseUrl = GetConfiguredIamBaseUrl(appConfiguration);
+
+                if (!string.IsNullOrWhiteSpace(deploymentBaseUrl))
+                {
+                    return deploymentBaseUrl;
+                }
+
+                // The config save writes BLOCKS_IAM_BASE_URL here whenever OIDC is on, so
+                // this is normally the same value; it also covers rows saved before that.
+                if (!string.IsNullOrWhiteSpace(config.AccountActionBaseUrl))
+                {
+                    return config.AccountActionBaseUrl;
+                }
+
+                logger?.LogWarning(
+                    "OIDC is enabled but neither BLOCKS_IAM_BASE_URL nor AccountActionBaseUrl "
+                    + "is set. Falling back to the request host.");
+
+                return GetOidcRequestBaseUrl(httpContextAccessor);
+            }
+
             if (config.UseAccountActionBaseUrlAsDefault && !string.IsNullOrWhiteSpace(config.AccountActionBaseUrl))
             {
                 return config.AccountActionBaseUrl;
-            }
-
-            if (config.IsOidcEnabled)
-            {
-                var requestBaseUrl = GetOidcRequestBaseUrl(httpContextAccessor);
-
-                if (!string.IsNullOrWhiteSpace(requestBaseUrl))
-                {
-                    return requestBaseUrl;
-                }
-
-                logger?.LogWarning("OIDC is enabled but request base URL could not be determined. Falling back to AccountActionBaseUrl.");
             }
 
             var originOrRefererBaseUrl = GetOriginOrRefererBaseUrl(httpContextAccessor);

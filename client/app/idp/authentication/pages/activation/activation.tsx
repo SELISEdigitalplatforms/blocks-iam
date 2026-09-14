@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { AlertTriangle, CheckCircle2, Loader } from "lucide-react";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { ActivationForm } from "./activation-form";
 import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
-import { ACTIVATE_PANEL } from "../oidc/oidc-panel-config";
+import { getActivatePanel } from "../oidc/oidc-panel-config";
 import { useAccountActivationCodeExpiration, useAccountResendActivation } from "@blocks-idp/iam/hooks/use-account";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
+import { resolveActivationCodeStatus } from "./activation-status";
 
 type ActivationProps = {
   code?: string;
@@ -14,7 +17,15 @@ type ActivationProps = {
 };
 
 export const Activation = ({ code, tenantId }: ActivationProps) => {
-  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  const navigate = useNavigate();
+  // `collectPasswordOnActivation` decides whether this page is a password form or a plain
+  // confirmation, so the form is held back until the configuration query has settled --
+  // the fallback template makes `template` truthy immediately, loaded or not.
+  const {
+    data: oidcUiConfig,
+    collectPasswordOnActivation,
+    isLoading: isUiConfigLoading,
+  } = useOidcUiConfig(tenantId);
   const template = oidcUiConfig?.template;
   const {
     isPending: isActivationPending,
@@ -24,7 +35,9 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
     useAccountResendActivation();
 
   const [isValidCode, setIsValidCode] = useState<boolean | null>(null);
-  const [activationError, setActivationError] = useState<"invalid" | "expired" | null>(null);
+  const [activationError, setActivationError] = useState<
+    "invalid" | "expired" | "already-active" | null
+  >(null);
   const [activationUserId, setActivationUserId] = useState<string | null>(null);
   const [knownName, setKnownName] = useState<{ firstName: string; lastName: string }>({
     firstName: "",
@@ -50,29 +63,35 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
           tenantId,
         });
 
-        if (res.isSuccess && res.userId) {
+        const status = resolveActivationCodeStatus(res);
+
+        setResendMessage(null);
+        setResendSuccess(false);
+        setActivationUserId(null);
+
+        if (status === "Valid") {
           setActivationError(null);
-          setActivationUserId(null);
-          setResendMessage(null);
-          setResendSuccess(false);
           // Self-service signups already supplied these; invites return them empty.
           setKnownName({
             firstName: res.firstName ?? "",
             lastName: res.lastName ?? "",
           });
-        } else if (res.errors) {
-          setActivationError("invalid");
-          setActivationUserId(null);
-          setResendMessage(null);
-          setResendSuccess(false);
-        } else {
-          setActivationError("expired");
-          setActivationUserId(res.userId);
-          setResendMessage(null);
-          setResendSuccess(false);
+          setIsValidCode(true);
+          return;
         }
 
-        setIsValidCode(!!res.isSuccess);
+        // Expired is the one state a resend can rescue, and it is the only one that carries a
+        // user id to resend to.
+        if (status === "Expired") setActivationUserId(res.userId);
+
+        setActivationError(
+          status === "AlreadyActivated"
+            ? "already-active"
+            : status === "Expired"
+              ? "expired"
+              : "invalid",
+        );
+        setIsValidCode(false);
       } catch {
         setActivationError("invalid");
         setActivationUserId(null);
@@ -84,6 +103,19 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
 
     validateCode();
   }, [code, tenantId, activationCodeValidation]);
+
+  // An account that is already active has nothing left to confirm. Where the page activates on
+  // its own, the usual way to arrive here is an email scanner having followed the link first, so
+  // show the finished job rather than a dead end. Kept out of the effect above so it can wait for
+  // the configuration to settle without validating the code a second time.
+  const alreadyActive = activationError === "already-active";
+  useEffect(() => {
+    if (!alreadyActive || isUiConfigLoading || collectPasswordOnActivation) return;
+
+    navigate(appendTenantId(buildOIDCNavigationUrl("/oidc/activate-success"), tenantId), {
+      replace: true,
+    });
+  }, [alreadyActive, isUiConfigLoading, collectPasswordOnActivation, navigate, tenantId]);
 
   if (!template) {
     return (
@@ -107,43 +139,45 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
 
       if (response?.isSuccess) {
         setResendSuccess(true);
-        setResendMessage("A new activation link has been sent to your email.");
+        setResendMessage(template.pages.activation.resendSuccessMessage);
       } else {
         setResendSuccess(false);
-        setResendMessage("Failed to resend activation link. Please try again later.");
+        setResendMessage(template.pages.activation.resendFailureMessage);
       }
     } catch (error) {
       setResendSuccess(false);
       setResendMessage(
-        error instanceof Error ? error.message : "Failed to resend activation link.",
+        error instanceof Error ? error.message : template.pages.activation.resendFailureMessage,
       );
     }
   };
 
   const heading =
     activationError === "invalid"
-      ? "Invalid Activation Link"
+      ? template.pages.activation.invalidHeading
       : activationError === "expired"
-        ? "Link Expired"
-        : template.pages.activation.heading;
+        ? template.pages.activation.expiredHeading
+        : activationError === "already-active"
+          ? template.pages.activation.alreadyActiveHeading
+          : template.pages.activation.heading;
 
   const headingDimFirst = 2;
 
   return (
     <OidcAuthShell
-      panelConfig={ACTIVATE_PANEL}
+      panelConfig={getActivatePanel(collectPasswordOnActivation)}
       theme={template.theme}
       logoUrl={template.branding.logoUrl}
       brandName={template.branding.brandName}
       heading={heading}
       headingDimFirst={headingDimFirst}
-      headingAlign={heading === "Invalid Activation Link" ? "center" : "left"}
+      headingAlign={activationError === "invalid" ? "center" : "left"}
       successTitle={template.pages.activation.successTitle}
       successSubtitle={template.pages.activation.successSubtitle}
       showCorners={false}
       footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
     >
-      {isActivationPending || isValidCode === null ? (
+      {isActivationPending || isValidCode === null || isUiConfigLoading ? (
         <div className="flex items-center justify-center py-8">
           <Loader size={28} className="animate-spin" style={{ color: "var(--accent)" }} />
         </div>
@@ -153,34 +187,48 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
           tenantId={tenantId}
           firstName={knownName.firstName}
           lastName={knownName.lastName}
+          collectPassword={collectPasswordOnActivation}
         />
       ) : activationError === "invalid" ? (
         <div className="flex flex-col items-center gap-3 py-2 text-center">
           <div
             className="w-12 h-12 rounded-full flex items-center justify-center"
-            style={{ background: "rgba(234,179,8,.1)", border: "1px solid rgba(234,179,8,.25)" }}
+            style={{ background: "var(--accent-soft)", border: "1px solid var(--border-strong)" }}
           >
-            <AlertTriangle size={22} style={{ color: "var(--warn)" }} />
+            <AlertTriangle size={22} style={{ color: "var(--danger)" }} />
           </div>
           <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-            The activation code is invalid. Please check the link or request a
-            new activation email from your administrator.
+            {template.pages.activation.invalidMessage}
           </p>
           <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
-            Back to login
+            {template.pages.activation.backToLoginButton}
+          </LoginReturnLink>
+        </div>
+      ) : activationError === "already-active" ? (
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center"
+            style={{ background: "var(--accent-soft)", border: "1px solid var(--border-strong)" }}
+          >
+            <CheckCircle2 size={22} style={{ color: "var(--success)" }} />
+          </div>
+          <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
+            {template.pages.activation.alreadyActiveMessage}
+          </p>
+          <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
+            {template.pages.activation.loginButton}
           </LoginReturnLink>
         </div>
       ) : (
         <div className="flex flex-col items-center gap-3 py-2 text-center">
           <div
             className="w-12 h-12 rounded-full flex items-center justify-center"
-            style={{ background: "rgba(234,179,8,.1)", border: "1px solid rgba(234,179,8,.25)" }}
+            style={{ background: "var(--accent-soft)", border: "1px solid var(--border-strong)" }}
           >
-            <AlertTriangle size={22} style={{ color: "var(--warn)" }} />
+            <AlertTriangle size={22} style={{ color: "var(--danger)" }} />
           </div>
           <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-            This activation link has expired and can&apos;t be used anymore.
-            Please request a new link to complete your account activation.
+            {template.pages.activation.expiredMessage}
           </p>
           <button
             type="button"
@@ -188,7 +236,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
             disabled={!activationUserId || isResendPending || resendSuccess}
             className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
           >
-            {isResendPending ? "Sending..." : "Resend activation link"}
+            {isResendPending ? template.pages.activation.activatingButton : template.pages.activation.resendButton}
           </button>
           {resendMessage && (
             <div className="flex items-center gap-2 text-sm">

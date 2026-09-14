@@ -6,7 +6,13 @@ import { Link, useLocation } from "react-router";
 // through: these links are used inside `<Button asChild>`, whose Radix Slot merges the
 // button's className (and its ref) onto whatever element this renders — swallowing
 // those props would silently strip the button styling.
-type LoginReturnLinkProps = Omit<ComponentPropsWithRef<"a">, "href">;
+type LoginReturnLinkProps = Omit<ComponentPropsWithRef<"a">, "href"> & {
+  /**
+   * Stay on `/oidc/login` instead of handing the user back to the application.
+   * Only for pages inside a live flow — see resolveLoginReturnTarget.
+   */
+  preferOidcLogin?: boolean;
+};
 
 /**
  * "Back to login" for any page reached from an emailed activation or recovery link.
@@ -16,10 +22,15 @@ type LoginReturnLinkProps = Omit<ComponentPropsWithRef<"a">, "href">;
  * cases need different link elements, which is the whole reason this component exists
  * rather than a bare `<Link to={...}>` at each call site.
  */
-export const LoginReturnLink = ({ children, ...rest }: LoginReturnLinkProps) => {
+export const LoginReturnLink = ({
+  children,
+  preferOidcLogin,
+  ...rest
+}: LoginReturnLinkProps) => {
   const location = useLocation();
   const { href, external } = resolveLoginReturnTarget(
     location.pathname.startsWith("/oidc"),
+    { preferOidcLogin },
   );
 
   if (external) {

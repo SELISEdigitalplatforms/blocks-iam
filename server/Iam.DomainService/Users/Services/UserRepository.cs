@@ -235,8 +235,33 @@ namespace Iam.DomainService.Users
             if (filter.UserIds is not null && filter.UserIds.Count > 0)
                 filters.Add(builder.In(u => u.ItemId, filter.UserIds));
 
+            if (scope.Kind == UserListScopeKind.Organizations && filter.Roles is not null && filter.Roles.Count > 0)
+            {
+                filters.Add(BuildRoleFilter(builder, scope.OrganizationIds, filter.Roles));
+            }
+
             return filters.Any() ? builder.And(filters) : builder.Empty;
         }
+
+        private static FilterDefinition<User> BuildRoleFilter(
+            FilterDefinitionBuilder<User> builder,
+            IReadOnlyList<string> organizationIds,
+            IReadOnlyList<string> roles)
+        {
+            var roleFilters = organizationIds
+                .Where(IsSafeOrganizationFieldSegment)
+                .Select(organizationId => builder.And(
+                    builder.AnyEq(x => x.OrganizationIds, organizationId),
+                    builder.AnyIn($"Roles.{organizationId}", roles)))
+                .ToList();
+
+            return roleFilters.Count == 0
+                ? builder.Exists("_id", false)
+                : builder.Or(roleFilters);
+        }
+
+        private static bool IsSafeOrganizationFieldSegment(string organizationId) =>
+            organizationId.IndexOfAny(['.', '$', '\0']) < 0;
 
         private static SortDefinition<User> BuildSortDefinition(BaseSortRequest? sortRequest)
         {

@@ -13,8 +13,16 @@ namespace Authentication.DomainService.Authentication
         /// Start authentication flow with identity provider
         /// Generates OIDC state, nonce, and PKCE parameters
         /// Returns redirect to provider authorize endpoint
+        ///
+        /// <para>
+        /// With <paramref name="flow"/> set to <c>signup</c> everything up to and including
+        /// the cached flow context is identical; only the returned <c>redirect_uri</c>
+        /// differs, pointing at the IAM signup page rather than at authorize. The signup
+        /// page links back to <c>/oidc/login</c>, which replays this state, so the context
+        /// has to be there for <see cref="HandleCallbackAsync"/> to redeem.
+        /// </para>
         /// </summary>
-        Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo);
+        Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo, string? flow = null, HttpRequest? httpRequest = null);
 
         /// <summary>
         /// Handle authorization code callback from identity provider

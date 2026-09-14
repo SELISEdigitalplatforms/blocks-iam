@@ -40,6 +40,12 @@ namespace Authentication.DomainService.Services
         Task<OidcClientRegistration> GetOIDCCredentialByIdAsync(string id);
         Task DeleteOidcClientAsync(DeleteOIDCClientRequest request);
         Task<BiometricCredential> AuthenticateBiometricCredentialAsync(string biometricId, string biometricKey);
+        /// <remarks>
+        /// Deliberately unscoped: the client_credentials grant reaches this with a client id and
+        /// secret and no caller context at all, so an organization clause here would break token
+        /// issuance for every credential outside the default organization. Callers that act on
+        /// behalf of an administrator must check <c>OrganizationAccessScope.Allows</c> themselves.
+        /// </remarks>
         Task<ClientCredential> GetClientCredentialByIdAsync(string clientId);
         Task<UserCode> GetUserCodeAsync(string code);
         Task<BlocksClientConfig> GetBlocksClientAsync(string clientId);
@@ -47,7 +53,7 @@ namespace Authentication.DomainService.Services
         Task<List<GetUserCodesByUserIdResponse>> GetUserCodesByUserIdAsync(string userId);
         Task<BaseResponse> SaveClientCredentialAsync(ClientCredential clientCredential);
         Task DeleteClientCredentialAsync(DeleteClientCredentialRequest request);
-        Task<List<ClientCredential>> GetClientCredentialsAsync();
+        Task<List<ClientCredential>> GetClientCredentialsAsync(string? organizationId);
         // Impersonation session methods
         Task<bool> InsertImpersonationSessionAsync(ImpersonationSession session);
         Task<ImpersonationSession?> GetImpersonationSessionByIdAsync(string sessionId);

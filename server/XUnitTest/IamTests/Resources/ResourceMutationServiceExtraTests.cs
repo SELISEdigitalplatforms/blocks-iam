@@ -13,6 +13,7 @@ using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Iam.DomainService.Users;
 using Moq;
 
 namespace XUnitTest.IamTests.Resources
@@ -62,12 +63,12 @@ namespace XUnitTest.IamTests.Resources
         private ResourceMutationService Create() =>
             new(NullLogger<ResourceMutationService>.Instance, _repo.Object, _iam.Object,
                 _permValidator.Object, _updatePermValidator.Object, _roleValidator.Object,
-                _propagator.Object, _activity.Object);
+                _propagator.Object, _activity.Object, Mock.Of<IUserRepository>());
 
         private ResourceMutationService Create(ILogger<ResourceMutationService> logger) =>
             new(logger, _repo.Object, _iam.Object,
                 _permValidator.Object, _updatePermValidator.Object, _roleValidator.Object,
-                _propagator.Object, _activity.Object);
+                _propagator.Object, _activity.Object, Mock.Of<IUserRepository>());
 
         private static Mock<ILogger<ResourceMutationService>> WarningCapture(List<string> sink)
         {

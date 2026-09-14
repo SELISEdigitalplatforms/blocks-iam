@@ -298,6 +298,26 @@ namespace Authentication.DomainService.Oidc.Repositories
             return (int)result.ModifiedCount;
         }
 
+        public async Task<int> ReassignSessionAsync(string fromSessionId, string toSessionId)
+        {
+            if (string.IsNullOrWhiteSpace(fromSessionId)
+                || string.IsNullOrWhiteSpace(toSessionId)
+                || string.Equals(fromSessionId, toSessionId, StringComparison.Ordinal))
+            {
+                return 0;
+            }
+
+            var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+            var filter = Builders<RefreshTokenModel>.Filter.And(
+                Builders<RefreshTokenModel>.Filter.Eq(t => t.SessionId, fromSessionId),
+                Builders<RefreshTokenModel>.Filter.Eq(t => t.IsRevoked, false)
+            );
+            var update = Builders<RefreshTokenModel>.Update.Set(t => t.SessionId, toSessionId);
+
+            var result = await collection.UpdateManyAsync(filter, update);
+            return (int)result.ModifiedCount;
+        }
+
         public async Task<bool> DeleteAsync(string tokenId)
         {
             var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");

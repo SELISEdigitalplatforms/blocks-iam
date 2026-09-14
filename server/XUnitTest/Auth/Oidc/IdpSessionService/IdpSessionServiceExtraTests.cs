@@ -1,5 +1,7 @@
+using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using System.Text.Json;
 using Blocks.Genesis;
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
@@ -29,6 +31,7 @@ namespace XUnitTest.Auth.Oidc.IdpSessionService
                 _refreshRepo.Object,
                 _cache.Object,
                 _activity.Object,
+                Mock.Of<ITenants>(),
                 NullLogger<Authentication.DomainService.Oidc.Services.IdpSessionService>.Instance);
 
         private static IdpSessionModel ActiveSession(string sessionId = "sess-1", params IdpSessionAccount[] accounts)
@@ -334,6 +337,71 @@ namespace XUnitTest.Auth.Oidc.IdpSessionService
             newId.Should().NotBe("sess-old");
             _sessionRepo.Verify(r => r.CreateAsync(It.Is<IdpSessionModel>(s => s.Accounts == session.Accounts)), Times.Once);
             _sessionRepo.Verify(r => r.DeleteAsync("sess-old"), Times.Once);
+        }
+
+        /// <summary>
+        /// Refresh tokens name their IdP session by id. Rotation must carry them over, in MongoDB
+        /// and in the cache, or a token-driven logout revokes the dead pre-rotation row only.
+        /// </summary>
+        [Fact]
+        public async Task RotateSessionAsync_RepointsRefreshTokensAtRotatedSession()
+        {
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-old")).ReturnsAsync(ActiveSession("sess-old"));
+            _sessionRepo.Setup(r => r.CreateAsync(It.IsAny<IdpSessionModel>())).ReturnsAsync("ignored");
+            _sessionRepo.Setup(r => r.DeleteAsync("sess-old")).ReturnsAsync(true);
+            _refreshRepo.Setup(r => r.GetActiveTokensBySessionIdAsync("sess-old"))
+                .ReturnsAsync((IReadOnlyList<RefreshTokenModel>)new List<RefreshTokenModel> { new() { TokenId = "tok-1", SessionId = "sess-old" } });
+            _refreshRepo.Setup(r => r.ReassignSessionAsync("sess-old", It.IsAny<string>())).ReturnsAsync(1);
+            _cache.Setup(c => c.GetStringValueAsync("tok-1"))
+                .ReturnsAsync(JsonSerializer.Serialize(new RefreshTokenCache { RefreshToken = "tok-1", SessionId = "sess-old", ExpiresUtc = DateTime.UtcNow.AddHours(1) }));
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+
+            var newId = await Create().RotateSessionAsync("sess-old", "login_success");
+
+            newId.Should().NotBeNullOrEmpty();
+            _refreshRepo.Verify(r => r.ReassignSessionAsync("sess-old", newId!), Times.Once);
+            _cache.Verify(c => c.AddStringValueAsync("tok-1", It.Is<string>(json => json.Contains(newId!)), It.IsAny<long>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task RotateSessionAsync_CachedTokenTtl_IsCappedByAbsoluteExpiry()
+        {
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-old")).ReturnsAsync(ActiveSession("sess-old"));
+            _sessionRepo.Setup(r => r.CreateAsync(It.IsAny<IdpSessionModel>())).ReturnsAsync("ignored");
+            _sessionRepo.Setup(r => r.DeleteAsync("sess-old")).ReturnsAsync(true);
+            _refreshRepo.Setup(r => r.GetActiveTokensBySessionIdAsync("sess-old"))
+                .ReturnsAsync((IReadOnlyList<RefreshTokenModel>)new List<RefreshTokenModel> { new() { TokenId = "tok-1", SessionId = "sess-old" } });
+            _cache.Setup(c => c.GetStringValueAsync("tok-1"))
+                .ReturnsAsync(JsonSerializer.Serialize(new RefreshTokenCache
+                {
+                    RefreshToken = "tok-1",
+                    SessionId = "sess-old",
+                    ExpiresUtc = DateTime.UtcNow.AddHours(5),
+                    AbsoluteExpiresUtc = DateTime.UtcNow.AddMinutes(10)
+                }));
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+
+            await Create().RotateSessionAsync("sess-old", "login_success");
+
+            _cache.Verify(c => c.AddStringValueAsync("tok-1", It.IsAny<string>(), It.Is<long>(ttl => ttl > 0 && ttl <= 600)), Times.Once);
+        }
+
+        [Fact]
+        public async Task RotateSessionAsync_CachedTokenWithoutKnownLifetime_IsEvictedNotRewritten()
+        {
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-old")).ReturnsAsync(ActiveSession("sess-old"));
+            _sessionRepo.Setup(r => r.CreateAsync(It.IsAny<IdpSessionModel>())).ReturnsAsync("ignored");
+            _sessionRepo.Setup(r => r.DeleteAsync("sess-old")).ReturnsAsync(true);
+            _refreshRepo.Setup(r => r.GetActiveTokensBySessionIdAsync("sess-old"))
+                .ReturnsAsync((IReadOnlyList<RefreshTokenModel>)new List<RefreshTokenModel> { new() { TokenId = "tok-1", SessionId = "sess-old" } });
+            _cache.Setup(c => c.GetStringValueAsync("tok-1"))
+                .ReturnsAsync(JsonSerializer.Serialize(new RefreshTokenCache { RefreshToken = "tok-1", SessionId = "sess-old" }));
+            _cache.Setup(c => c.RemoveKeyAsync("tok-1")).ReturnsAsync(true);
+
+            await Create().RotateSessionAsync("sess-old", "login_success");
+
+            _cache.Verify(c => c.RemoveKeyAsync("tok-1"), Times.Once);
+            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
         }
 
         // ---------- RevokeSessionAsync ----------

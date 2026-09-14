@@ -26,10 +26,24 @@ namespace XUnitTest.ApiTests
         public async Task InitiateAuthenticationFlow_DelegatesAndReturnsResult()
         {
             var sentinel = new OkObjectResult("initiated");
-            _idpService.Setup(s => s.StartAuthenticationFlowAsync("client", "https://cb", "fwd"))
+            _idpService.Setup(s => s.StartAuthenticationFlowAsync(
+                    "client", "https://cb", "fwd", null, It.IsAny<HttpRequest>()))
                 .ReturnsAsync(sentinel);
 
-            var result = await CreateController().InitiateAuthenticationFlow("client", "https://cb", "fwd");
+            var result = await CreateController().InitiateAuthenticationFlow("client", "https://cb", "fwd", null);
+
+            result.Should().BeSameAs(sentinel);
+        }
+
+        [Fact]
+        public async Task InitiateAuthenticationFlow_PassesSignupFlowThrough()
+        {
+            var sentinel = new OkObjectResult("signup");
+            _idpService.Setup(s => s.StartAuthenticationFlowAsync(
+                    "client", "https://cb", null, "signup", It.IsAny<HttpRequest>()))
+                .ReturnsAsync(sentinel);
+
+            var result = await CreateController().InitiateAuthenticationFlow("client", "https://cb", null, "signup");
 
             result.Should().BeSameAs(sentinel);
         }

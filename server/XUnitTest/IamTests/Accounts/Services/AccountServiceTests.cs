@@ -1153,42 +1153,85 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
-        public async Task Validate_CodeExistsInCache_KeyMapUserIdPresent_ReturnsIsSuccessTrue_WithUserId()
+        public async Task Validate_LiveCodeForInactiveAccount_ReturnsValid_WithUserIdAndName()
         {
             var service = CreateService();
-            _cacheClientMock.Setup(c => c.KeyExistsAsync("xyz")).ReturnsAsync(true);
             _repositoryMock.Setup(r => r.GetUserIdFromKeyMapByKeyAsync("xyz")).ReturnsAsync("u-99");
+            _repositoryMock.Setup(r => r.GetUserByIdAsync("u-99"))
+                .ReturnsAsync(TestDataBuilder.CreateUser(itemId: "u-99", active: false));
+            _cacheClientMock.Setup(c => c.KeyExistsAsync("xyz")).ReturnsAsync(true);
 
             var result = await service.ValidateAccountActivationCodeAsync(new ValidateActivationCodeRequest { ActivationCode = "xyz" });
 
+            result.Status.Should().Be(ActivationCodeStatus.Valid);
             result.IsSuccess.Should().BeTrue();
+            result.UserId.Should().Be("u-99");
+            result.FirstName.Should().Be("Jane");
+            result.Errors.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task Validate_UnissuedCode_ReturnsInvalid()
+        {
+            var service = CreateService();
+            _repositoryMock.Setup(r => r.GetUserIdFromKeyMapByKeyAsync("xyz")).ReturnsAsync(string.Empty);
+
+            var result = await service.ValidateAccountActivationCodeAsync(new ValidateActivationCodeRequest { ActivationCode = "xyz" });
+
+            result.Status.Should().Be(ActivationCodeStatus.Invalid);
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("ActivationCode");
+        }
+
+        /// <summary>
+        /// The link was followed before the user got to it -- an email scanner, or a second tab.
+        /// The account is active and the code is spent, which is a finished job rather than a
+        /// broken link, and the two used to be indistinguishable.
+        /// </summary>
+        [Fact]
+        public async Task Validate_SpentCodeForActiveAccount_ReturnsAlreadyActivated()
+        {
+            var service = CreateService();
+            _repositoryMock.Setup(r => r.GetUserIdFromKeyMapByKeyAsync("xyz")).ReturnsAsync("u-99");
+            _repositoryMock.Setup(r => r.GetUserByIdAsync("u-99"))
+                .ReturnsAsync(TestDataBuilder.CreateUser(itemId: "u-99", active: true));
+            _cacheClientMock.Setup(c => c.KeyExistsAsync("xyz")).ReturnsAsync(false);
+
+            var result = await service.ValidateAccountActivationCodeAsync(new ValidateActivationCodeRequest { ActivationCode = "xyz" });
+
+            result.Status.Should().Be(ActivationCodeStatus.AlreadyActivated);
+            result.IsSuccess.Should().BeFalse();
+            result.UserId.Should().Be("u-99");
+        }
+
+        [Fact]
+        public async Task Validate_LapsedCodeForInactiveAccount_ReturnsExpired_WithUserIdForResend()
+        {
+            var service = CreateService();
+            _repositoryMock.Setup(r => r.GetUserIdFromKeyMapByKeyAsync("xyz")).ReturnsAsync("u-99");
+            _repositoryMock.Setup(r => r.GetUserByIdAsync("u-99"))
+                .ReturnsAsync(TestDataBuilder.CreateUser(itemId: "u-99", active: false));
+            _cacheClientMock.Setup(c => c.KeyExistsAsync("xyz")).ReturnsAsync(false);
+
+            var result = await service.ValidateAccountActivationCodeAsync(new ValidateActivationCodeRequest { ActivationCode = "xyz" });
+
+            result.Status.Should().Be(ActivationCodeStatus.Expired);
+            result.IsSuccess.Should().BeFalse();
             result.UserId.Should().Be("u-99");
             result.Errors.Should().BeNull();
         }
 
         [Fact]
-        public async Task Validate_CodeExistsInCache_KeyMapUserIdEmpty_ReturnsInvalidActivationCode()
+        public async Task Validate_KeyMapRowWithoutAnAccount_ReturnsInvalid()
         {
             var service = CreateService();
-            _cacheClientMock.Setup(c => c.KeyExistsAsync("xyz")).ReturnsAsync(true);
-            _repositoryMock.Setup(r => r.GetUserIdFromKeyMapByKeyAsync("xyz")).ReturnsAsync(string.Empty);
+            _repositoryMock.Setup(r => r.GetUserIdFromKeyMapByKeyAsync("xyz")).ReturnsAsync("u-gone");
+            _repositoryMock.Setup(r => r.GetUserByIdAsync("u-gone")).ReturnsAsync((User)null!);
 
             var result = await service.ValidateAccountActivationCodeAsync(new ValidateActivationCodeRequest { ActivationCode = "xyz" });
 
+            result.Status.Should().Be(ActivationCodeStatus.Invalid);
             result.IsSuccess.Should().BeFalse();
-            result.Errors.Should().ContainKey("ActivationCode");
-        }
-
-        [Fact]
-        public async Task Validate_CodeNotInCache_ReturnsIsSuccessFalse_WithoutErrors()
-        {
-            var service = CreateService();
-            _cacheClientMock.Setup(c => c.KeyExistsAsync("xyz")).ReturnsAsync(false);
-
-            var result = await service.ValidateAccountActivationCodeAsync(new ValidateActivationCodeRequest { ActivationCode = "xyz" });
-
-            result.IsSuccess.Should().BeFalse();
-            result.Errors.Should().BeNull();
         }
 
         [Fact]

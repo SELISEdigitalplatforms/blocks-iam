@@ -35,15 +35,17 @@ namespace Iam.DomainService.Users
                 .MustAsync(CheckBlackListPassword).WithMessage("This password can not be used.")
                 .When(u => !string.IsNullOrWhiteSpace(u.Password));
 
+            // No uniqueness rule here on purpose. An email that already has an account is not an
+            // error: UserManagementMutationService grants the requested organization to that
+            // account instead of writing a second one. A validator can only reject, so the
+            // decision has to live where the merge can happen.
             RuleFor(u => u.Email)
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty()
                 .NotNull()
                 .WithMessage("Email require")
                 .Must(BeAValidEmail)
-                .WithMessage("Email invalid")
-                .MustAsync(BeAnUniqueEmail)
-                .WithMessage("Email already in use");
+                .WithMessage("Email invalid");
             RuleFor(u => u.PhoneNumber)
                 .Must(BeStartedWithPlusCharacter)
                 .WithMessage("Phone number must start with a plus (+) character. E.g: +88017********")
@@ -124,13 +126,6 @@ namespace Iam.DomainService.Users
             var emailValid = Regex.IsMatch(email, emailValidatorExpression, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(500));
 
             return emailValid;
-        }
-
-        private async Task<bool> BeAnUniqueEmail(CreateUserRequest model, string email, CancellationToken cancellationToken)
-        {
-            var organizationId = ResolveOrganizationId(model);
-            var user = await _userRepository.GetUserByUserNameOrgIdAsync(email.Trim().ToLowerInvariant(), organizationId);
-            return user == null;
         }
 
         private static string ResolveOrganizationId(CreateUserRequest model)

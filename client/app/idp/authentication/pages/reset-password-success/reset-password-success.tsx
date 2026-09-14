@@ -4,10 +4,30 @@ import { SuccessConfirmationCardHeader } from "@blocks-idp/authentication/compon
 import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/success-confirmation-icon"
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link"
 import { HelpCircle, LogIn } from "lucide-react"
+import { useLocation } from "react-router"
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config"
+import { OidcThemedConfirmation } from "../oidc/oidc-themed-confirmation"
 
 const SUPPORT_URL = "https://docs.seliseblocks.com/"
 
 export const ResetPasswordSuccess = () => {
+  const isOidc = useLocation().pathname.startsWith("/oidc")
+  const { data: oidcUiConfig } = useOidcUiConfig()
+
+  if (isOidc && oidcUiConfig?.template) {
+    const template = oidcUiConfig.template
+    const copy = template.pages.resetPassword
+    return (
+      <OidcThemedConfirmation
+        template={template}
+        title={copy.successTitle}
+        subtitle={copy.successSubtitle}
+        actionTitle={copy.readyTitle}
+        actionSubtitle={copy.readySubtitle}
+        action={<LoginReturnLink className="oidc-sci-fi-btn px-5 py-2.5 no-underline">{copy.loginButton}</LoginReturnLink>}
+      />
+    )
+  }
   return (
     <div className="min-h-dvh overflow-x-hidden bg-surface-app">
       <main className="flex min-h-dvh w-full items-center justify-center px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-6 sm:py-8 md:py-10">

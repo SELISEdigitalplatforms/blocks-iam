@@ -138,8 +138,53 @@ namespace XUnitTest.Auth.Shared
             });
 
             result.IsSuccess.Should().BeTrue();
-            _repo.Verify(r => r.UpdateIdentityProviderAsync(It.Is<IdentityProvider>(p => p.Provider == "my-portal-app")), Times.Once);
+            // ProviderType is asserted here because this branch once wrote "blocks" while the
+            // create branch wrote "blocks-oidc" — the value the Identity Provider gallery filters
+            // on — so every re-save of an already-registered client silently hid it from the UI.
+            _repo.Verify(r => r.UpdateIdentityProviderAsync(It.Is<IdentityProvider>(p =>
+                p.Provider == "my-portal-app" && p.ProviderType == "blocks-oidc")), Times.Once);
             _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_RegisterAsProvider_CreateAndUpdateBranchesAgreeOnProviderType()
+        {
+            static SaveOIDCClientRequest Req() => new()
+            {
+                RedirectUris = new() { "https://app/cb" },
+                AllowedScopes = new() { "openid" },
+                ClientType = "confidential",
+                ClientDisplayName = "My Portal App",
+                RegisterAsIdentityProvider = true
+            };
+
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+
+            // First save: no linked provider yet, so the create branch runs.
+            IdentityProvider? created = null;
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+            _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()))
+                .Callback<IdentityProvider>(p => created = p)
+                .ReturnsAsync(Idp());
+            (await Create().SaveOIDCClientAsync(Req())).IsSuccess.Should().BeTrue();
+
+            // Second save: a linked provider exists, so the update branch runs.
+            IdentityProvider? updated = null;
+            var existing = Idp(id: "idp-existing", clientId: "stale-cid");
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>()))
+                .Callback<IdentityProvider>(p => updated = p)
+                .ReturnsAsync(existing);
+            (await Create().SaveOIDCClientAsync(Req())).IsSuccess.Should().BeTrue();
+
+            // The invariant the original bug violated: registering and re-saving must classify a
+            // client identically. Asserting the two branches against each other catches a drift
+            // that per-branch assertions can miss when only one of them is updated.
+            created.Should().NotBeNull();
+            updated.Should().NotBeNull();
+            updated!.ProviderType.Should().Be(created!.ProviderType);
+            created.ProviderType.Should().Be("blocks-oidc");
         }
 
         [Fact]
@@ -182,6 +227,67 @@ namespace XUnitTest.Auth.Shared
 
             result.IsSuccess.Should().BeTrue();
             _repo.Verify(r => r.DeleteIdentityProviderAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        // ---------- RotateOidcClientSecretAsync provider secret sync ----------
+
+        private OidcClientRegistration RotatableClient(bool registerAsIdentityProvider) => new()
+        {
+            ItemId = "item-1",
+            ClientId = "cid",
+            ClientSecret = "old-secret",
+            IsDeviceFlowClient = false,
+            RegisterAsIdentityProvider = registerAsIdentityProvider
+        };
+
+        [Fact]
+        public async Task RotateOidcClientSecret_RegisteredAsProvider_SyncsNewSecretToLinkedProvider()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("item-1")).ReturnsAsync(RotatableClient(true));
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            var linked = Idp(clientId: "cid");
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(linked);
+            IdentityProvider? synced = null;
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>()))
+                .Callback<IdentityProvider>(p => synced = p)
+                .ReturnsAsync(linked);
+
+            var result = await Create().RotateOidcClientSecretAsync("item-1");
+
+            result.IsSuccess.Should().BeTrue();
+            result.ClientSecret.Should().NotBe("old-secret");
+            // The linked provider stores its own copy of the secret. Rotation used to write only
+            // OidcClientRegistrations, leaving federation presenting the dead secret at the token
+            // endpoint with nothing surfaced to the operator.
+            synced.Should().NotBeNull();
+            synced!.ClientSecret.Should().Be(result.ClientSecret);
+        }
+
+        [Fact]
+        public async Task RotateOidcClientSecret_NotRegisteredAsProvider_LeavesProvidersUntouched()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("item-1")).ReturnsAsync(RotatableClient(false));
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+
+            var result = await Create().RotateOidcClientSecretAsync("item-1");
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RotateOidcClientSecret_NoLinkedProvider_StillRotatesWithoutUpdating()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("item-1")).ReturnsAsync(RotatableClient(true));
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync((IdentityProvider)null!);
+
+            var result = await Create().RotateOidcClientSecretAsync("item-1");
+
+            result.IsSuccess.Should().BeTrue();
+            result.ClientSecret.Should().NotBe("old-secret");
+            _repo.Verify(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
         }
     }
 }
