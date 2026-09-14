@@ -94,6 +94,10 @@ export default defineConfig(({ mode }) => {
         // order, so a bare "@seliseblocks/genesis-os" key placed above these would
         // rewrite ".../genesis-os/providers" to ".../blocks-kit.tsx/providers" and
         // the subpath entries would never match.
+        "@seliseblocks/genesis-os/observability": path.resolve(
+          __dirname,
+          "./app/test-utils/stubs/observability.tsx",
+        ),
         "@seliseblocks/genesis-os/lib": path.resolve(
           __dirname,
           "./app/test-utils/stubs/blocks-kit.tsx",

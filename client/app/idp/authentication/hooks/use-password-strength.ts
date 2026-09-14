@@ -1,40 +1,19 @@
-import { useState, useEffect, useCallback } from "react";
-import {
-  getPasswordRequirements,
-  createInitialChecks,
-  validatePasswordChecks,
-  calculateStrength,
-  areAllRequirementsMet,
-  getStrengthColor,
-} from "../utils/password-strength.util";
-import type { PasswordChecks } from "../utils/password-strength.util";
+import type { CompiledPasswordPolicy } from "../utils/password-policy.util";
+import { getStrengthColor } from "../utils/password-strength.util";
+import type { PasswordChecks, PasswordRequirement } from "../utils/password-strength.util";
 
 export type { PasswordChecks, PasswordRequirement } from "../utils/password-strength.util";
-export { getPasswordRequirements } from "../utils/password-strength.util";
-
-export const usePasswordStrength = (password: string) => {
-  const [strength, setStrength] = useState(0);
-  const requirements = getPasswordRequirements();
-  const [checks, setChecks] = useState<PasswordChecks>(createInitialChecks);
-
-  const validatePassword = useCallback(() => {
-    const newChecks = validatePasswordChecks(password);
-    setChecks(newChecks);
-
-    const strengthScore = calculateStrength(newChecks);
-    setStrength(strengthScore);
-
-    return areAllRequirementsMet(newChecks);
-  }, [password]);
-
-  useEffect(() => {
-    validatePassword();
-  }, [validatePassword]);
+export const usePasswordStrength = (password: string, policy: CompiledPasswordPolicy | null) => {
+  const checks: PasswordChecks = policy ? { policy: policy.test(password) } : {};
+  const requirements: PasswordRequirement[] = policy
+    ? [{ key: "policy", label: policy.message }]
+    : [];
+  const strength = policy ? (checks.policy ? 100 : 0) : 0;
 
   return {
     strength,
     checks,
-    allRequirementsMet: areAllRequirementsMet(checks, password),
+    allRequirementsMet: policy ? checks.policy : password.length > 0,
     getStrengthColor: () => getStrengthColor(strength),
     requirements,
   };

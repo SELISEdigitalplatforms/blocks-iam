@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { Check, X } from "lucide-react";
 import { usePasswordStrength } from "@blocks-idp/authentication/hooks/use-password-strength";
+import type { CompiledPasswordPolicy } from "@blocks-idp/authentication/utils/password-policy.util";
 
 interface PasswordStrengthCheckerProps {
   password: string;
@@ -8,6 +9,7 @@ interface PasswordStrengthCheckerProps {
   onRequirementsMet: (met: boolean) => void;
   excludePassword?: string;
   excludePasswordLabel?: string;
+  policy: CompiledPasswordPolicy | null;
 }
 
 export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = ({
@@ -16,27 +18,20 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
   onRequirementsMet,
   excludePassword,
   excludePasswordLabel,
+  policy,
 }) => {
-  const { checks, requirements, allRequirementsMet } = usePasswordStrength(password);
-  const [passwordsMatch, setPasswordsMatch] = useState(false);
-  const [isDifferentFromExcluded, setIsDifferentFromExcluded] = useState(true);
+  const { checks, requirements, allRequirementsMet } = usePasswordStrength(password, policy);
+  const passwordsMatch = password === confirmPassword && password !== "";
+  const isDifferentFromExcluded =
+    !excludePassword || password === "" || password !== excludePassword;
 
   useEffect(() => {
-    setPasswordsMatch(password === confirmPassword && password !== "");
-
-    if (excludePassword && password !== "") {
-      setIsDifferentFromExcluded(password !== excludePassword);
-    } else {
-      setIsDifferentFromExcluded(true);
-    }
-
     const allMet =
       allRequirementsMet && passwordsMatch && isDifferentFromExcluded;
     onRequirementsMet(allMet);
   }, [
     password,
     confirmPassword,
-    checks,
     allRequirementsMet,
     passwordsMatch,
     excludePassword,

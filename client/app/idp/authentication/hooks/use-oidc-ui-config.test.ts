@@ -46,6 +46,7 @@ describe("useOidcUiConfig", () => {
       template: DEFAULT_OIDC_UI_TEMPLATE,
     });
     expect(result.current.captchaEnabled).toBe(true);
+    expect(result.current.passwordPolicy).toBeNull();
   });
 
   it("should fall back to an empty tenant (no query, no header) when nothing resolves", async () => {
@@ -85,6 +86,34 @@ describe("useOidcUiConfig", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.captchaEnabled).toBe(false);
     expect(result.current.data.template).toEqual(DEFAULT_OIDC_UI_TEMPLATE);
+    expect(result.current.passwordPolicy).toBeNull();
+  });
+
+  it("compiles the public password policy once for callers", async () => {
+    vi.mocked(http.get).mockResolvedValue({
+      captcha: null,
+      template: null,
+      passwordPolicy: { regex: "^abc$", message: "Use abc", ignoreCase: true },
+    });
+    const { result } = renderHook(() => useOidcUiConfig("tenant-x"), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.passwordPolicy?.message).toBe("Use abc");
+    expect(result.current.passwordPolicy?.test("ABC")).toBe(true);
+  });
+
+  it("fails open when the public password policy cannot be compiled", async () => {
+    vi.mocked(http.get).mockResolvedValue({
+      captcha: null,
+      template: null,
+      passwordPolicy: { regex: "^(?<-a>x)$", message: "Ignored", ignoreCase: true },
+    });
+    const { result } = renderHook(() => useOidcUiConfig("tenant-x"), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.passwordPolicy).toBeNull();
   });
 
   it("provides the frontend fallback template while the request is loading", () => {
@@ -113,6 +142,6 @@ describe("useOidcUiConfig", () => {
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data.template).toEqual(customTemplate);
+    expect(result.current.data.template).toMatchObject(customTemplate);
   });
 });

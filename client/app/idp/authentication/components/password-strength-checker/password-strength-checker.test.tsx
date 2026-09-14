@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   checks: {} as Record<string, boolean>,
   requirements: [] as { key: string; label: string }[],
 }));
+const policy = { test: () => true, message: "Tenant policy" };
 
 vi.mock("@blocks-idp/authentication/hooks/use-password-strength", () => ({
   usePasswordStrength: () => ({
@@ -27,7 +28,7 @@ beforeEach(() => {
 describe("PasswordStrengthChecker", () => {
   it("renders every requirement label", () => {
     render(
-      <PasswordStrengthChecker password="abc" confirmPassword="abc" onRequirementsMet={vi.fn()} />,
+      <PasswordStrengthChecker password="abc" confirmPassword="abc" policy={policy} onRequirementsMet={vi.fn()} />,
     );
     expect(screen.getByText("At least 8 characters")).toBeInTheDocument();
     expect(screen.getByText("Contains a number")).toBeInTheDocument();
@@ -37,7 +38,7 @@ describe("PasswordStrengthChecker", () => {
   it("reports requirements met when all checks pass and passwords match", () => {
     const onMet = vi.fn();
     render(
-      <PasswordStrengthChecker password="Secret1" confirmPassword="Secret1" onRequirementsMet={onMet} />,
+      <PasswordStrengthChecker password="Secret1" confirmPassword="Secret1" policy={policy} onRequirementsMet={onMet} />,
     );
     expect(onMet).toHaveBeenLastCalledWith(true);
   });
@@ -45,7 +46,7 @@ describe("PasswordStrengthChecker", () => {
   it("reports not met when passwords do not match", () => {
     const onMet = vi.fn();
     render(
-      <PasswordStrengthChecker password="Secret1" confirmPassword="other" onRequirementsMet={onMet} />,
+      <PasswordStrengthChecker password="Secret1" confirmPassword="other" policy={policy} onRequirementsMet={onMet} />,
     );
     expect(onMet).toHaveBeenLastCalledWith(false);
   });
@@ -56,6 +57,7 @@ describe("PasswordStrengthChecker", () => {
       <PasswordStrengthChecker
         password="Secret1"
         confirmPassword="Secret1"
+        policy={policy}
         onRequirementsMet={onMet}
         excludePassword="Secret1"
         excludePasswordLabel="Must differ from current"
@@ -68,8 +70,25 @@ describe("PasswordStrengthChecker", () => {
   it("renders a low-strength bar when few checks pass", () => {
     h.checks = { length: false, number: false };
     const { container } = render(
-      <PasswordStrengthChecker password="" confirmPassword="" onRequirementsMet={vi.fn()} />,
+      <PasswordStrengthChecker password="" confirmPassword="" policy={null} onRequirementsMet={vi.fn()} />,
     );
     expect(container.querySelector(".bg-red-500")).not.toBeNull();
+  });
+
+  it("renders only match and exclusion rows when no policy is active", () => {
+    h.requirements = [];
+    h.checks = {};
+    render(
+      <PasswordStrengthChecker
+        password="new"
+        confirmPassword="new"
+        excludePassword="old"
+        policy={null}
+        onRequirementsMet={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Passwords match")).toBeInTheDocument();
+    expect(screen.getByText("New password shouldn't match current password")).toBeInTheDocument();
+    expect(screen.queryByText("At least 8 characters")).not.toBeInTheDocument();
   });
 });

@@ -11,6 +11,9 @@ const h = vi.hoisted(() => ({
   oidcUiConfig: undefined as unknown,
   captchaCode: "",
   captchaEnabled: false,
+  passwordPolicy: null as { test: (password: string) => boolean; message: string } | null,
+  configLoading: false,
+  requirementsPass: false,
 }));
 
 vi.mock("react-router", () => ({ useNavigate: () => h.navigateMock }));
@@ -29,6 +32,8 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
   useOidcUiConfig: vi.fn(() => ({
     data: h.oidcUiConfig,
     captchaEnabled: h.captchaEnabled,
+    passwordPolicy: h.passwordPolicy,
+    isLoading: h.configLoading,
   })),
 }));
 vi.mock("../../components/password-strength-checker/password-strength-checker", () => ({
@@ -37,10 +42,8 @@ vi.mock("../../components/password-strength-checker/password-strength-checker", 
 vi.mock("../oidc/oidc-auth-shell", () => ({ useOidcAuthAnimation: vi.fn(() => h.animCtx) }));
 
 import { ActivationForm } from "./activation-form";
-import {
-  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
-  OIDC_UI_TEMPLATE_FIXTURE,
-} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 const passwordInputs = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('input[type="password"]')) as HTMLInputElement[];
@@ -50,7 +53,10 @@ beforeEach(() => {
   h.animCtx = null;
   h.captchaCode = "";
   h.captchaEnabled = false;
-  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
+  h.passwordPolicy = null;
+  h.configLoading = false;
+  h.requirementsPass = false;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE };
   h.mutateAsync.mockResolvedValue({ isSuccess: true });
   h.revalidate.mockResolvedValue({ isSuccess: false, status: "Expired" });
 });
@@ -76,6 +82,27 @@ describe("ActivationForm", () => {
     expect(screen.getByText("Password")).toBeInTheDocument();
     expect(screen.getByText("Confirm Password")).toBeInTheDocument();
     expect(passwordInputs(container)).toHaveLength(2);
+    passwordInputs(container).forEach((input) => expect(input).toHaveAttribute("maxlength", "256"));
+    expect(screen.getByRole("button", { name: /activate/i })).toBeDisabled();
+  });
+
+  it("passes the same compiled tenant policy to the activation checker", () => {
+    h.passwordPolicy = { test: () => true, message: "Tenant rule" };
+    const setPanelIdleSlot = vi.fn();
+    h.animCtx = { setPanelIdleSlot };
+    render(<ActivationForm code="activation-code" tenantId="tenant-1" />);
+    const checker = setPanelIdleSlot.mock.calls.find(([value]) => value)?.[0];
+    expect(checker.props.policy).toBe(h.passwordPolicy);
+  });
+
+  it("keeps activation disabled while policy configuration is loading", async () => {
+    h.configLoading = true;
+    h.requirementsPass = true;
+    h.animCtx = {
+      setPanelIdleSlot: vi.fn((checker) => checker?.props.onRequirementsMet(true)),
+    };
+    const { container } = render(<ActivationForm code="activation-code" tenantId="tenant-1" />);
+    fillValidPasswords(container);
     expect(screen.getByRole("button", { name: /activate/i })).toBeDisabled();
   });
 

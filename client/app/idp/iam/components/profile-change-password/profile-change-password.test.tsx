@@ -6,10 +6,14 @@ const h = vi.hoisted(() => ({
   isPending: false,
   showError: vi.fn(),
   showSuccess: vi.fn(),
+  configLoading: false,
 }));
 
 vi.mock("@blocks-idp/iam/hooks/use-account", () => ({
   useChangePassword: () => ({ mutateAsync: h.mutateAsync, isPending: h.isPending }),
+}));
+vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
+  useOidcUiConfig: () => ({ passwordPolicy: null, isLoading: h.configLoading }),
 }));
 vi.mock("@/hooks/use-toast", () => ({
   showErrorToast: (a: unknown) => h.showError(a),
@@ -48,6 +52,7 @@ const fillForm = () => {
 beforeEach(() => {
   vi.clearAllMocks();
   h.isPending = false;
+  h.configLoading = false;
 });
 
 describe("ProfileChangePassword", () => {
@@ -55,6 +60,17 @@ describe("ProfileChangePassword", () => {
     openDialog();
     await waitFor(() => expect(screen.getByPlaceholderText("Enter your current password")).toBeInTheDocument());
     expect(screen.getByPlaceholderText("Enter your current password")).toBeInTheDocument();
+  });
+
+  it("caps all password inputs and waits for policy loading", async () => {
+    h.configLoading = true;
+    openDialog();
+    await waitFor(() => expect(screen.getByPlaceholderText("Enter your current password")).toBeInTheDocument());
+    for (const input of screen.getAllByPlaceholderText(/password/i)) {
+      expect(input).toHaveAttribute("maxlength", "256");
+    }
+    fillForm();
+    expect(screen.getByRole("button", { name: "Save Changes" })).toBeDisabled();
   });
 
   it("changes the password and shows a success toast", async () => {
