@@ -62,6 +62,7 @@ public class IdpController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> OidcUiConfig()
     {
+        Response.Headers.CacheControl = "public, max-age=60";
         return await _idpService.GetUiConfigAsync();
     }
 }

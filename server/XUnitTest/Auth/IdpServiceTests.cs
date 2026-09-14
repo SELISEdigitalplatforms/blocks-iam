@@ -99,6 +99,55 @@ namespace XUnitTest.Auth
             _cache.Setup(c => c.GetStringValueAsync($"idp_flow:{state}")).ReturnsAsync(json!);
         }
 
+        [Theory]
+        [InlineData(null, null)]
+        [InlineData("", "ignored")]
+        [InlineData("   ", "ignored")]
+        [InlineData("^(?=.*\\d).{10,64}$", " At least ten characters. ")]
+        [InlineData("^(a+)+$", "legacy")]
+        [InlineData("(?i)abc", "")]
+        [InlineData(" abc ", "   ")]
+        public async Task GetUiConfig_ReportsStoredPolicyVerbatim(string? regex, string? message)
+        {
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordStrengthCheckerRegex = regex!, PasswordStrengthCheckerMessage = message!
+            });
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+            if (string.IsNullOrWhiteSpace(regex)) response.PasswordPolicy.Should().BeNull();
+            else
+            {
+                response.PasswordPolicy!.Regex.Should().Be(regex);
+                response.PasswordPolicy.Message.Should().Be(string.IsNullOrWhiteSpace(message) ? null : message);
+                response.PasswordPolicy.IgnoreCase.Should().BeTrue();
+            }
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("zzz-not-a-tenant")]
+        public async Task GetUiConfig_NoTenantConfigurationReturnsFullShape(string? tenantId)
+        {
+            BlocksContext.SetContext(tenantId == null ? null : BlocksContext.Create(
+                tenantId: tenantId, roles: null, userId: null, impersonated: false,
+                isAuthenticated: false, requestUri: "https://test", organizationId: null,
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: null,
+                userName: null, phoneNumber: null, displayName: null, oauthToken: null,
+                originalTenantId: tenantId, impersonationSessionId: null, applicationDomain: "test"));
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            result.StatusCode.Should().Be(200);
+            var response = (OidcUiConfigResponse)result.Value!;
+            var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            using var document = JsonDocument.Parse(json);
+            document.RootElement.GetProperty("passwordPolicy").ValueKind.Should().Be(JsonValueKind.Null);
+            document.RootElement.GetProperty("captcha").ValueKind.Should().Be(JsonValueKind.Null);
+            document.RootElement.GetProperty("template").ValueKind.Should().Be(JsonValueKind.Null);
+            document.RootElement.GetProperty("collectPasswordOnActivation").GetBoolean().Should().BeTrue();
+        }
+
         // ---------- GetUiConfigAsync ----------
 
         [Fact]
@@ -200,6 +249,7 @@ namespace XUnitTest.Auth
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             var response = ok.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
             response.CollectPasswordOnActivation.Should().BeTrue();
+            response.PasswordPolicy.Should().BeNull();
         }
 
         [Fact]

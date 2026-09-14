@@ -45,6 +45,9 @@ namespace Authentication.DomainService.Entities
         public bool LogoutOnPasswordChange { get; set; } = true;
         public string PasswordStrengthCheckerRegex { get; set; }
 
+        /// <summary>Short plain-text explanation of the password rule. Empty means no message written.</summary>
+        public string PasswordStrengthCheckerMessage { get; set; } = string.Empty;
+
         /// <summary>
         /// Whether the activation page asks the user to create a password before the account
         /// becomes usable. When false, confirming the emailed link is enough to activate and the

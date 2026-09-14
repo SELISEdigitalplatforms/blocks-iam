@@ -5,6 +5,8 @@ namespace Authentication.DomainService.Shared.ResponseModel
     /// <summary>Public configuration consumed by the OIDC user interface.</summary>
     public sealed class OidcUiConfigResponse
     {
+        public OidcUiPasswordPolicyResponse? PasswordPolicy { get; set; }
+
         public OidcUiCaptchaResponse? Captcha { get; set; }
         public OidcUiTemplate? Template { get; set; }
 
@@ -13,6 +15,13 @@ namespace Authentication.DomainService.Shared.ResponseModel
         /// confirmation activate the account on its own.
         /// </summary>
         public bool CollectPasswordOnActivation { get; set; } = true;
+    }
+
+    public sealed class OidcUiPasswordPolicyResponse
+    {
+        public string Regex { get; set; } = string.Empty;
+        public string? Message { get; set; }
+        public bool IgnoreCase { get; set; } = true;
     }
 
     /// <summary>

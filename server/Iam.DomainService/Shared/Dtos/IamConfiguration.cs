@@ -19,6 +19,9 @@ namespace Iam.DomainService.Dtos
         public bool LogoutOnPasswordChange { get; set; } = true;
         public string PasswordStrengthCheckerRegex { get; set; } = string.Empty;
 
+        /// <summary>Short plain-text explanation of the password rule. Empty means no message written.</summary>
+        public string PasswordStrengthCheckerMessage { get; set; } = string.Empty;
+
         /// <summary>
         /// Mirrors IdentityConfiguration.CollectPasswordOnActivation. Both types are views over
         /// the same configuration document, so the flag is kept readable from this side too.

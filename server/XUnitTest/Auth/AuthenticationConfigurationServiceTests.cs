@@ -66,6 +66,76 @@ namespace XUnitTest.Auth
             };
         }
 
+        public static IEnumerable<object[]> InvalidPolicies()
+        {
+            yield return new object[] { new string('a', 513), "", "PasswordStrengthCheckerRegex", "PasswordStrengthCheckerRegex_Too_Long" };
+            yield return new object[] { "[", "", "PasswordStrengthCheckerRegex", "PasswordStrengthCheckerRegex_Invalid_Syntax" };
+            yield return new object[] { "(?i)a", "", "PasswordStrengthCheckerRegex", "PasswordStrengthCheckerRegex_Not_Javascript_Compatible" };
+            yield return new object[] { "^(a+)+$", "", "PasswordStrengthCheckerRegex", "PasswordStrengthCheckerRegex_Too_Slow" };
+            yield return new object[] { "^.{8,64}$", new string('m', 501), "PasswordStrengthCheckerMessage", "PasswordStrengthCheckerMessage_Too_Long" };
+            yield return new object[] { "", new string('m', 501), "PasswordStrengthCheckerMessage", "PasswordStrengthCheckerMessage_Too_Long" };
+            yield return new object[] { "[", new string('m', 501), "PasswordStrengthCheckerRegex", "PasswordStrengthCheckerRegex_Invalid_Syntax" };
+        }
+
+        [Theory]
+        [MemberData(nameof(InvalidPolicies))]
+        public async Task Update_InvalidPolicyPersistsNothing(string regex, string message, string field, string code)
+        {
+            var current = new IdentityConfiguration { IsOidcEnabled = true, AccessTokenValidForNumberMinutes = 42 };
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
+            {
+                PasswordStrengthCheckerRegex = regex, PasswordStrengthCheckerMessage = message,
+                AccessTokenValidForNumberMinutes = 99
+            });
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainSingle().Which.Should().Be(new KeyValuePair<string, string>(field, code));
+            _repo.Verify(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()), Times.Never);
+            current.AccessTokenValidForNumberMinutes.Should().Be(42);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task Update_BlankPolicyKeepsLegacyValues(string? blank)
+        {
+            var current = new IdentityConfiguration
+            {
+                IsOidcEnabled = true, PasswordStrengthCheckerRegex = "^(a+)+$", PasswordStrengthCheckerMessage = "Stored message"
+            };
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
+            {
+                PasswordStrengthCheckerRegex = blank!, PasswordStrengthCheckerMessage = blank!
+            });
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.UpdateAuthenticationConfigurationAsync(It.Is<IdentityConfiguration>(c =>
+                c.PasswordStrengthCheckerRegex == current.PasswordStrengthCheckerRegex &&
+                c.PasswordStrengthCheckerMessage == current.PasswordStrengthCheckerMessage)), Times.Once);
+        }
+
+        [Fact]
+        public async Task Update_PersistsBoundaryPolicyAndAdminReadsMessage()
+        {
+            var regex = new string('a', 512);
+            var message = new string('m', 500);
+            IdentityConfiguration? stored = null;
+            _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
+                .Callback<IdentityConfiguration>(c => stored = c).Returns(Task.CompletedTask);
+            var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
+            {
+                ItemId = "507f1f77bcf86cd799439011", IsOidcEnabled = true,
+                PasswordStrengthCheckerRegex = regex, PasswordStrengthCheckerMessage = message
+            });
+            result.IsSuccess.Should().BeTrue();
+            stored!.PasswordStrengthCheckerRegex.Should().Be(regex);
+            stored.PasswordStrengthCheckerMessage.Should().Be(message);
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(stored);
+            var read = (OkObjectResult)await Create().GetAuthenticationConfigAsync();
+            read.Value!.GetType().GetProperty("PasswordStrengthCheckerMessage")!.GetValue(read.Value).Should().Be(message);
+        }
+
         [Fact]
         public async Task GetAuthenticationConfig_ReturnsOk_WithCertPath()
         {

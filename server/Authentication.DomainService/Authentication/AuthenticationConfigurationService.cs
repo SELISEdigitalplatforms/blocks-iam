@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using Authentication.DomainService.Shared.Services;
 using Authentication.DomainService.Authentication.RequestModel;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
@@ -60,6 +61,7 @@ namespace Authentication.DomainService.Authentication
                 config?.RecoverAccountUrlLifetimeInMinutes,
                 config?.LogoutOnPasswordChange,
                 config?.PasswordStrengthCheckerRegex,
+                PasswordStrengthCheckerMessage = config?.PasswordStrengthCheckerMessage ?? string.Empty,
                 config?.CollectPasswordOnActivation
             });
         }
@@ -149,6 +151,23 @@ namespace Authentication.DomainService.Authentication
                     ? requested
                     : currentValue;
 
+            var regexError = PasswordPolicyRegexValidator.Validate(configuration.PasswordStrengthCheckerRegex);
+            var errorField = nameof(configuration.PasswordStrengthCheckerRegex);
+            if (regexError == null && !string.IsNullOrWhiteSpace(configuration.PasswordStrengthCheckerMessage)
+                && configuration.PasswordStrengthCheckerMessage.Length > 500)
+            {
+                errorField = nameof(configuration.PasswordStrengthCheckerMessage);
+                regexError = "PasswordStrengthCheckerMessage_Too_Long";
+            }
+            if (regexError != null)
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string> { { errorField, regexError } }
+                };
+            }
+
             var authConfiguration = new IdentityConfiguration
             {
                 ItemId = current?.ItemId ?? ObjectId.Parse(configuration.ItemId),
@@ -212,6 +231,10 @@ namespace Authentication.DomainService.Authentication
                 PasswordStrengthCheckerRegex = ResolveString(
                     configuration.PasswordStrengthCheckerRegex,
                     current?.PasswordStrengthCheckerRegex),
+
+                PasswordStrengthCheckerMessage = ResolveString(
+                    configuration.PasswordStrengthCheckerMessage,
+                    current?.PasswordStrengthCheckerMessage ?? string.Empty),
 
                 IsOidcEnabled = isOidcEnabled,
                 UseAccountActionBaseUrlAsDefault = useAccountActionBaseUrlAsDefault,

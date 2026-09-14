@@ -38,6 +38,9 @@ namespace Authentication.DomainService.Authentication.RequestModel
 
         public string PasswordStrengthCheckerRegex { get; set; }
 
+        /// <summary>Short plain-text explanation of the password rule. Empty means no message written.</summary>
+        public string PasswordStrengthCheckerMessage { get; set; } = string.Empty;
+
         public bool? CollectPasswordOnActivation { get; set; }
     }
 }

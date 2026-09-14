@@ -80,6 +80,15 @@ namespace Authentication.DomainService.Authentication
                     Provider = captchaConfiguration.Provider,
                     Generator = captchaConfiguration.CaptchaGenerator
                 },
+                PasswordPolicy = string.IsNullOrWhiteSpace(authenticationConfiguration?.PasswordStrengthCheckerRegex)
+                    ? null
+                    : new OidcUiPasswordPolicyResponse
+                    {
+                        Regex = authenticationConfiguration.PasswordStrengthCheckerRegex,
+                        Message = string.IsNullOrWhiteSpace(authenticationConfiguration.PasswordStrengthCheckerMessage)
+                            ? null : authenticationConfiguration.PasswordStrengthCheckerMessage,
+                        IgnoreCase = true
+                    },
                 Template = savedTemplate
             });
         }
