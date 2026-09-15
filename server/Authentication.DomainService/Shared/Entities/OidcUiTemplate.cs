@@ -11,7 +11,7 @@ namespace Authentication.DomainService.Entities
     [BsonIgnoreExtraElements]
     public sealed class OidcUiTemplate
     {
-        public const int CurrentSchemaVersion = 3;
+        public const int CurrentSchemaVersion = 4;
 
         /// <summary>
         /// Identifies the persisted template value for mutation responses. This is storage
@@ -31,6 +31,12 @@ namespace Authentication.DomainService.Entities
     [BsonIgnoreExtraElements]
     public sealed class OidcUiTemplateBranding
     {
+        public string? LogoUrlLight { get; set; }
+        public string? LogoUrlDark { get; set; }
+
+        // Transitional read-only compatibility for documents written before the
+        // light/dark logo split. New API payloads and writes use LogoUrlLight/LogoUrlDark.
+        [JsonIgnore, BsonIgnoreIfNull]
         public string? LogoUrl { get; set; }
         public string? BrandName { get; set; }
     }
@@ -81,6 +87,7 @@ namespace Authentication.DomainService.Entities
         public string? Border { get; set; }
         public string? BorderStrong { get; set; }
         public string? AccentSoft { get; set; }
+        public string ButtonText { get; set; } = "#ffffff";
     }
 
     [BsonIgnoreExtraElements]

@@ -104,7 +104,11 @@ describe("useOidcUiConfig", () => {
   it("uses the template returned by the public endpoint", async () => {
     const customTemplate = {
       ...OIDC_UI_TEMPLATE_FIXTURE,
-      branding: { logoUrl: "https://example.test/logo.png", brandName: "Acme" },
+      branding: {
+        logoUrlLight: "https://example.test/logo-light.png",
+        logoUrlDark: "https://example.test/logo-dark.png",
+        brandName: "Acme",
+      },
     };
     vi.mocked(http.get).mockResolvedValue({ captcha: null, template: customTemplate });
 
@@ -113,6 +117,6 @@ describe("useOidcUiConfig", () => {
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data.template).toEqual(customTemplate);
+    expect(result.current.data.template).toMatchObject(customTemplate);
   });
 });

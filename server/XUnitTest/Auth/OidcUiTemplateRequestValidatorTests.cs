@@ -20,7 +20,8 @@ namespace XUnitTest.Auth
         public async Task OptionalNonThemeFields_CanAllBeNull()
         {
             var request = OidcUiTemplateTestData.ValidRequest();
-            request.Branding!.LogoUrl = null;
+            request.Branding!.LogoUrlLight = null;
+            request.Branding.LogoUrlDark = null;
             request.Pages!.Mfa!.ResendButton = null;
             request.Pages.AccountSelector!.Subheading = null;
 
@@ -32,10 +33,11 @@ namespace XUnitTest.Auth
         [Theory]
         [InlineData("http://assets.example.com/logo.svg")]
         [InlineData("https://assets.example.com/logo.svg")]
-        public async Task LogoUrl_AcceptsAbsoluteHttpAndHttps(string value)
+        public async Task LogoUrls_AcceptAbsoluteHttpAndHttps(string value)
         {
             var request = OidcUiTemplateTestData.ValidRequest();
-            request.Branding!.LogoUrl = value;
+            request.Branding!.LogoUrlLight = value;
+            request.Branding.LogoUrlDark = value;
 
             (await _validator.ValidateAsync(request)).IsValid.Should().BeTrue();
         }
@@ -45,16 +47,19 @@ namespace XUnitTest.Auth
         [InlineData("logo.svg")]
         [InlineData("ftp://assets.example.com/logo.svg")]
         [InlineData("not a url")]
-        public async Task LogoUrl_RejectsAnythingOtherThanAbsoluteHttpOrHttps(string value)
+        public async Task LogoUrls_RejectAnythingOtherThanAbsoluteHttpOrHttps(string value)
         {
-            var request = OidcUiTemplateTestData.ValidRequest();
-            request.Branding!.LogoUrl = value;
+            foreach (var (path, setValue) in OptionalLogoFields())
+            {
+                var request = OidcUiTemplateTestData.ValidRequest();
+                setValue(request, value);
 
-            var result = await _validator.ValidateAsync(request);
+                var result = await _validator.ValidateAsync(request);
 
-            result.Errors.Should().ContainSingle(e =>
-                e.PropertyName == "Branding.LogoUrl" &&
-                e.ErrorMessage == "must be an absolute http or https URL");
+                result.Errors.Should().ContainSingle(e =>
+                    e.PropertyName == path &&
+                    e.ErrorMessage == "must be an absolute http or https URL");
+            }
         }
 
         [Theory]
@@ -254,7 +259,8 @@ namespace XUnitTest.Auth
         {
             var request = OidcUiTemplateTestData.ValidRequest();
             request.Branding!.BrandName = null;
-            request.Branding.LogoUrl = "relative.svg";
+            request.Branding.LogoUrlDark = "relative.svg";
+            request.Theme!.Light!.ButtonText = "rgba(0,0,0,1)";
             request.Theme!.Dark!.Primary = "blue";
             request.Pages!.Login!.Heading = new string('x', 201);
 
@@ -262,9 +268,16 @@ namespace XUnitTest.Auth
 
             result.Errors.Select(e => e.PropertyName).Should().Contain(new[]
             {
-                "Branding.BrandName", "Branding.LogoUrl", "Theme.Dark.Primary", "Pages.Login.Heading"
+                "Branding.BrandName", "Branding.LogoUrlDark", "Theme.Light.ButtonText",
+                "Theme.Dark.Primary", "Pages.Login.Heading"
             });
         }
+
+        private static IReadOnlyList<(string Path, Action<SaveOidcUiTemplateRequest, string?> SetValue)> OptionalLogoFields() =>
+        [
+            ("Branding.LogoUrlLight", (r, v) => r.Branding!.LogoUrlLight = v),
+            ("Branding.LogoUrlDark", (r, v) => r.Branding!.LogoUrlDark = v)
+        ];
 
         private static IReadOnlyList<(string Path, Action<SaveOidcUiTemplateRequest, string?> SetValue)> RequiredColorFields() =>
         [
@@ -276,6 +289,7 @@ namespace XUnitTest.Auth
             ("Theme.Light.MutedText", (r, v) => r.Theme!.Light!.MutedText = v),
             ("Theme.Light.Success", (r, v) => r.Theme!.Light!.Success = v),
             ("Theme.Light.Danger", (r, v) => r.Theme!.Light!.Danger = v),
+            ("Theme.Light.ButtonText", (r, v) => r.Theme!.Light!.ButtonText = v!),
             ("Theme.Dark.Primary", (r, v) => r.Theme!.Dark!.Primary = v),
             ("Theme.Dark.Secondary", (r, v) => r.Theme!.Dark!.Secondary = v),
             ("Theme.Dark.Background", (r, v) => r.Theme!.Dark!.Background = v),
@@ -283,7 +297,8 @@ namespace XUnitTest.Auth
             ("Theme.Dark.Text", (r, v) => r.Theme!.Dark!.Text = v),
             ("Theme.Dark.MutedText", (r, v) => r.Theme!.Dark!.MutedText = v),
             ("Theme.Dark.Success", (r, v) => r.Theme!.Dark!.Success = v),
-            ("Theme.Dark.Danger", (r, v) => r.Theme!.Dark!.Danger = v)
+            ("Theme.Dark.Danger", (r, v) => r.Theme!.Dark!.Danger = v),
+            ("Theme.Dark.ButtonText", (r, v) => r.Theme!.Dark!.ButtonText = v!)
         ];
 
         private static IReadOnlyList<(string Path, Action<SaveOidcUiTemplateRequest, string?> SetValue)> RequiredFlexibleColorFields() =>

@@ -461,9 +461,18 @@ namespace Authentication.DomainService.Services
             var result = await collection.ReplaceOneAsync(x => x.ItemId == credential.ItemId, credential, new ReplaceOptions { IsUpsert = true });
         }
 
-        public Task<OidcUiTemplate?> GetOidcUiTemplateAsync()
+        public async Task<OidcUiTemplate?> GetOidcUiTemplateAsync()
         {
-            return _keyValueStore.GetAsync<OidcUiTemplate>(OidcUiTemplateStoreKey);
+            var template = await _keyValueStore.GetAsync<OidcUiTemplate>(OidcUiTemplateStoreKey);
+            if (template?.Branding is { } branding)
+            {
+                var resolvedLight = branding.LogoUrlLight ?? branding.LogoUrlDark ?? branding.LogoUrl;
+                var resolvedDark = branding.LogoUrlDark ?? branding.LogoUrlLight ?? branding.LogoUrl;
+                branding.LogoUrlLight = resolvedLight;
+                branding.LogoUrlDark = resolvedDark;
+            }
+
+            return template;
         }
 
         public Task SaveOidcUiTemplateAsync(OidcUiTemplate template)

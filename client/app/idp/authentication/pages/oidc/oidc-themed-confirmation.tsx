@@ -24,7 +24,10 @@ export function OidcThemedConfirmation({ template, title, subtitle, actionTitle,
       <main className="mx-auto flex min-h-dvh w-full max-w-2xl items-center px-4 py-8">
         <section className="w-full border border-[var(--border)] bg-[var(--surface)] p-6 sm:p-10">
           <div className="flex items-center justify-between gap-4">
-            <OidcBrand {...template.branding} />
+            <OidcBrand
+              logoUrl={mode === "dark" ? template.branding.logoUrlDark : template.branding.logoUrlLight}
+              brandName={template.branding.brandName}
+            />
             <ModeToggle />
           </div>
           <div className="flex flex-col items-center py-10 text-center">
