@@ -23,7 +23,7 @@ public static class PasswordPolicyRegexValidator
         if (string.IsNullOrWhiteSpace(pattern)) return null;
         if (pattern.Length > 512) return "PasswordStrengthCheckerRegex_Too_Long";
 
-        try { _ = new Regex(pattern); }
+        try { _ = new Regex(pattern, RegexOptions.None, TimeSpan.FromMilliseconds(100)); }
         catch (ArgumentException) { return "PasswordStrengthCheckerRegex_Invalid_Syntax"; }
 
         // Deliberately a literal-token scan, not a parser or a rewrite of the stored rule.
