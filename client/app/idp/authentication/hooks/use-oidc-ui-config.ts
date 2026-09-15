@@ -7,6 +7,7 @@ import {
   normalizeOidcUiTemplate,
   type IOidcUiTemplate,
 } from "@blocks-idp/authentication/models/oidc-ui-template";
+import type { IOidcPasswordPolicy } from "@blocks-idp/authentication/utils/password-policy.util";
 
 export { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 export type { IOidcUiTemplate } from "@blocks-idp/authentication/models/oidc-ui-template";
@@ -25,6 +26,7 @@ export interface IOidcUiConfig {
    * setting, so anything other than an explicit `false` is treated as "collect one".
    */
   collectPasswordOnActivation?: boolean;
+  passwordPolicy?: IOidcPasswordPolicy | null;
 }
 
 const OIDC_UI_CONFIG_ENDPOINT = "/api/idp/oidc-ui-config";
@@ -78,11 +80,14 @@ export const useOidcUiConfig = (tenantIdOverride?: string) => {
           : DEFAULT_OIDC_UI_TEMPLATE,
       }
     : { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE };
+  // Passed through verbatim: plain data, no compile step, no RegExp ever constructed from it.
+  const passwordPolicy: IOidcPasswordPolicy | null = query.data?.passwordPolicy ?? null;
 
   return {
     ...query,
     data,
     captchaEnabled: data.captcha != null,
     collectPasswordOnActivation: data.collectPasswordOnActivation !== false,
+    passwordPolicy,
   };
 };

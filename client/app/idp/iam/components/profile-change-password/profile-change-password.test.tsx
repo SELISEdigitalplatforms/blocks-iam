@@ -6,10 +6,14 @@ const h = vi.hoisted(() => ({
   isPending: false,
   showError: vi.fn(),
   showSuccess: vi.fn(),
+  configLoading: false,
 }));
 
 vi.mock("@blocks-idp/iam/hooks/use-account", () => ({
   useChangePassword: () => ({ mutateAsync: h.mutateAsync, isPending: h.isPending }),
+}));
+vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
+  useOidcUiConfig: () => ({ passwordPolicy: null, isLoading: h.configLoading }),
 }));
 vi.mock("@/hooks/use-toast", () => ({
   showErrorToast: (a: unknown) => h.showError(a),
@@ -33,21 +37,27 @@ const openDialog = () => {
   fireEvent.click(screen.getByRole("button", { name: "Update Password" }));
 };
 
+// Satisfies the FE default policy (8-30 chars, upper, lower, digit, special) that now applies
+// whenever no tenant policy is configured -- this suite mocks useOidcUiConfig with
+// passwordPolicy: null.
+const NEW_PASSWORD = "NewPass12!";
+
 const fillForm = () => {
   fireEvent.input(screen.getByPlaceholderText("Enter your current password"), {
     target: { value: "oldPass1" },
   });
   fireEvent.input(screen.getByPlaceholderText("Enter your new password"), {
-    target: { value: "newPass12" },
+    target: { value: NEW_PASSWORD },
   });
   fireEvent.input(screen.getByPlaceholderText("Confirm your new password"), {
-    target: { value: "newPass12" },
+    target: { value: NEW_PASSWORD },
   });
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   h.isPending = false;
+  h.configLoading = false;
 });
 
 describe("ProfileChangePassword", () => {
@@ -55,6 +65,17 @@ describe("ProfileChangePassword", () => {
     openDialog();
     await waitFor(() => expect(screen.getByPlaceholderText("Enter your current password")).toBeInTheDocument());
     expect(screen.getByPlaceholderText("Enter your current password")).toBeInTheDocument();
+  });
+
+  it("caps all password inputs and waits for policy loading", async () => {
+    h.configLoading = true;
+    openDialog();
+    await waitFor(() => expect(screen.getByPlaceholderText("Enter your current password")).toBeInTheDocument());
+    for (const input of screen.getAllByPlaceholderText(/password/i)) {
+      expect(input).toHaveAttribute("maxlength", "256");
+    }
+    fillForm();
+    expect(screen.getByRole("button", { name: "Save Changes" })).toBeDisabled();
   });
 
   it("changes the password and shows a success toast", async () => {
@@ -68,7 +89,7 @@ describe("ProfileChangePassword", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
     await waitFor(() =>
       expect(h.mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ oldPassword: "oldPass1", newPassword: "newPass12" }),
+        expect.objectContaining({ oldPassword: "oldPass1", newPassword: NEW_PASSWORD }),
       ),
     );
     await waitFor(() => expect(h.showSuccess).toHaveBeenCalled());

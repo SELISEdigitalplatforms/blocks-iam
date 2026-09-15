@@ -46,6 +46,7 @@ describe("useOidcUiConfig", () => {
       template: DEFAULT_OIDC_UI_TEMPLATE,
     });
     expect(result.current.captchaEnabled).toBe(true);
+    expect(result.current.passwordPolicy).toBeNull();
   });
 
   it("should fall back to an empty tenant (no query, no header) when nothing resolves", async () => {
@@ -85,6 +86,42 @@ describe("useOidcUiConfig", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.captchaEnabled).toBe(false);
     expect(result.current.data.template).toEqual(DEFAULT_OIDC_UI_TEMPLATE);
+    expect(result.current.passwordPolicy).toBeNull();
+  });
+
+  it("passes the structured public password policy through verbatim, with no compile step", async () => {
+    const structuredPolicy = {
+      minLength: 10,
+      maxLength: 64,
+      requireUppercase: false,
+      requireLowercase: false,
+      requireNumbers: true,
+      requireSpecialChars: false,
+      message: "At least 10 characters including one number.",
+    };
+    vi.mocked(http.get).mockResolvedValue({
+      captcha: null,
+      template: null,
+      passwordPolicy: structuredPolicy,
+    });
+    const { result } = renderHook(() => useOidcUiConfig("tenant-x"), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.passwordPolicy).toEqual(structuredPolicy);
+  });
+
+  it("reports null when the tenant has no structured policy configured", async () => {
+    vi.mocked(http.get).mockResolvedValue({
+      captcha: null,
+      template: null,
+      passwordPolicy: null,
+    });
+    const { result } = renderHook(() => useOidcUiConfig("tenant-x"), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.passwordPolicy).toBeNull();
   });
 
   it("provides the frontend fallback template while the request is loading", () => {
@@ -113,6 +150,6 @@ describe("useOidcUiConfig", () => {
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data.template).toEqual(customTemplate);
+    expect(result.current.data.template).toMatchObject(customTemplate);
   });
 });

@@ -99,6 +99,117 @@ namespace XUnitTest.Auth
             _cache.Setup(c => c.GetStringValueAsync($"idp_flow:{state}")).ReturnsAsync(json!);
         }
 
+        // ---------- SPEC16: structured passwordPolicy ----------
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData("^(a+)+$")]
+        public async Task GetUiConfig_HidesStructuredPolicy_WhenNotEnabled_EvenWithLegacyRegexStored(string? regex)
+        {
+            // H4: a tenant that only has a legacy regex (PasswordPolicyEnabled defaults false)
+            // must never see it surfaced as passwordPolicy.
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordStrengthCheckerRegex = regex!, PasswordStrengthCheckerMessage = "legacy message"
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetUiConfig_ReportsStructuredPolicyVerbatim_WhenEnabled()
+        {
+            // H1/H2: fields read verbatim, and the legacy regex (also stored here) never leaks.
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordPolicyEnabled = true,
+                PasswordPolicyMinLength = 10,
+                PasswordPolicyMaxLength = 64,
+                PasswordPolicyRequireUppercase = true,
+                PasswordPolicyRequireLowercase = false,
+                PasswordPolicyRequireNumbers = true,
+                PasswordPolicyRequireSpecialChars = false,
+                PasswordPolicyMessage = "At least 10 characters including one number.",
+                PasswordStrengthCheckerRegex = "^(a+)+$"
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy.Should().NotBeNull();
+            response.PasswordPolicy!.MinLength.Should().Be(10);
+            response.PasswordPolicy.MaxLength.Should().Be(64);
+            response.PasswordPolicy.RequireUppercase.Should().BeTrue();
+            response.PasswordPolicy.RequireLowercase.Should().BeFalse();
+            response.PasswordPolicy.RequireNumbers.Should().BeTrue();
+            response.PasswordPolicy.RequireSpecialChars.Should().BeFalse();
+            response.PasswordPolicy.Message.Should().Be("At least 10 characters including one number.");
+
+            var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            json.ToLowerInvariant().Should().NotContain("regex");
+        }
+
+        [Fact]
+        public async Task GetUiConfig_ReportsNullMessage_WhenPolicyMessageIsBlank()
+        {
+            // H3
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordPolicyEnabled = true, PasswordPolicyMessage = ""
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy!.Message.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetUiConfig_ServesStoredLengthsVerbatim_EvenOutsideTheAdminValidRange()
+        {
+            // C10: the read path performs no re-validation; it trusts what write-time
+            // validation already accepted.
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordPolicyEnabled = true, PasswordPolicyMinLength = 0, PasswordPolicyMaxLength = 9000
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy!.MinLength.Should().Be(0);
+            response.PasswordPolicy.MaxLength.Should().Be(9000);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("zzz-not-a-tenant")]
+        public async Task GetUiConfig_NoTenantConfigurationReturnsFullShape(string? tenantId)
+        {
+            BlocksContext.SetContext(tenantId == null ? null : BlocksContext.Create(
+                tenantId: tenantId, roles: null, userId: null, impersonated: false,
+                isAuthenticated: false, requestUri: "https://test", organizationId: null,
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: null,
+                userName: null, phoneNumber: null, displayName: null, oauthToken: null,
+                originalTenantId: tenantId, impersonationSessionId: null, applicationDomain: "test"));
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            result.StatusCode.Should().Be(200);
+            var response = (OidcUiConfigResponse)result.Value!;
+            var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            using var document = JsonDocument.Parse(json);
+            document.RootElement.GetProperty("passwordPolicy").ValueKind.Should().Be(JsonValueKind.Null);
+            document.RootElement.GetProperty("captcha").ValueKind.Should().Be(JsonValueKind.Null);
+            document.RootElement.GetProperty("template").ValueKind.Should().Be(JsonValueKind.Null);
+            document.RootElement.GetProperty("collectPasswordOnActivation").GetBoolean().Should().BeTrue();
+        }
+
         // ---------- GetUiConfigAsync ----------
 
         [Fact]
@@ -200,6 +311,7 @@ namespace XUnitTest.Auth
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             var response = ok.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
             response.CollectPasswordOnActivation.Should().BeTrue();
+            response.PasswordPolicy.Should().BeNull();
         }
 
         [Fact]

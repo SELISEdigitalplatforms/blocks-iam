@@ -9,6 +9,9 @@ const h = vi.hoisted(() => ({
   resetCaptcha: vi.fn(),
   animCtx: null as Record<string, unknown> | null,
   oidcUiConfig: undefined as unknown,
+  passwordPolicy: null as { test: (password: string) => boolean; message: string } | null,
+  configLoading: false,
+  requirementsPass: false,
 }));
 
 vi.mock("react-router", async (importOriginal) => {
@@ -23,19 +26,24 @@ vi.mock("@blocks-idp/captcha/hooks/use-captcha", () => ({
   useCaptcha: vi.fn(() => ({ captcha: {}, code: "", reset: h.resetCaptcha })),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
-  useOidcUiConfig: vi.fn(() => ({ data: h.oidcUiConfig, captchaEnabled: false })),
+  useOidcUiConfig: vi.fn(() => ({
+    data: h.oidcUiConfig,
+    captchaEnabled: false,
+    passwordPolicy: h.passwordPolicy,
+    isLoading: h.configLoading,
+  })),
 }));
 vi.mock(
   "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker",
-  () => ({ PasswordStrengthChecker: () => null }),
+  () => ({
+    PasswordStrengthChecker: () => null,
+  }),
 );
 vi.mock("../oidc/oidc-auth-shell", () => ({ useOidcAuthAnimation: vi.fn(() => h.animCtx) }));
 
 import { ResetPasswordForm } from "./reset-password-form";
-import {
-  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
-  OIDC_UI_TEMPLATE_FIXTURE,
-} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 const renderForm = () =>
   render(
@@ -50,7 +58,10 @@ const passwordInputs = (container: HTMLElement) =>
 beforeEach(() => {
   vi.clearAllMocks();
   h.animCtx = null;
-  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE };
+  h.passwordPolicy = null;
+  h.configLoading = false;
+  h.requirementsPass = false;
 });
 
 describe("ResetPasswordForm", () => {
@@ -60,8 +71,29 @@ describe("ResetPasswordForm", () => {
     expect(screen.getByText("Confirm Password")).toBeInTheDocument();
     expect(screen.getByText("Logout from all devices")).toBeInTheDocument();
     expect(passwordInputs(container)).toHaveLength(2);
+    passwordInputs(container).forEach((input) => expect(input).toHaveAttribute("maxlength", "256"));
     expect(screen.getByRole("button", { name: /set password/i })).toBeDisabled();
     expect(screen.getByRole("link", { name: /back to login/i })).toBeInTheDocument();
+  });
+
+  it("passes the compiled tenant policy to the checker", () => {
+    h.passwordPolicy = { test: () => true, message: "Tenant rule" };
+    const setPanelIdleSlot = vi.fn();
+    h.animCtx = { setPanelIdleSlot };
+    renderForm();
+    const checker = setPanelIdleSlot.mock.calls.find(([value]) => value)?.[0];
+    expect(checker.props.policy).toBe(h.passwordPolicy);
+  });
+
+  it("keeps submit disabled while policy configuration is loading", async () => {
+    h.configLoading = true;
+    h.requirementsPass = true;
+    h.animCtx = {
+      setPanelIdleSlot: vi.fn((checker) => checker?.props.onRequirementsMet(true)),
+    };
+    const { container } = renderForm();
+    fillValidPasswords(container);
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: /set password/i })).toBeDisabled());
   });
 
   it("renders tenant-defined reset-password labels", () => {
@@ -134,7 +166,7 @@ describe("ResetPasswordForm", () => {
       setPanelIdleSlot: vi.fn(),
     };
     renderForm();
-    expect(screen.getByText("Resetting…")).toBeInTheDocument();
+    expect(screen.getByText("Resetting...")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /resetting/i })).toBeDisabled();
   });
 
@@ -199,6 +231,7 @@ describe("ResetPasswordForm", () => {
     expect(await screen.findByText("Reset link expired")).toBeInTheDocument();
     expect(h.resetCaptcha).toHaveBeenCalled();
     expect(h.navigateMock).not.toHaveBeenCalled();
+    expect(passwordInputs(container).map((input) => input.value)).toEqual(["Passw0rd!", "Passw0rd!"]);
   });
 
   it("surfaces a mapped error when the mutation throws", async () => {

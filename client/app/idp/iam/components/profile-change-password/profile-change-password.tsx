@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { KeyRound, Loader } from "lucide-react";
 import {
   Dialog,
@@ -27,19 +26,14 @@ import { useChangePassword } from "@blocks-idp/iam/hooks/use-account";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
-
-const changePasswordSchema = z
-  .object({
-    oldPassword: z.string().min(1, "Current password is required"),
-    newPassword: z.string().min(8, "Password must be at least 8 characters"),
-    confirmNewPassword: z.string().min(8, "Password must be at least 8 characters"),
-  })
-  .refine((data) => data.newPassword === data.confirmNewPassword, {
-    message: "Passwords must match",
-    path: ["confirmNewPassword"],
-  });
-
-type ChangePasswordFormType = z.infer<typeof changePasswordSchema>;
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import {
+  PASSWORD_MAX_INPUT_LENGTH,
+} from "@blocks-idp/authentication/utils/password-policy.util";
+import {
+  buildChangePasswordSchema,
+  type ChangePasswordFormType,
+} from "./change-password-schema";
 
 const defaultValues: ChangePasswordFormType = {
   oldPassword: "",
@@ -55,6 +49,11 @@ interface ChangePasswordDialogProps {
 const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps) => {
   const [passwordRequirementsMet, setPasswordRequirementsMet] = useState(false);
   const { mutateAsync, isPending } = useChangePassword();
+  const { passwordPolicy, isLoading: isConfigLoading } = useOidcUiConfig();
+  const changePasswordSchema = useMemo(
+    () => buildChangePasswordSchema(passwordPolicy),
+    [passwordPolicy],
+  );
 
   const form = useForm<ChangePasswordFormType>({
     defaultValues,
@@ -114,7 +113,7 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
                 <FormItem>
                   <FormLabel>Current Password</FormLabel>
                   <FormControl>
-                    <PasswordInput placeholder="Enter your current password" {...field} />
+                    <PasswordInput maxLength={PASSWORD_MAX_INPUT_LENGTH} placeholder="Enter your current password" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -128,7 +127,7 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
                 <FormItem>
                   <FormLabel>New Password</FormLabel>
                   <FormControl>
-                    <PasswordInput placeholder="Enter your new password" {...field} />
+                    <PasswordInput maxLength={PASSWORD_MAX_INPUT_LENGTH} placeholder="Enter your new password" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -141,7 +140,7 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
                 <FormItem>
                   <FormLabel>Confirm New Password</FormLabel>
                   <FormControl>
-                    <PasswordInput placeholder="Confirm your new password" {...field} />
+                    <PasswordInput maxLength={PASSWORD_MAX_INPUT_LENGTH} placeholder="Confirm your new password" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -151,6 +150,7 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
               <PasswordStrengthChecker
                 password={newPassword}
                 confirmPassword={confirmNewPassword}
+                policy={passwordPolicy}
                 excludePassword={oldPassword}
                 onRequirementsMet={setPasswordRequirementsMet}
               />
@@ -162,7 +162,7 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
                   Cancel
                 </Button>
               </DialogTrigger>
-              <Button type="submit" size="sm" disabled={isPending || !passwordRequirementsMet}>
+              <Button type="submit" size="sm" disabled={isConfigLoading || isPending || !passwordRequirementsMet}>
                 {isPending && <Loader className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 {isPending ? "Saving…" : "Save Changes"}
               </Button>

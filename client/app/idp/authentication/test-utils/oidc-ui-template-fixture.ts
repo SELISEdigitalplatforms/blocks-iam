@@ -1,11 +1,14 @@
-import type { IOidcUiTemplate } from "@blocks-idp/authentication/models/oidc-ui-template";
+import {
+  normalizeOidcUiTemplate,
+  type IOidcUiTemplate,
+} from "@blocks-idp/authentication/models/oidc-ui-template";
 
 // The baseline template most tests render with. Its copy mirrors the app's
 // built-in DEFAULT_OIDC_UI_TEMPLATE so tests that locate elements by that copy
 // (e.g. a "Login" button) don't all need rewriting.
 // Tests that specifically verify tenant customization override with
 // OIDC_UI_TEMPLATE_FIXTURE below instead.
-export const DEFAULT_OIDC_UI_TEMPLATE_FIXTURE: IOidcUiTemplate = {
+const defaultOidcUiTemplateFixture = {
   branding: { logoUrl: null, brandName: "Blocks IAM" },
   theme: {
     light: {
@@ -54,8 +57,11 @@ export const DEFAULT_OIDC_UI_TEMPLATE_FIXTURE: IOidcUiTemplate = {
     shared: { footerText: "© {year} SELISE Digital Platforms. All rights reserved." },
   },
 };
+export const DEFAULT_OIDC_UI_TEMPLATE_FIXTURE = normalizeOidcUiTemplate(
+  defaultOidcUiTemplateFixture as IOidcUiTemplate,
+);
 
-export const OIDC_UI_TEMPLATE_FIXTURE: IOidcUiTemplate = {
+const oidcUiTemplateFixture = {
   branding: { logoUrl: null, brandName: "Test IAM" },
   theme: {
     light: {
@@ -100,3 +106,6 @@ export const OIDC_UI_TEMPLATE_FIXTURE: IOidcUiTemplate = {
     shared: { footerText: "Test footer {year}" },
   },
 };
+export const OIDC_UI_TEMPLATE_FIXTURE = normalizeOidcUiTemplate(
+  oidcUiTemplateFixture as IOidcUiTemplate,
+);
