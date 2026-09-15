@@ -56,6 +56,11 @@ describe("ResetPassword", () => {
       captcha: null,
       template: {
         ...OIDC_UI_TEMPLATE_FIXTURE,
+        branding: {
+          logoUrlLight: "https://example.test/reset-light.svg",
+          logoUrlDark: "https://example.test/reset-dark.svg",
+          brandName: "Acme",
+        },
         pages: {
           ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           resetPassword: {
@@ -72,6 +77,8 @@ describe("ResetPassword", () => {
     expect(h.shellProps).toEqual(expect.objectContaining({
       successTitle: "Secret changed",
       successSubtitle: "Your Acme sessions are protected",
+      logoUrlLight: "https://example.test/reset-light.svg",
+      logoUrlDark: "https://example.test/reset-dark.svg",
     }));
   });
 });

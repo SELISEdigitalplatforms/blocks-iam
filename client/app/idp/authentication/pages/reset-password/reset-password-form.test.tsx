@@ -134,7 +134,7 @@ describe("ResetPasswordForm", () => {
       setPanelIdleSlot: vi.fn(),
     };
     renderForm();
-    expect(screen.getByText("Resetting…")).toBeInTheDocument();
+    expect(screen.getByText("Resetting...")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /resetting/i })).toBeDisabled();
   });
 
