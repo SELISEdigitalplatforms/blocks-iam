@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { STRENGTH_COLORS, STRENGTH_THRESHOLDS, getStrengthColor } from "./password-strength.util";
+import {
+  STRENGTH_COLORS,
+  STRENGTH_LABELS,
+  STRENGTH_SEGMENTS,
+  STRENGTH_TEXT_COLORS,
+  STRENGTH_THRESHOLDS,
+  getFilledSegments,
+  getStrengthColor,
+  getStrengthLabel,
+  getStrengthTextColor,
+} from "./password-strength.util";
 
 describe("getStrengthColor", () => {
   it("maps each strength range to its display color", () => {
@@ -8,5 +18,33 @@ describe("getStrengthColor", () => {
     expect(getStrengthColor(26)).toBe(STRENGTH_COLORS.MEDIUM_WEAK);
     expect(getStrengthColor(51)).toBe(STRENGTH_COLORS.MEDIUM_STRONG);
     expect(getStrengthColor(100)).toBe(STRENGTH_COLORS.STRONG);
+  });
+});
+
+describe("getStrengthLabel", () => {
+  it("names each band", () => {
+    expect(getStrengthLabel(0)).toBe(STRENGTH_LABELS.WEAK);
+    expect(getStrengthLabel(50)).toBe(STRENGTH_LABELS.MEDIUM_WEAK);
+    expect(getStrengthLabel(75)).toBe(STRENGTH_LABELS.MEDIUM_STRONG);
+    expect(getStrengthLabel(100)).toBe(STRENGTH_LABELS.STRONG);
+  });
+
+  it("pairs the label colour with the bar colour band", () => {
+    expect(getStrengthTextColor(0)).toBe(STRENGTH_TEXT_COLORS.WEAK);
+    expect(getStrengthTextColor(100)).toBe(STRENGTH_TEXT_COLORS.STRONG);
+  });
+});
+
+describe("getFilledSegments", () => {
+  it("lights no segment at zero and every segment at full strength", () => {
+    expect(getFilledSegments(0)).toBe(0);
+    expect(getFilledSegments(100)).toBe(STRENGTH_SEGMENTS);
+  });
+
+  it("always lights at least one segment for a non-zero score", () => {
+    expect(getFilledSegments(1)).toBe(1);
+    expect(getFilledSegments(25)).toBe(1);
+    expect(getFilledSegments(50)).toBe(2);
+    expect(getFilledSegments(75)).toBe(3);
   });
 });

@@ -4,6 +4,7 @@ import { buildResetPasswordFormSchema } from "./utils";
 const policy = {
   test: (password: string) => /^(?=.*\d).{10,64}$/i.test(password),
   message: "At least 10 characters including one number.",
+  criteria: [],
 };
 
 describe("buildResetPasswordFormSchema", () => {

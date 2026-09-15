@@ -1,19 +1,43 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  getStrengthColor,
+  getStrengthLabel,
+  getStrengthTextColor,
+} from "@blocks-idp/authentication/utils/password-strength.util";
 
 const h = vi.hoisted(() => ({
   checks: {} as Record<string, boolean>,
   requirements: [] as { key: string; label: string }[],
+  unexplainedFailure: false,
+  policyMessage: null as string | null,
 }));
-const policy = { test: () => true, message: "Tenant policy" };
+const policy = { test: () => true, message: "Tenant policy", criteria: [] };
 
-vi.mock("@blocks-idp/authentication/hooks/use-password-strength", () => ({
-  usePasswordStrength: () => ({
-    checks: h.checks,
-    requirements: h.requirements,
-    allRequirementsMet: Object.values(h.checks).every(Boolean),
-  }),
-}));
+vi.mock("@blocks-idp/authentication/hooks/use-password-strength", async () => {
+  const strengthUtil = await import(
+    "@blocks-idp/authentication/utils/password-strength.util"
+  );
+  return {
+    usePasswordStrength: () => {
+      const total = h.requirements.length;
+      const met = h.requirements.filter((requirement) => h.checks[requirement.key]).length;
+      const strength = total === 0 ? 0 : Math.round((met / total) * 100);
+      return {
+        checks: h.checks,
+        requirements: h.requirements,
+        allRequirementsMet: Object.values(h.checks).every(Boolean),
+        strength,
+        hasPolicy: total > 0,
+        unexplainedFailure: h.unexplainedFailure,
+        policyMessage: h.policyMessage,
+        getStrengthColor: () => strengthUtil.getStrengthColor(strength),
+        getStrengthTextColor: () => strengthUtil.getStrengthTextColor(strength),
+        getStrengthLabel: () => strengthUtil.getStrengthLabel(strength),
+      };
+    },
+  };
+});
 
 import { PasswordStrengthChecker } from "./password-strength-checker";
 
@@ -23,6 +47,8 @@ beforeEach(() => {
     { key: "number", label: "Contains a number" },
   ];
   h.checks = { length: true, number: true };
+  h.unexplainedFailure = false;
+  h.policyMessage = null;
 });
 
 describe("PasswordStrengthChecker", () => {
@@ -67,15 +93,26 @@ describe("PasswordStrengthChecker", () => {
     expect(onMet).toHaveBeenLastCalledWith(false);
   });
 
-  it("renders a low-strength bar when few checks pass", () => {
-    h.checks = { length: false, number: false };
+  it("fills every segment and calls the password strong when all rules pass", () => {
     const { container } = render(
-      <PasswordStrengthChecker password="" confirmPassword="" policy={null} onRequirementsMet={vi.fn()} />,
+      <PasswordStrengthChecker password="Secret1" confirmPassword="Secret1" policy={policy} onRequirementsMet={vi.fn()} />,
     );
-    expect(container.querySelector(".bg-red-500")).not.toBeNull();
+    expect(container.querySelectorAll(`.${getStrengthColor(100)}`)).toHaveLength(4);
+    expect(screen.getByText(getStrengthLabel(100))).toHaveClass(getStrengthTextColor(100));
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
   });
 
-  it("renders only match and exclusion rows when no policy is active", () => {
+  it("renders a weak, partly filled bar when few checks pass", () => {
+    h.checks = { length: false, number: false };
+    const { container } = render(
+      <PasswordStrengthChecker password="a" confirmPassword="a" policy={policy} onRequirementsMet={vi.fn()} />,
+    );
+    expect(container.querySelector(`.${getStrengthColor(0)}`)).toBeNull();
+    expect(container.querySelectorAll(".bg-neutral-200")).toHaveLength(4);
+    expect(screen.getByText(getStrengthLabel(0))).toBeInTheDocument();
+  });
+
+  it("hides the strength meter and shows only match and exclusion rows without a policy", () => {
     h.requirements = [];
     h.checks = {};
     render(
@@ -87,8 +124,18 @@ describe("PasswordStrengthChecker", () => {
         onRequirementsMet={vi.fn()}
       />,
     );
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.getByText("Passwords match")).toBeInTheDocument();
     expect(screen.getByText("New password shouldn't match current password")).toBeInTheDocument();
     expect(screen.queryByText("At least 8 characters")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the policy message when the rules cannot explain the rejection", () => {
+    h.unexplainedFailure = true;
+    h.policyMessage = "Blocked by the organisation";
+    render(
+      <PasswordStrengthChecker password="Secret1" confirmPassword="Secret1" policy={policy} onRequirementsMet={vi.fn()} />,
+    );
+    expect(screen.getByText("Blocked by the organisation")).toBeInTheDocument();
   });
 });

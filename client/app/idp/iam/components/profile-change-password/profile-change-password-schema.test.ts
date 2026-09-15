@@ -9,7 +9,11 @@ describe("buildChangePasswordSchema", () => {
   });
 
   it("uses the active tenant policy message", () => {
-    const policy = { test: (password: string) => password === "allowed", message: "Use allowed" };
+    const policy = {
+      test: (password: string) => password === "allowed",
+      message: "Use allowed",
+      criteria: [],
+    };
     const result = buildChangePasswordSchema(policy).safeParse(values);
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.issues[0]?.message).toBe("Use allowed");
