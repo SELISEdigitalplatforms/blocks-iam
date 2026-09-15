@@ -28,6 +28,14 @@ export const PASSWORD_MAX_INPUT_LENGTH = 256;
 export const DEFAULT_POLICY_MESSAGE =
   "Password does not meet this organisation's requirements.";
 
+/**
+ * Label for the fallback checklist row shown when a tenant pattern can't be split into
+ * named rules. Deliberately positive: unlike {@link DEFAULT_POLICY_MESSAGE} (a failure
+ * message, always paired with a fixed ✗), this row's icon toggles with the password, so a
+ * negatively-phrased label would read backwards next to a ✓.
+ */
+export const FALLBACK_REQUIREMENT_LABEL = "Meets this organisation's password requirements";
+
 /** Index just past the group opening at `start`, or null when it never closes. */
 const findGroupEnd = (pattern: string, start: number): number | null => {
   let depth = 0;
@@ -191,7 +199,7 @@ export const compilePasswordPolicy = (
     test,
     message,
     criteria: derivePolicyCriteria(policy.regex, flags) ?? [
-      { key: "policy", label: message, test },
+      { key: "policy", label: FALLBACK_REQUIREMENT_LABEL, test },
     ],
   };
 };

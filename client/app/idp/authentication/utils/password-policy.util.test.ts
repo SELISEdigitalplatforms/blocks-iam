@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_POLICY_MESSAGE,
+  FALLBACK_REQUIREMENT_LABEL,
   PASSWORD_MAX_INPUT_LENGTH,
   compilePasswordPolicy,
 } from "./password-policy.util";
@@ -97,7 +98,9 @@ describe("compilePasswordPolicy criteria", () => {
   ])("falls back to the whole pattern for %s", (regex) => {
     const policy = compile(regex, "Tenant message");
     expect(policy?.criteria).toHaveLength(1);
-    expect(policy?.criteria[0]).toMatchObject({ key: "policy", label: "Tenant message" });
+    // The fallback label stays positive even though the tenant message is negative, so the
+    // checklist row never reads as "✓ does not meet requirements".
+    expect(policy?.criteria[0]).toMatchObject({ key: "policy", label: FALLBACK_REQUIREMENT_LABEL });
   });
 
   it("keeps the rules equivalent to the whole pattern", () => {

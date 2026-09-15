@@ -1,7 +1,7 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { usePasswordStrength } from "./use-password-strength";
-import { compilePasswordPolicy } from "../utils/password-policy.util";
+import { FALLBACK_REQUIREMENT_LABEL, compilePasswordPolicy } from "../utils/password-policy.util";
 import { STRENGTH_COLORS } from "../utils/password-strength.util";
 
 const compile = (regex: string, message: string | null = null) =>
@@ -52,10 +52,14 @@ describe("usePasswordStrength", () => {
     expect(result.current.strength).toBe(0);
   });
 
-  it("falls back to the single policy message when the pattern cannot be split", () => {
+  it("falls back to a positive generic label when the pattern cannot be split", () => {
     const opaque = compile("^\\w+@\\w+$", "Use an email address");
     const { result } = renderHook(() => usePasswordStrength("grace@navy", opaque));
-    expect(result.current.requirements).toEqual([{ key: "policy", label: "Use an email address" }]);
+    // Not "Use an email address" — that's the failure message, and this row's icon toggles
+    // with the password, so it must read correctly next to a ✓ as well as a ✗.
+    expect(result.current.requirements).toEqual([
+      { key: "policy", label: FALLBACK_REQUIREMENT_LABEL },
+    ]);
     expect(result.current.strength).toBe(100);
     expect(result.current.unexplainedFailure).toBe(false);
   });
