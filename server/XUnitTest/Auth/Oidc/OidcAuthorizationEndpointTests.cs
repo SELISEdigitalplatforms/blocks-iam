@@ -304,8 +304,12 @@ namespace XUnitTest.Auth.Oidc
 
             var result = await Authorize(blocksUserId: "user-1");
 
-            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
-            Prop(bad.Value, "error").Should().Be("account_locked");
+            // A browser navigated here, so the refusal has to land somewhere the user can read
+            // it: the login page raises its blocking dialog off these parameters.
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            redirect.Url.Should().Contain("error=account_locked");
+            redirect.Url.Should().Contain("error_description=Account%20is%20temporarily%20locked");
         }
 
         [Fact]
@@ -335,6 +339,22 @@ namespace XUnitTest.Auth.Oidc
 
             var result = await Authorize(blocksUserId: "user-1");
 
+            // Same-origin on purpose: RFC 6749 section 4.1.2.1 forbids bouncing an unrecognised
+            // client back to the redirect_uri it supplied.
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            redirect.Url.Should().Contain("error=invalid_client");
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_ReturnsInvalidClient_AsBody_WhenNotRedirect()
+        {
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync((User)null!);
+            _authRepo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
+                .ReturnsAsync((OidcClientRegistration)null!);
+
+            var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: false);
+
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error").Should().Be("invalid_client");
         }
@@ -346,6 +366,22 @@ namespace XUnitTest.Auth.Oidc
             ClientExists("https://other.example.com/callback");
 
             var result = await Authorize(blocksUserId: "user-1");
+
+            // Also same-origin: an unregistered redirect_uri is precisely what must not be
+            // redirected to.
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            redirect.Url.Should().Contain("error=invalid_request");
+            redirect.Url.Should().Contain("error_description=Invalid%20redirect_uri");
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_ReturnsInvalidRedirectUri_AsBody_WhenNotRedirect()
+        {
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            ClientExists("https://other.example.com/callback");
+
+            var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: false);
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error").Should().Be("invalid_request");

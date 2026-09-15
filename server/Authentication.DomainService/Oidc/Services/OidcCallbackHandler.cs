@@ -14,6 +14,14 @@ namespace Authentication.DomainService.Oidc.Services
     public interface IOidcCallbackHandler
     {
         Task<OidcCallbackResult> HandleCallbackAsync(string code, string state);
+
+        /// <summary>
+        /// Turns an error handed back by the social provider -- most often the user pressing
+        /// Cancel on its consent screen -- into a failure that still knows which OIDC request
+        /// it belongs to, so the controller can return the user to the login page they started
+        /// from instead of a bare error body.
+        /// </summary>
+        Task<OidcCallbackResult> HandleProviderErrorAsync(string state, string providerError, string? providerErrorDescription);
     }
 
     public sealed class OidcCallbackResult
@@ -94,6 +102,95 @@ namespace Authentication.DomainService.Oidc.Services
             }
         }
 
+
+        public async Task<OidcCallbackResult> HandleProviderErrorAsync(string state, string providerError, string? providerErrorDescription)
+        {
+            var errorCode = string.IsNullOrWhiteSpace(providerError) ? "access_denied" : providerError;
+            var message = string.IsNullOrWhiteSpace(providerErrorDescription)
+                ? DescribeProviderError(errorCode)
+                : providerErrorDescription!;
+
+            OidcContext? context = null;
+
+            try
+            {
+                context = await ResolveOidcContextAsync(state);
+            }
+            catch (Exception ex)
+            {
+                // The provider's error is the thing worth telling the user about. Failing to look
+                // up the context only costs them the nicer landing place, so it must not replace
+                // the reason they were sent back here.
+                _logger.LogError(ex, "Error resolving OIDC context for a provider error callback");
+            }
+
+            if (context == null)
+            {
+                _logger.LogWarning("Provider returned {Error} for state {State}, with no recoverable OIDC context", errorCode, state);
+            }
+
+            return new OidcCallbackResult
+            {
+                IsSuccess = false,
+                ErrorCode = errorCode,
+                ErrorMessage = message,
+                IsOidcFlow = true,
+                ClientId = context?.ClientId,
+                RedirectUri = context?.RedirectUri,
+                OriginalState = context?.State,
+                Scope = context?.Scope,
+                Nonce = context?.Nonce,
+                CodeChallenge = context?.CodeChallenge,
+                CodeChallengeMethod = context?.CodeChallengeMethod,
+                TenantId = context?.TenantId
+            };
+        }
+
+        /// <summary>
+        /// Walks the same two cache hops the social callback does -- the social state, then the
+        /// OIDC request it wraps -- without consuming either. Returns null at the first miss;
+        /// every miss means the same thing to the caller, that there is no request left to send
+        /// the user back to.
+        /// </summary>
+        private async Task<OidcContext?> ResolveOidcContextAsync(string state)
+        {
+            var socialStateJson = await _cacheClient.GetStringValueAsync($"oidc_social_state:{state}");
+            if (string.IsNullOrWhiteSpace(socialStateJson))
+            {
+                return null;
+            }
+
+            var socialState = JsonSerializer.Deserialize<OidcSocialStateContext>(socialStateJson);
+            if (socialState == null || string.IsNullOrWhiteSpace(socialState.OidcState))
+            {
+                return null;
+            }
+
+            var contextJson = await _cacheClient.GetStringValueAsync($"oidc_context:{socialState.OidcState}");
+            if (string.IsNullOrWhiteSpace(contextJson))
+            {
+                return null;
+            }
+
+            return JsonSerializer.Deserialize<OidcContext>(contextJson);
+        }
+
+        /// <summary>
+        /// Plain-language wording for the error codes providers send when they refuse, used only
+        /// when the provider supplies no description of its own. The user reads this in a dialog,
+        /// so it says what happened rather than repeating the code.
+        /// </summary>
+        private static string DescribeProviderError(string providerError)
+        {
+            return providerError switch
+            {
+                "access_denied" => "Sign-in was cancelled before it finished. You can try again, or use a different sign-in method.",
+                "consent_required" => "The provider needs you to grant permission before you can sign in this way.",
+                "login_required" => "The provider needs you to sign in again before it can complete this request.",
+                "temporarily_unavailable" => "The sign-in provider is temporarily unavailable. Please try again in a moment.",
+                _ => "The sign-in provider could not complete this request. You can try again, or use a different sign-in method."
+            };
+        }
 
         /// <summary>
         /// Handle OIDC social login - issues authorization code for original OIDC client

@@ -478,7 +478,7 @@
             and returns device_code, user_code, verification_uri, expires_in, interval.
             </summary>
         </member>
-        <member name="M:Blocks.Api.Controllers.AuthorizationController.HandleOidcCallbackGet(System.String,System.String,Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.HandleOidcCallbackGet(System.String,System.String,System.String,System.String,Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
             <summary>
             OIDC callback handler (Browser Redirect Pattern - GET)
             Receives authorization code from provider via browser redirect
@@ -489,11 +489,19 @@
         <member name="M:Blocks.Api.Controllers.AuthorizationController.BuildCallbackFailure(Authentication.DomainService.Oidc.Services.OidcCallbackResult)">
             <summary>
             A failed provider callback arrives as a browser navigation, so a JSON body leaves the
-            user looking at raw error text in the address bar. When the OIDC request context
-            survived the failure we send them back to the login page they started from, carrying
-            <c>error</c> and <c>error_description</c> — the same way <c>/oidc/authorize</c> hands
-            its errors to a login screen. Callers that POST here are APIs, not browsers, and keep
-            getting the JSON body.
+            user looking at raw error text in the address bar. Browsers are sent to the login page
+            when the OIDC request context survived the failure, and to the standalone error page
+            when it did not. Callers that POST here, or that ask for JSON outright, are APIs
+            rather than browsers and keep getting the body.
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.WantsJsonResponse">
+            <summary>
+            Whether this caller parses a body rather than following a redirect. Anything that is
+            not a browser navigation gets the body it always got: a POST is an API caller by
+            definition, and the SPA's device-flow leg fetches this endpoint and asks for JSON
+            outright. A browser navigation asks for HTML and never names <c>application/json</c>,
+            so it falls through to the redirects above.
             </summary>
         </member>
         <!-- Badly formed XML comment ignored for member "T:Blocks.Api.Controllers.IdpSessionController" -->
