@@ -198,8 +198,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task Propagation_RoleInsert_NoOrganizations_DoesNotInsert()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(new Role { ItemId = "r1", Slug = "admin", Name = "A" });
-            _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
-                .ReturnsAsync(new GetOrganizationsResponse { Organizations = new List<Organization>() });
+            _repo.Setup(r => r.GetAllOrgIdsAsync()).ReturnsAsync(new List<string>());
 
             await Create().ExecutePropagationRolePermissionUpdateAsync(Prop("role", "insert", "r1"));
 
@@ -210,8 +209,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task Propagation_RoleInsert_AllOrgsAlreadyHaveRole_DoesNotInsert()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(new Role { ItemId = "r1", Slug = "admin", Name = "A" });
-            _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
-                .ReturnsAsync(new GetOrganizationsResponse { Organizations = new List<Organization> { new() { ItemId = "o1", Name = "O1" } } });
+            _repo.Setup(r => r.GetAllOrgIdsAsync()).ReturnsAsync(new List<string> { "o1" });
             _repo.Setup(r => r.GetRoleBySlugAsync("admin", "o1")).ReturnsAsync(new Role { ItemId = "existing", Slug = "admin", Name = "A", OrganizationId = "o1" });
 
             await Create().ExecutePropagationRolePermissionUpdateAsync(Prop("role", "insert", "r1"));
@@ -766,11 +764,7 @@ namespace XUnitTest.IamTests.Resources
             List<Role>? inserted = null;
             _repo.Setup(r => r.GetRoleByIdAsync("r1"))
                 .ReturnsAsync(new Role { ItemId = "r1", Slug = "manager", Name = "Manager", OrganizationId = "default", Count = 12 });
-            _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
-                .ReturnsAsync(new GetOrganizationsResponse
-                {
-                    Organizations = new List<Organization> { new() { ItemId = "acme", Name = "Acme" } }
-                });
+            _repo.Setup(r => r.GetAllOrgIdsAsync()).ReturnsAsync(new List<string> { "acme" });
             _repo.Setup(r => r.GetRoleBySlugAsync("manager", "acme")).ReturnsAsync((Role)null!);
             _repo.Setup(r => r.InsertRolesAsync(It.IsAny<List<Role>>()))
                 .Callback<List<Role>>(x => inserted = x)
@@ -785,6 +779,87 @@ namespace XUnitTest.IamTests.Resources
 
             inserted.Should().ContainSingle();
             inserted![0].Count.Should().Be(0);
+        }
+
+        // ---------- Propagation must not be capped by the list-query page size ----------
+        //
+        // Both fan-outs used to read the organization set through GetOrganizationsAsync with a
+        // default-constructed GetOrganizationsRequest. That request is the paged LIST contract:
+        // Page 0, PageSize 10. The repository applies it literally (Skip/Limit), so a tenant with
+        // more than ten organizations silently propagated to only the first ten by name, and the
+        // remainder never received the role or permission at all. These tests pin the unpaged
+        // enumeration by exercising a set larger than that page size.
+
+        private static List<string> OrgIds(int count) =>
+            Enumerable.Range(1, count).Select(i => $"org-{i:D2}").ToList();
+
+        [Fact]
+        public async Task Propagation_RoleInsert_ReachesEveryOrganization_BeyondOnePageOfResults()
+        {
+            const int orgCount = 25;
+            var orgIds = OrgIds(orgCount);
+            List<Role>? inserted = null;
+
+            _repo.Setup(r => r.GetRoleByIdAsync("r1"))
+                .ReturnsAsync(new Role { ItemId = "r1", Slug = "admin", Name = "Admin", OrganizationId = "default" });
+            _repo.Setup(r => r.GetAllOrgIdsAsync()).ReturnsAsync(orgIds);
+            _repo.Setup(r => r.GetRoleBySlugAsync("admin", It.IsAny<string>())).ReturnsAsync((Role)null!);
+            _repo.Setup(r => r.InsertRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => inserted = x)
+                .ReturnsAsync(true);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(Prop("role", "insert", "r1"));
+
+            inserted.Should().NotBeNull();
+            inserted!.Should().HaveCount(orgCount);
+            inserted.Select(x => x.OrganizationId).Should().BeEquivalentTo(orgIds);
+        }
+
+        [Fact]
+        public async Task Propagation_PermissionInsert_ReachesEveryOrganization_BeyondOnePageOfResults()
+        {
+            const int orgCount = 25;
+            var orgIds = OrgIds(orgCount);
+            List<Permission>? inserted = null;
+
+            _repo.Setup(r => r.GetPermissionByIdAsync("p1"))
+                .ReturnsAsync(new Permission { ItemId = "p1", Name = "P", Resource = "res", OrganizationId = "default" });
+            _repo.Setup(r => r.GetAllOrgIdsAsync()).ReturnsAsync(orgIds);
+            _repo.Setup(r => r.InsertPermissionsAsync(It.IsAny<List<Permission>>()))
+                .Callback<List<Permission>>(x => inserted = x)
+                .ReturnsAsync(true);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(Prop("permission", "insert", "p1"));
+
+            inserted.Should().NotBeNull();
+            inserted!.Should().HaveCount(orgCount);
+            inserted.Select(x => x.OrganizationId).Should().BeEquivalentTo(orgIds);
+        }
+
+        /// <summary>
+        /// The paged list query is the wrong tool for a fan-out and must not be reached for one, no
+        /// matter what page size a caller happens to pass. Asserted directly so a future refactor
+        /// that reintroduces the paged call fails here rather than in a tenant with eleven
+        /// organizations.
+        /// </summary>
+        [Theory]
+        [InlineData("role", "r1")]
+        [InlineData("permission", "p1")]
+        public async Task Propagation_Insert_DoesNotUseThePagedOrganizationListQuery(string entity, string itemId)
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync(itemId))
+                .ReturnsAsync(new Role { ItemId = itemId, Slug = "admin", Name = "Admin", OrganizationId = "default" });
+            _repo.Setup(r => r.GetPermissionByIdAsync(itemId))
+                .ReturnsAsync(new Permission { ItemId = itemId, Name = "P", Resource = "res", OrganizationId = "default" });
+            _repo.Setup(r => r.GetAllOrgIdsAsync()).ReturnsAsync(OrgIds(12));
+            _repo.Setup(r => r.GetRoleBySlugAsync("admin", It.IsAny<string>())).ReturnsAsync((Role)null!);
+            _repo.Setup(r => r.InsertRolesAsync(It.IsAny<List<Role>>())).ReturnsAsync(true);
+            _repo.Setup(r => r.InsertPermissionsAsync(It.IsAny<List<Permission>>())).ReturnsAsync(true);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(Prop(entity, "insert", itemId));
+
+            _repo.Verify(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()), Times.Never);
+            _repo.Verify(r => r.GetAllOrgIdsAsync(), Times.Once);
         }
     }
 }

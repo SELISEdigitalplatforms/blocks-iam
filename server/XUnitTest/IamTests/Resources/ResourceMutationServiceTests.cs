@@ -736,8 +736,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task Propagation_PermissionInsert_ClonesToAllOrgs()
         {
             _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(new Permission { ItemId = "p1", Name = "P", Resource = "res" });
-            _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
-                .ReturnsAsync(new GetOrganizationsResponse { Organizations = new List<Organization> { new() { ItemId = "o1", Name = "O1" }, new() { ItemId = "o2", Name = "O2" } } });
+            _repo.Setup(r => r.GetAllOrgIdsAsync()).ReturnsAsync(new List<string> { "o1", "o2" });
             _repo.Setup(r => r.InsertPermissionsAsync(It.IsAny<List<Permission>>())).ReturnsAsync(true);
 
             await Create().ExecutePropagationRolePermissionUpdateAsync(new PropagationRolePermissionUpdateEvent { Entity = "permission", Action = "insert", ItemId = "p1" });
@@ -749,8 +748,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task Propagation_PermissionInsert_NoOrgs_Skips()
         {
             _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(new Permission { ItemId = "p1", Name = "P", Resource = "res" });
-            _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
-                .ReturnsAsync(new GetOrganizationsResponse { Organizations = new List<Organization>() });
+            _repo.Setup(r => r.GetAllOrgIdsAsync()).ReturnsAsync(new List<string>());
 
             await Create().ExecutePropagationRolePermissionUpdateAsync(new PropagationRolePermissionUpdateEvent { Entity = "permission", Action = "insert", ItemId = "p1" });
 
@@ -792,8 +790,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task Propagation_RoleInsert_ClonesMissingOrgs()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(new Role { ItemId = "r1", Name = "R", Slug = "admin" });
-            _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
-                .ReturnsAsync(new GetOrganizationsResponse { Organizations = new List<Organization> { new() { ItemId = "o1", Name = "O1" } } });
+            _repo.Setup(r => r.GetAllOrgIdsAsync()).ReturnsAsync(new List<string> { "o1" });
             _repo.Setup(r => r.GetRoleBySlugAsync("admin", "o1")).ReturnsAsync((Role)null!);
             _repo.Setup(r => r.InsertRolesAsync(It.IsAny<List<Role>>())).ReturnsAsync(true);
 
