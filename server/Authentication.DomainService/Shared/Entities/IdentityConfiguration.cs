@@ -18,6 +18,8 @@ namespace Authentication.DomainService.Entities
         public const int DefaultActivationUrlLifetimeInMinutes = 60 * 24;
         public const int DefaultRecoverAccountUrlLifetimeInMinutes = 10;
         public const bool DefaultCollectPasswordOnActivation = true;
+        public const int DefaultPasswordPolicyMinLength = 8;
+        public const int DefaultPasswordPolicyMaxLength = 64;
 
 
         [BsonId]
@@ -47,6 +49,27 @@ namespace Authentication.DomainService.Entities
 
         /// <summary>Short plain-text explanation of the password rule. Empty means no message written.</summary>
         public string PasswordStrengthCheckerMessage { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Structured password rule, independent of <see cref="PasswordStrengthCheckerRegex"/>.
+        /// Published as data (not pattern syntax) on the public OIDC UI config endpoint. When
+        /// true, this is the sole authority for password strength enforcement for the tenant --
+        /// any stored <see cref="PasswordStrengthCheckerRegex"/> is not additionally applied.
+        /// </summary>
+        public bool PasswordPolicyEnabled { get; set; } = false;
+        public int PasswordPolicyMinLength { get; set; } = DefaultPasswordPolicyMinLength;
+        public int PasswordPolicyMaxLength { get; set; } = DefaultPasswordPolicyMaxLength;
+        public bool PasswordPolicyRequireUppercase { get; set; } = false;
+        public bool PasswordPolicyRequireLowercase { get; set; } = false;
+        public bool PasswordPolicyRequireNumbers { get; set; } = false;
+        public bool PasswordPolicyRequireSpecialChars { get; set; } = false;
+
+        /// <summary>
+        /// Optional plain-text sentence the tenant admin writes to add guidance the structured
+        /// flags don't capture (e.g. "avoid your username"). Never independently enforced --
+        /// display only. Empty means "no message written".
+        /// </summary>
+        public string PasswordPolicyMessage { get; set; } = string.Empty;
 
         /// <summary>
         /// Whether the activation page asks the user to create a password before the account

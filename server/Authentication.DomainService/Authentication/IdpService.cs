@@ -80,14 +80,22 @@ namespace Authentication.DomainService.Authentication
                     Provider = captchaConfiguration.Provider,
                     Generator = captchaConfiguration.CaptchaGenerator
                 },
-                PasswordPolicy = string.IsNullOrWhiteSpace(authenticationConfiguration?.PasswordStrengthCheckerRegex)
+                // Structured policy only -- never the legacy PasswordStrengthCheckerRegex. A
+                // tenant with only that legacy regex configured (PasswordPolicyEnabled false, the
+                // default) has nothing structured to show, so this is null for them too; the
+                // regex keeps being enforced server-side exactly as before, just never exposed.
+                PasswordPolicy = authenticationConfiguration is not { PasswordPolicyEnabled: true }
                     ? null
                     : new OidcUiPasswordPolicyResponse
                     {
-                        Regex = authenticationConfiguration.PasswordStrengthCheckerRegex,
-                        Message = string.IsNullOrWhiteSpace(authenticationConfiguration.PasswordStrengthCheckerMessage)
-                            ? null : authenticationConfiguration.PasswordStrengthCheckerMessage,
-                        IgnoreCase = true
+                        MinLength = authenticationConfiguration.PasswordPolicyMinLength,
+                        MaxLength = authenticationConfiguration.PasswordPolicyMaxLength,
+                        RequireUppercase = authenticationConfiguration.PasswordPolicyRequireUppercase,
+                        RequireLowercase = authenticationConfiguration.PasswordPolicyRequireLowercase,
+                        RequireNumbers = authenticationConfiguration.PasswordPolicyRequireNumbers,
+                        RequireSpecialChars = authenticationConfiguration.PasswordPolicyRequireSpecialChars,
+                        Message = string.IsNullOrWhiteSpace(authenticationConfiguration.PasswordPolicyMessage)
+                            ? null : authenticationConfiguration.PasswordPolicyMessage
                     },
                 Template = savedTemplate
             });

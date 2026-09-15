@@ -26,7 +26,7 @@ export interface CompiledPasswordPolicy {
 export const PASSWORD_MAX_INPUT_LENGTH = 256;
 
 export const DEFAULT_POLICY_MESSAGE =
-  "Password does not meet this organisation's requirements.";
+  "Password does not meet this project's requirements.";
 
 /**
  * Label for the fallback checklist row shown when a tenant pattern can't be split into
@@ -34,7 +34,7 @@ export const DEFAULT_POLICY_MESSAGE =
  * message, always paired with a fixed ✗), this row's icon toggles with the password, so a
  * negatively-phrased label would read backwards next to a ✓.
  */
-export const FALLBACK_REQUIREMENT_LABEL = "Meets this organisation's password requirements";
+export const FALLBACK_REQUIREMENT_LABEL = "Meets this project's password requirements";
 
 /** Index just past the group opening at `start`, or null when it never closes. */
 const findGroupEnd = (pattern: string, start: number): number | null => {
