@@ -49,7 +49,11 @@ describe("OIDCForgotPassword", () => {
       captcha: null,
       template: {
         ...OIDC_UI_TEMPLATE_FIXTURE,
-        branding: { logoUrl: "https://example.test/acme.svg", brandName: "Acme Identity" },
+        branding: {
+          logoUrlLight: null,
+          logoUrlDark: "https://example.test/acme.svg",
+          brandName: "Acme Identity",
+        },
         theme: {
           ...OIDC_UI_TEMPLATE_FIXTURE.theme,
           dark: { ...OIDC_UI_TEMPLATE_FIXTURE.theme.dark, background: "#101820" },

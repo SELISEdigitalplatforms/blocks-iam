@@ -141,7 +141,7 @@ describe("useOidcUiConfig", () => {
   it("uses the template returned by the public endpoint", async () => {
     const customTemplate = {
       ...OIDC_UI_TEMPLATE_FIXTURE,
-      branding: { logoUrl: "https://example.test/logo.png", brandName: "Acme" },
+      branding: { logoUrlLight: "https://example.test/logo.png", logoUrlDark: null, brandName: "Acme" },
     };
     vi.mocked(http.get).mockResolvedValue({ captcha: null, template: customTemplate });
 

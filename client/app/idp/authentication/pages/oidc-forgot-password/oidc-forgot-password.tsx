@@ -34,7 +34,7 @@ export const OIDCForgotPassword = () => {
         <div className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--node-bg)] p-10 backdrop-blur-[16px]">
           <div className="flex items-center gap-3 mb-8">
             <OidcBrand
-              logoUrl={template.branding.logoUrl}
+              logoUrl={resolvedTheme === "dark" ? template.branding.logoUrlDark : template.branding.logoUrlLight}
               brandName={template.branding.brandName}
             />
           </div>

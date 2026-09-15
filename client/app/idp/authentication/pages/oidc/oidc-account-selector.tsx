@@ -30,6 +30,9 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
 
   if (!template) return null;
 
+  const resolvedLogoUrl =
+    resolvedTheme === "dark" ? template.branding.logoUrlDark : template.branding.logoUrlLight;
+
   const handleSelect = async (account: OidcAccountInfo) => {
     setSelectedAccount(account);
     setIsSubmitting(true);
@@ -51,7 +54,7 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
     return (
       <Card style={buildOidcThemeStyle(template.theme[resolvedTheme])} className="flex h-full flex-col rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--fg)] shadow-none md:min-w-[448px] lg:max-w-md">
         <CardHeader className="text-center">
-          <OidcBrand {...template.branding} />
+          <OidcBrand logoUrl={resolvedLogoUrl} brandName={template.branding.brandName} />
           <CardTitle className="text-3xl">{template.pages.accountSelector.heading}</CardTitle>
           <CardDescription className="text-xl text-foreground">{template.pages.accountSelector.subheading}</CardDescription>
         </CardHeader>
@@ -66,7 +69,7 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
   return (
     <Card style={buildOidcThemeStyle(template.theme[resolvedTheme])} className="flex h-full flex-col rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--fg)] shadow-none md:min-w-[448px] lg:max-w-md">
       <CardHeader className="text-center">
-        <OidcBrand {...template.branding} />
+        <OidcBrand logoUrl={resolvedLogoUrl} brandName={template.branding.brandName} />
         <CardTitle className="text-3xl">{template.pages.accountSelector.heading}</CardTitle>
         <CardDescription className="text-xl text-foreground">{template.pages.accountSelector.subheading}</CardDescription>
       </CardHeader>

@@ -325,6 +325,92 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
+        public async Task GetOidcUiTemplateAsync_H4_ResolvesBothLogosToNull_WhenNeitherNewFieldNorLegacyIsSet()
+        {
+            var stored = new OidcUiTemplate { Branding = new OidcUiTemplateBranding { BrandName = "Acme" } };
+            _keyValueStore
+                .Setup(s => s.GetAsync<OidcUiTemplate>(AuthenticationRepository.OidcUiTemplateStoreKey))
+                .ReturnsAsync(stored);
+
+            var result = await Sut().GetOidcUiTemplateAsync();
+
+            result!.Branding!.LogoUrlLight.Should().BeNull();
+            result.Branding.LogoUrlDark.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetOidcUiTemplateAsync_H5_C4_ResolvesBothLogosFromTheLegacyField_ForAPreV4Document()
+        {
+            var stored = new OidcUiTemplate
+            {
+                Branding = new OidcUiTemplateBranding { BrandName = "Acme", LogoUrl = "https://cdn.example/old.svg" }
+            };
+            _keyValueStore
+                .Setup(s => s.GetAsync<OidcUiTemplate>(AuthenticationRepository.OidcUiTemplateStoreKey))
+                .ReturnsAsync(stored);
+
+            var result = await Sut().GetOidcUiTemplateAsync();
+
+            result!.Branding!.LogoUrlLight.Should().Be("https://cdn.example/old.svg");
+            result.Branding.LogoUrlDark.Should().Be("https://cdn.example/old.svg");
+        }
+
+        [Fact]
+        public async Task GetOidcUiTemplateAsync_H3_ResolvesTheUnsetLogo_ToTheOneThatIsSet()
+        {
+            var stored = new OidcUiTemplate
+            {
+                Branding = new OidcUiTemplateBranding
+                {
+                    BrandName = "Acme", LogoUrlLight = "https://cdn.example/logo.svg", LogoUrlDark = null
+                }
+            };
+            _keyValueStore
+                .Setup(s => s.GetAsync<OidcUiTemplate>(AuthenticationRepository.OidcUiTemplateStoreKey))
+                .ReturnsAsync(stored);
+
+            var result = await Sut().GetOidcUiTemplateAsync();
+
+            result!.Branding!.LogoUrlLight.Should().Be("https://cdn.example/logo.svg");
+            result.Branding.LogoUrlDark.Should().Be("https://cdn.example/logo.svg");
+        }
+
+        [Fact]
+        public async Task GetOidcUiTemplateAsync_KeepsEachLogo_WhenBothAreIndependentlySet()
+        {
+            var stored = new OidcUiTemplate
+            {
+                Branding = new OidcUiTemplateBranding
+                {
+                    BrandName = "Acme",
+                    LogoUrlLight = "https://cdn.example/light.svg",
+                    LogoUrlDark = "https://cdn.example/dark.svg"
+                }
+            };
+            _keyValueStore
+                .Setup(s => s.GetAsync<OidcUiTemplate>(AuthenticationRepository.OidcUiTemplateStoreKey))
+                .ReturnsAsync(stored);
+
+            var result = await Sut().GetOidcUiTemplateAsync();
+
+            result!.Branding!.LogoUrlLight.Should().Be("https://cdn.example/light.svg");
+            result.Branding.LogoUrlDark.Should().Be("https://cdn.example/dark.svg");
+        }
+
+        [Fact]
+        public async Task GetOidcUiTemplateAsync_DoesNotThrow_WhenBrandingIsNull()
+        {
+            var stored = new OidcUiTemplate { Branding = null };
+            _keyValueStore
+                .Setup(s => s.GetAsync<OidcUiTemplate>(AuthenticationRepository.OidcUiTemplateStoreKey))
+                .ReturnsAsync(stored);
+
+            var action = () => Sut().GetOidcUiTemplateAsync();
+
+            await action.Should().NotThrowAsync();
+        }
+
+        [Fact]
         public async Task GetOidcUiTemplateAsync_ReturnsNull_WhenStoreHasNoEntry()
         {
             _keyValueStore

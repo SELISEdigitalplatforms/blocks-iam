@@ -28,7 +28,10 @@ namespace Authentication.DomainService.OAuth
             public BrandingValidator()
             {
                 RuleFor(x => x.BrandName).RequiredText(80);
-                RuleFor(x => x.LogoUrl)
+                RuleFor(x => x.LogoUrlLight)
+                    .Must(TemplateValidationRules.BeOptionalHttpUrl)
+                    .WithMessage("must be an absolute http or https URL");
+                RuleFor(x => x.LogoUrlDark)
                     .Must(TemplateValidationRules.BeOptionalHttpUrl)
                     .WithMessage("must be an absolute http or https URL");
             }
@@ -64,6 +67,8 @@ namespace Authentication.DomainService.OAuth
                 RuleFor(x => x.Border).RequiredHexOrRgbaColor();
                 RuleFor(x => x.BorderStrong).RequiredHexOrRgbaColor();
                 RuleFor(x => x.AccentSoft).RequiredHexOrRgbaColor();
+
+                RuleFor(x => x.ButtonText).RequiredHexColor();
             }
         }
 

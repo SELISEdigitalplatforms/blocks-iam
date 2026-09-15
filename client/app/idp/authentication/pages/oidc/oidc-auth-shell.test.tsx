@@ -36,7 +36,8 @@ const renderShell = (props: Partial<React.ComponentProps<typeof OidcAuthShell>> 
     <OidcAuthShell
       panelConfig={OIDC_LOGIN_PANEL}
       theme={OIDC_UI_TEMPLATE_FIXTURE.theme}
-      logoUrl={null}
+      logoUrlLight={null}
+      logoUrlDark={null}
       brandName="Blocks IAM"
       heading="Sign in to Blocks"
       footerNote={<span>footer</span>}
@@ -147,7 +148,8 @@ describe("OidcAuthShell", () => {
 
   it("renders a custom logo and brand name with the auto, light and dark switcher", () => {
     renderShell({
-      logoUrl: "https://example.test/acme.png",
+      logoUrlLight: "https://example.test/acme.png",
+      logoUrlDark: "https://example.test/acme.png",
       brandName: "Acme Identity",
     });
     expect(screen.getByRole("img", { name: "Acme Identity logo" })).toHaveAttribute(
@@ -159,6 +161,50 @@ describe("OidcAuthShell", () => {
     expect(screen.getByRole("tab", { name: "Auto" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Light" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Dark" })).toBeInTheDocument();
+  });
+
+  it("H1/H2: renders the mode-specific logo and switches it when the resolved theme changes", async () => {
+    const { container } = renderShell({
+      logoUrlLight: "https://example.test/light.svg",
+      logoUrlDark: "https://example.test/dark.svg",
+      brandName: "Acme Identity",
+    });
+
+    expect(screen.getByRole("img", { name: "Acme Identity logo" })).toHaveAttribute(
+      "src",
+      "https://example.test/light.svg",
+    );
+
+    await act(async () => {
+      document.documentElement.classList.add("dark");
+    });
+
+    expect(container.querySelector(".oidc-scifi-root")).toHaveAttribute("data-theme", "dark");
+    expect(screen.getByRole("img", { name: "Acme Identity logo" })).toHaveAttribute(
+      "src",
+      "https://example.test/dark.svg",
+    );
+  });
+
+  it("H4: renders the default Blocks logo in both modes when neither logo is configured", async () => {
+    renderShell({ logoUrlLight: null, logoUrlDark: null });
+    expect(screen.getByTestId("blocks-default-logo")).toBeInTheDocument();
+
+    await act(async () => {
+      document.documentElement.classList.add("dark");
+    });
+    expect(screen.getByTestId("blocks-default-logo")).toBeInTheDocument();
+  });
+
+  it("H6/H7: exposes the palette's buttonText as the --button-text CSS variable", () => {
+    const { container } = renderShell({
+      theme: {
+        light: { ...OIDC_UI_TEMPLATE_FIXTURE.theme.light, buttonText: "#0c1024" },
+        dark: OIDC_UI_TEMPLATE_FIXTURE.theme.dark,
+      },
+    });
+    const root = container.querySelector(".oidc-scifi-root") as HTMLElement;
+    expect(root.style.getPropertyValue("--button-text")).toBe("#0c1024");
   });
 
   it("reacts to the resolved html theme and applies the stored light palette", async () => {
