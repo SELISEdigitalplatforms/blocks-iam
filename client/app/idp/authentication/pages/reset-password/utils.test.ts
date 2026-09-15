@@ -35,9 +35,11 @@ describe("buildResetPasswordFormSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts a one-character matching password without a policy", () => {
+  it("falls back to the FE default policy (8-30, every character class) without a tenant policy", () => {
+    const schema = buildResetPasswordFormSchema(null);
+    expect(schema.safeParse({ password: "a", confirmPassword: "a" }).success).toBe(false);
     expect(
-      buildResetPasswordFormSchema(null).safeParse({ password: "a", confirmPassword: "a" }).success,
+      schema.safeParse({ password: "Sunflower7!", confirmPassword: "Sunflower7!" }).success,
     ).toBe(true);
   });
 
@@ -45,7 +47,8 @@ describe("buildResetPasswordFormSchema", () => {
     const schema = buildResetPasswordFormSchema(null);
     expect(schema.safeParse({ password: "", confirmPassword: "" }).success).toBe(false);
     expect(schema.safeParse({ password: "a".repeat(257), confirmPassword: "a".repeat(257) }).success).toBe(false);
-    const mismatch = schema.safeParse({ password: "a", confirmPassword: "b" });
+    // Both satisfy the default policy on their own, so mismatch is the only possible issue.
+    const mismatch = schema.safeParse({ password: "Sunflower7!", confirmPassword: "Sunflower8!" });
     expect(mismatch.success).toBe(false);
     if (!mismatch.success) expect(mismatch.error.issues[0]?.message).toBe("Passwords must be matched");
   });

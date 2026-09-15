@@ -39,12 +39,36 @@ const ASCII_LOWER = /[a-z]/;
 const ASCII_DIGIT = /[0-9]/;
 const ASCII_SPECIAL = /[^A-Za-z0-9]/;
 
-/** A policy is only usable once its bounds are sane; a corrupt response degrades to "no policy". */
+/** A policy is only usable once its bounds are sane; a corrupt response degrades to the default. */
 export const hasValidBounds = (policy: IOidcPasswordPolicy): boolean =>
   Number.isFinite(policy.minLength) &&
   Number.isFinite(policy.maxLength) &&
   policy.minLength > 0 &&
   policy.maxLength >= policy.minLength;
+
+/**
+ * The FE's baseline password rule -- restores the pre-tenant-configurable behaviour that was
+ * hard-coded everywhere before SPEC16/17 (8-30 characters, upper, lower, digit, special/`_`;
+ * `_` falls under the fixed ASCII_SPECIAL class below like it always has).
+ *
+ * Applied whenever a tenant has no structured policy configured (or the config hasn't loaded
+ * yet/failed to load), so the screens never drop to "no requirements at all" -- by decision,
+ * every tenant gets at least this floor.
+ */
+export const DEFAULT_PASSWORD_POLICY: IOidcPasswordPolicy = {
+  minLength: 8,
+  maxLength: 30,
+  requireUppercase: true,
+  requireLowercase: true,
+  requireNumbers: true,
+  requireSpecialChars: true,
+  message: null,
+};
+
+/** The policy actually in effect: the tenant's own (if usable), else the FE's baseline. */
+export const resolvePasswordPolicy = (
+  policy: IOidcPasswordPolicy | null | undefined,
+): IOidcPasswordPolicy => (policy && hasValidBounds(policy) ? policy : DEFAULT_PASSWORD_POLICY);
 
 export const buildPasswordPolicyRequirements = (
   policy: IOidcPasswordPolicy,
@@ -95,14 +119,14 @@ export const applyPasswordPolicyToSchema = (
   schema: z.ZodString,
   policy: IOidcPasswordPolicy | null | undefined,
 ): z.ZodString => {
-  if (!policy || !hasValidBounds(policy)) return schema;
+  const resolved = resolvePasswordPolicy(policy);
 
   let result = schema
-    .min(policy.minLength, `Password must be at least ${policy.minLength} characters long`)
-    .max(policy.maxLength, `Password must be at most ${policy.maxLength} characters long`);
-  if (policy.requireUppercase) result = result.regex(ASCII_UPPER, "Must include an uppercase letter");
-  if (policy.requireLowercase) result = result.regex(ASCII_LOWER, "Must include a lowercase letter");
-  if (policy.requireNumbers) result = result.regex(ASCII_DIGIT, "Must include a number");
-  if (policy.requireSpecialChars) result = result.regex(ASCII_SPECIAL, "Must include a special character");
+    .min(resolved.minLength, `Password must be at least ${resolved.minLength} characters long`)
+    .max(resolved.maxLength, `Password must be at most ${resolved.maxLength} characters long`);
+  if (resolved.requireUppercase) result = result.regex(ASCII_UPPER, "Must include an uppercase letter");
+  if (resolved.requireLowercase) result = result.regex(ASCII_LOWER, "Must include a lowercase letter");
+  if (resolved.requireNumbers) result = result.regex(ASCII_DIGIT, "Must include a number");
+  if (resolved.requireSpecialChars) result = result.regex(ASCII_SPECIAL, "Must include a special character");
   return result;
 };

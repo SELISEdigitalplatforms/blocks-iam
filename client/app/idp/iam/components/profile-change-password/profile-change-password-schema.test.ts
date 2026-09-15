@@ -5,8 +5,15 @@ import type { IOidcPasswordPolicy } from "@blocks-idp/authentication/utils/passw
 const values = { oldPassword: "old", newPassword: "a", confirmNewPassword: "a" };
 
 describe("buildChangePasswordSchema", () => {
-  it("accepts a one-character new password when no policy is active", () => {
-    expect(buildChangePasswordSchema(null).safeParse(values).success).toBe(true);
+  it("falls back to the FE default policy for the new password when no tenant policy is active", () => {
+    expect(buildChangePasswordSchema(null).safeParse(values).success).toBe(false);
+    expect(
+      buildChangePasswordSchema(null).safeParse({
+        ...values,
+        newPassword: "Sunflower7!",
+        confirmNewPassword: "Sunflower7!",
+      }).success,
+    ).toBe(true);
   });
 
   it("applies the active tenant policy to the new password", () => {

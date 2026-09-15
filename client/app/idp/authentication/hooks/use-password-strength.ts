@@ -4,7 +4,11 @@ import type {
   PasswordPolicyChecks,
   PasswordPolicyRequirement,
 } from "../utils/password-policy.util";
-import { buildPasswordPolicyRequirements, checkPasswordAgainstPolicy } from "../utils/password-policy.util";
+import {
+  buildPasswordPolicyRequirements,
+  checkPasswordAgainstPolicy,
+  resolvePasswordPolicy,
+} from "../utils/password-policy.util";
 import {
   STRENGTH_THRESHOLDS,
   getStrengthColor,
@@ -22,8 +26,11 @@ export const usePasswordStrength = (
   policy: IOidcPasswordPolicy | null | undefined,
 ) =>
   useMemo(() => {
-    const requirements: PasswordPolicyRequirement[] = policy ? buildPasswordPolicyRequirements(policy) : [];
-    const checks: PasswordPolicyChecks = policy ? checkPasswordAgainstPolicy(password, policy) : {};
+    // No tenant policy (unconfigured, still loading, or failed to load) falls back to the FE's
+    // own baseline rule rather than dropping to "no requirements at all".
+    const effectivePolicy = resolvePasswordPolicy(policy);
+    const requirements: PasswordPolicyRequirement[] = buildPasswordPolicyRequirements(effectivePolicy);
+    const checks: PasswordPolicyChecks = checkPasswordAgainstPolicy(password, effectivePolicy);
 
     // requirements/checks are two views over the same policy flags (built in the same order
     // from the same source), so they always describe the same set of rows -- there is no
@@ -45,7 +52,7 @@ export const usePasswordStrength = (
       requirements,
       allRequirementsMet,
       hasPolicy,
-      policyMessage: policy?.message ?? null,
+      policyMessage: effectivePolicy.message,
       getStrengthColor: () => getStrengthColor(strength),
       getStrengthTextColor: () => getStrengthTextColor(strength),
       getStrengthLabel: () => getStrengthLabel(strength),

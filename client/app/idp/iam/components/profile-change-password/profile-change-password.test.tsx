@@ -37,15 +37,20 @@ const openDialog = () => {
   fireEvent.click(screen.getByRole("button", { name: "Update Password" }));
 };
 
+// Satisfies the FE default policy (8-30 chars, upper, lower, digit, special) that now applies
+// whenever no tenant policy is configured -- this suite mocks useOidcUiConfig with
+// passwordPolicy: null.
+const NEW_PASSWORD = "NewPass12!";
+
 const fillForm = () => {
   fireEvent.input(screen.getByPlaceholderText("Enter your current password"), {
     target: { value: "oldPass1" },
   });
   fireEvent.input(screen.getByPlaceholderText("Enter your new password"), {
-    target: { value: "newPass12" },
+    target: { value: NEW_PASSWORD },
   });
   fireEvent.input(screen.getByPlaceholderText("Confirm your new password"), {
-    target: { value: "newPass12" },
+    target: { value: NEW_PASSWORD },
   });
 };
 
@@ -84,7 +89,7 @@ describe("ProfileChangePassword", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
     await waitFor(() =>
       expect(h.mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ oldPassword: "oldPass1", newPassword: "newPass12" }),
+        expect.objectContaining({ oldPassword: "oldPass1", newPassword: NEW_PASSWORD }),
       ),
     );
     await waitFor(() => expect(h.showSuccess).toHaveBeenCalled());

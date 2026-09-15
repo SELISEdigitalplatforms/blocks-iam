@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  DEFAULT_PASSWORD_POLICY,
   PASSWORD_MAX_INPUT_LENGTH,
   applyPasswordPolicyToSchema,
   buildPasswordPolicyRequirements,
   checkPasswordAgainstPolicy,
   hasValidBounds,
+  resolvePasswordPolicy,
   type IOidcPasswordPolicy,
 } from "./password-policy.util";
 
@@ -23,6 +25,36 @@ const policy = (overrides: Partial<IOidcPasswordPolicy> = {}): IOidcPasswordPoli
 describe("PASSWORD_MAX_INPUT_LENGTH", () => {
   it("is 256", () => {
     expect(PASSWORD_MAX_INPUT_LENGTH).toBe(256);
+  });
+});
+
+describe("resolvePasswordPolicy", () => {
+  it("returns the tenant's own policy when it is usable", () => {
+    const tenantPolicy = policy({ minLength: 12, requireSpecialChars: true });
+    expect(resolvePasswordPolicy(tenantPolicy)).toBe(tenantPolicy);
+  });
+
+  it.each([null, undefined])(
+    "falls back to DEFAULT_PASSWORD_POLICY for %s (no tenant policy configured)",
+    (nothing) => {
+      expect(resolvePasswordPolicy(nothing)).toBe(DEFAULT_PASSWORD_POLICY);
+    },
+  );
+
+  it("falls back to DEFAULT_PASSWORD_POLICY for a policy with invalid bounds", () => {
+    expect(resolvePasswordPolicy(policy({ minLength: 0 }))).toBe(DEFAULT_PASSWORD_POLICY);
+  });
+
+  it("DEFAULT_PASSWORD_POLICY restores the old 8-30/upper/lower/digit/special rule", () => {
+    expect(DEFAULT_PASSWORD_POLICY).toEqual({
+      minLength: 8,
+      maxLength: 30,
+      requireUppercase: true,
+      requireLowercase: true,
+      requireNumbers: true,
+      requireSpecialChars: true,
+      message: null,
+    });
   });
 });
 
@@ -132,13 +164,15 @@ describe("applyPasswordPolicyToSchema", () => {
   const schemaFor = (p: IOidcPasswordPolicy | null | undefined) =>
     applyPasswordPolicyToSchema(z.string(), p);
 
-  it("returns the schema unchanged when there is no policy", () => {
-    expect(schemaFor(null).safeParse("a").success).toBe(true);
-    expect(schemaFor(undefined).safeParse("a").success).toBe(true);
+  it("falls back to the FE default policy when there is no tenant policy", () => {
+    expect(schemaFor(null).safeParse("a").success).toBe(false);
+    expect(schemaFor(undefined).safeParse("a").success).toBe(false);
+    expect(schemaFor(null).safeParse("Sunflower7!").success).toBe(true);
   });
 
-  it("returns the schema unchanged for a policy with invalid bounds", () => {
-    expect(schemaFor(policy({ minLength: 0 })).safeParse("a").success).toBe(true);
+  it("falls back to the FE default policy for a tenant policy with invalid bounds", () => {
+    expect(schemaFor(policy({ minLength: 0 })).safeParse("a").success).toBe(false);
+    expect(schemaFor(policy({ minLength: 0 })).safeParse("Sunflower7!").success).toBe(true);
   });
 
   it("enforces the policy's own length bounds with matching messages", () => {

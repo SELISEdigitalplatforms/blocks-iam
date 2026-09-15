@@ -140,7 +140,9 @@ describe("ActivationForm", () => {
   it("validates that the password may not contain whitespace", async () => {
     const { container } = render(<ActivationForm code="activation-code" />);
     const [password] = passwordInputs(container);
-    fireEvent.change(password, { target: { value: "has space" } });
+    // Otherwise satisfies the FE default policy (8-30, every character class), so the
+    // whitespace rule is the only issue and its message is the one shown.
+    fireEvent.change(password, { target: { value: "Sunflower7! " } });
 
     expect(
       await screen.findByText("Password must not contain spaces"),

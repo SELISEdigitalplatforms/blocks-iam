@@ -2,6 +2,7 @@ import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { usePasswordStrength } from "./use-password-strength";
 import type { IOidcPasswordPolicy } from "../utils/password-policy.util";
+import { DEFAULT_PASSWORD_POLICY, buildPasswordPolicyRequirements } from "../utils/password-policy.util";
 import { STRENGTH_COLORS } from "../utils/password-strength.util";
 
 const policy: IOidcPasswordPolicy = {
@@ -60,23 +61,34 @@ describe("usePasswordStrength", () => {
     expect(result.current.policyMessage).toBe("At least 10 characters including one number.");
   });
 
-  it("has no complexity requirements without a policy and only requires non-empty input", () => {
+  it("falls back to the FE default policy without a tenant policy, rather than no requirements", () => {
     const empty = renderHook(() => usePasswordStrength("", null));
-    expect(empty.result.current.requirements).toEqual([]);
-    expect(empty.result.current.checks).toEqual({});
+    expect(empty.result.current.requirements.map((r) => r.key)).toEqual([
+      "length",
+      "uppercase",
+      "lowercase",
+      "number",
+      "special",
+    ]);
+    expect(empty.result.current.hasPolicy).toBe(true);
     expect(empty.result.current.allRequirementsMet).toBe(false);
-    expect(empty.result.current.hasPolicy).toBe(false);
     expect(empty.result.current.policyMessage).toBeNull();
 
+    // A single character no longer satisfies the fallback rule (8-30, every character class).
     const oneCharacter = renderHook(() => usePasswordStrength("a", null));
-    expect(oneCharacter.result.current.allRequirementsMet).toBe(true);
+    expect(oneCharacter.result.current.allRequirementsMet).toBe(false);
+
+    const strongDefault = renderHook(() => usePasswordStrength("Sunflower7!", null));
+    expect(strongDefault.result.current.allRequirementsMet).toBe(true);
   });
 
-  it("C1: degrades to no-policy behaviour when the policy has invalid bounds, without throwing", () => {
+  it("C1: falls back to the FE default policy when the tenant policy has invalid bounds, without throwing", () => {
     const brokenPolicy: IOidcPasswordPolicy = { ...policy, minLength: 0, maxLength: -1 };
     expect(() => renderHook(() => usePasswordStrength("anything", brokenPolicy))).not.toThrow();
     const { result } = renderHook(() => usePasswordStrength("anything", brokenPolicy));
-    expect(result.current.requirements).toEqual([]);
-    expect(result.current.allRequirementsMet).toBe(true); // non-empty password, no usable policy
+    expect(result.current.requirements).toEqual(
+      buildPasswordPolicyRequirements(DEFAULT_PASSWORD_POLICY),
+    );
+    expect(result.current.allRequirementsMet).toBe(false); // "anything" fails the default rule
   });
 });
