@@ -289,6 +289,19 @@
 }
 .oidc-scifi-root .oidc-sci-fi-link:hover::after { width: 100%; }
 
+/*
+ * Mode toggle (ModeToggle, shared with the rest of the app). Its selected-tab styling is
+ * hard-coded to the app-wide `--primary` design token, which this shell never defines (it uses
+ * --accent/--accent2 instead) -- so without this override, the toggle's selection color stays
+ * on the app's fixed default blue regardless of the tenant's chosen colors. Selector specificity
+ * (one class + two attribute selectors) is deliberately higher than the Tailwind arbitrary-value
+ * utility it overrides, so it wins independent of CSS source order.
+ */
+.oidc-scifi-root [role="tab"][data-state="active"] {
+  background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
 /* Node cards */
 .oidc-scifi-root .oidc-sci-fi-node {
   background: var(--node-bg);
