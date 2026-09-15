@@ -1079,10 +1079,11 @@ namespace Iam.DomainService.Resources
                 return false;
             }
 
-            var orgIds = (await _resourceRepository.GetOrganizationsAsync(new GetOrganizationsRequest()))
-                ?.Organizations?
-                .Select(x => x.ItemId)
-                .ToList() ?? [];
+            // Unpaged on purpose. GetOrganizationsAsync is the paged LIST query -- a
+            // default-constructed request carries PageSize 10, which silently capped this
+            // fan-out at the first ten organizations by name. Propagation is not a page of
+            // results, so it reads the whole set the way PropagateSetPermissionsAsync does.
+            var orgIds = await _resourceRepository.GetAllOrgIdsAsync();
 
             if (!orgIds.Any())
             {
@@ -1193,10 +1194,11 @@ namespace Iam.DomainService.Resources
                 return false;
             }
 
-            var orgIds = (await _resourceRepository.GetOrganizationsAsync(new GetOrganizationsRequest()))
-                ?.Organizations?
-                .Select(x => x.ItemId)
-                .ToList() ?? [];
+            // Unpaged on purpose. GetOrganizationsAsync is the paged LIST query -- a
+            // default-constructed request carries PageSize 10, which silently capped this
+            // fan-out at the first ten organizations by name. Propagation is not a page of
+            // results, so it reads the whole set the way PropagateSetPermissionsAsync does.
+            var orgIds = await _resourceRepository.GetAllOrgIdsAsync();
 
             if (!orgIds.Any())
             {
