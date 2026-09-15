@@ -1,49 +1,51 @@
 import { useMemo } from "react";
-import type { CompiledPasswordPolicy } from "../utils/password-policy.util";
+import type {
+  IOidcPasswordPolicy,
+  PasswordPolicyChecks,
+  PasswordPolicyRequirement,
+} from "../utils/password-policy.util";
+import { buildPasswordPolicyRequirements, checkPasswordAgainstPolicy } from "../utils/password-policy.util";
 import {
   STRENGTH_THRESHOLDS,
   getStrengthColor,
   getStrengthLabel,
   getStrengthTextColor,
 } from "../utils/password-strength.util";
-import type { PasswordChecks, PasswordRequirement } from "../utils/password-strength.util";
 
-export type { PasswordChecks, PasswordRequirement } from "../utils/password-strength.util";
+export type {
+  PasswordPolicyChecks,
+  PasswordPolicyRequirement,
+} from "../utils/password-policy.util";
 
-export const usePasswordStrength = (password: string, policy: CompiledPasswordPolicy | null) =>
+export const usePasswordStrength = (
+  password: string,
+  policy: IOidcPasswordPolicy | null | undefined,
+) =>
   useMemo(() => {
-    const criteria = policy?.criteria ?? [];
-    const checks: PasswordChecks = {};
-    for (const criterion of criteria) {
-      checks[criterion.key] = criterion.test(password);
-    }
+    const requirements: PasswordPolicyRequirement[] = policy ? buildPasswordPolicyRequirements(policy) : [];
+    const checks: PasswordPolicyChecks = policy ? checkPasswordAgainstPolicy(password, policy) : {};
 
-    const requirements: PasswordRequirement[] = criteria.map(({ key, label }) => ({ key, label }));
-    const met = criteria.filter((criterion) => checks[criterion.key]).length;
-    const score = criteria.length > 0 ? (met / criteria.length) * 100 : 0;
-    // "Strong" is reserved for a password the policy actually accepts, so a near-miss on a
-    // many-rule policy cannot round its way into the top band.
+    // requirements/checks are two views over the same policy flags (built in the same order
+    // from the same source), so they always describe the same set of rows -- there is no
+    // separate "whole policy" test that could disagree with "every listed row passed".
+    const hasPolicy = requirements.length > 0;
+    const met = requirements.filter((requirement) => checks[requirement.key]).length;
+    const allRequirementsMet = hasPolicy ? met === requirements.length : password.length > 0;
+
     const strength =
-      password === "" || criteria.length === 0
+      !hasPolicy || password === ""
         ? 0
-        : met === criteria.length
+        : met === requirements.length
           ? 100
-          : Math.min(Math.round(score), STRENGTH_THRESHOLDS.STRONG);
-
-    // The compiled pattern stays the only authority on whether the password is acceptable;
-    // the criteria above exist to explain and score it, never to gate submission.
-    const policySatisfied = policy ? policy.test(password) : password.length > 0;
+          : Math.min(Math.round((met / requirements.length) * 100), STRENGTH_THRESHOLDS.STRONG);
 
     return {
       strength,
       checks,
       requirements,
-      allRequirementsMet: policySatisfied,
-      policySatisfied,
-      /** Shown only if every listed rule passes but the whole pattern still rejects. */
-      unexplainedFailure: policy != null && !policySatisfied && met === criteria.length,
+      allRequirementsMet,
+      hasPolicy,
       policyMessage: policy?.message ?? null,
-      hasPolicy: criteria.length > 0,
       getStrengthColor: () => getStrengthColor(strength),
       getStrengthTextColor: () => getStrengthTextColor(strength),
       getStrengthLabel: () => getStrengthLabel(strength),

@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { Check, X } from "lucide-react";
 import { usePasswordStrength } from "@blocks-idp/authentication/hooks/use-password-strength";
-import type { CompiledPasswordPolicy } from "@blocks-idp/authentication/utils/password-policy.util";
+import type { IOidcPasswordPolicy } from "@blocks-idp/authentication/utils/password-policy.util";
 import {
   STRENGTH_SEGMENTS,
   getFilledSegments,
@@ -13,7 +13,7 @@ interface PasswordStrengthCheckerProps {
   onRequirementsMet: (met: boolean) => void;
   excludePassword?: string;
   excludePasswordLabel?: string;
-  policy: CompiledPasswordPolicy | null;
+  policy: IOidcPasswordPolicy | null | undefined;
 }
 
 const RequirementRow: React.FC<{ met: boolean; children: React.ReactNode }> = ({
@@ -44,7 +44,6 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
     allRequirementsMet,
     strength,
     hasPolicy,
-    unexplainedFailure,
     policyMessage,
     getStrengthColor,
     getStrengthTextColor,
@@ -110,10 +109,6 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
           </RequirementRow>
         ))}
 
-        {unexplainedFailure && policyMessage && (
-          <RequirementRow met={false}>{policyMessage}</RequirementRow>
-        )}
-
         {excludePassword && password !== "" && (
           <RequirementRow met={isDifferentFromExcluded}>
             {excludePasswordLabel ?? "New password shouldn't match current password"}
@@ -122,6 +117,10 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
 
         <RequirementRow met={passwordsMatch}>Passwords match</RequirementRow>
       </ul>
+
+      {/* Admin-authored guidance, display only -- never independently checked, so it never
+          gets a pass/fail icon of its own. */}
+      {policyMessage && <p className="mt-2 text-xs italic text-medium-emphasis">{policyMessage}</p>}
     </div>
   );
 };

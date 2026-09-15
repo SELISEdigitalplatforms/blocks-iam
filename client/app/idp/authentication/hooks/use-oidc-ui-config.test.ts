@@ -89,25 +89,33 @@ describe("useOidcUiConfig", () => {
     expect(result.current.passwordPolicy).toBeNull();
   });
 
-  it("compiles the public password policy once for callers", async () => {
+  it("passes the structured public password policy through verbatim, with no compile step", async () => {
+    const structuredPolicy = {
+      minLength: 10,
+      maxLength: 64,
+      requireUppercase: false,
+      requireLowercase: false,
+      requireNumbers: true,
+      requireSpecialChars: false,
+      message: "At least 10 characters including one number.",
+    };
     vi.mocked(http.get).mockResolvedValue({
       captcha: null,
       template: null,
-      passwordPolicy: { regex: "^abc$", message: "Use abc", ignoreCase: true },
+      passwordPolicy: structuredPolicy,
     });
     const { result } = renderHook(() => useOidcUiConfig("tenant-x"), {
       wrapper: createWrapper(),
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.passwordPolicy?.message).toBe("Use abc");
-    expect(result.current.passwordPolicy?.test("ABC")).toBe(true);
+    expect(result.current.passwordPolicy).toEqual(structuredPolicy);
   });
 
-  it("fails open when the public password policy cannot be compiled", async () => {
+  it("reports null when the tenant has no structured policy configured", async () => {
     vi.mocked(http.get).mockResolvedValue({
       captcha: null,
       template: null,
-      passwordPolicy: { regex: "^(?<-a>x)$", message: "Ignored", ignoreCase: true },
+      passwordPolicy: null,
     });
     const { result } = renderHook(() => useOidcUiConfig("tenant-x"), {
       wrapper: createWrapper(),

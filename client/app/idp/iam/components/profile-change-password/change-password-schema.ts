@@ -1,17 +1,16 @@
 import { z } from "zod";
 import {
+  applyPasswordPolicyToSchema,
   PASSWORD_MAX_INPUT_LENGTH,
-  type CompiledPasswordPolicy,
+  type IOidcPasswordPolicy,
 } from "@blocks-idp/authentication/utils/password-policy.util";
 
-export const buildChangePasswordSchema = (policy: CompiledPasswordPolicy | null) => {
+export const buildChangePasswordSchema = (policy: IOidcPasswordPolicy | null | undefined) => {
   const baseNewPassword = z
     .string()
     .min(1, "New password is required")
     .max(PASSWORD_MAX_INPUT_LENGTH, "Password is too long");
-  const newPassword = policy
-    ? baseNewPassword.refine(policy.test, policy.message)
-    : baseNewPassword;
+  const newPassword = applyPasswordPolicyToSchema(baseNewPassword, policy);
 
   return z
     .object({

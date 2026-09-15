@@ -1,15 +1,16 @@
 import { z } from "zod";
 import {
+  applyPasswordPolicyToSchema,
   PASSWORD_MAX_INPUT_LENGTH,
-  type CompiledPasswordPolicy,
+  type IOidcPasswordPolicy,
 } from "@blocks-idp/authentication/utils/password-policy.util";
 
-export const buildResetPasswordFormSchema = (policy: CompiledPasswordPolicy | null) => {
+export const buildResetPasswordFormSchema = (policy: IOidcPasswordPolicy | null | undefined) => {
   const basePassword = z
     .string()
     .min(1, "Password is required")
     .max(PASSWORD_MAX_INPUT_LENGTH, "Password is too long");
-  const password = policy ? basePassword.refine(policy.test, policy.message) : basePassword;
+  const password = applyPasswordPolicyToSchema(basePassword, policy);
 
   return z.object({
     password,

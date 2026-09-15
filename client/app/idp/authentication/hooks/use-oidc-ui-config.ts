@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
 import { serviceInstances } from "@/lib/http-client";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
@@ -8,10 +7,7 @@ import {
   normalizeOidcUiTemplate,
   type IOidcUiTemplate,
 } from "@blocks-idp/authentication/models/oidc-ui-template";
-import {
-  compilePasswordPolicy,
-  type IOidcPasswordPolicy,
-} from "@blocks-idp/authentication/utils/password-policy.util";
+import type { IOidcPasswordPolicy } from "@blocks-idp/authentication/utils/password-policy.util";
 
 export { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 export type { IOidcUiTemplate } from "@blocks-idp/authentication/models/oidc-ui-template";
@@ -84,10 +80,8 @@ export const useOidcUiConfig = (tenantIdOverride?: string) => {
           : DEFAULT_OIDC_UI_TEMPLATE,
       }
     : { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE };
-  const passwordPolicy = useMemo(
-    () => compilePasswordPolicy(query.data?.passwordPolicy),
-    [query.data?.passwordPolicy],
-  );
+  // Passed through verbatim: plain data, no compile step, no RegExp ever constructed from it.
+  const passwordPolicy: IOidcPasswordPolicy | null = query.data?.passwordPolicy ?? null;
 
   return {
     ...query,

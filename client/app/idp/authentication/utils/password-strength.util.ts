@@ -30,13 +30,6 @@ export type StrengthBand = keyof typeof STRENGTH_COLORS;
 /** Number of segments the meter is drawn with; one band each. */
 export const STRENGTH_SEGMENTS = 4;
 
-export type PasswordChecks = Record<string, boolean>;
-
-export interface PasswordRequirement {
-  key: string;
-  label: string;
-}
-
 export const getStrengthBand = (strength: number): StrengthBand => {
   if (strength <= STRENGTH_THRESHOLDS.WEAK) return "WEAK";
   if (strength <= STRENGTH_THRESHOLDS.MEDIUM) return "MEDIUM_WEAK";

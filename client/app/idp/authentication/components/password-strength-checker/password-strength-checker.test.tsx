@@ -9,10 +9,17 @@ import {
 const h = vi.hoisted(() => ({
   checks: {} as Record<string, boolean>,
   requirements: [] as { key: string; label: string }[],
-  unexplainedFailure: false,
   policyMessage: null as string | null,
 }));
-const policy = { test: () => true, message: "Tenant policy", criteria: [] };
+const policy = {
+  minLength: 8,
+  maxLength: 64,
+  requireUppercase: false,
+  requireLowercase: false,
+  requireNumbers: true,
+  requireSpecialChars: false,
+  message: "Tenant policy",
+};
 
 vi.mock("@blocks-idp/authentication/hooks/use-password-strength", async () => {
   const strengthUtil = await import(
@@ -29,7 +36,6 @@ vi.mock("@blocks-idp/authentication/hooks/use-password-strength", async () => {
         allRequirementsMet: Object.values(h.checks).every(Boolean),
         strength,
         hasPolicy: total > 0,
-        unexplainedFailure: h.unexplainedFailure,
         policyMessage: h.policyMessage,
         getStrengthColor: () => strengthUtil.getStrengthColor(strength),
         getStrengthTextColor: () => strengthUtil.getStrengthTextColor(strength),
@@ -47,7 +53,6 @@ beforeEach(() => {
     { key: "number", label: "Contains a number" },
   ];
   h.checks = { length: true, number: true };
-  h.unexplainedFailure = false;
   h.policyMessage = null;
 });
 
@@ -112,7 +117,7 @@ describe("PasswordStrengthChecker", () => {
     expect(screen.getByText(getStrengthLabel(0))).toBeInTheDocument();
   });
 
-  it("hides the strength meter and shows only match and exclusion rows without a policy", () => {
+  it("hides the strength meter and shows only match and exclusion rows without a policy (H5)", () => {
     h.requirements = [];
     h.checks = {};
     render(
@@ -130,12 +135,22 @@ describe("PasswordStrengthChecker", () => {
     expect(screen.queryByText("At least 8 characters")).not.toBeInTheDocument();
   });
 
-  it("falls back to the policy message when the rules cannot explain the rejection", () => {
-    h.unexplainedFailure = true;
-    h.policyMessage = "Blocked by the organisation";
+  it("shows the admin message as a plain note, not a pass/fail row (H4)", () => {
+    h.policyMessage = "Avoid using your username.";
     render(
       <PasswordStrengthChecker password="Secret1" confirmPassword="Secret1" policy={policy} onRequirementsMet={vi.fn()} />,
     );
-    expect(screen.getByText("Blocked by the organisation")).toBeInTheDocument();
+    const note = screen.getByText("Avoid using your username.");
+    expect(note).toBeInTheDocument();
+    // It sits outside the requirement list -- no icon, no <li>.
+    expect(note.closest("li")).toBeNull();
+  });
+
+  it("renders no note when the policy carries no message", () => {
+    h.policyMessage = null;
+    const { container } = render(
+      <PasswordStrengthChecker password="Secret1" confirmPassword="Secret1" policy={policy} onRequirementsMet={vi.fn()} />,
+    );
+    expect(container.querySelector("p.italic")).toBeNull();
   });
 });
