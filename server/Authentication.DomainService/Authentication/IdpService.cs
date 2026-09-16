@@ -80,43 +80,29 @@ namespace Authentication.DomainService.Authentication
                     Provider = captchaConfiguration.Provider,
                     Generator = captchaConfiguration.CaptchaGenerator
                 },
-                // Structured data either way -- no pattern text ever reaches the response, so the
-                // browser still builds no RegExp. A tenant that configured the structured policy
-                // publishes it verbatim; one still on the legacy regex publishes the equivalent
-                // derived from it, so the screens describe the rule actually being enforced
-                // instead of falling back to a hard-coded default. A regex too involved to read
-                // confidently derives nothing and this stays null, exactly as it did before.
+                // Derived from the tenant's regex and published as plain data -- no pattern text
+                // reaches the response, so the browser builds no RegExp. PasswordPolicyEnabled
+                // gates publication: off publishes nothing at all.
                 PasswordPolicy = BuildPasswordPolicy(authenticationConfiguration),
                 Template = savedTemplate
             });
         }
 
         /// <summary>
-        /// The tenant's structured rule: its own when configured, otherwise the one derived from
-        /// its legacy regex. Null when neither is available.
+        /// The tenant's password rule, published as plain data derived from their configured
+        /// <c>PasswordStrengthCheckerRegex</c>. <c>PasswordPolicyEnabled</c> gates whether a rule
+        /// is published at all: off publishes nothing, on publishes the regex read back as
+        /// structured flags. A regex too involved to read confidently publishes nothing either.
+        ///
+        /// No pattern text reaches the response, so the browser still builds no RegExp.
         /// </summary>
         private static OidcUiPasswordPolicyResponse? BuildPasswordPolicy(IdentityConfiguration? configuration)
         {
-            if (configuration is null) return null;
+            if (configuration is not { PasswordPolicyEnabled: true }) return null;
 
-            if (configuration is not { PasswordPolicyEnabled: true })
-            {
-                return PasswordPolicyRegexDeriver.Derive(
-                    configuration.PasswordStrengthCheckerRegex,
-                    configuration.PasswordStrengthCheckerMessage);
-            }
-
-            return new OidcUiPasswordPolicyResponse
-            {
-                MinLength = configuration.PasswordPolicyMinLength,
-                MaxLength = configuration.PasswordPolicyMaxLength,
-                RequireUppercase = configuration.PasswordPolicyRequireUppercase,
-                RequireLowercase = configuration.PasswordPolicyRequireLowercase,
-                RequireNumbers = configuration.PasswordPolicyRequireNumbers,
-                RequireSpecialChars = configuration.PasswordPolicyRequireSpecialChars,
-                Message = string.IsNullOrWhiteSpace(configuration.PasswordPolicyMessage)
-                    ? null : configuration.PasswordPolicyMessage
-            };
+            return PasswordPolicyRegexDeriver.Derive(
+                configuration.PasswordStrengthCheckerRegex,
+                configuration.PasswordStrengthCheckerMessage);
         }
 
         public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo, string? flow = null, HttpRequest? httpRequest = null)

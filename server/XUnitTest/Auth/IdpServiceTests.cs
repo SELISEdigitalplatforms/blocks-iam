@@ -1,4 +1,4 @@
-using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Repositories;
@@ -122,45 +122,63 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task GetUiConfig_ReportsStructuredPolicyVerbatim_WhenEnabled()
+        public async Task GetUiConfig_PublishesPolicyDerivedFromTheRegex_WhenEnabled()
         {
-            // H1/H2: fields read verbatim, and the legacy regex (also stored here) never leaks.
+            // H1/H2: the rule is read out of the tenant's regex as plain flags, and the pattern
+            // itself never leaks into the response.
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
             {
                 PasswordPolicyEnabled = true,
-                PasswordPolicyMinLength = 10,
-                PasswordPolicyMaxLength = 64,
-                PasswordPolicyRequireUppercase = true,
-                PasswordPolicyRequireLowercase = false,
-                PasswordPolicyRequireNumbers = true,
-                PasswordPolicyRequireSpecialChars = false,
-                PasswordPolicyMessage = "At least 10 characters including one number.",
-                PasswordStrengthCheckerRegex = "^(a+)+$"
+                PasswordStrengthCheckerRegex = @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{5,30}$",
+                PasswordStrengthCheckerMessage = "At least 5 characters including one number."
             });
 
             var result = (OkObjectResult)await Create().GetUiConfigAsync();
             var response = (OidcUiConfigResponse)result.Value!;
 
             response.PasswordPolicy.Should().NotBeNull();
-            response.PasswordPolicy!.MinLength.Should().Be(10);
-            response.PasswordPolicy.MaxLength.Should().Be(64);
+            response.PasswordPolicy!.MinLength.Should().Be(5);
+            response.PasswordPolicy.MaxLength.Should().Be(30);
             response.PasswordPolicy.RequireUppercase.Should().BeTrue();
-            response.PasswordPolicy.RequireLowercase.Should().BeFalse();
+            response.PasswordPolicy.RequireLowercase.Should().BeTrue();
             response.PasswordPolicy.RequireNumbers.Should().BeTrue();
-            response.PasswordPolicy.RequireSpecialChars.Should().BeFalse();
-            response.PasswordPolicy.Message.Should().Be("At least 10 characters including one number.");
+            response.PasswordPolicy.RequireSpecialChars.Should().BeTrue();
+            response.PasswordPolicy.Message.Should().Be("At least 5 characters including one number.");
 
             var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             json.ToLowerInvariant().Should().NotContain("regex");
+            json.Should().NotContain("(?=");
         }
 
         [Fact]
-        public async Task GetUiConfig_ReportsNullMessage_WhenPolicyMessageIsBlank()
+        public async Task GetUiConfig_PublishesOnlyTheClassesTheRegexActuallyAsserts()
+        {
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordPolicyEnabled = true,
+                PasswordStrengthCheckerRegex = @"^(?=.*[A-Z])(?=.*\d).{10,64}$"
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy!.MinLength.Should().Be(10);
+            response.PasswordPolicy.MaxLength.Should().Be(64);
+            response.PasswordPolicy.RequireUppercase.Should().BeTrue();
+            response.PasswordPolicy.RequireNumbers.Should().BeTrue();
+            response.PasswordPolicy.RequireLowercase.Should().BeFalse();
+            response.PasswordPolicy.RequireSpecialChars.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task GetUiConfig_ReportsNullMessage_WhenTheRegexMessageIsBlank()
         {
             // H3
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
             {
-                PasswordPolicyEnabled = true, PasswordPolicyMessage = ""
+                PasswordPolicyEnabled = true,
+                PasswordStrengthCheckerRegex = @"^.{8,30}$",
+                PasswordStrengthCheckerMessage = ""
             });
 
             var result = (OkObjectResult)await Create().GetUiConfigAsync();
@@ -169,21 +187,26 @@ namespace XUnitTest.Auth
             response.PasswordPolicy!.Message.Should().BeNull();
         }
 
-        [Fact]
-        public async Task GetUiConfig_ServesStoredLengthsVerbatim_EvenOutsideTheAdminValidRange()
+        [Theory]
+        // Catastrophic backtracking, unanchored, open-ended, and a body narrower than the six
+        // fields can express: publishing a guess would state a rule the server does not check.
+        [InlineData("^(a+)+$")]
+        [InlineData(@"(?=.*[a-z])[A-Za-z\d\W_]{8,30}")]
+        [InlineData(@"^(?=.*[a-z]).{8,}$")]
+        [InlineData(@"^(?=.*[a-z])[a-zA-Z]{8,30}$")]
+        [InlineData("")]
+        [InlineData(null)]
+        public async Task GetUiConfig_PublishesNothing_WhenTheRegexIsNotDerivable(string? regex)
         {
-            // C10: the read path performs no re-validation; it trusts what write-time
-            // validation already accepted.
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
             {
-                PasswordPolicyEnabled = true, PasswordPolicyMinLength = 0, PasswordPolicyMaxLength = 9000
+                PasswordPolicyEnabled = true, PasswordStrengthCheckerRegex = regex!
             });
 
             var result = (OkObjectResult)await Create().GetUiConfigAsync();
             var response = (OidcUiConfigResponse)result.Value!;
 
-            response.PasswordPolicy!.MinLength.Should().Be(0);
-            response.PasswordPolicy.MaxLength.Should().Be(9000);
+            response.PasswordPolicy.Should().BeNull();
         }
 
         [Theory]
