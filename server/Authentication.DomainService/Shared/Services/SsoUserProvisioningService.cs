@@ -164,7 +164,9 @@ namespace Authentication.DomainService.Shared.Services
 
             try
             {
-                var organizationName = await ResolveAvailableOrganizationNameAsync(externalUser);
+                var organizationName = await ResolveAvailableOrganizationNameAsync(
+                    externalUser,
+                    tenantConfig!.IsOrgNameUniquenessEnabled);
                 if (string.IsNullOrWhiteSpace(organizationName))
                 {
                     _logger.LogWarning("Could not find an available organization name; provisioning with no organization");
@@ -287,13 +289,21 @@ namespace Authentication.DomainService.Shared.Services
         }
 
         /// <summary>
-        /// "{FirstName} {LastName} Organization", with a random suffix appended when that
-        /// name is taken. Organization names are unique case-insensitively, so a plain
-        /// duplicate would otherwise fail the signup outright.
+        /// "{FirstName} {LastName} Organization", with a random suffix appended when that name is
+        /// taken and the tenant enforces name uniqueness — there a plain duplicate would fail the
+        /// signup outright. A tenant with the check off takes the base name as it is; suffixing it
+        /// would hand the user "Jane Doe Organization A3B9C" to satisfy a rule that is not applied.
         /// </summary>
-        private async Task<string> ResolveAvailableOrganizationNameAsync(IExternalUserData externalUser)
+        private async Task<string> ResolveAvailableOrganizationNameAsync(
+            IExternalUserData externalUser,
+            bool uniquenessEnforced)
         {
             var baseName = BuildOrganizationBaseName(externalUser);
+
+            if (!uniquenessEnforced)
+            {
+                return baseName;
+            }
 
             if (await _resourceRepository.GetOrganizationByNameAsync(baseName) == null)
             {

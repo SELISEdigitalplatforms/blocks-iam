@@ -345,6 +345,7 @@ namespace Api.Controllers
             return Ok(new IsOrganizationNameAvailableResponse
             {
                 IsAvailable = availability.IsAvailable,
+                IsUniquenessEnforced = availability.UniquenessEnforced,
                 Suggestions = availability.Suggestions
             });
         }
