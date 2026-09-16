@@ -85,6 +85,7 @@ namespace XUnitTest.Auth.Shared
                 .Returns(Task.CompletedTask);
             var request = OidcUiTemplateTestData.ValidRequest();
             request.Branding!.BrandName = "Acme";
+            request.Theme!.Dark!.ButtonText = "#0c1024";
 
             var result = await Create().SaveOidcUiTemplateRequestAsync(request);
 
@@ -93,9 +94,11 @@ namespace XUnitTest.Auth.Shared
             Guid.TryParse(result.ItemId, out _).Should().BeTrue();
             persisted.Should().NotBeNull();
             persisted!.ItemId.Should().Be(result.ItemId);
+            OidcUiTemplate.CurrentSchemaVersion.Should().Be(4);
             persisted.SchemaVersion.Should().Be(OidcUiTemplate.CurrentSchemaVersion);
             persisted.Branding.Should().BeSameAs(request.Branding);
             persisted.Theme.Should().BeSameAs(request.Theme);
+            persisted.Theme!.Dark!.ButtonText.Should().Be("#0c1024");
             persisted.Pages.Should().BeSameAs(request.Pages);
         }
 
@@ -107,14 +110,16 @@ namespace XUnitTest.Auth.Shared
                 .Callback<OidcUiTemplate>(value => persisted = value)
                 .Returns(Task.CompletedTask);
             var request = OidcUiTemplateTestData.ValidRequest();
-            request.Branding!.LogoUrl = null;
+            request.Branding!.LogoUrlLight = null;
+            request.Branding.LogoUrlDark = null;
             request.Pages!.Mfa!.ResendButton = null;
             request.Pages.AccountSelector!.Subheading = null;
 
             var result = await Create().SaveOidcUiTemplateRequestAsync(request);
 
             result.IsSuccess.Should().BeTrue();
-            persisted!.Branding!.LogoUrl.Should().BeNull();
+            persisted!.Branding!.LogoUrlLight.Should().BeNull();
+            persisted.Branding.LogoUrlDark.Should().BeNull();
             persisted.Pages!.Mfa!.ResendButton.Should().BeNull();
             persisted.Pages.AccountSelector!.Subheading.Should().BeNull();
         }

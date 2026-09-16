@@ -153,7 +153,7 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().HandleOidcCallbackGet(
                 "query-code", "query-state",
-                new OidcCallbackRequest { Code = "body-code", State = "body-state" });
+                request: new OidcCallbackRequest { Code = "body-code", State = "body-state" });
 
             result.Should().BeOfType<BadRequestObjectResult>();
             _callbackHandler.Verify(h => h.HandleCallbackAsync("body-code", "body-state"), Times.Once);
@@ -234,7 +234,7 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
-        public async Task HandleOidcCallback_BrowserFailureWithoutContext_ReturnsErrorBody()
+        public async Task HandleOidcCallback_BrowserFailureWithoutContext_RedirectsToErrorPage()
         {
             _callbackHandler.Setup(h => h.HandleCallbackAsync("code", "state"))
                 .ReturnsAsync(new OidcCallbackResult
@@ -246,7 +246,58 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController(GetContext()).HandleOidcCallbackGet("code", "state");
 
+            // Nothing left to rebuild a login URL from, so the error gets a page of its own
+            // rather than a body the browser renders as raw JSON.
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/error?");
+            redirect.Url.Should().Contain("error=invalid_state");
+            redirect.Url.Should().Contain("error_description=Invalid%20or%20expired%20OIDC%20state");
+        }
+
+        [Fact]
+        public async Task HandleOidcCallback_WithoutContext_ReturnsErrorBody_WhenJsonRequested()
+        {
+            _callbackHandler.Setup(h => h.HandleCallbackAsync("code", "state"))
+                .ReturnsAsync(new OidcCallbackResult
+                {
+                    IsSuccess = false,
+                    ErrorCode = "invalid_state",
+                    ErrorMessage = "Invalid or expired OIDC state"
+                });
+            var httpContext = GetContext();
+            httpContext.Request.Headers.Accept = "application/json";
+
+            var result = await CreateController(httpContext).HandleOidcCallbackGet("code", "state");
+
+            // The SPA device-flow leg fetches this endpoint; it would follow a 302 silently and
+            // never report the failure.
             result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task HandleOidcCallback_ProviderError_RedirectsToLoginWithProviderReason()
+        {
+            _callbackHandler
+                .Setup(h => h.HandleProviderErrorAsync("state", "access_denied", null))
+                .ReturnsAsync(new OidcCallbackResult
+                {
+                    IsSuccess = false,
+                    ErrorCode = "access_denied",
+                    ErrorMessage = "Sign-in was cancelled before it finished.",
+                    ClientId = "client",
+                    RedirectUri = "https://app.example.com/cb",
+                    OriginalState = "state-1",
+                    TenantId = "tenant-1"
+                });
+
+            var result = await CreateController(GetContext())
+                .HandleOidcCallbackGet(string.Empty, "state", "access_denied");
+
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            redirect.Url.Should().Contain("error=access_denied");
+            _callbackHandler.Verify(
+                h => h.HandleCallbackAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

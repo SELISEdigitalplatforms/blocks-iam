@@ -105,7 +105,8 @@ export function DeviceSuccessPage() {
     <OidcAuthShell
       panelConfig={DEVICE_CONSENT_PANEL}
       theme={template.theme}
-      logoUrl={template.branding.logoUrl}
+      logoUrlLight={template.branding.logoUrlLight}
+      logoUrlDark={template.branding.logoUrlDark}
       brandName={template.branding.brandName}
       heading={
         outcome === "denied"

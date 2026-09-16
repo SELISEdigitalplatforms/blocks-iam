@@ -78,6 +78,35 @@ namespace Authentication.DomainService.Authentication
         {
             var canRedirectToClient = false;
 
+            // Every refusal below reaches a browser, not a fetch: the relying party redirects here
+            // to start the flow, and the consent screen navigates here on Allow. A body would
+            // render as raw JSON in the address bar, so send the browser to the login page with
+            // the error attached -- the SPA raises its blocking dialog over the card, whose single
+            // action hands the user back to the application. The target is same-origin, which is
+            // what makes it usable for the invalid_client and unregistered-redirect_uri refusals
+            // that RFC 6749 section 4.1.2.1 forbids bouncing to the client. API callers
+            // (returnRedirectResponse: false) keep the body they already parse.
+            IActionResult BuildBrowserError(string error, string errorDescription)
+            {
+                if (!returnRedirectResponse)
+                {
+                    return new BadRequestObjectResult(new { error, error_description = errorDescription });
+                }
+
+                return new RedirectResult(OidcRedirectUrlBuilder.BuildLoginErrorUrl(
+                    client_id,
+                    response_type,
+                    redirect_uri,
+                    scope,
+                    state,
+                    nonce,
+                    code_challenge,
+                    code_challenge_method,
+                    tenant_id,
+                    error,
+                    errorDescription));
+            }
+
             try
             {
                 var authorizeRequest = new AuthorizeRequest
@@ -120,11 +149,7 @@ namespace Authentication.DomainService.Authentication
                         return new RedirectResult(OidcRedirectUrlBuilder.BuildRedirectUri(redirect_uri, errorParams));
                     }
 
-                    return new BadRequestObjectResult(new
-                    {
-                        error = "invalid_request",
-                        error_description = string.Join("; ", validationResult.Errors)
-                    });
+                    return BuildBrowserError("invalid_request", string.Join("; ", validationResult.Errors));
                 }
 
                 scope = EnsureOfflineAccess(scope);
@@ -171,11 +196,7 @@ namespace Authentication.DomainService.Authentication
                     && lockoutCheckUser.LockoutUntilUtc.Value > DateTime.UtcNow)
                 {
                     _logger.LogWarning("Authorize request denied for locked account {UserId}", resolvedUserId);
-                    return new BadRequestObjectResult(new
-                    {
-                        error = "account_locked",
-                        error_description = "Account is temporarily locked due to failed authentication attempts"
-                    });
+                    return BuildBrowserError("account_locked", "Account is temporarily locked due to failed authentication attempts");
                 }
 
                 var idpSessionId = await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id);
@@ -184,7 +205,7 @@ namespace Authentication.DomainService.Authentication
                 if (client == null)
                 {
                     _logger.LogWarning("Unknown client: {ClientId}", client_id);
-                    return new BadRequestObjectResult(new { error = "invalid_client" });
+                    return BuildBrowserError("invalid_client", "The application that sent you here is not recognised.");
                 }
 
                 if (client.IsDeviceFlowClient)
@@ -200,7 +221,7 @@ namespace Authentication.DomainService.Authentication
                 if (!client.RedirectUris.Contains(redirect_uri))
                 {
                     _logger.LogWarning("Invalid redirect_uri for {ClientId}: {RedirectUri}", client_id, redirect_uri);
-                    return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Invalid redirect_uri" });
+                    return BuildBrowserError("invalid_request", "Invalid redirect_uri");
                 }
 
                 var cacheKey = $"idp_flow:{state}";
@@ -332,6 +353,11 @@ namespace Authentication.DomainService.Authentication
                     };
 
                     return new RedirectResult(OidcRedirectUrlBuilder.BuildRedirectUri(redirect_uri, errorParams));
+                }
+
+                if (returnRedirectResponse)
+                {
+                    return BuildBrowserError("server_error", "Internal server error");
                 }
 
                 return new ObjectResult(new { error = "server_error", error_description = "Internal server error" })

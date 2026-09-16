@@ -69,6 +69,76 @@ namespace Authentication.DomainService.Authentication
         }
 
         /// <summary>
+        /// The login page for an OIDC request, carrying an error for the user to read.
+        ///
+        /// <para>
+        /// This is the single landing place for a browser-navigated failure that still knows
+        /// which OIDC request it belongs to. The SPA reads <c>error_description</c> (falling
+        /// back to <c>error</c>) off this URL and raises the blocking error dialog over the
+        /// login card, whose only action hands the user back to the application. Returning a
+        /// body instead would leave them reading raw JSON in the address bar.
+        /// </para>
+        /// <para>
+        /// Same-origin by construction, because <see cref="BuildLoginUrl"/> returns a path. That
+        /// matters for the <c>invalid_client</c> and unregistered-<c>redirect_uri</c> refusals:
+        /// RFC 6749 section 4.1.2.1 forbids redirecting to the client in those cases, and a path
+        /// on our own host is not a redirect to the client.
+        /// </para>
+        /// </summary>
+        public static string BuildLoginErrorUrl(
+            string clientId,
+            string responseType,
+            string redirectUri,
+            string scope,
+            string state,
+            string nonce,
+            string codeChallenge,
+            string codeChallengeMethod,
+            string? tenantId,
+            string error,
+            string errorDescription)
+        {
+            var loginUrl = BuildLoginUrl(
+                clientId,
+                responseType,
+                redirectUri,
+                scope,
+                state,
+                nonce,
+                codeChallenge,
+                codeChallengeMethod,
+                tenantId);
+
+            return BuildRedirectUri(loginUrl, new Dictionary<string, string>
+            {
+                { "error", error },
+                { "error_description", errorDescription }
+            });
+        }
+
+        /// <summary>
+        /// The standalone error page, for a browser-navigated failure that has lost the OIDC
+        /// request it belonged to -- an expired or already-consumed state, say. There is no
+        /// login card to raise a dialog over and nothing to send the user back to, so the SPA
+        /// renders the error on a page of its own.
+        /// </summary>
+        public static string BuildErrorPageUrl(string error, string errorDescription, string? tenantId)
+        {
+            var parameters = new Dictionary<string, string>
+            {
+                { "error", error },
+                { "error_description", errorDescription }
+            };
+
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                parameters["tenant_id"] = tenantId;
+            }
+
+            return BuildRedirectUri("/oidc/error", parameters);
+        }
+
+        /// <summary>
         /// Link to the signup page for a tenant, used by <c>/api/idp/initiate?flow=signup</c>.
         ///
         /// <para>

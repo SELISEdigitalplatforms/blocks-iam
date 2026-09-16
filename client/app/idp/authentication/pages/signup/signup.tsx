@@ -56,7 +56,8 @@ export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
     <OidcAuthShell
       panelConfig={SIGNUP_PANEL}
       theme={template.theme}
-      logoUrl={template.branding.logoUrl}
+      logoUrlLight={template.branding.logoUrlLight}
+      logoUrlDark={template.branding.logoUrlDark}
       brandName={template.branding.brandName}
       heading={template.pages.signup.heading}
       headingDimFirst={3}
