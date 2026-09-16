@@ -1,4 +1,4 @@
-using Authentication.DomainService.Entities;
+﻿using Authentication.DomainService.Entities;
 
 namespace Authentication.DomainService.Shared.ResponseModel
 {
@@ -18,9 +18,8 @@ namespace Authentication.DomainService.Shared.ResponseModel
     }
 
     /// <summary>
-    /// Structured password rule as plain data -- never a regex. See SPEC16: this supersedes the
-    /// earlier regex-on-the-wire shape entirely; no property on this type is, or encodes, a
-    /// regular expression.
+    /// The tenant's password rule. Normally plain data: the four flags and the length bounds say
+    /// the whole rule, and <see cref="Pattern"/> is null.
     /// </summary>
     public sealed class OidcUiPasswordPolicyResponse
     {
@@ -31,6 +30,19 @@ namespace Authentication.DomainService.Shared.ResponseModel
         public bool RequireNumbers { get; set; }
         public bool RequireSpecialChars { get; set; }
         public string? Message { get; set; }
+
+        /// <summary>
+        /// The tenant's own pattern, sent ONLY when the rule says something these four flags
+        /// cannot -- "a letter, either case", "one of !@#$", "no character three times running".
+        /// The client shows those as a single pass/fail requirement rather than dropping to a
+        /// hard-coded default that describes a different rule.
+        ///
+        /// Null whenever the flags are sufficient, which is the common case: a pattern goes on
+        /// the wire only when it buys the user something. Anything published here has passed
+        /// <see cref="Shared.Services.PasswordPolicyRegexValidator"/> at save time, which rejects
+        /// patterns that are not JavaScript-compatible or that backtrack catastrophically.
+        /// </summary>
+        public string? Pattern { get; set; }
     }
 
     /// <summary>

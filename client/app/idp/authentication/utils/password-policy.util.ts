@@ -13,6 +13,17 @@ export interface IOidcPasswordPolicy {
   requireNumbers: boolean;
   requireSpecialChars: boolean;
   message: string | null;
+  /**
+   * The tenant's own pattern, sent only when their rule says something the four flags cannot
+   * ("a letter, either case", "one of !@#$", "no character three times running"). Shown as a
+   * single pass/fail row rather than silently dropping to a rule nobody configured.
+   *
+   * The server publishes this only after `PasswordPolicyRegexValidator` has screened it at save
+   * time for JavaScript compatibility and catastrophic backtracking. It is still treated as
+   * untrusted here: compiled behind try/catch, length-capped, and only ever run against input
+   * already bounded by {@link PASSWORD_MAX_INPUT_LENGTH}.
+   */
+  pattern?: string | null;
 }
 
 /** Independent input-hygiene cap, applied regardless of whether a policy is configured. */
@@ -24,6 +35,7 @@ export type PasswordPolicyChecks = {
   lowercase?: boolean;
   number?: boolean;
   special?: boolean;
+  custom?: boolean;
 };
 
 export interface PasswordPolicyRequirement {
@@ -31,13 +43,42 @@ export interface PasswordPolicyRequirement {
   label: string;
 }
 
-// Fixed literals written directly in this file's own source -- never constructed from the
-// server response. This is the entire point of the structured redesign: no RegExp is ever
-// built from network data anywhere in this feature.
+// Fixed literals written directly in this file's own source. Every rule a tenant can express
+// with the four flags is checked with these and nothing else -- the common case builds no
+// RegExp from the server response at all.
 const ASCII_UPPER = /[A-Z]/;
 const ASCII_LOWER = /[a-z]/;
 const ASCII_DIGIT = /[0-9]/;
 const ASCII_SPECIAL = /[^A-Za-z0-9]/;
+
+/** The longest pattern accepted from the server, matching the server's own save-time cap. */
+const MAX_PATTERN_LENGTH = 512;
+
+/**
+ * Compiles the tenant's pattern, or returns null if it will not compile here. A pattern the
+ * server screened can still be rejected by this browser's engine, and that must degrade to
+ * "no extra requirement shown" rather than throwing inside a render.
+ */
+const compiledPatterns = new Map<string, RegExp | null>();
+
+export const compilePolicyPattern = (pattern: string | null | undefined): RegExp | null => {
+  if (!pattern || pattern.length > MAX_PATTERN_LENGTH) return null;
+
+  const cached = compiledPatterns.get(pattern);
+  if (cached !== undefined) return cached;
+
+  let compiled: RegExp | null = null;
+  try {
+    compiled = new RegExp(pattern);
+  } catch {
+    compiled = null;
+  }
+  compiledPatterns.set(pattern, compiled);
+  return compiled;
+};
+
+/** The label for a rule only the tenant's own pattern can express. */
+export const CUSTOM_REQUIREMENT_LABEL = "Meets your project's password requirements";
 
 /** A policy is only usable once its bounds are sane; a corrupt response degrades to the default. */
 export const hasValidBounds = (policy: IOidcPasswordPolicy): boolean =>
@@ -90,6 +131,10 @@ export const buildPasswordPolicyRequirements = (
   if (policy.requireSpecialChars) {
     requirements.push({ key: "special", label: "At least one special character" });
   }
+  // Last, and only when the tenant's rule says more than the flags above can.
+  if (compilePolicyPattern(policy.pattern)) {
+    requirements.push({ key: "custom", label: CUSTOM_REQUIREMENT_LABEL });
+  }
   return requirements;
 };
 
@@ -106,6 +151,14 @@ export const checkPasswordAgainstPolicy = (
   if (policy.requireLowercase) checks.lowercase = ASCII_LOWER.test(password);
   if (policy.requireNumbers) checks.number = ASCII_DIGIT.test(password);
   if (policy.requireSpecialChars) checks.special = ASCII_SPECIAL.test(password);
+
+  const compiled = compilePolicyPattern(policy.pattern);
+  if (compiled) {
+    // Bounded input only: the field caps at PASSWORD_MAX_INPUT_LENGTH, and the server screened
+    // the pattern for catastrophic backtracking before publishing it.
+    compiled.lastIndex = 0;
+    checks.custom = compiled.test(password.slice(0, PASSWORD_MAX_INPUT_LENGTH));
+  }
   return checks;
 };
 
@@ -128,5 +181,8 @@ export const applyPasswordPolicyToSchema = (
   if (resolved.requireLowercase) result = result.regex(ASCII_LOWER, "Must include a lowercase letter");
   if (resolved.requireNumbers) result = result.regex(ASCII_DIGIT, "Must include a number");
   if (resolved.requireSpecialChars) result = result.regex(ASCII_SPECIAL, "Must include a special character");
+
+  const compiled = compilePolicyPattern(resolved.pattern);
+  if (compiled) result = result.regex(compiled, CUSTOM_REQUIREMENT_LABEL);
   return result;
 };

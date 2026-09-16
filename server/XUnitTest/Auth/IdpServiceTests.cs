@@ -146,6 +146,7 @@ namespace XUnitTest.Auth
             response.PasswordPolicy.Message.Should().Be("At least 5 characters including one number.");
 
             var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            response.PasswordPolicy.Pattern.Should().BeNull("a decodable rule keeps the pattern off the wire");
             json.ToLowerInvariant().Should().NotContain("regex");
             json.Should().NotContain("(?=");
         }
@@ -187,16 +188,33 @@ namespace XUnitTest.Auth
             response.PasswordPolicy!.Message.Should().BeNull();
         }
 
+        [Fact]
+        public async Task GetUiConfig_PublishesThePattern_WhenTheFlagsCannotSayTheRule()
+        {
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordPolicyEnabled = true,
+                PasswordStrengthCheckerRegex = @"^(?=.*[a-zA-Z])(?!.*password).{8,30}$",
+                PasswordStrengthCheckerMessage = "Ask IT if unsure."
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy!.Pattern.Should().Be(@"^(?=.*[a-zA-Z])(?!.*password).{8,30}$");
+            response.PasswordPolicy.MinLength.Should().Be(8);
+            response.PasswordPolicy.MaxLength.Should().Be(30);
+            response.PasswordPolicy.RequireUppercase.Should().BeFalse();
+            response.PasswordPolicy.Message.Should().Be("Ask IT if unsure.");
+        }
+
         [Theory]
-        // Catastrophic backtracking, unanchored, open-ended, and a body narrower than the six
-        // fields can express: publishing a guess would state a rule the server does not check.
+        // Refused by the save-time screening (catastrophic backtracking, invalid syntax) or simply
+        // absent: nothing is published and the client keeps its own baseline.
         [InlineData("^(a+)+$")]
-        [InlineData(@"(?=.*[a-z])[A-Za-z\d\W_]{8,30}")]
-        [InlineData(@"^(?=.*[a-z]).{8,}$")]
-        [InlineData(@"^(?=.*[a-z])[a-zA-Z]{8,30}$")]
         [InlineData("")]
         [InlineData(null)]
-        public async Task GetUiConfig_PublishesNothing_WhenTheRegexIsNotDerivable(string? regex)
+        public async Task GetUiConfig_PublishesNothing_WhenThereIsNoRuleItCanSafelyPublish(string? regex)
         {
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
             {

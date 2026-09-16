@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  CUSTOM_REQUIREMENT_LABEL,
   DEFAULT_PASSWORD_POLICY,
   PASSWORD_MAX_INPUT_LENGTH,
   applyPasswordPolicyToSchema,
@@ -231,5 +232,65 @@ describe("applyPasswordPolicyToSchema", () => {
       const allChecksPass = Object.values(checks).every(Boolean);
       expect(schema.safeParse(candidate).success, candidate).toBe(allChecksPass);
     }
+  });
+});
+
+describe("tenant pattern (a rule the four flags cannot express)", () => {
+  // "a letter, either case" -- no structured equivalent, so the server sends the pattern.
+  const withPattern = (pattern: string | null) =>
+    policy({ minLength: 8, maxLength: 30, pattern });
+
+  it("adds a single pass/fail requirement, last", () => {
+    const requirements = buildPasswordPolicyRequirements(
+      withPattern("^(?=.*[a-zA-Z]).{8,30}$"),
+    );
+    expect(requirements.map((r) => r.key)).toEqual(["length", "custom"]);
+    expect(requirements.at(-1)?.label).toBe(CUSTOM_REQUIREMENT_LABEL);
+  });
+
+  it("checks the password against the tenant's own pattern", () => {
+    const active = withPattern("^(?=.*[a-zA-Z]).{8,30}$");
+    expect(checkPasswordAgainstPolicy("12345678", active).custom).toBe(false);
+    expect(checkPasswordAgainstPolicy("1234567a", active).custom).toBe(true);
+  });
+
+  it("enforces the pattern in the schema as well, so the two agree", () => {
+    const schema = applyPasswordPolicyToSchema(z.string(), withPattern("^(?=.*[a-zA-Z]).{8,30}$"));
+    expect(schema.safeParse("12345678").success).toBe(false);
+    expect(schema.safeParse("1234567a").success).toBe(true);
+  });
+
+  it("reports the requirement with the agreed label when the pattern fails", () => {
+    const schema = applyPasswordPolicyToSchema(z.string(), withPattern("^(?=.*[a-zA-Z]).{8,30}$"));
+    const result = schema.safeParse("12345678");
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.message)).toContain(CUSTOM_REQUIREMENT_LABEL);
+    }
+  });
+
+  it("shows no extra row when no pattern was sent", () => {
+    expect(buildPasswordPolicyRequirements(withPattern(null)).map((r) => r.key)).toEqual(["length"]);
+    expect(checkPasswordAgainstPolicy("anything", withPattern(null)).custom).toBeUndefined();
+  });
+
+  it("ignores a pattern this browser cannot compile, rather than throwing", () => {
+    const broken = withPattern("^(?<broken.{8,30}$");
+    expect(() => buildPasswordPolicyRequirements(broken)).not.toThrow();
+    expect(buildPasswordPolicyRequirements(broken).map((r) => r.key)).toEqual(["length"]);
+    expect(checkPasswordAgainstPolicy("anything", broken).custom).toBeUndefined();
+    expect(applyPasswordPolicyToSchema(z.string(), broken).safeParse("Sunflower7!").success).toBe(true);
+  });
+
+  it("ignores an over-long pattern", () => {
+    const tooLong = withPattern("^" + "a".repeat(600) + "$");
+    expect(buildPasswordPolicyRequirements(tooLong).map((r) => r.key)).toEqual(["length"]);
+  });
+
+  it("evaluates a stateful global pattern consistently across calls", () => {
+    // A /g pattern carries lastIndex between calls; the check must not alternate.
+    const global = policy({ minLength: 1, maxLength: 30, pattern: "[a-z]" });
+    expect(checkPasswordAgainstPolicy("abc", global).custom).toBe(true);
+    expect(checkPasswordAgainstPolicy("abc", global).custom).toBe(true);
   });
 });
