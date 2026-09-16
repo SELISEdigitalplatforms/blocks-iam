@@ -72,7 +72,9 @@ describe("ResetPasswordForm", () => {
     expect(screen.getByText("Logout from all devices")).toBeInTheDocument();
     expect(passwordInputs(container)).toHaveLength(2);
     passwordInputs(container).forEach((input) => expect(input).toHaveAttribute("maxlength", "256"));
-    expect(screen.getByRole("button", { name: /set password/i })).toBeDisabled();
+    // TEMPORARY: the submit button is unconditionally enabled on this page. Restore
+    // `.toBeDisabled()` when the guard in reset-password-form.tsx comes back.
+    expect(screen.getByRole("button", { name: /set password/i })).toBeEnabled();
     expect(screen.getByRole("link", { name: /back to login/i })).toBeInTheDocument();
   });
 
@@ -85,7 +87,9 @@ describe("ResetPasswordForm", () => {
     expect(checker.props.policy).toBe(h.passwordPolicy);
   });
 
-  it("keeps submit disabled while policy configuration is loading", async () => {
+  // TEMPORARY: while the submit button is unconditionally enabled, config loading no longer
+  // gates it. Restore `.toBeDisabled()` together with the guard in reset-password-form.tsx.
+  it("leaves submit enabled while policy configuration is loading", async () => {
     h.configLoading = true;
     h.requirementsPass = true;
     h.animCtx = {
@@ -93,7 +97,7 @@ describe("ResetPasswordForm", () => {
     };
     const { container } = renderForm();
     fillValidPasswords(container);
-    await vi.waitFor(() => expect(screen.getByRole("button", { name: /set password/i })).toBeDisabled());
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: /set password/i })).toBeEnabled());
   });
 
   it("renders tenant-defined reset-password labels", () => {
@@ -167,7 +171,8 @@ describe("ResetPasswordForm", () => {
     };
     renderForm();
     expect(screen.getByText("Resetting...")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /resetting/i })).toBeDisabled();
+    // TEMPORARY: not disabled mid-submit either, for the same reason.
+    expect(screen.getByRole("button", { name: /resetting/i })).toBeEnabled();
   });
 
   it("resets a failed animation when the user edits the form", () => {

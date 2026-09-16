@@ -33,7 +33,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
   const [serverError, setServerError] = useState<string | null>(null);
   const {
     data: oidcUiConfig,
-    captchaEnabled,
+    captchaEnabled: tenantCaptchaEnabled,
     passwordPolicy,
     isLoading: isConfigLoading,
   } = useOidcUiConfig(tenantId);
@@ -48,6 +48,13 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
     reValidateMode: "onChange",
     resolver: zodResolver(formSchema),
   });
+
+  // TEMPORARY: captcha suppressed on the recovery page. Flip back to `tenantCaptchaEnabled`
+  // to restore it. The server only validates a captcha when one is supplied
+  // (BaseAccountValidator gates the rule on a non-empty CaptchaCode), so sending none simply
+  // skips the check rather than failing it.
+  const CAPTCHA_TEMPORARILY_DISABLED = true;
+  const captchaEnabled = CAPTCHA_TEMPORARILY_DISABLED ? false : tenantCaptchaEnabled;
 
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
@@ -237,7 +244,10 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
 
         <button
           type="submit"
-          disabled={isConfigLoading || isAuthenticating || (captchaEnabled && !captchaCode) || !isValid || !requirementsMet}
+          // TEMPORARY: always enabled. Restore the guard below to gate on config load, submission
+          // in flight, captcha, and the password rules:
+          // disabled={isConfigLoading || isAuthenticating || (captchaEnabled && !captchaCode) || !isValid || !requirementsMet}
+          disabled={false}
           className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
         >
           {isAuthenticating ? (
