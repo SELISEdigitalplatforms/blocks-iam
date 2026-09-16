@@ -24,6 +24,16 @@ export interface IOidcPasswordPolicy {
    * already bounded by {@link PASSWORD_MAX_INPUT_LENGTH}.
    */
   pattern?: string | null;
+  /**
+   * True when the tenant's rule could be neither decoded into the flags above nor safely sent as
+   * {@link pattern} -- a pattern the server's save-time screening refuses to publish.
+   *
+   * The rule is still enforced on submit, so this must NOT fall back to
+   * {@link DEFAULT_PASSWORD_POLICY}: that would state requirements nobody configured. The screens
+   * show whatever the other fields do say (the length bounds when readable, nothing when not)
+   * and let the server's own error report the failure.
+   */
+  hasUndescribedRules?: boolean;
 }
 
 /** Independent input-hygiene cap, applied regardless of whether a policy is configured. */
@@ -106,10 +116,17 @@ export const DEFAULT_PASSWORD_POLICY: IOidcPasswordPolicy = {
   message: null,
 };
 
-/** The policy actually in effect: the tenant's own (if usable), else the FE's baseline. */
+/**
+ * The policy actually in effect: the tenant's own when one was published, else the FE's baseline.
+ *
+ * The baseline applies only when the server published no policy at all -- no rule is configured,
+ * or the config has not loaded. A policy that *was* published is always used as-is, even when it
+ * describes little or nothing: the server has a real rule in that case, and substituting the
+ * baseline would show the user requirements it does not enforce.
+ */
 export const resolvePasswordPolicy = (
   policy: IOidcPasswordPolicy | null | undefined,
-): IOidcPasswordPolicy => (policy && hasValidBounds(policy) ? policy : DEFAULT_PASSWORD_POLICY);
+): IOidcPasswordPolicy => policy ?? DEFAULT_PASSWORD_POLICY;
 
 export const buildPasswordPolicyRequirements = (
   policy: IOidcPasswordPolicy,
@@ -174,9 +191,13 @@ export const applyPasswordPolicyToSchema = (
 ): z.ZodString => {
   const resolved = resolvePasswordPolicy(policy);
 
-  let result = schema
-    .min(resolved.minLength, `Password must be at least ${resolved.minLength} characters long`)
-    .max(resolved.maxLength, `Password must be at most ${resolved.maxLength} characters long`);
+  // Bounds that make no sense are "no length rule to state", not a rule rejecting everything.
+  let result = schema;
+  if (hasValidBounds(resolved)) {
+    result = result
+      .min(resolved.minLength, `Password must be at least ${resolved.minLength} characters long`)
+      .max(resolved.maxLength, `Password must be at most ${resolved.maxLength} characters long`);
+  }
   if (resolved.requireUppercase) result = result.regex(ASCII_UPPER, "Must include an uppercase letter");
   if (resolved.requireLowercase) result = result.regex(ASCII_LOWER, "Must include a lowercase letter");
   if (resolved.requireNumbers) result = result.regex(ASCII_DIGIT, "Must include a number");

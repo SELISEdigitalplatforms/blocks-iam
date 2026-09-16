@@ -72,20 +72,22 @@ public static class PasswordPolicyRegexDeriver
 
         // The rule is real but not expressible in the four flags. Hand the client the pattern so
         // it can still tell the user pass or fail -- but only one already screened as safe.
-        if (PasswordPolicyRegexValidator.Validate(trimmed) is not null) return null;
+        var publishable = PasswordPolicyRegexValidator.Validate(trimmed) is null;
 
         return new OidcUiPasswordPolicyResponse
         {
-            // Length still comes from the pattern when the scan could read it; otherwise the
-            // client's own input cap is the only bound anyone can state.
-            MinLength = structure?.MinLength ?? 1,
-            MaxLength = structure?.MaxLength ?? UnboundedMaxLength,
+            // Whatever the scan could read is still worth saying. Zero means "not readable": the
+            // client treats bounds that make no sense as no length requirement to show, rather
+            // than inventing one.
+            MinLength = structure?.MinLength ?? 0,
+            MaxLength = structure?.MaxLength ?? 0,
             RequireUppercase = false,
             RequireLowercase = false,
             RequireNumbers = false,
             RequireSpecialChars = false,
             Message = Blank(message) ? null : message,
-            Pattern = trimmed
+            Pattern = publishable ? trimmed : null,
+            HasUndescribedRules = !publishable
         };
     }
 

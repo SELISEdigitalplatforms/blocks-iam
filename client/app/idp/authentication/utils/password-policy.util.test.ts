@@ -42,8 +42,11 @@ describe("resolvePasswordPolicy", () => {
     },
   );
 
-  it("falls back to DEFAULT_PASSWORD_POLICY for a policy with invalid bounds", () => {
-    expect(resolvePasswordPolicy(policy({ minLength: 0 }))).toBe(DEFAULT_PASSWORD_POLICY);
+  it("keeps a published policy even when its bounds say nothing", () => {
+    // Zero bounds mean "no readable length rule", not "no policy". The server still enforces
+    // something, so the baseline must not be substituted here.
+    const published = policy({ minLength: 0, maxLength: 0, hasUndescribedRules: true });
+    expect(resolvePasswordPolicy(published)).toBe(published);
   });
 
   it("DEFAULT_PASSWORD_POLICY restores the old 8-30/upper/lower/digit/special rule", () => {
@@ -171,9 +174,10 @@ describe("applyPasswordPolicyToSchema", () => {
     expect(schemaFor(null).safeParse("Sunflower7!").success).toBe(true);
   });
 
-  it("falls back to the FE default policy for a tenant policy with invalid bounds", () => {
-    expect(schemaFor(policy({ minLength: 0 })).safeParse("a").success).toBe(false);
-    expect(schemaFor(policy({ minLength: 0 })).safeParse("Sunflower7!").success).toBe(true);
+  it("asserts no strength rule for a policy whose bounds say nothing", () => {
+    // Undescribable rule: the server is the only authority, and it reports on submit.
+    expect(schemaFor(policy({ minLength: 0, maxLength: 0, hasUndescribedRules: true }))
+      .safeParse("a").success).toBe(true);
   });
 
   it("enforces the policy's own length bounds with matching messages", () => {
@@ -292,5 +296,40 @@ describe("tenant pattern (a rule the four flags cannot express)", () => {
     const global = policy({ minLength: 1, maxLength: 30, pattern: "[a-z]" });
     expect(checkPasswordAgainstPolicy("abc", global).custom).toBe(true);
     expect(checkPasswordAgainstPolicy("abc", global).custom).toBe(true);
+  });
+});
+
+describe("undescribable rule (server could neither decode nor publish the pattern)", () => {
+  const undescribable = (overrides: Partial<IOidcPasswordPolicy> = {}) =>
+    policy({ minLength: 0, maxLength: 0, hasUndescribedRules: true, ...overrides });
+
+  it("shows no requirements at all when nothing about the rule was readable", () => {
+    expect(buildPasswordPolicyRequirements(undescribable())).toEqual([]);
+    expect(checkPasswordAgainstPolicy("anything", undescribable())).toEqual({});
+  });
+
+  it("still shows the length row when only that much was readable", () => {
+    const withLength = undescribable({ minLength: 8, maxLength: 30 });
+    expect(buildPasswordPolicyRequirements(withLength).map((r) => r.key)).toEqual(["length"]);
+    expect(checkPasswordAgainstPolicy("short", withLength).length).toBe(false);
+    expect(checkPasswordAgainstPolicy("longenough", withLength).length).toBe(true);
+  });
+
+  it("never substitutes the FE baseline, so no invented rule blocks submission", () => {
+    // The server owns this rule and reports failure itself; the form must not pre-reject.
+    const schema = applyPasswordPolicyToSchema(z.string(), undescribable());
+    expect(schema.safeParse("a").success).toBe(true);
+    expect(schema.safeParse("no-uppercase-or-digit").success).toBe(true);
+  });
+
+  it("still applies the readable length bounds in the schema", () => {
+    const schema = applyPasswordPolicyToSchema(z.string(), undescribable({ minLength: 8, maxLength: 30 }));
+    expect(schema.safeParse("short").success).toBe(false);
+    expect(schema.safeParse("longenough").success).toBe(true);
+  });
+
+  it("surfaces the admin's message, the one clue the server can still give", () => {
+    const withMessage = undescribable({ message: "See the intranet password guide." });
+    expect(resolvePasswordPolicy(withMessage).message).toBe("See the intranet password guide.");
   });
 });

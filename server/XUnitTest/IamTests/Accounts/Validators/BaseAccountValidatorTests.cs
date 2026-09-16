@@ -1,4 +1,4 @@
-using Blocks.CaptchaDriver;
+﻿using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
@@ -88,7 +88,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
             var result = await Create().ValidateAsync(new BaseAccountRequest { Code = "valid-code", Password = "short" });
 
             result.IsValid.Should().BeFalse();
-            result.Errors.Should().Contain(e => e.ErrorMessage.StartsWith("Password is weak"));
+            result.Errors.Should().Contain(e => e.ErrorMessage == "Does not meet project's password requirements");
         }
 
         [Fact]

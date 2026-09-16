@@ -30,8 +30,7 @@ namespace Iam.DomainService.Users
             RuleFor(u => u.Password)
                 .Cascade(CascadeMode.Stop)
                 .MustAsync(BeAStrongPassword)
-                .WithMessage(
-                    "Password weak. Ensure at least one lower and upper case letter, one special character, one digit and minimum 8 characters length")
+                .WithMessage("Does not meet project's password requirements")
                 .MustAsync(CheckBlackListPassword).WithMessage("This password can not be used.")
                 .When(u => !string.IsNullOrWhiteSpace(u.Password));
 

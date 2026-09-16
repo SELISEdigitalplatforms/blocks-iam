@@ -122,12 +122,16 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public void Derive_FallsBackToTheInputCap_WhenEvenTheLengthIsUnreadable()
+        public void Derive_ReportsNoLengthBound_WhenEvenTheLengthIsUnreadable()
         {
+            // Zero bounds say "nothing readable here", which the client renders as no length row
+            // rather than as "between 0 and 0 characters".
             var policy = PasswordPolicyRegexDeriver.Derive(@"^(abc|def){8,30}$");
 
-            policy!.MinLength.Should().Be(1);
-            policy.MaxLength.Should().Be(PasswordPolicyRegexDeriver.UnboundedMaxLength);
+            policy!.MinLength.Should().Be(0);
+            policy.MaxLength.Should().Be(0);
+            policy.Pattern.Should().NotBeNull();
+            policy.HasUndescribedRules.Should().BeFalse();
         }
 
         [Fact]
@@ -157,30 +161,62 @@ namespace XUnitTest.Auth
             PasswordPolicyRegexDeriver.Derive(pattern)!.Pattern.Should().Be(pattern);
         }
 
-        // ---------- no usable rule at all ----------
+        // ---------- rules that cannot even be handed over as a pattern ----------
 
         [Theory]
-        // Catastrophic backtracking and invalid syntax are refused by the save-time screening, so
-        // they are never handed to a browser. Nothing is published and the client keeps its own
-        // baseline.
+        // Refused by the save-time screening: catastrophically slow, invalid syntax, or a
+        // .NET-only construct no browser could compile.
         [InlineData("^(a+)+$")]
         [InlineData(@"^.{30,8}$")]
+        [InlineData(@"^(?i)(?=.*[a-zA-Z]).{8,30}$")]
+        public void Derive_ReportsUndescribedRules_WhenThePatternCannotBePublished(string pattern)
+        {
+            var policy = PasswordPolicyRegexDeriver.Derive(pattern);
+
+            // Not null: the server still enforces this rule on submit, and saying "no policy"
+            // would send the client back to a baseline nobody configured.
+            policy.Should().NotBeNull();
+            policy!.HasUndescribedRules.Should().BeTrue();
+            policy.Pattern.Should().BeNull("an unscreened pattern is never handed to a browser");
+            policy.RequireUppercase.Should().BeFalse();
+            policy.RequireLowercase.Should().BeFalse();
+            policy.RequireNumbers.Should().BeFalse();
+            policy.RequireSpecialChars.Should().BeFalse();
+        }
+
+        [Fact]
+        public void Derive_KeepsReadableLengthBounds_EvenWhenThePatternCannotBePublished()
+        {
+            // "(?i)" defeats publication, but the quantifier was still readable, so the user
+            // keeps a real "between 8 and 30 characters" row.
+            var policy = PasswordPolicyRegexDeriver.Derive(@"^(?i)(?=.*[a-zA-Z]).{8,30}$");
+
+            policy!.HasUndescribedRules.Should().BeTrue();
+            policy.MinLength.Should().Be(0, "the leading (?i) stops the scan before the quantifier");
+        }
+
+        [Fact]
+        public void Derive_DoesNotFlagUndescribedRules_WhenTheRuleIsFullyDescribed()
+        {
+            PasswordPolicyRegexDeriver.Derive(
+                @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{8,30}$")!
+                .HasUndescribedRules.Should().BeFalse();
+
+            PasswordPolicyRegexDeriver.Derive(@"^(?=.*[a-zA-Z]).{8,30}$")!
+                .HasUndescribedRules.Should().BeFalse("the pattern itself describes it");
+        }
+
+        // ---------- no rule configured at all ----------
+
+        [Theory]
         [InlineData("")]
         [InlineData("   ")]
         [InlineData(null)]
-        public void Derive_ReturnsNull_WhenThereIsNoRuleItCanSafelyPublish(string? pattern) =>
+        public void Derive_ReturnsNull_OnlyWhenNoRuleIsConfigured(string? pattern) =>
             PasswordPolicyRegexDeriver.Derive(pattern).Should().BeNull();
 
         [Fact]
         public void Derive_RefusesAnOverlongPattern() =>
             PasswordPolicyRegexDeriver.Derive("^" + new string('a', 600) + "{8,30}$").Should().BeNull();
-
-        [Fact]
-        public void Derive_RefusesAPatternTheScreeningRejects()
-        {
-            // A .NET-only construct: it would not compile in a browser, so it is never sent.
-            PasswordPolicyRegexDeriver.Derive(@"^(?i)(?=.*[a-zA-Z]).{8,30}$").Should().BeNull();
-        }
-
     }
 }

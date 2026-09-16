@@ -82,13 +82,16 @@ describe("usePasswordStrength", () => {
     expect(strongDefault.result.current.allRequirementsMet).toBe(true);
   });
 
-  it("C1: falls back to the FE default policy when the tenant policy has invalid bounds, without throwing", () => {
-    const brokenPolicy: IOidcPasswordPolicy = { ...policy, minLength: 0, maxLength: -1 };
-    expect(() => renderHook(() => usePasswordStrength("anything", brokenPolicy))).not.toThrow();
-    const { result } = renderHook(() => usePasswordStrength("anything", brokenPolicy));
-    expect(result.current.requirements).toEqual(
-      buildPasswordPolicyRequirements(DEFAULT_PASSWORD_POLICY),
-    );
-    expect(result.current.allRequirementsMet).toBe(false); // "anything" fails the default rule
+  it("C1: shows no requirements for an undescribable rule, without throwing", () => {
+    // The server published a policy that describes nothing it can state. Showing the FE baseline
+    // here would invent requirements the server does not enforce, so nothing is shown and the
+    // server's own error reports the failure on submit.
+    const undescribable: IOidcPasswordPolicy = {
+      ...policy, minLength: 0, maxLength: 0, hasUndescribedRules: true,
+    };
+    expect(() => renderHook(() => usePasswordStrength("anything", undescribable))).not.toThrow();
+    const { result } = renderHook(() => usePasswordStrength("anything", undescribable));
+    expect(result.current.requirements).toEqual([]);
+    expect(result.current.hasPolicy).toBe(false);
   });
 });

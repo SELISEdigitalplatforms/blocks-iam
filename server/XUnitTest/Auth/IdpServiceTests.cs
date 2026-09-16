@@ -208,13 +208,28 @@ namespace XUnitTest.Auth
             response.PasswordPolicy.Message.Should().Be("Ask IT if unsure.");
         }
 
+        [Fact]
+        public async Task GetUiConfig_ReportsUndescribedRules_WhenThePatternCannotBePublished()
+        {
+            // Catastrophically slow: never handed to a browser, but still enforced on submit.
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordPolicyEnabled = true, PasswordStrengthCheckerRegex = "^(a+)+$"
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy.Should().NotBeNull();
+            response.PasswordPolicy!.HasUndescribedRules.Should().BeTrue();
+            response.PasswordPolicy.Pattern.Should().BeNull();
+        }
+
         [Theory]
-        // Refused by the save-time screening (catastrophic backtracking, invalid syntax) or simply
-        // absent: nothing is published and the client keeps its own baseline.
-        [InlineData("^(a+)+$")]
+        // No rule configured at all -- the only case that still publishes nothing.
         [InlineData("")]
         [InlineData(null)]
-        public async Task GetUiConfig_PublishesNothing_WhenThereIsNoRuleItCanSafelyPublish(string? regex)
+        public async Task GetUiConfig_PublishesNothing_WhenNoRuleIsConfigured(string? regex)
         {
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
             {

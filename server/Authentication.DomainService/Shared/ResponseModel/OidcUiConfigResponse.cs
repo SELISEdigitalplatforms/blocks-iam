@@ -43,6 +43,18 @@ namespace Authentication.DomainService.Shared.ResponseModel
         /// patterns that are not JavaScript-compatible or that backtrack catastrophically.
         /// </summary>
         public string? Pattern { get; set; }
+
+        /// <summary>
+        /// True when the tenant's rule could be neither decoded into the flags nor safely handed
+        /// over as <see cref="Pattern"/> -- a pattern the save-time screening refuses to publish
+        /// (not JavaScript-compatible, or catastrophically slow).
+        ///
+        /// The rule is still enforced on submit, so the client must not fall back to its own
+        /// baseline here: that would state requirements nobody configured. It shows whatever the
+        /// other fields do say -- the length bounds when those were readable, nothing when they
+        /// were not -- and lets the server's own error report the failure.
+        /// </summary>
+        public bool HasUndescribedRules { get; set; }
     }
 
     /// <summary>
