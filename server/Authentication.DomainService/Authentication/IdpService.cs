@@ -1,4 +1,4 @@
-using Authentication.DomainService.Entities;
+﻿using Authentication.DomainService.Entities;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -80,25 +80,43 @@ namespace Authentication.DomainService.Authentication
                     Provider = captchaConfiguration.Provider,
                     Generator = captchaConfiguration.CaptchaGenerator
                 },
-                // Structured policy only -- never the legacy PasswordStrengthCheckerRegex. A
-                // tenant with only that legacy regex configured (PasswordPolicyEnabled false, the
-                // default) has nothing structured to show, so this is null for them too; the
-                // regex keeps being enforced server-side exactly as before, just never exposed.
-                PasswordPolicy = authenticationConfiguration is not { PasswordPolicyEnabled: true }
-                    ? null
-                    : new OidcUiPasswordPolicyResponse
-                    {
-                        MinLength = authenticationConfiguration.PasswordPolicyMinLength,
-                        MaxLength = authenticationConfiguration.PasswordPolicyMaxLength,
-                        RequireUppercase = authenticationConfiguration.PasswordPolicyRequireUppercase,
-                        RequireLowercase = authenticationConfiguration.PasswordPolicyRequireLowercase,
-                        RequireNumbers = authenticationConfiguration.PasswordPolicyRequireNumbers,
-                        RequireSpecialChars = authenticationConfiguration.PasswordPolicyRequireSpecialChars,
-                        Message = string.IsNullOrWhiteSpace(authenticationConfiguration.PasswordPolicyMessage)
-                            ? null : authenticationConfiguration.PasswordPolicyMessage
-                    },
+                // Structured data either way -- no pattern text ever reaches the response, so the
+                // browser still builds no RegExp. A tenant that configured the structured policy
+                // publishes it verbatim; one still on the legacy regex publishes the equivalent
+                // derived from it, so the screens describe the rule actually being enforced
+                // instead of falling back to a hard-coded default. A regex too involved to read
+                // confidently derives nothing and this stays null, exactly as it did before.
+                PasswordPolicy = BuildPasswordPolicy(authenticationConfiguration),
                 Template = savedTemplate
             });
+        }
+
+        /// <summary>
+        /// The tenant's structured rule: its own when configured, otherwise the one derived from
+        /// its legacy regex. Null when neither is available.
+        /// </summary>
+        private static OidcUiPasswordPolicyResponse? BuildPasswordPolicy(IdentityConfiguration? configuration)
+        {
+            if (configuration is null) return null;
+
+            if (configuration is not { PasswordPolicyEnabled: true })
+            {
+                return PasswordPolicyRegexDeriver.Derive(
+                    configuration.PasswordStrengthCheckerRegex,
+                    configuration.PasswordStrengthCheckerMessage);
+            }
+
+            return new OidcUiPasswordPolicyResponse
+            {
+                MinLength = configuration.PasswordPolicyMinLength,
+                MaxLength = configuration.PasswordPolicyMaxLength,
+                RequireUppercase = configuration.PasswordPolicyRequireUppercase,
+                RequireLowercase = configuration.PasswordPolicyRequireLowercase,
+                RequireNumbers = configuration.PasswordPolicyRequireNumbers,
+                RequireSpecialChars = configuration.PasswordPolicyRequireSpecialChars,
+                Message = string.IsNullOrWhiteSpace(configuration.PasswordPolicyMessage)
+                    ? null : configuration.PasswordPolicyMessage
+            };
         }
 
         public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo, string? flow = null, HttpRequest? httpRequest = null)
