@@ -103,11 +103,7 @@ namespace Iam.DomainService.Users
         {
             var config = await _configurationRepository.GetConfigurationAsync();
 
-            if (config == null || string.IsNullOrWhiteSpace(config.PasswordStrengthCheckerRegex)) return true;
-
-            var doesThePasswordMetTenantPasswordComplexityRequirements = Regex.IsMatch(password, config.PasswordStrengthCheckerRegex, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(500));
-
-            return doesThePasswordMetTenantPasswordComplexityRequirements;
+            return PasswordStrengthEvaluator.IsStrongPassword(config, password);
         }
 
         private async Task<bool> CheckBlackListPassword(string password, CancellationToken cancellationToken)

@@ -172,6 +172,52 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
+        public async Task Password_StructuredPolicy_IsHonouredOnUserCreation()
+        {
+            // The structured policy is the sole authority when enabled: a password that satisfies
+            // the legacy regex still fails if it breaks the policy.
+            _configRepo.Setup(c => c.GetConfigurationAsync())
+                .ReturnsAsync(new IamConfiguration
+                {
+                    PasswordStrengthCheckerRegex = "^.*$",
+                    PasswordPolicyEnabled = true,
+                    PasswordPolicyMinLength = 12,
+                    PasswordPolicyMaxLength = 30,
+                    PasswordPolicyRequireUppercase = true,
+                    PasswordPolicyRequireLowercase = true,
+                    PasswordPolicyRequireNumbers = true,
+                    PasswordPolicyRequireSpecialChars = true
+                });
+            var req = ValidRequest();
+            req.Password = "Short1!";
+            var result = await Create().TestValidateAsync(req);
+            result.ShouldHaveValidationErrorFor(x => x.Password);
+        }
+
+        [Fact]
+        public async Task Password_StructuredPolicy_TakesPrecedenceOverLegacyRegex()
+        {
+            // The stored regex would reject this password; the enabled policy accepts it, and the
+            // policy wins rather than the two layering.
+            _configRepo.Setup(c => c.GetConfigurationAsync())
+                .ReturnsAsync(new IamConfiguration
+                {
+                    PasswordStrengthCheckerRegex = "^(?=.*[A-Z])(?=.*\\d).{30,}$",
+                    PasswordPolicyEnabled = true,
+                    PasswordPolicyMinLength = 8,
+                    PasswordPolicyMaxLength = 30,
+                    PasswordPolicyRequireUppercase = true,
+                    PasswordPolicyRequireLowercase = true,
+                    PasswordPolicyRequireNumbers = true,
+                    PasswordPolicyRequireSpecialChars = true
+                });
+            var req = ValidRequest();
+            req.Password = "Password1!";
+            var result = await Create().TestValidateAsync(req);
+            result.ShouldNotHaveValidationErrorFor(x => x.Password);
+        }
+
+        [Fact]
         public async Task Password_Blacklisted_Fails()
         {
             _userRepo.Setup(r => r.CheckPasswordBlackListedAsync("Password1!"))
