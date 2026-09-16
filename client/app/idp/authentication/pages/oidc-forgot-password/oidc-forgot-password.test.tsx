@@ -49,7 +49,11 @@ describe("OIDCForgotPassword", () => {
       captcha: null,
       template: {
         ...OIDC_UI_TEMPLATE_FIXTURE,
-        branding: { logoUrl: "https://example.test/acme.svg", brandName: "Acme Identity" },
+        branding: {
+          logoUrlLight: "https://example.test/acme-light.svg",
+          logoUrlDark: "https://example.test/acme-dark.svg",
+          brandName: "Acme Identity",
+        },
         theme: {
           ...OIDC_UI_TEMPLATE_FIXTURE.theme,
           dark: { ...OIDC_UI_TEMPLATE_FIXTURE.theme.dark, background: "#101820" },
@@ -64,7 +68,7 @@ describe("OIDCForgotPassword", () => {
     expect(screen.getByText("Acme Identity")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Acme Identity logo" })).toHaveAttribute(
       "src",
-      "https://example.test/acme.svg",
+      "https://example.test/acme-dark.svg",
     );
     expect(screen.getByText(`© ${new Date().getFullYear()} Acme Corp`)).toBeInTheDocument();
     expect((container.querySelector(".oidc-scifi-root") as HTMLElement).style.getPropertyValue("--bg")).toBe("#101820");

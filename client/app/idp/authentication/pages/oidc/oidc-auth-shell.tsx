@@ -80,13 +80,14 @@ export function buildOidcThemeStyle(theme: IOidcUiThemePalette): OidcThemeStyle 
     "--border": theme.border,
     "--border-strong": theme.borderStrong,
     "--accent-soft": theme.accentSoft,
+    "--button-text": theme.buttonText,
   };
 }
 
 export function OidcBrand({
   logoUrl,
   brandName,
-}: Pick<IOidcUiTemplate["branding"], "logoUrl" | "brandName">) {
+}: { logoUrl: string | null; brandName: string }) {
   return (
     <div className="flex items-center gap-3">
       {logoUrl ? (
@@ -164,7 +165,8 @@ export interface OidcAuthShellProps {
   children: React.ReactNode;
   panelConfig: OidcPanelConfig;
   theme: IOidcUiTemplate["theme"];
-  logoUrl: string | null;
+  logoUrlLight: string | null;
+  logoUrlDark: string | null;
   brandName: string;
   heading: string;
   headingDimFirst?: number;
@@ -180,7 +182,8 @@ export function OidcAuthShell({
   children,
   panelConfig,
   theme,
-  logoUrl,
+  logoUrlLight,
+  logoUrlDark,
   brandName,
   heading,
   headingDimFirst = 3,
@@ -191,6 +194,7 @@ export function OidcAuthShell({
   showCorners = true,
 }: OidcAuthShellProps) {
   const htmlTheme = useOidcResolvedTheme();
+  const resolvedLogoUrl = htmlTheme === "dark" ? logoUrlDark : logoUrlLight;
 
   const [phase, setPhase] = useState<OidcAnimPhase>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -284,7 +288,7 @@ export function OidcAuthShell({
               <div className="w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto">
                 {/* Topbar: logo + brand label + theme toggle */}
                 <div className="flex items-center justify-between mb-4">
-                  <OidcBrand logoUrl={logoUrl} brandName={brandName} />
+                  <OidcBrand logoUrl={resolvedLogoUrl} brandName={brandName} />
                   <ModeToggle />
                 </div>
 

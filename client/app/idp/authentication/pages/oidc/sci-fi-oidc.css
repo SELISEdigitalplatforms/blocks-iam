@@ -162,8 +162,8 @@
 .oidc-scifi-root .oidc-sci-fi-input::placeholder { color: var(--muted); font-weight: 400; }
 .oidc-scifi-root .oidc-sci-fi-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(0, 102, 178, 0.15),
-              0 0 16px rgba(0, 102, 178, 0.08);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent),
+              0 0 16px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .oidc-scifi-root .oidc-sci-fi-input[aria-invalid="true"] { border-color: var(--danger); }
 
@@ -185,13 +185,13 @@
 }
 .oidc-scifi-root .oidc-sci-fi-otp-slot[data-active="true"] {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(0, 102, 178, 0.15),
-              0 0 16px rgba(0, 102, 178, 0.08);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent),
+              0 0 16px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .oidc-scifi-root .oidc-sci-fi-otp-slot.ring-1 {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(0, 102, 178, 0.15),
-              0 0 16px rgba(0, 102, 178, 0.08);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent),
+              0 0 16px color-mix(in srgb, var(--accent) 8%, transparent);
   --tw-ring-color: var(--accent);
   --tw-ring-shadow: 0 0 0 1px var(--accent);
 }
@@ -213,8 +213,8 @@
   overflow: hidden;
   transition: transform var(--dur-base) var(--ease-out-expo),
               box-shadow var(--dur-base) ease;
-  box-shadow: 0 4px 24px rgba(0, 102, 178, 0.15),
-              0 0 0 1px rgba(0, 102, 178, 0.1) inset;
+  box-shadow: 0 4px 24px color-mix(in srgb, var(--accent) 15%, transparent),
+              0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent) inset;
 }
 .oidc-scifi-root .oidc-sci-fi-btn::before {
   content: "";
@@ -226,9 +226,9 @@
 }
 .oidc-scifi-root .oidc-sci-fi-btn:hover {
   transform: scale(1.03) translateY(-1px);
-  box-shadow: 0 8px 32px rgba(0, 102, 178, 0.25),
-              0 0 0 1px rgba(0, 102, 178, 0.15) inset,
-              0 0 60px rgba(0, 178, 255, 0.1);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--accent) 25%, transparent),
+              0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent) inset,
+              0 0 60px color-mix(in srgb, var(--accent2) 10%, transparent);
 }
 .oidc-scifi-root .oidc-sci-fi-btn:hover::before { left: 100%; }
 .oidc-scifi-root .oidc-sci-fi-btn:active  { transform: scale(0.98); }
@@ -289,6 +289,19 @@
 }
 .oidc-scifi-root .oidc-sci-fi-link:hover::after { width: 100%; }
 
+/*
+ * Mode toggle (ModeToggle, shared with the rest of the app). Its selected-tab styling is
+ * hard-coded to the app-wide `--primary` design token, which this shell never defines (it uses
+ * --accent/--accent2 instead) -- so without this override, the toggle's selection color stays
+ * on the app's fixed default blue regardless of the tenant's chosen colors. Selector specificity
+ * (one class + two attribute selectors) is deliberately higher than the Tailwind arbitrary-value
+ * utility it overrides, so it wins independent of CSS source order.
+ */
+.oidc-scifi-root [role="tab"][data-state="active"] {
+  background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
 /* Node cards */
 .oidc-scifi-root .oidc-sci-fi-node {
   background: var(--node-bg);
@@ -315,9 +328,9 @@
 .oidc-scifi-root .oidc-sci-fi-node:hover { border-color: var(--border-hover); }
 .oidc-scifi-root .oidc-sci-fi-node:hover::before { opacity: 0.4; }
 .oidc-scifi-root .oidc-sci-fi-node.oidc-node-active {
-  border-color: rgba(0, 178, 255, 0.3);
-  box-shadow: 0 0 20px rgba(0, 102, 178, 0.5),
-              0 0 40px rgba(0, 102, 178, 0.2);
+  border-color: color-mix(in srgb, var(--accent2) 30%, transparent);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 50%, transparent),
+              0 0 40px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 .oidc-scifi-root .oidc-sci-fi-node.oidc-node-active::before { opacity: 1; }
 
@@ -345,8 +358,8 @@
 .oidc-scifi-root .oidc-sci-fi-panel-border {
   background: linear-gradient(
     145deg,
-    rgba(0, 102, 178, 0.25) 0%,
-    rgba(0, 178, 255, 0.05) 100%
+    color-mix(in srgb, var(--accent) 25%, transparent) 0%,
+    color-mix(in srgb, var(--accent2) 5%, transparent) 100%
   );
   padding: 1px;
   border-radius: 1.25rem;
@@ -354,8 +367,8 @@
 .oidc-scifi-root .oidc-sci-fi-panel-inner {
   background: linear-gradient(
     160deg,
-    rgba(0, 102, 178, 0.35) 0%,
-    rgba(0, 60, 120, 0.15) 60%,
+    color-mix(in srgb, var(--accent) 35%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 15%, transparent) 60%,
     transparent 100%
   );
   border-radius: calc(1.25rem - 1px);
@@ -365,8 +378,8 @@
 .oidc-scifi-root[data-theme="light"] .oidc-sci-fi-panel-inner {
   background: linear-gradient(
     160deg,
-    rgba(0, 102, 178, 0.18) 0%,
-    rgba(0, 178, 255, 0.08) 60%,
+    color-mix(in srgb, var(--accent) 18%, transparent) 0%,
+    color-mix(in srgb, var(--accent2) 8%, transparent) 60%,
     rgba(255, 255, 255, 0.40) 100%
   );
 }
@@ -375,7 +388,7 @@
   background: linear-gradient(
     90deg,
     rgba(255,255,255,0) 0%,
-    rgba(0,178,255,0.3) 50%,
+    color-mix(in srgb, var(--accent2) 30%, transparent) 50%,
     rgba(255,255,255,0) 100%
   );
   background-size: 200% 100%;
@@ -387,7 +400,7 @@
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0,178,255,0.3), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent2) 30%, transparent), transparent);
 }
 
 /* Checkmark draw */

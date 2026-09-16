@@ -7,6 +7,7 @@ using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
@@ -322,6 +323,47 @@ namespace XUnitTest.Auth.Shared
             _keyValueStore.Verify(
                 s => s.GetAsync<OidcUiTemplate>("oidcUiTemplate"),
                 Times.Once);
+        }
+
+        [Theory]
+        [InlineData("https://assets.example.com/legacy.svg", null, null, "https://assets.example.com/legacy.svg", "https://assets.example.com/legacy.svg")]
+        [InlineData(null, "https://assets.example.com/light.svg", null, "https://assets.example.com/light.svg", "https://assets.example.com/light.svg")]
+        [InlineData(null, null, "https://assets.example.com/dark.svg", "https://assets.example.com/dark.svg", "https://assets.example.com/dark.svg")]
+        [InlineData("https://assets.example.com/legacy.svg", "https://assets.example.com/light.svg", "https://assets.example.com/dark.svg", "https://assets.example.com/light.svg", "https://assets.example.com/dark.svg")]
+        [InlineData(null, null, null, null, null)]
+        public async Task GetOidcUiTemplateAsync_ResolvesLightAndDarkLogoFallbacks(
+            string? legacy,
+            string? light,
+            string? dark,
+            string? expectedLight,
+            string? expectedDark)
+        {
+            var stored = new OidcUiTemplate
+            {
+                Branding = new OidcUiTemplateBranding
+                {
+                    LogoUrl = legacy,
+                    LogoUrlLight = light,
+                    LogoUrlDark = dark
+                }
+            };
+            _keyValueStore
+                .Setup(s => s.GetAsync<OidcUiTemplate>(AuthenticationRepository.OidcUiTemplateStoreKey))
+                .ReturnsAsync(stored);
+
+            var result = await Sut().GetOidcUiTemplateAsync();
+
+            result.Should().BeSameAs(stored);
+            result!.Branding!.LogoUrlLight.Should().Be(expectedLight);
+            result.Branding.LogoUrlDark.Should().Be(expectedDark);
+        }
+
+        [Fact]
+        public void OidcUiThemePalette_DeserializedFromLegacyDocument_DefaultsButtonTextToWhite()
+        {
+            var palette = BsonSerializer.Deserialize<OidcUiThemePalette>(new BsonDocument());
+
+            palette.ButtonText.Should().Be("#ffffff");
         }
 
         [Fact]

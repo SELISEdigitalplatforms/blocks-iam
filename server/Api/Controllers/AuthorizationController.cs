@@ -111,6 +111,8 @@ namespace Blocks.Api.Controllers
         public async Task<IActionResult> HandleOidcCallbackGet(
             [FromQuery] string code,
             [FromQuery] string state,
+            [FromQuery] string? error = null,
+            [FromQuery] string? error_description = null,
             [FromBody] OidcCallbackRequest? request = null)
         {
             if (request != null)
@@ -119,11 +121,33 @@ namespace Blocks.Api.Controllers
                 state = request.State;
             }
 
+            // The provider refused rather than issuing a code -- most often the user pressing
+            // Cancel on its consent screen. There is nothing to exchange, but the state still
+            // points at the OIDC request, so this can be shown on the login page the user
+            // started from instead of ending the journey on an error body.
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                var providerFailure = await _oidcCallbackHandler.HandleProviderErrorAsync(
+                    state ?? string.Empty,
+                    error!,
+                    error_description);
+
+                return BuildCallbackFailure(providerFailure);
+            }
+
             if (string.IsNullOrWhiteSpace(code))
-                return BadRequest(new { error = "authorization_code_missing", error_description = "Authorization code is required" });
+                return BuildCallbackFailure(new OidcCallbackResult
+                {
+                    ErrorCode = "authorization_code_missing",
+                    ErrorMessage = "Authorization code is required"
+                });
 
             if (string.IsNullOrWhiteSpace(state))
-                return BadRequest(new { error = "state_missing", error_description = "State parameter is required" });
+                return BuildCallbackFailure(new OidcCallbackResult
+                {
+                    ErrorCode = "state_missing",
+                    ErrorMessage = "State parameter is required"
+                });
 
             return await ProcessOidcCallback(code, state);
         }
@@ -157,21 +181,27 @@ namespace Blocks.Api.Controllers
 
         /// <summary>
         /// A failed provider callback arrives as a browser navigation, so a JSON body leaves the
-        /// user looking at raw error text in the address bar. When the OIDC request context
-        /// survived the failure we send them back to the login page they started from, carrying
-        /// <c>error</c> and <c>error_description</c> — the same way <c>/oidc/authorize</c> hands
-        /// its errors to a login screen. Callers that POST here are APIs, not browsers, and keep
-        /// getting the JSON body.
+        /// user looking at raw error text in the address bar. Browsers are sent to the login page
+        /// when the OIDC request context survived the failure, and to the standalone error page
+        /// when it did not. Callers that POST here, or that ask for JSON outright, are APIs
+        /// rather than browsers and keep getting the body.
         /// </summary>
         private IActionResult BuildCallbackFailure(OidcCallbackResult result)
         {
-            var canReturnToLogin = HttpMethods.IsGet(Request.Method)
-                && !string.IsNullOrWhiteSpace(result.ClientId)
-                && !string.IsNullOrWhiteSpace(result.RedirectUri);
+            var errorCode = result.ErrorCode ?? "access_denied";
+            var errorMessage = result.ErrorMessage ?? "Sign-in could not be completed.";
 
-            if (canReturnToLogin)
+            if (WantsJsonResponse())
             {
-                var loginUrl = OidcRedirectUrlBuilder.BuildLoginUrl(
+                return BadRequest(new { error = errorCode, error_description = errorMessage });
+            }
+
+            // The OIDC request survived the failure, so the user can be put back on the login
+            // page they started from, where the SPA raises a dialog carrying this error and
+            // offers the way back to the application.
+            if (!string.IsNullOrWhiteSpace(result.ClientId) && !string.IsNullOrWhiteSpace(result.RedirectUri))
+            {
+                return Redirect(OidcRedirectUrlBuilder.BuildLoginErrorUrl(
                     result.ClientId!,
                     "code",
                     result.RedirectUri!,
@@ -180,22 +210,33 @@ namespace Blocks.Api.Controllers
                     result.Nonce ?? string.Empty,
                     result.CodeChallenge ?? string.Empty,
                     result.CodeChallengeMethod ?? "S256",
-                    result.TenantId);
-
-                var errorParams = new Dictionary<string, string>
-                {
-                    { "error", result.ErrorCode ?? "access_denied" },
-                    { "error_description", result.ErrorMessage ?? "Sign-in could not be completed." }
-                };
-
-                return Redirect(OidcRedirectUrlBuilder.BuildRedirectUri(loginUrl, errorParams));
+                    result.TenantId,
+                    errorCode,
+                    errorMessage));
             }
 
-            return BadRequest(new
+            // No request left to rebuild -- an expired or already-consumed state. There is no
+            // login card to raise a dialog over and no application to offer a way back to, so
+            // the error gets a page of its own rather than a body in the address bar.
+            return Redirect(OidcRedirectUrlBuilder.BuildErrorPageUrl(errorCode, errorMessage, result.TenantId));
+        }
+
+        /// <summary>
+        /// Whether this caller parses a body rather than following a redirect. Anything that is
+        /// not a browser navigation gets the body it always got: a POST is an API caller by
+        /// definition, and the SPA's device-flow leg fetches this endpoint and asks for JSON
+        /// outright. A browser navigation asks for HTML and never names <c>application/json</c>,
+        /// so it falls through to the redirects above.
+        /// </summary>
+        private bool WantsJsonResponse()
+        {
+            if (!HttpMethods.IsGet(Request.Method))
             {
-                error = result.ErrorCode ?? "token_exchange_failed",
-                error_description = result.ErrorMessage
-            });
+                return true;
+            }
+
+            return Request.Headers.Accept.Any(header =>
+                header != null && header.Contains("application/json", StringComparison.OrdinalIgnoreCase));
         }
 
         #endregion

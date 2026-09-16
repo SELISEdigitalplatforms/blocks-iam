@@ -80,7 +80,8 @@ export function DeviceEntryPage() {
 
   const shellTemplateProps = {
     theme: template.theme,
-    logoUrl: template.branding.logoUrl,
+    logoUrlLight: template.branding.logoUrlLight,
+    logoUrlDark: template.branding.logoUrlDark,
     brandName: template.branding.brandName,
     successTitle: "Device Verified",
     successSubtitle: "Continuing the device flow…",

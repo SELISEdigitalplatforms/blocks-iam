@@ -46,7 +46,7 @@ describe("MfaCheck", () => {
       captcha: null,
       template: {
         ...OIDC_UI_TEMPLATE_FIXTURE,
-        branding: { logoUrl: null, brandName: "Acme Identity" },
+        branding: { logoUrlLight: null, logoUrlDark: null, brandName: "Acme Identity" },
         pages: {
           ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           mfa: { ...OIDC_UI_TEMPLATE_FIXTURE.pages.mfa, heading: "Confirm your identity" },
