@@ -77,6 +77,58 @@ namespace XUnitTest.Auth
             PasswordPolicyRegexDeriver.Derive(@"^.{8,30}$", "   ")!.Message.Should().BeNull();
         }
 
+        // ---------- length stated by an assertion rather than the body ----------
+
+        [Fact]
+        public void Derive_ReadsLengthFromALengthAssertion()
+        {
+            // "(?=.{10,32}$)" bounds the whole password; "\S+" bounds a different string and must
+            // not be mistaken for the length rule.
+            var policy = PasswordPolicyRegexDeriver.Derive(
+                @"^(?=.{10,32}$)(?!.*(.)\1{2})(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*])\S+$");
+
+            policy!.MinLength.Should().Be(10);
+            policy.MaxLength.Should().Be(32);
+            policy.Pattern.Should().NotBeNull("the no-triples rule and the restricted specials are not expressible");
+        }
+
+        [Fact]
+        public void Derive_FullyDecodesWhenTheLengthComesFromAnAssertion()
+        {
+            var policy = PasswordPolicyRegexDeriver.Derive(
+                @"^(?=.{10,32}$)(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[\W_]).+$");
+
+            policy!.MinLength.Should().Be(10);
+            policy.MaxLength.Should().Be(32);
+            policy.RequireUppercase.Should().BeTrue();
+            policy.RequireLowercase.Should().BeTrue();
+            policy.RequireNumbers.Should().BeTrue();
+            policy.RequireSpecialChars.Should().BeTrue();
+            policy.Pattern.Should().BeNull();
+        }
+
+        [Fact]
+        public void Derive_IntersectsAnAssertionWithTheBodysOwnBound()
+        {
+            // Both bound the password; the password must satisfy both.
+            var policy = PasswordPolicyRegexDeriver.Derive(@"^(?=.{10,32}$).{8,20}$");
+
+            policy!.MinLength.Should().Be(10);
+            policy.MaxLength.Should().Be(20);
+        }
+
+        [Fact]
+        public void Derive_IgnoresTheBodyBoundWhenTheBodyIsNotPermissive()
+        {
+            // "\S+" says nothing about the password's length, only about a run of non-spaces, so
+            // there is no length row to show at all.
+            var policy = PasswordPolicyRegexDeriver.Derive(@"^(?=.*[A-Z])\S+$");
+
+            policy!.MinLength.Should().Be(0);
+            policy.MaxLength.Should().Be(0);
+            policy.Pattern.Should().NotBeNull();
+        }
+
         // ---------- rules the four flags cannot express: published as a pattern ----------
 
         [Theory]

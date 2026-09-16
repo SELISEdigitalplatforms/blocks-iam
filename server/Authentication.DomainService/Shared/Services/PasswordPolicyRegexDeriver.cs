@@ -48,7 +48,19 @@ public static class PasswordPolicyRegexDeriver
     private enum CharacterClass { Lower, Upper, Digit, Special }
 
     /// <summary>What the structural scan found, before any of it is interpreted.</summary>
-    private sealed record Structure(List<string> Assertions, string Body, int MinLength, int MaxLength);
+    /// <summary>
+    /// What the structural scan found, before any of it is interpreted. Length can come from two
+    /// places -- the body's own quantifier, and a "(?=.{m,n}$)" assertion -- and only the body's
+    /// counts when the body admits every character; a narrow body like "\S" bounds a different
+    /// string than the whole password.
+    /// </summary>
+    private sealed record Structure(
+        List<string> Assertions,
+        string Body,
+        int BodyMinLength,
+        int BodyMaxLength,
+        int? AssertedMinLength,
+        int? AssertedMaxLength);
 
     /// <summary>
     /// Returns the tenant's rule as structured data, the pattern itself when the rule says more
@@ -62,7 +74,8 @@ public static class PasswordPolicyRegexDeriver
         if (trimmed.Length > MaxPatternLength) return null;
 
         var structure = TryParseStructure(trimmed);
-        var policy = structure is null ? null : TryDecode(structure);
+        var bounds = EffectiveBounds(structure);
+        var policy = structure is null ? null : TryDecode(structure, bounds);
 
         if (policy is not null)
         {
@@ -79,8 +92,8 @@ public static class PasswordPolicyRegexDeriver
             // Whatever the scan could read is still worth saying. Zero means "not readable": the
             // client treats bounds that make no sense as no length requirement to show, rather
             // than inventing one.
-            MinLength = structure?.MinLength ?? 0,
-            MaxLength = structure?.MaxLength ?? 0,
+            MinLength = bounds.Min,
+            MaxLength = bounds.Max,
             RequireUppercase = false,
             RequireLowercase = false,
             RequireNumbers = false,
@@ -94,6 +107,50 @@ public static class PasswordPolicyRegexDeriver
     private static bool Blank(string? value) => string.IsNullOrWhiteSpace(value);
 
     /// <summary>
+    /// The length the whole password must have, from whichever readings of the pattern actually
+    /// bound it -- intersected when both do. Zero means nothing trustworthy was found, which the
+    /// client renders as no length requirement rather than as a made-up one.
+    /// </summary>
+    private static (int Min, int Max) EffectiveBounds(Structure? structure)
+    {
+        if (structure is null) return (0, 0);
+
+        int? min = structure.AssertedMinLength;
+        int? max = structure.AssertedMaxLength;
+
+        // The body's quantifier only bounds the password when the body admits every character.
+        if (IsPermissive(structure.Body))
+        {
+            min = min is null ? structure.BodyMinLength : Math.Max(min.Value, structure.BodyMinLength);
+            max = max is null ? structure.BodyMaxLength : Math.Min(max.Value, structure.BodyMaxLength);
+        }
+
+        return min is null || max is null || min > max ? (0, 0) : (min.Value, max.Value);
+    }
+
+    /// <summary>
+    /// Reads a pure length assertion -- "(?=.{10,32}$)" and its spellings -- which constrains the
+    /// whole password rather than asserting any character class.
+    /// </summary>
+    private static bool TryReadLengthAssertion(string inner, out int minLength, out int maxLength)
+    {
+        minLength = 0;
+        maxLength = 0;
+
+        var body = inner.StartsWith('^') ? inner[1..] : inner;
+        if (!body.EndsWith('$')) return false;
+        body = body[..^1];
+
+        var cursor = 0;
+        if (!TryReadAtom(body, ref cursor, out var atom)) return false;
+
+        // Only a body that admits everything makes this a length rule and nothing else.
+        if (!IsPermissive(atom)) return false;
+
+        return TryReadQuantifier(body[cursor..], out minLength, out maxLength);
+    }
+
+    /// <summary>
     /// Reads the shape "anchor, assertions, body, quantifier, anchor" without interpreting any of
     /// it. Succeeds for patterns whose requirements are unreadable, so the length bounds of those
     /// are still known.
@@ -104,6 +161,8 @@ public static class PasswordPolicyRegexDeriver
         if (!TryStripAnchors(ref rest)) return null;
 
         var assertions = new List<string>();
+        int? assertedMin = null;
+        int? assertedMax = null;
         var index = 0;
 
         while (index < rest.Length && rest[index] == '(')
@@ -115,7 +174,19 @@ public static class PasswordPolicyRegexDeriver
             var opener = rest.AsSpan(index);
             if (!opener.StartsWith("(?=") && !opener.StartsWith("(?!")) return null;
 
-            assertions.Add(rest[index..(end + 1)]);
+            // A length assertion is read as length rather than kept as a requirement: it is the
+            // one assertion the structured fields can say in full.
+            if (opener.StartsWith("(?=")
+                && TryReadLengthAssertion(rest[(index + 3)..end], out var min, out var max))
+            {
+                assertedMin = assertedMin is null ? min : Math.Max(assertedMin.Value, min);
+                assertedMax = assertedMax is null ? max : Math.Min(assertedMax.Value, max);
+            }
+            else
+            {
+                assertions.Add(rest[index..(end + 1)]);
+            }
+
             index = end + 1;
         }
 
@@ -124,12 +195,15 @@ public static class PasswordPolicyRegexDeriver
         if (!TryReadAtom(tail, ref cursor, out var body)) return null;
         if (!TryReadQuantifier(tail[cursor..], out var minLength, out var maxLength)) return null;
 
-        return new Structure(assertions, body, minLength, maxLength);
+        return new Structure(assertions, body, minLength, maxLength, assertedMin, assertedMax);
     }
 
     /// <summary>The four flags, or null when any part of the rule cannot be said with them.</summary>
-    private static OidcUiPasswordPolicyResponse? TryDecode(Structure structure)
+    private static OidcUiPasswordPolicyResponse? TryDecode(Structure structure, (int Min, int Max) bounds)
     {
+        // A rule whose length cannot be stated is not fully described by the flags.
+        if (bounds.Min <= 0) return null;
+
         if (!IsPermissive(structure.Body)) return null;
 
         var required = new HashSet<CharacterClass>();
@@ -145,8 +219,8 @@ public static class PasswordPolicyRegexDeriver
 
         return new OidcUiPasswordPolicyResponse
         {
-            MinLength = structure.MinLength,
-            MaxLength = structure.MaxLength,
+            MinLength = bounds.Min,
+            MaxLength = bounds.Max,
             RequireLowercase = required.Contains(CharacterClass.Lower),
             RequireUppercase = required.Contains(CharacterClass.Upper),
             RequireNumbers = required.Contains(CharacterClass.Digit),
