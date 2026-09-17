@@ -86,4 +86,18 @@ describe("scorePasswordStrength", () => {
   it("stays in the weak bands for a short, plain one", () => {
     expect(getStrengthLabel(scorePasswordStrength("abcdef"))).toBe("Weak");
   });
+
+  it("keeps a single-class password weak however long it runs", () => {
+    // Length must not buy its way past the variety ceiling.
+    expect(getStrengthLabel(scorePasswordStrength("sunflowerpetal"))).toBe("Weak");
+    expect(getStrengthLabel(scorePasswordStrength("sunflowereeeee"))).toBe("Weak");
+    expect(getStrengthLabel(scorePasswordStrength("abcdefghijklmnopqrstuvwxyz"))).toBe("Weak");
+  });
+
+  it("caps each variety band, so only all four classes can read as strong", () => {
+    expect(getStrengthLabel(scorePasswordStrength("sunflowerpetalxx"))).toBe("Weak");      // 1 class
+    expect(getStrengthLabel(scorePasswordStrength("Sunflowerpetalxx"))).toBe("Fair");      // 2
+    expect(getStrengthLabel(scorePasswordStrength("Sunflowerpetal12"))).toBe("Good");      // 3
+    expect(getStrengthLabel(scorePasswordStrength("Sunflowerpetal1!"))).toBe("Strong");    // 4
+  });
 });

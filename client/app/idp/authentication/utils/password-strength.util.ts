@@ -69,12 +69,23 @@ const LENGTH_TIERS = [
 /** Each distinct character class present is worth this much. */
 const VARIETY_PER_CLASS = 12;
 
+/**
+ * The most a password can score for each number of distinct character classes it uses, indexed by
+ * that count. Length cannot buy its way past this: "sunflowereeeee" is fourteen characters of one
+ * class, which is a weak password however long it runs.
+ */
+const VARIETY_CEILING = [0, STRENGTH_THRESHOLDS.WEAK, STRENGTH_THRESHOLDS.MEDIUM, STRENGTH_THRESHOLDS.STRONG, 100] as const;
+
 /** Charged once for an obvious weakness, so "aaaaaaaaaaaa" cannot read as strong on length alone. */
 const RUN_PENALTY = 20;
 
 /**
  * How strong this password is *as a password* -- length and character variety -- with no reference
  * to the tenant's rule.
+ *
+ * Character variety sets the ceiling and length fills it in: a password drawing on one class only
+ * cannot leave the weak band, two classes cannot pass fair, three cannot pass good, and only all
+ * four can reach strong.
  *
  * Deliberately independent of {@link buildPasswordPolicyRequirements}: the requirement rows answer
  * "may I use this password here", which is pass/fail and the server's call, while the meter answers
@@ -92,8 +103,10 @@ export const scorePasswordStrength = (password: string): number => {
     (HAS_DIGIT.test(password) ? 1 : 0) +
     (HAS_SPECIAL.test(password) ? 1 : 0);
 
+  // Capped by variety first, then charged for the run, so a long single-class password with a
+  // repeat still scores below a long single-class one without.
   const penalty = HAS_RUN_OF_THREE.test(password) ? RUN_PENALTY : 0;
-  const score = length + variety * VARIETY_PER_CLASS - penalty;
+  const score = Math.min(length + variety * VARIETY_PER_CLASS, VARIETY_CEILING[variety]) - penalty;
 
   // Anything typed scores at least 1, so the meter shows a first segment rather than reading as
   // "nothing entered".
