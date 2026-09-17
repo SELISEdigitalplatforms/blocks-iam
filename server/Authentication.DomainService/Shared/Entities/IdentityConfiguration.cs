@@ -1,4 +1,4 @@
-using MongoDB.Bson;
+﻿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Authentication.DomainService.Entities
@@ -56,7 +56,6 @@ namespace Authentication.DomainService.Entities
         /// true, this is the sole authority for password strength enforcement for the tenant --
         /// any stored <see cref="PasswordStrengthCheckerRegex"/> is not additionally applied.
         /// </summary>
-        public bool PasswordPolicyEnabled { get; set; } = false;
         public int PasswordPolicyMinLength { get; set; } = DefaultPasswordPolicyMinLength;
         public int PasswordPolicyMaxLength { get; set; } = DefaultPasswordPolicyMaxLength;
         public bool PasswordPolicyRequireUppercase { get; set; } = false;

@@ -1,4 +1,4 @@
-using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Authentication.RequestModel;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
@@ -166,7 +166,6 @@ namespace XUnitTest.Auth
 
             var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
             {
-                PasswordPolicyEnabled = true,
                 PasswordPolicyMinLength = minLength,
                 PasswordPolicyMaxLength = maxLength,
                 PasswordPolicyMessage = message,
@@ -193,7 +192,6 @@ namespace XUnitTest.Auth
 
             var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
             {
-                PasswordPolicyEnabled = true
             });
 
             result.IsSuccess.Should().BeFalse();
@@ -214,7 +212,6 @@ namespace XUnitTest.Auth
             {
                 ItemId = "507f1f77bcf86cd799439011",
                 IsOidcEnabled = true,
-                PasswordPolicyEnabled = false,
                 PasswordPolicyMinLength = 0,
                 PasswordPolicyMaxLength = 0
             });
@@ -235,7 +232,6 @@ namespace XUnitTest.Auth
             {
                 ItemId = "507f1f77bcf86cd799439011",
                 IsOidcEnabled = true,
-                PasswordPolicyEnabled = true,
                 PasswordPolicyMinLength = 10,
                 PasswordPolicyMaxLength = 64,
                 PasswordPolicyRequireUppercase = true,
@@ -245,7 +241,6 @@ namespace XUnitTest.Auth
 
             result.IsSuccess.Should().BeTrue();
             saved.Should().NotBeNull();
-            saved!.PasswordPolicyEnabled.Should().BeTrue();
             saved.PasswordPolicyMinLength.Should().Be(10);
             saved.PasswordPolicyMaxLength.Should().Be(64);
             saved.PasswordPolicyRequireUppercase.Should().BeTrue();
@@ -261,7 +256,6 @@ namespace XUnitTest.Auth
             var current = new IdentityConfiguration
             {
                 IsOidcEnabled = true,
-                PasswordPolicyEnabled = true,
                 PasswordPolicyMinLength = 12,
                 PasswordPolicyMaxLength = 40,
                 PasswordPolicyRequireSpecialChars = true,
@@ -278,7 +272,6 @@ namespace XUnitTest.Auth
             });
 
             result.IsSuccess.Should().BeTrue();
-            saved!.PasswordPolicyEnabled.Should().BeTrue();
             saved.PasswordPolicyMinLength.Should().Be(12);
             saved.PasswordPolicyMaxLength.Should().Be(40);
             saved.PasswordPolicyRequireSpecialChars.Should().BeTrue();
@@ -286,14 +279,12 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task Update_DisablingStructuredPolicy_DoesNotForgetStoredNumbers()
+        public async Task Update_DoesNotForgetStoredStructuredNumbers()
         {
-            // Matches the OUT-OF-SCOPE note: an admin can flip PasswordPolicyEnabled off, but
-            // the API cannot be made to "forget" the stored numbers/message.
+            // A request that says nothing about them leaves the stored numbers/message alone.
             var current = new IdentityConfiguration
             {
                 IsOidcEnabled = true,
-                PasswordPolicyEnabled = true,
                 PasswordPolicyMinLength = 12,
                 PasswordPolicyMaxLength = 40,
                 PasswordPolicyMessage = "Stored policy message"
@@ -306,11 +297,9 @@ namespace XUnitTest.Auth
             var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
             {
                 ItemId = "507f1f77bcf86cd799439011",
-                PasswordPolicyEnabled = false
             });
 
             result.IsSuccess.Should().BeTrue();
-            saved!.PasswordPolicyEnabled.Should().BeFalse();
             saved.PasswordPolicyMinLength.Should().Be(12);
             saved.PasswordPolicyMaxLength.Should().Be(40);
             saved.PasswordPolicyMessage.Should().Be("Stored policy message");
@@ -322,7 +311,6 @@ namespace XUnitTest.Auth
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
             {
                 ItemId = ObjectId.GenerateNewId(),
-                PasswordPolicyEnabled = true,
                 PasswordPolicyMinLength = 10,
                 PasswordPolicyMaxLength = 64,
                 PasswordPolicyRequireUppercase = true,
@@ -336,7 +324,6 @@ namespace XUnitTest.Auth
             var result = (OkObjectResult)await Create().GetAuthenticationConfigAsync();
             var value = result.Value!;
 
-            value.GetType().GetProperty("PasswordPolicyEnabled")!.GetValue(value).Should().Be(true);
             value.GetType().GetProperty("PasswordPolicyMinLength")!.GetValue(value).Should().Be(10);
             value.GetType().GetProperty("PasswordPolicyMaxLength")!.GetValue(value).Should().Be(64);
             value.GetType().GetProperty("PasswordPolicyRequireUppercase")!.GetValue(value).Should().Be(true);

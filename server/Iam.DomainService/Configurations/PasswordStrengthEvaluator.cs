@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Iam.DomainService.Dtos;
 
 namespace Iam.DomainService.Configurations
@@ -17,11 +17,6 @@ namespace Iam.DomainService.Configurations
         {
             if (config == null)
                 return true;
-
-            // The structured policy, when enabled, is the sole authority: it does not layer on
-            // top of a legacy regex that may also happen to be stored for the same tenant.
-            if (config.PasswordPolicyEnabled)
-                return PasswordPolicyValidator.IsPasswordCompliant(password, PasswordPolicySnapshot.From(config));
 
             if (string.IsNullOrWhiteSpace(config.PasswordStrengthCheckerRegex))
                 return true;

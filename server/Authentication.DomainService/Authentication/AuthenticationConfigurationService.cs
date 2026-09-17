@@ -1,4 +1,4 @@
-using System.Linq.Expressions;
+﻿using System.Linq.Expressions;
 using Authentication.DomainService.Shared.Services;
 using Authentication.DomainService.Authentication.RequestModel;
 using Authentication.DomainService.Entities;
@@ -63,7 +63,6 @@ namespace Authentication.DomainService.Authentication
                 config?.LogoutOnPasswordChange,
                 config?.PasswordStrengthCheckerRegex,
                 PasswordStrengthCheckerMessage = config?.PasswordStrengthCheckerMessage ?? string.Empty,
-                config?.PasswordPolicyEnabled,
                 config?.PasswordPolicyMinLength,
                 config?.PasswordPolicyMaxLength,
                 config?.PasswordPolicyRequireUppercase,
@@ -101,11 +100,6 @@ namespace Authentication.DomainService.Authentication
                 configuration.CollectPasswordOnActivation
                 ?? current?.CollectPasswordOnActivation
                 ?? IdentityConfiguration.DefaultCollectPasswordOnActivation;
-
-            var passwordPolicyEnabled =
-                configuration.PasswordPolicyEnabled
-                ?? current?.PasswordPolicyEnabled
-                ?? false;
 
             var passwordPolicyRequireUppercase =
                 configuration.PasswordPolicyRequireUppercase
@@ -216,21 +210,18 @@ namespace Authentication.DomainService.Authentication
                 configuration.PasswordPolicyMessage,
                 current?.PasswordPolicyMessage ?? string.Empty);
 
-            // Only a tenant actually turning the structured policy on is screened here -- a
-            // request that disables it, or never enables it, never trips these checks.
-            if (passwordPolicyEnabled)
-            {
-                var policyErrors = PasswordPolicyValidator.ValidateAdminInput(
-                    passwordPolicyMinLength, passwordPolicyMaxLength, passwordPolicyMessage);
+            // The stored structured fields are still screened on save, so a malformed bound can
+            // never be written -- even though the tenant's regex is what is enforced and shown.
+            var policyErrors = PasswordPolicyValidator.ValidateAdminInput(
+                passwordPolicyMinLength, passwordPolicyMaxLength, passwordPolicyMessage);
 
-                if (policyErrors.Count > 0)
+            if (policyErrors.Count > 0)
+            {
+                return new BaseResponse
                 {
-                    return new BaseResponse
-                    {
-                        IsSuccess = false,
-                        Errors = new Dictionary<string, string>(policyErrors)
-                    };
-                }
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>(policyErrors)
+                };
             }
 
             var authConfiguration = new IdentityConfiguration
@@ -301,7 +292,6 @@ namespace Authentication.DomainService.Authentication
                     configuration.PasswordStrengthCheckerMessage,
                     current?.PasswordStrengthCheckerMessage ?? string.Empty),
 
-                PasswordPolicyEnabled = passwordPolicyEnabled,
                 PasswordPolicyMinLength = passwordPolicyMinLength,
                 PasswordPolicyMaxLength = passwordPolicyMaxLength,
                 PasswordPolicyRequireUppercase = passwordPolicyRequireUppercase,

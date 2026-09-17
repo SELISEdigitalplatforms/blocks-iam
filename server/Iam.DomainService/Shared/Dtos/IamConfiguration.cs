@@ -1,4 +1,4 @@
-using MongoDB.Bson;
+﻿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Iam.DomainService.Dtos
@@ -28,7 +28,6 @@ namespace Iam.DomainService.Dtos
         /// for password strength enforcement; any stored PasswordStrengthCheckerRegex is not
         /// additionally applied.
         /// </summary>
-        public bool PasswordPolicyEnabled { get; set; } = false;
         public int PasswordPolicyMinLength { get; set; } = 8;
         public int PasswordPolicyMaxLength { get; set; } = 64;
         public bool PasswordPolicyRequireUppercase { get; set; } = false;

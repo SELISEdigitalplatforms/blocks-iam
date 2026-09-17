@@ -103,17 +103,16 @@ namespace XUnitTest.Auth
         // ---------- SPEC16: structured passwordPolicy ----------
 
         [Theory]
+        // No regex stored is the only case that publishes nothing: the client then falls back to
+        // its own baseline rather than showing no requirements at all.
         [InlineData(null)]
         [InlineData("")]
         [InlineData("   ")]
-        [InlineData("^(a+)+$")]
-        public async Task GetUiConfig_HidesStructuredPolicy_WhenNotEnabled_EvenWithLegacyRegexStored(string? regex)
+        public async Task GetUiConfig_PublishesNothing_WhenNoRegexIsStored(string? regex)
         {
-            // H4: a tenant that only has a legacy regex (PasswordPolicyEnabled defaults false)
-            // must never see it surfaced as passwordPolicy.
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
             {
-                PasswordStrengthCheckerRegex = regex!, PasswordStrengthCheckerMessage = "legacy message"
+                PasswordStrengthCheckerRegex = regex!
             });
 
             var result = (OkObjectResult)await Create().GetUiConfigAsync();
@@ -129,7 +128,6 @@ namespace XUnitTest.Auth
             // itself never leaks into the response.
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
             {
-                PasswordPolicyEnabled = true,
                 PasswordStrengthCheckerRegex = @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{5,30}$",
                 PasswordStrengthCheckerMessage = "At least 5 characters including one number."
             });
@@ -157,7 +155,6 @@ namespace XUnitTest.Auth
         {
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
             {
-                PasswordPolicyEnabled = true,
                 PasswordStrengthCheckerRegex = @"^(?=.*[A-Z])(?=.*\d).{10,64}$"
             });
 
@@ -177,7 +174,6 @@ namespace XUnitTest.Auth
         {
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
             {
-                PasswordPolicyEnabled = true,
                 PasswordStrengthCheckerRegex = @"^(?=.*[a-zA-Z])(?!.*password).{8,30}$",
                 PasswordStrengthCheckerMessage = "Ask IT if unsure."
             });
@@ -201,8 +197,7 @@ namespace XUnitTest.Auth
         {
             // Catastrophically slow: never handed to a browser, but still enforced on submit.
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
-            {
-                PasswordPolicyEnabled = true, PasswordStrengthCheckerRegex = "^(a+)+$"
+            { PasswordStrengthCheckerRegex = "^(a+)+$"
             });
 
             var result = (OkObjectResult)await Create().GetUiConfigAsync();
@@ -267,23 +262,6 @@ namespace XUnitTest.Auth
             json.Should().NotContain("acmecorp");
         }
 
-        [Fact]
-        public async Task CheckPassword_HonoursTheStructuredPolicyWhenThatIsWhatIsEnforced()
-        {
-            // Same precedence as PasswordStrengthEvaluator, because it is the same call.
-            _iamRepo.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(new IamConfiguration
-            {
-                PasswordStrengthCheckerRegex = "^.$",
-                PasswordPolicyEnabled = true,
-                PasswordPolicyMinLength = 8,
-                PasswordPolicyMaxLength = 30,
-                PasswordPolicyRequireNumbers = true
-            });
-
-            (await Create().CheckPasswordAsync("longenough1")).Should().Match<IActionResult>(r => MeetsRequirements(r));
-            (await Create().CheckPasswordAsync("longenough")).Should().Match<IActionResult>(r => !MeetsRequirements(r));
-        }
-
         [Theory]
         [InlineData("")]
         [InlineData(null)]
@@ -316,8 +294,7 @@ namespace XUnitTest.Auth
         public async Task GetUiConfig_PublishesNothing_WhenNoRuleIsConfigured(string? regex)
         {
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
-            {
-                PasswordPolicyEnabled = true, PasswordStrengthCheckerRegex = regex!
+            { PasswordStrengthCheckerRegex = regex!
             });
 
             var result = (OkObjectResult)await Create().GetUiConfigAsync();

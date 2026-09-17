@@ -1,14 +1,13 @@
-using Iam.DomainService.Dtos;
+﻿using Iam.DomainService.Dtos;
 
 namespace Iam.DomainService.Configurations
 {
     /// <summary>
-    /// Save-time checks for the structured password policy fields, and the runtime compliance
-    /// check <see cref="PasswordValidator{T}.BeAStrongPassword"/> enforces when a tenant has
-    /// <see cref="IamConfiguration.PasswordPolicyEnabled"/> set. Deliberately plain length and
-    /// character-membership logic -- no <c>System.Text.RegularExpressions</c> type is used
-    /// anywhere here, keeping "no regex in this feature" true for the whole structured-policy
-    /// design, not just for the untrusted parts of it.
+    /// Save-time checks for the stored structured password policy fields, so a malformed bound
+    /// can never be written. Nothing enforces or publishes those fields any more -- the tenant's
+    /// <c>PasswordStrengthCheckerRegex</c> is the one rule, enforced by
+    /// <see cref="PasswordStrengthEvaluator"/> and described to the screens by decoding it -- so
+    /// <see cref="IsPasswordCompliant"/> currently has no caller.
     /// </summary>
     public static class PasswordPolicyValidator
     {

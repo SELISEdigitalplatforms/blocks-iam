@@ -1,4 +1,4 @@
-namespace Authentication.DomainService.Authentication.RequestModel
+﻿namespace Authentication.DomainService.Authentication.RequestModel
 {
     public sealed class UpdateAuthenticationConfigurationRequest
     {
@@ -40,8 +40,6 @@ namespace Authentication.DomainService.Authentication.RequestModel
 
         /// <summary>Short plain-text explanation of the password rule. Empty means no message written.</summary>
         public string PasswordStrengthCheckerMessage { get; set; } = string.Empty;
-
-        public bool? PasswordPolicyEnabled { get; set; }
 
         public int PasswordPolicyMinLength { get; set; }
 

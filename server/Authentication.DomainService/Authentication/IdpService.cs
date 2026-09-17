@@ -82,8 +82,7 @@ namespace Authentication.DomainService.Authentication
                     Generator = captchaConfiguration.CaptchaGenerator
                 },
                 // Derived from the tenant's regex and published as plain data -- no pattern text
-                // reaches the response, so the browser builds no RegExp. PasswordPolicyEnabled
-                // gates publication: off publishes nothing at all.
+                // reaches the response, so the browser builds no RegExp.
                 PasswordPolicy = BuildPasswordPolicy(authenticationConfiguration),
                 Template = savedTemplate
             });
@@ -110,18 +109,19 @@ namespace Authentication.DomainService.Authentication
 
         /// <summary>
         /// The tenant's password rule, published as plain data derived from their configured
-        /// <c>PasswordStrengthCheckerRegex</c>. <c>PasswordPolicyEnabled</c> gates whether a rule
-        /// is published at all: off publishes nothing, on publishes the regex read back as
-        /// structured flags. A regex too involved to read confidently publishes nothing either.
+        /// <c>PasswordStrengthCheckerRegex</c>, which is the rule the account endpoints enforce.
+        /// Published for every tenant that has one -- there is no separate switch, because a rule
+        /// that is enforced is a rule the screens should describe.
+        ///
+        /// Null only when no regex is stored at all, which the client answers with its own
+        /// baseline rather than showing no requirements.
         ///
         /// No pattern text reaches the response, so the browser still builds no RegExp.
         /// </summary>
-        private static OidcUiPasswordPolicyResponse? BuildPasswordPolicy(IdentityConfiguration? configuration)
-        {
-            if (configuration is not { PasswordPolicyEnabled: true }) return null;
-
-            return PasswordPolicyRegexDeriver.Derive(configuration.PasswordStrengthCheckerRegex);
-        }
+        private static OidcUiPasswordPolicyResponse? BuildPasswordPolicy(IdentityConfiguration? configuration) =>
+            configuration is null
+                ? null
+                : PasswordPolicyRegexDeriver.Derive(configuration.PasswordStrengthCheckerRegex);
 
         public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo, string? flow = null, HttpRequest? httpRequest = null)
         {
