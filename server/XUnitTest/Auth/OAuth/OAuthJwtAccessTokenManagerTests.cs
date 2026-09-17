@@ -70,7 +70,7 @@ namespace XUnitTest.Auth.OAuth
 
         private OAuthJwtAccessTokenManager Create() =>
             new(_jwtProvider.Object, _authDomain.Object, _authRepo.Object, _mfaPolicy.Object, _cache.Object,
-                _tenants.Object, _otpFactory.Object, BuildUnifiedTokenSessionService());
+                _tenants.Object, _otpFactory.Object, BuildUnifiedTokenSessionService(), _idpSession.Object);
 
         private static TokenRequest MakeRequest(string grantType) => new()
         {
