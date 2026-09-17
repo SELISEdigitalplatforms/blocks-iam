@@ -89,7 +89,7 @@ namespace XUnitTest.Auth
 
             policy!.MinLength.Should().Be(10);
             policy.MaxLength.Should().Be(32);
-            policy.Pattern.Should().NotBeNull("the no-triples rule and the restricted specials are not expressible");
+            policy.RequiresServerCheck.Should().BeTrue("the no-triples rule and the restricted specials are not expressible");
         }
 
         [Fact]
@@ -104,7 +104,7 @@ namespace XUnitTest.Auth
             policy.RequireLowercase.Should().BeTrue();
             policy.RequireNumbers.Should().BeTrue();
             policy.RequireSpecialChars.Should().BeTrue();
-            policy.Pattern.Should().BeNull();
+            policy.RequiresServerCheck.Should().BeFalse();
         }
 
         [Fact]
@@ -126,10 +126,10 @@ namespace XUnitTest.Auth
 
             policy!.MinLength.Should().Be(0);
             policy.MaxLength.Should().Be(0);
-            policy.Pattern.Should().NotBeNull();
+            policy.RequiresServerCheck.Should().BeTrue();
         }
 
-        // ---------- rules the four flags cannot express: published as a pattern ----------
+        // ---------- rules the four flags cannot express: checked by the server ----------
 
         [Theory]
         // Requirements with no structured equivalent.
@@ -147,12 +147,12 @@ namespace XUnitTest.Auth
         [InlineData(@"^(abc|def){8,30}$")]
         [InlineData(@"^(?=.*[a-z])[A-Za-z\d\W_]$")]     // no quantifier
         [InlineData(@"^.{8,30}\$")]                      // a literal "$", not an anchor
-        public void Derive_PublishesThePattern_WhenTheFlagsCannotSayTheRule(string pattern)
+        public void Derive_AsksForAServerCheck_WhenTheFlagsCannotSayTheRule(string pattern)
         {
             var policy = PasswordPolicyRegexDeriver.Derive(pattern);
 
             policy.Should().NotBeNull(because: $"'{pattern}' is a real rule the client must still honour");
-            policy!.Pattern.Should().Be(pattern);
+            policy!.RequiresServerCheck.Should().BeTrue();
 
             // No flag is ever guessed on this path: a half-decoded rule would tick requirements
             // the server does not check.
@@ -182,17 +182,28 @@ namespace XUnitTest.Auth
 
             policy!.MinLength.Should().Be(0);
             policy.MaxLength.Should().Be(0);
-            policy.Pattern.Should().NotBeNull();
-            policy.HasUndescribedRules.Should().BeFalse();
+            policy.RequiresServerCheck.Should().BeTrue();
         }
 
         [Fact]
-        public void Derive_DoesNotSendThePattern_WhenTheFlagsAlreadySayTheRule()
+        public void Derive_NeedsNoServerCheck_WhenTheFlagsAlreadySayTheRule()
         {
-            // The common case keeps the pattern off the wire entirely.
             PasswordPolicyRegexDeriver.Derive(
                 @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{8,30}$")!
-                .Pattern.Should().BeNull();
+                .RequiresServerCheck.Should().BeFalse();
+        }
+
+        [Fact]
+        public void Derive_NeverPublishesThePattern_WhateverTheRule()
+        {
+            // The config endpoint is public: no property on the response may carry pattern text.
+            var secretive = @"^(?=.*[a-zA-Z])(?!.*acmecorp).{8,30}$";
+
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                PasswordPolicyRegexDeriver.Derive(secretive));
+
+            json.Should().NotContain("acmecorp");
+            json.Should().NotContain("(?=");
         }
 
         [Fact]
@@ -203,17 +214,17 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public void Derive_PublishesADoubleEscapedPatternAsOpaque()
+        public void Derive_SendsADoubleEscapedPatternToTheServerCheck()
         {
             // A pattern that survived one JSON unescape too few asserts a literal backslash. That
             // is a different rule from the one the admin meant, but it is the rule the server
-            // enforces -- so it is passed on as-is rather than decoded into flags that would lie.
+            // enforces -- so the server is asked, rather than flags invented that would lie.
             var pattern = @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[\\W_])[A-Za-z\\d\\W_]{5,30}$";
 
-            PasswordPolicyRegexDeriver.Derive(pattern)!.Pattern.Should().Be(pattern);
+            PasswordPolicyRegexDeriver.Derive(pattern)!.RequiresServerCheck.Should().BeTrue();
         }
 
-        // ---------- rules that cannot even be handed over as a pattern ----------
+        // ---------- rules the save-time screening would refuse to publish ----------
 
         [Theory]
         // Refused by the save-time screening: catastrophically slow, invalid syntax, or a
@@ -221,15 +232,14 @@ namespace XUnitTest.Auth
         [InlineData("^(a+)+$")]
         [InlineData(@"^.{30,8}$")]
         [InlineData(@"^(?i)(?=.*[a-zA-Z]).{8,30}$")]
-        public void Derive_ReportsUndescribedRules_WhenThePatternCannotBePublished(string pattern)
+        public void Derive_AsksForAServerCheck_ForPatternsNoBrowserCouldRunAnyway(string pattern)
         {
             var policy = PasswordPolicyRegexDeriver.Derive(pattern);
 
             // Not null: the server still enforces this rule on submit, and saying "no policy"
             // would send the client back to a baseline nobody configured.
             policy.Should().NotBeNull();
-            policy!.HasUndescribedRules.Should().BeTrue();
-            policy.Pattern.Should().BeNull("an unscreened pattern is never handed to a browser");
+            policy!.RequiresServerCheck.Should().BeTrue();
             policy.RequireUppercase.Should().BeFalse();
             policy.RequireLowercase.Should().BeFalse();
             policy.RequireNumbers.Should().BeFalse();
@@ -237,26 +247,21 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public void Derive_KeepsReadableLengthBounds_EvenWhenThePatternCannotBePublished()
+        public void Derive_KeepsReadableLengthBounds_EvenForAServerCheckedRule()
         {
             // "(?i)" defeats publication, but the quantifier was still readable, so the user
             // keeps a real "between 8 and 30 characters" row.
             var policy = PasswordPolicyRegexDeriver.Derive(@"^(?i)(?=.*[a-zA-Z]).{8,30}$");
 
-            policy!.HasUndescribedRules.Should().BeTrue();
+            policy!.RequiresServerCheck.Should().BeTrue();
             policy.MinLength.Should().Be(0, "the leading (?i) stops the scan before the quantifier");
         }
 
         [Fact]
-        public void Derive_DoesNotFlagUndescribedRules_WhenTheRuleIsFullyDescribed()
-        {
+        public void Derive_NeedsNoServerCheck_WhenTheRuleIsFullyDescribed() =>
             PasswordPolicyRegexDeriver.Derive(
                 @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{8,30}$")!
-                .HasUndescribedRules.Should().BeFalse();
-
-            PasswordPolicyRegexDeriver.Derive(@"^(?=.*[a-zA-Z]).{8,30}$")!
-                .HasUndescribedRules.Should().BeFalse("the pattern itself describes it");
-        }
+                .RequiresServerCheck.Should().BeFalse();
 
         // ---------- no rule configured at all ----------
 

@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { Check, X } from "lucide-react";
+import { useServerPasswordCheck } from "@blocks-idp/authentication/hooks/use-server-password-check";
 import { usePasswordStrength } from "@blocks-idp/authentication/hooks/use-password-strength";
 import type { IOidcPasswordPolicy } from "@blocks-idp/authentication/utils/password-policy.util";
 import {
@@ -38,6 +39,8 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
   excludePasswordLabel,
   policy,
 }) => {
+  // Only fires for a rule the client cannot evaluate; otherwise no request is ever made.
+  const serverCheck = useServerPasswordCheck(password, policy?.requiresServerCheck === true);
   const {
     checks,
     requirements,
@@ -48,7 +51,7 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
     getStrengthColor,
     getStrengthTextColor,
     getStrengthLabel,
-  } = usePasswordStrength(password, policy);
+  } = usePasswordStrength(password, policy, serverCheck);
   const passwordsMatch = password === confirmPassword && password !== "";
   const isDifferentFromExcluded =
     !excludePassword || password === "" || password !== excludePassword;

@@ -82,16 +82,35 @@ describe("usePasswordStrength", () => {
     expect(strongDefault.result.current.allRequirementsMet).toBe(true);
   });
 
-  it("C1: shows no requirements for an undescribable rule, without throwing", () => {
-    // The server published a policy that describes nothing it can state. Showing the FE baseline
-    // here would invent requirements the server does not enforce, so nothing is shown and the
-    // server's own error reports the failure on submit.
-    const undescribable: IOidcPasswordPolicy = {
-      ...policy, minLength: 0, maxLength: 0, hasUndescribedRules: true,
+  it("C1: shows no requirements for a policy that states none, without throwing", () => {
+    // Bounds that say nothing and no server check: there is simply no row to draw. Showing the FE
+    // baseline here would invent requirements the server does not enforce.
+    const statesNothing: IOidcPasswordPolicy = {
+      ...policy,
+      minLength: 0,
+      maxLength: 0,
+      requireUppercase: false,
+      requireLowercase: false,
+      requireNumbers: false,
+      requireSpecialChars: false,
     };
-    expect(() => renderHook(() => usePasswordStrength("anything", undescribable))).not.toThrow();
-    const { result } = renderHook(() => usePasswordStrength("anything", undescribable));
+    expect(() => renderHook(() => usePasswordStrength("anything", statesNothing))).not.toThrow();
+    const { result } = renderHook(() => usePasswordStrength("anything", statesNothing));
     expect(result.current.requirements).toEqual([]);
     expect(result.current.hasPolicy).toBe(false);
+  });
+
+  it("reflects the server's verdict on a server-checked rule", () => {
+    const serverChecked: IOidcPasswordPolicy = { ...policy, requiresServerCheck: true };
+
+    const pending = renderHook(() => usePasswordStrength("Sunflower7!", serverChecked, undefined));
+    expect(pending.result.current.checks.custom).toBe(false);
+    expect(pending.result.current.allRequirementsMet).toBe(false);
+
+    const passed = renderHook(() => usePasswordStrength("Sunflower7!", serverChecked, true));
+    expect(passed.result.current.checks.custom).toBe(true);
+
+    const failed = renderHook(() => usePasswordStrength("Sunflower7!", serverChecked, false));
+    expect(failed.result.current.checks.custom).toBe(false);
   });
 });

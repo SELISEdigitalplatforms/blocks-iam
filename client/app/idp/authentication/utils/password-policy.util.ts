@@ -14,26 +14,15 @@ export interface IOidcPasswordPolicy {
   requireSpecialChars: boolean;
   message: string | null;
   /**
-   * The tenant's own pattern, sent only when their rule says something the four flags cannot
-   * ("a letter, either case", "one of !@#$", "no character three times running"). Shown as a
-   * single pass/fail row rather than silently dropping to a rule nobody configured.
+   * True when the tenant's rule says something the flags above cannot ("a letter, either case",
+   * "one of !@#$", "no character three times running"). The rule itself is never sent: the config
+   * endpoint is public, and a pattern on the wire would disclose whatever it encodes.
    *
-   * The server publishes this only after `PasswordPolicyRegexValidator` has screened it at save
-   * time for JavaScript compatibility and catastrophic backtracking. It is still treated as
-   * untrusted here: compiled behind try/catch, length-capped, and only ever run against input
-   * already bounded by {@link PASSWORD_MAX_INPUT_LENGTH}.
+   * The screens show one extra pass/fail row and ask `POST /api/idp/password-check` to evaluate
+   * it -- the same check the account endpoints enforce on submit. This must never fall back to
+   * {@link DEFAULT_PASSWORD_POLICY}: that would state requirements nobody configured.
    */
-  pattern?: string | null;
-  /**
-   * True when the tenant's rule could be neither decoded into the flags above nor safely sent as
-   * {@link pattern} -- a pattern the server's save-time screening refuses to publish.
-   *
-   * The rule is still enforced on submit, so this must NOT fall back to
-   * {@link DEFAULT_PASSWORD_POLICY}: that would state requirements nobody configured. The screens
-   * show whatever the other fields do say (the length bounds when readable, nothing when not)
-   * and let the server's own error report the failure.
-   */
-  hasUndescribedRules?: boolean;
+  requiresServerCheck?: boolean;
 }
 
 /** Independent input-hygiene cap, applied regardless of whether a policy is configured. */
@@ -61,33 +50,7 @@ const ASCII_LOWER = /[a-z]/;
 const ASCII_DIGIT = /[0-9]/;
 const ASCII_SPECIAL = /[^A-Za-z0-9]/;
 
-/** The longest pattern accepted from the server, matching the server's own save-time cap. */
-const MAX_PATTERN_LENGTH = 512;
-
-/**
- * Compiles the tenant's pattern, or returns null if it will not compile here. A pattern the
- * server screened can still be rejected by this browser's engine, and that must degrade to
- * "no extra requirement shown" rather than throwing inside a render.
- */
-const compiledPatterns = new Map<string, RegExp | null>();
-
-export const compilePolicyPattern = (pattern: string | null | undefined): RegExp | null => {
-  if (!pattern || pattern.length > MAX_PATTERN_LENGTH) return null;
-
-  const cached = compiledPatterns.get(pattern);
-  if (cached !== undefined) return cached;
-
-  let compiled: RegExp | null = null;
-  try {
-    compiled = new RegExp(pattern);
-  } catch {
-    compiled = null;
-  }
-  compiledPatterns.set(pattern, compiled);
-  return compiled;
-};
-
-/** The label for a rule only the tenant's own pattern can express. */
+/** The label for a rule only the server can evaluate. */
 export const CUSTOM_REQUIREMENT_LABEL = "Meets your project's password requirements";
 
 /** A policy is only usable once its bounds are sane; a corrupt response degrades to the default. */
@@ -131,11 +94,16 @@ export const resolvePasswordPolicy = (
 export const buildPasswordPolicyRequirements = (
   policy: IOidcPasswordPolicy,
 ): PasswordPolicyRequirement[] => {
-  if (!hasValidBounds(policy)) return [];
+  const requirements: PasswordPolicyRequirement[] = [];
 
-  const requirements: PasswordPolicyRequirement[] = [
-    { key: "length", label: `Between ${policy.minLength} and ${policy.maxLength} characters` },
-  ];
+  // Bounds that make no sense are "no length rule to show", not a reason to show nothing at all:
+  // a server-checked rule still has its own row below.
+  if (hasValidBounds(policy)) {
+    requirements.push({
+      key: "length",
+      label: `Between ${policy.minLength} and ${policy.maxLength} characters`,
+    });
+  }
   if (policy.requireUppercase) {
     requirements.push({ key: "uppercase", label: "At least one uppercase letter (A-Z)" });
   }
@@ -148,8 +116,9 @@ export const buildPasswordPolicyRequirements = (
   if (policy.requireSpecialChars) {
     requirements.push({ key: "special", label: "At least one special character" });
   }
-  // Last, and only when the tenant's rule says more than the flags above can.
-  if (compilePolicyPattern(policy.pattern)) {
+  // Last, and only when the tenant's rule says more than the flags above can. Whether it is met
+  // is answered by the server; see `useServerPasswordCheck`.
+  if (policy.requiresServerCheck) {
     requirements.push({ key: "custom", label: CUSTOM_REQUIREMENT_LABEL });
   }
   return requirements;
@@ -169,13 +138,8 @@ export const checkPasswordAgainstPolicy = (
   if (policy.requireNumbers) checks.number = ASCII_DIGIT.test(password);
   if (policy.requireSpecialChars) checks.special = ASCII_SPECIAL.test(password);
 
-  const compiled = compilePolicyPattern(policy.pattern);
-  if (compiled) {
-    // Bounded input only: the field caps at PASSWORD_MAX_INPUT_LENGTH, and the server screened
-    // the pattern for catastrophic backtracking before publishing it.
-    compiled.lastIndex = 0;
-    checks.custom = compiled.test(password.slice(0, PASSWORD_MAX_INPUT_LENGTH));
-  }
+  // `custom` is deliberately absent here: only the server knows that answer, and the caller
+  // merges it in once it arrives.
   return checks;
 };
 
@@ -203,7 +167,7 @@ export const applyPasswordPolicyToSchema = (
   if (resolved.requireNumbers) result = result.regex(ASCII_DIGIT, "Must include a number");
   if (resolved.requireSpecialChars) result = result.regex(ASCII_SPECIAL, "Must include a special character");
 
-  const compiled = compilePolicyPattern(resolved.pattern);
-  if (compiled) result = result.regex(compiled, CUSTOM_REQUIREMENT_LABEL);
+  // No client-side rule for a server-checked policy: the form must not pre-reject a password the
+  // server would accept, and the server reports its own verdict on submit.
   return result;
 };

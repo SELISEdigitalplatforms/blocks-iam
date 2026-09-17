@@ -369,6 +369,17 @@
             RFC 6749: OAuth 2.0 Authorization Code Flow | RFC 7636: PKCE
             </summary>
         </member>
+        <member name="M:Api.Controllers.IdpController.PasswordCheck(Api.Controllers.PasswordCheckRequest)">
+            <summary>
+            Pass/fail for one candidate password against the tenant's rule. Anonymous like the config
+            endpoint it supports, and answers with a bare boolean -- the rule is never disclosed.
+            Never cached, and the password is only ever read from the body so it cannot land in an
+            access log the way a query string would.
+            </summary>
+        </member>
+        <member name="T:Api.Controllers.PasswordCheckRequest">
+            <summary>Body of <see cref="M:Api.Controllers.IdpController.PasswordCheck(Api.Controllers.PasswordCheckRequest)"/>.</summary>
+        </member>
         <member name="T:Api.Controllers.OidcClientsController">
             <summary>
             OIDC Client Management Controller

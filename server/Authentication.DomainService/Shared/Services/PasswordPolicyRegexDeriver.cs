@@ -20,12 +20,10 @@ namespace Authentication.DomainService.Shared.Services;
 /// four only partially is not that class: <c>\W</c> and <c>[^\w]</c> exclude <c>_</c>, so they
 /// are "every special but underscore" -- near <c>RequireSpecialChars</c>, not equal to it.
 ///
-/// A rule it cannot decode *exactly* is never approximated: a requirement the six structured
-/// fields cannot express (say "a letter, either case", "one of !@#$", or "no character three
-/// times running") is published as the pattern itself, for the client to show as a single
-/// pass/fail requirement. Only a pattern already screened by
-/// <see cref="PasswordPolicyRegexValidator"/> -- JavaScript-compatible, no catastrophic
-/// backtracking -- is ever passed on that way.
+/// A rule it cannot decode *exactly* is never approximated, and never published either: this
+/// endpoint is public and unauthenticated, so a pattern on the wire would hand out whatever it
+/// happens to encode -- blacklisted terms, internal naming conventions. Such a rule is flagged
+/// <c>RequiresServerCheck</c> instead, and the client asks the server to evaluate it.
 /// </summary>
 public static class PasswordPolicyRegexDeriver
 {
@@ -83,15 +81,12 @@ public static class PasswordPolicyRegexDeriver
             return policy;
         }
 
-        // The rule is real but not expressible in the four flags. Hand the client the pattern so
-        // it can still tell the user pass or fail -- but only one already screened as safe.
-        var publishable = PasswordPolicyRegexValidator.Validate(trimmed) is null;
-
+        // The rule is real but not expressible in the four flags. The pattern stays on the
+        // server -- this endpoint is public -- and the client asks the server to check it.
         return new OidcUiPasswordPolicyResponse
         {
-            // Whatever the scan could read is still worth saying. Zero means "not readable": the
-            // client treats bounds that make no sense as no length requirement to show, rather
-            // than inventing one.
+            // Whatever the scan could read is still worth saying. Zero means "nothing readable",
+            // which the client renders as no length row rather than as an invented one.
             MinLength = bounds.Min,
             MaxLength = bounds.Max,
             RequireUppercase = false,
@@ -99,8 +94,7 @@ public static class PasswordPolicyRegexDeriver
             RequireNumbers = false,
             RequireSpecialChars = false,
             Message = Blank(message) ? null : message,
-            Pattern = publishable ? trimmed : null,
-            HasUndescribedRules = !publishable
+            RequiresServerCheck = true
         };
     }
 

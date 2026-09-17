@@ -18,8 +18,9 @@ namespace Authentication.DomainService.Shared.ResponseModel
     }
 
     /// <summary>
-    /// The tenant's password rule. Normally plain data: the four flags and the length bounds say
-    /// the whole rule, and <see cref="Pattern"/> is null.
+    /// The tenant's password rule, always as plain data. The four flags and the length bounds say
+    /// the whole rule whenever they can; anything they cannot say is checked by the server through
+    /// <see cref="RequiresServerCheck"/>. No regular expression is ever published.
     /// </summary>
     public sealed class OidcUiPasswordPolicyResponse
     {
@@ -32,29 +33,17 @@ namespace Authentication.DomainService.Shared.ResponseModel
         public string? Message { get; set; }
 
         /// <summary>
-        /// The tenant's own pattern, sent ONLY when the rule says something these four flags
-        /// cannot -- "a letter, either case", "one of !@#$", "no character three times running".
-        /// The client shows those as a single pass/fail requirement rather than dropping to a
-        /// hard-coded default that describes a different rule.
+        /// True when the tenant's rule says something the flags above cannot -- "a letter, either
+        /// case", "one of !@#$", "no character three times running", a length only an assertion
+        /// states. The rule itself is never published: a public, unauthenticated endpoint would
+        /// otherwise hand out whatever the pattern happens to encode, including blacklisted terms
+        /// and internal naming conventions.
         ///
-        /// Null whenever the flags are sufficient, which is the common case: a pattern goes on
-        /// the wire only when it buys the user something. Anything published here has passed
-        /// <see cref="Shared.Services.PasswordPolicyRegexValidator"/> at save time, which rejects
-        /// patterns that are not JavaScript-compatible or that backtrack catastrophically.
+        /// The client shows one extra pass/fail requirement and asks
+        /// <c>POST /api/idp/password-check</c> to evaluate it, which runs the same check the
+        /// account endpoints enforce on submit.
         /// </summary>
-        public string? Pattern { get; set; }
-
-        /// <summary>
-        /// True when the tenant's rule could be neither decoded into the flags nor safely handed
-        /// over as <see cref="Pattern"/> -- a pattern the save-time screening refuses to publish
-        /// (not JavaScript-compatible, or catastrophically slow).
-        ///
-        /// The rule is still enforced on submit, so the client must not fall back to its own
-        /// baseline here: that would state requirements nobody configured. It shows whatever the
-        /// other fields do say -- the length bounds when those were readable, nothing when they
-        /// were not -- and lets the server's own error report the failure.
-        /// </summary>
-        public bool HasUndescribedRules { get; set; }
+        public bool RequiresServerCheck { get; set; }
     }
 
     /// <summary>

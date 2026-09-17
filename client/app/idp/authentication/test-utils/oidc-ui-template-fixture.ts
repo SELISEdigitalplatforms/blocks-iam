@@ -55,6 +55,3 @@ export const OIDC_UI_TEMPLATE_FIXTURE: IOidcUiTemplate = {
     shared: { footerText: "Test footer {year}" },
   },
 };
-export const OIDC_UI_TEMPLATE_FIXTURE = normalizeOidcUiTemplate(
-  oidcUiTemplateFixture as IOidcUiTemplate,
-);

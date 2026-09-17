@@ -1,4 +1,4 @@
-using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -58,6 +58,20 @@ public class IdpController : ControllerBase
         return await _idpService.HandleCallbackAsync(code, state, error, error_description, Request, Response);
     }
 
+    /// <summary>
+    /// Pass/fail for one candidate password against the tenant's rule. Anonymous like the config
+    /// endpoint it supports, and answers with a bare boolean -- the rule is never disclosed.
+    /// Never cached, and the password is only ever read from the body so it cannot land in an
+    /// access log the way a query string would.
+    /// </summary>
+    [HttpPost("password-check")]
+    [AllowAnonymous]
+    public async Task<IActionResult> PasswordCheck([FromBody] PasswordCheckRequest request)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return await _idpService.CheckPasswordAsync(request?.Password);
+    }
+
     [HttpGet("oidc-ui-config")]
     [AllowAnonymous]
     public async Task<IActionResult> OidcUiConfig()
@@ -65,4 +79,10 @@ public class IdpController : ControllerBase
         Response.Headers.CacheControl = "public, max-age=60";
         return await _idpService.GetUiConfigAsync();
     }
+}
+
+/// <summary>Body of <see cref="IdpController.PasswordCheck"/>.</summary>
+public sealed class PasswordCheckRequest
+{
+    public string? Password { get; set; }
 }

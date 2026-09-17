@@ -45,7 +45,7 @@ const resolveTenantIdFromPath = (): string | undefined => {
   return undefined;
 };
 
-const resolveTenantId = (override?: string): string => {
+export const resolveTenantId = (override?: string): string => {
   if (override) return override;
   if (typeof window !== "undefined") {
     const fromUrl = extractOIDCParams().tenantId;

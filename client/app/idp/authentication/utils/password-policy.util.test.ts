@@ -45,7 +45,7 @@ describe("resolvePasswordPolicy", () => {
   it("keeps a published policy even when its bounds say nothing", () => {
     // Zero bounds mean "no readable length rule", not "no policy". The server still enforces
     // something, so the baseline must not be substituted here.
-    const published = policy({ minLength: 0, maxLength: 0, hasUndescribedRules: true });
+    const published = policy({ minLength: 0, maxLength: 0, requiresServerCheck: true });
     expect(resolvePasswordPolicy(published)).toBe(published);
   });
 
@@ -176,7 +176,7 @@ describe("applyPasswordPolicyToSchema", () => {
 
   it("asserts no strength rule for a policy whose bounds say nothing", () => {
     // Undescribable rule: the server is the only authority, and it reports on submit.
-    expect(schemaFor(policy({ minLength: 0, maxLength: 0, hasUndescribedRules: true }))
+    expect(schemaFor(policy({ minLength: 0, maxLength: 0, requiresServerCheck: true }))
       .safeParse("a").success).toBe(true);
   });
 
@@ -239,78 +239,51 @@ describe("applyPasswordPolicyToSchema", () => {
   });
 });
 
-describe("tenant pattern (a rule the four flags cannot express)", () => {
-  // "a letter, either case" -- no structured equivalent, so the server sends the pattern.
-  const withPattern = (pattern: string | null) =>
-    policy({ minLength: 8, maxLength: 30, pattern });
+describe("server-checked rule (one the four flags cannot express)", () => {
+  const serverChecked = (overrides: Partial<IOidcPasswordPolicy> = {}) =>
+    policy({ minLength: 8, maxLength: 30, requiresServerCheck: true, ...overrides });
 
   it("adds a single pass/fail requirement, last", () => {
-    const requirements = buildPasswordPolicyRequirements(
-      withPattern("^(?=.*[a-zA-Z]).{8,30}$"),
-    );
+    const requirements = buildPasswordPolicyRequirements(serverChecked());
     expect(requirements.map((r) => r.key)).toEqual(["length", "custom"]);
     expect(requirements.at(-1)?.label).toBe(CUSTOM_REQUIREMENT_LABEL);
   });
 
-  it("checks the password against the tenant's own pattern", () => {
-    const active = withPattern("^(?=.*[a-zA-Z]).{8,30}$");
-    expect(checkPasswordAgainstPolicy("12345678", active).custom).toBe(false);
-    expect(checkPasswordAgainstPolicy("1234567a", active).custom).toBe(true);
+  it("leaves the verdict to the caller rather than guessing it", () => {
+    // Only the server can answer this one; the util reports the checks it can make and no more.
+    expect(checkPasswordAgainstPolicy("1234567a", serverChecked()).custom).toBeUndefined();
   });
 
-  it("enforces the pattern in the schema as well, so the two agree", () => {
-    const schema = applyPasswordPolicyToSchema(z.string(), withPattern("^(?=.*[a-zA-Z]).{8,30}$"));
-    expect(schema.safeParse("12345678").success).toBe(false);
-    expect(schema.safeParse("1234567a").success).toBe(true);
+  it("still checks everything it can describe", () => {
+    expect(checkPasswordAgainstPolicy("short", serverChecked()).length).toBe(false);
+    expect(checkPasswordAgainstPolicy("longenough", serverChecked()).length).toBe(true);
   });
 
-  it("reports the requirement with the agreed label when the pattern fails", () => {
-    const schema = applyPasswordPolicyToSchema(z.string(), withPattern("^(?=.*[a-zA-Z]).{8,30}$"));
-    const result = schema.safeParse("12345678");
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.map((i) => i.message)).toContain(CUSTOM_REQUIREMENT_LABEL);
-    }
+  it("does not pre-reject in the schema, so the server decides on submit", () => {
+    const schema = applyPasswordPolicyToSchema(z.string(), serverChecked());
+    expect(schema.safeParse("longenough").success).toBe(true);
+    expect(schema.safeParse("short").success).toBe(false); // the length rule still applies
   });
 
-  it("shows no extra row when no pattern was sent", () => {
-    expect(buildPasswordPolicyRequirements(withPattern(null)).map((r) => r.key)).toEqual(["length"]);
-    expect(checkPasswordAgainstPolicy("anything", withPattern(null)).custom).toBeUndefined();
-  });
-
-  it("ignores a pattern this browser cannot compile, rather than throwing", () => {
-    const broken = withPattern("^(?<broken.{8,30}$");
-    expect(() => buildPasswordPolicyRequirements(broken)).not.toThrow();
-    expect(buildPasswordPolicyRequirements(broken).map((r) => r.key)).toEqual(["length"]);
-    expect(checkPasswordAgainstPolicy("anything", broken).custom).toBeUndefined();
-    expect(applyPasswordPolicyToSchema(z.string(), broken).safeParse("Sunflower7!").success).toBe(true);
-  });
-
-  it("ignores an over-long pattern", () => {
-    const tooLong = withPattern("^" + "a".repeat(600) + "$");
-    expect(buildPasswordPolicyRequirements(tooLong).map((r) => r.key)).toEqual(["length"]);
-  });
-
-  it("evaluates a stateful global pattern consistently across calls", () => {
-    // A /g pattern carries lastIndex between calls; the check must not alternate.
-    const global = policy({ minLength: 1, maxLength: 30, pattern: "[a-z]" });
-    expect(checkPasswordAgainstPolicy("abc", global).custom).toBe(true);
-    expect(checkPasswordAgainstPolicy("abc", global).custom).toBe(true);
+  it("shows no extra row when the server did not ask for a check", () => {
+    const local = policy({ minLength: 8, maxLength: 30, requiresServerCheck: false });
+    expect(buildPasswordPolicyRequirements(local).map((r) => r.key)).toEqual(["length"]);
+    expect(checkPasswordAgainstPolicy("anything", local).custom).toBeUndefined();
   });
 });
 
-describe("undescribable rule (server could neither decode nor publish the pattern)", () => {
+describe("a rule that describes nothing the client can show", () => {
   const undescribable = (overrides: Partial<IOidcPasswordPolicy> = {}) =>
-    policy({ minLength: 0, maxLength: 0, hasUndescribedRules: true, ...overrides });
+    policy({ minLength: 0, maxLength: 0, requiresServerCheck: true, ...overrides });
 
-  it("shows no requirements at all when nothing about the rule was readable", () => {
-    expect(buildPasswordPolicyRequirements(undescribable())).toEqual([]);
+  it("shows only the server-checked row when nothing about the rule was readable", () => {
+    expect(buildPasswordPolicyRequirements(undescribable()).map((r) => r.key)).toEqual(["custom"]);
     expect(checkPasswordAgainstPolicy("anything", undescribable())).toEqual({});
   });
 
   it("still shows the length row when only that much was readable", () => {
     const withLength = undescribable({ minLength: 8, maxLength: 30 });
-    expect(buildPasswordPolicyRequirements(withLength).map((r) => r.key)).toEqual(["length"]);
+    expect(buildPasswordPolicyRequirements(withLength).map((r) => r.key)).toEqual(["length", "custom"]);
     expect(checkPasswordAgainstPolicy("short", withLength).length).toBe(false);
     expect(checkPasswordAgainstPolicy("longenough", withLength).length).toBe(true);
   });
