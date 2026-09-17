@@ -10,10 +10,10 @@ import {
   resolvePasswordPolicy,
 } from "../utils/password-policy.util";
 import {
-  STRENGTH_THRESHOLDS,
   getStrengthColor,
   getStrengthLabel,
   getStrengthTextColor,
+  scorePasswordStrength,
 } from "../utils/password-strength.util";
 
 export type {
@@ -39,12 +39,9 @@ export const usePasswordStrength = (
     const met = requirements.filter((requirement) => checks[requirement.key]).length;
     const allRequirementsMet = hasPolicy ? met === requirements.length : password.length > 0;
 
-    const strength =
-      !hasPolicy || password === ""
-        ? 0
-        : met === requirements.length
-          ? 100
-          : Math.min(Math.round((met / requirements.length) * 100), STRENGTH_THRESHOLDS.STRONG);
+    // Scored from the password itself, never from how many requirements it happens to satisfy:
+    // a tenant whose rule is mostly a length bound would otherwise jump straight to 100%.
+    const strength = scorePasswordStrength(password);
 
     return {
       strength,

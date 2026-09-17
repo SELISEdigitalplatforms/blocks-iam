@@ -24,9 +24,6 @@ describe("usePasswordStrength", () => {
       "At least one number (0-9)",
     ]);
     expect(result.current.allRequirementsMet).toBe(true);
-    expect(result.current.strength).toBe(100);
-    expect(result.current.getStrengthLabel()).toBe("Strong");
-    expect(result.current.getStrengthColor()).toBe(STRENGTH_COLORS.STRONG);
   });
 
   it("scores a partially compliant password between the bands", () => {
@@ -37,16 +34,38 @@ describe("usePasswordStrength", () => {
       lowercase: true,
       number: false,
     });
-    expect(result.current.strength).toBe(25);
-    expect(result.current.getStrengthLabel()).toBe("Weak");
     expect(result.current.allRequirementsMet).toBe(false);
   });
 
-  it("holds back the top band until every requirement passes", () => {
-    const { result } = renderHook(() => usePasswordStrength("Sunflowers", policy));
-    expect(result.current.strength).toBe(75);
-    expect(result.current.getStrengthLabel()).toBe("Good");
-    expect(result.current.getStrengthColor()).toBe(STRENGTH_COLORS.MEDIUM_STRONG);
+  it("scores strength from the password alone, not from the policy", () => {
+    // The same password scores the same under a demanding policy and a bare one: the meter is
+    // advice about the password, the rows are the tenant's rule.
+    const bareLengthOnly: IOidcPasswordPolicy = {
+      minLength: 10,
+      maxLength: 32,
+      requireUppercase: false,
+      requireLowercase: false,
+      requireNumbers: false,
+      requireSpecialChars: false,
+    };
+
+    const underPolicy = renderHook(() => usePasswordStrength("Sunflower7", policy));
+    const underBare = renderHook(() => usePasswordStrength("Sunflower7", bareLengthOnly));
+
+    expect(underBare.result.current.strength).toBe(underPolicy.result.current.strength);
+    // One requirement met is no longer "100%".
+    expect(underBare.result.current.requirements).toHaveLength(1);
+    expect(underBare.result.current.allRequirementsMet).toBe(true);
+    expect(underBare.result.current.strength).toBeLessThan(100);
+  });
+
+  it("keeps rating a password the policy already accepts", () => {
+    // Meeting the rule is not the ceiling: a longer, more varied password still scores higher.
+    const short = renderHook(() => usePasswordStrength("Sunflower7", policy));
+    const longer = renderHook(() => usePasswordStrength("Sunflower7!!xyzQ", policy));
+
+    expect(short.result.current.allRequirementsMet).toBe(true);
+    expect(longer.result.current.strength).toBeGreaterThan(short.result.current.strength);
   });
 
   it("scores an empty password at zero", () => {

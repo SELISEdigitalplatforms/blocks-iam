@@ -71,7 +71,7 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
 
   return (
     <div className="border-border-default mx-auto w-full rounded-lg border px-6 py-4 shadow-sm">
-      <h2 className="mb-2 text-sm font-semibold text-high-emphasis">Password Requirements</h2>
+      <h2 className="mb-2 text-sm font-semibold text-high-emphasis">Password Strength</h2>
 
       {hasPolicy && (
         <div className="mb-3 flex items-center gap-3">

@@ -49,3 +49,54 @@ export const getStrengthLabel = (strength: number): string =>
 /** How many of the meter's segments a score lights up, always at least one above zero. */
 export const getFilledSegments = (strength: number): number =>
   strength <= 0 ? 0 : Math.max(1, Math.ceil((strength / 100) * STRENGTH_SEGMENTS));
+
+// Fixed literals written directly in this file's own source, never built from a policy.
+const HAS_UPPER = /[A-Z]/;
+const HAS_LOWER = /[a-z]/;
+const HAS_DIGIT = /[0-9]/;
+const HAS_SPECIAL = /[^A-Za-z0-9]/;
+const HAS_RUN_OF_THREE = /(.)\1\1/;
+
+/** Lengths the score steps up at, and what each step is worth. */
+const LENGTH_TIERS = [
+  { atLeast: 16, score: 50 },
+  { atLeast: 12, score: 40 },
+  { atLeast: 10, score: 30 },
+  { atLeast: 8, score: 20 },
+  { atLeast: 6, score: 10 },
+] as const;
+
+/** Each distinct character class present is worth this much. */
+const VARIETY_PER_CLASS = 12;
+
+/** Charged once for an obvious weakness, so "aaaaaaaaaaaa" cannot read as strong on length alone. */
+const RUN_PENALTY = 20;
+
+/**
+ * How strong this password is *as a password* -- length and character variety -- with no reference
+ * to the tenant's rule.
+ *
+ * Deliberately independent of {@link buildPasswordPolicyRequirements}: the requirement rows answer
+ * "may I use this password here", which is pass/fail and the server's call, while the meter answers
+ * "how good is this password", which is advice. Tying the meter to the rule made it meaningless for
+ * a tenant whose rule is mostly length -- one requirement met reads as 100%.
+ */
+export const scorePasswordStrength = (password: string): number => {
+  if (password === "") return 0;
+
+  const length = LENGTH_TIERS.find((tier) => password.length >= tier.atLeast)?.score ?? 0;
+
+  const variety =
+    (HAS_UPPER.test(password) ? 1 : 0) +
+    (HAS_LOWER.test(password) ? 1 : 0) +
+    (HAS_DIGIT.test(password) ? 1 : 0) +
+    (HAS_SPECIAL.test(password) ? 1 : 0);
+
+  const penalty = HAS_RUN_OF_THREE.test(password) ? RUN_PENALTY : 0;
+  const score = length + variety * VARIETY_PER_CLASS - penalty;
+
+  // Anything typed scores at least 1, so the meter shows a first segment rather than reading as
+  // "nothing entered".
+  return Math.min(100, Math.max(1, score));
+};
+

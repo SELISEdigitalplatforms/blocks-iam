@@ -146,6 +146,67 @@ namespace XUnitTest.IamTests.Accounts.Validators
 
             result.IsValid.Should().BeTrue();
         }
+
+        // The rule a reset-password / activation submit actually runs: ResetAccountPasswordAsync
+        // and ActivateAccountAsync both validate through this validator before touching the
+        // account, and it calls the same PasswordStrengthEvaluator that /api/idp/password-check
+        // uses. These pin that a password failing the tenant regex is rejected here, with the
+        // message the screens show.
+        private const string TenantRegex =
+            @"^(?=.{10,32}$)(?!.*(.)\1{2})(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*])\S+$";
+
+        [Theory]
+        [InlineData("Aaa@1234567")]   // "Aaa" is three of the same character: the regex is matched case-insensitively
+        [InlineData("Abc@123")]       // shorter than 10
+        [InlineData("Abcdefghijk!")]  // no digit
+        [InlineData("Abc(1234567")]   // "(" is not one of !@#$%^&*
+        [InlineData("Abc @1234567")]  // \S+ forbids whitespace
+        public async Task Password_FailingTheTenantRegex_IsRejectedWithTheProjectMessage(string password)
+        {
+            _configRepo.Setup(c => c.GetConfigurationAsync())
+                .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = TenantRegex });
+
+            var result = await Create().ValidateAsync(
+                new BaseAccountRequest { Code = "valid-code", Password = password });
+
+            result.IsValid.Should().BeFalse(because: $"'{password}' does not satisfy the tenant rule");
+            result.Errors.Should().Contain(e =>
+                e.PropertyName == "Password"
+                && e.ErrorMessage == "Does not meet project's password requirements");
+        }
+
+        [Theory]
+        // KNOWN DEFECT, pinned so it cannot change unnoticed: PasswordStrengthEvaluator matches
+        // with RegexOptions.IgnoreCase, which makes "(?=.*[A-Z])" and "(?=.*[a-z])" vacuous --
+        // an all-lowercase password satisfies the uppercase requirement and vice versa. Dropping
+        // IgnoreCase would fix it, but it also tightens every tenant at once, and it would flip
+        // "Aaa@1234567" above to accepted (case-sensitively "Aa" is not a repeated character).
+        [InlineData("abc@1234567")]
+        [InlineData("ABC@1234567")]
+        public async Task Password_CaseRequirementsAreNotActuallyEnforced(string password)
+        {
+            _configRepo.Setup(c => c.GetConfigurationAsync())
+                .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = TenantRegex });
+
+            var result = await Create().ValidateAsync(
+                new BaseAccountRequest { Code = "valid-code", Password = password });
+
+            result.IsValid.Should().BeTrue();
+        }
+
+        [Theory]
+        [InlineData("Abc@1234567")]
+        [InlineData("Xy7#mLp2$wZk9")]
+        public async Task Password_SatisfyingTheTenantRegex_IsAccepted(string password)
+        {
+            _configRepo.Setup(c => c.GetConfigurationAsync())
+                .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = TenantRegex });
+
+            var result = await Create().ValidateAsync(
+                new BaseAccountRequest { Code = "valid-code", Password = password });
+
+            result.IsValid.Should().BeTrue();
+        }
+
     }
 }
-

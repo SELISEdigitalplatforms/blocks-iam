@@ -6,6 +6,7 @@ import {
   STRENGTH_TEXT_COLORS,
   STRENGTH_THRESHOLDS,
   getFilledSegments,
+  scorePasswordStrength,
   getStrengthColor,
   getStrengthLabel,
   getStrengthTextColor,
@@ -46,5 +47,43 @@ describe("getFilledSegments", () => {
     expect(getFilledSegments(25)).toBe(1);
     expect(getFilledSegments(50)).toBe(2);
     expect(getFilledSegments(75)).toBe(3);
+  });
+});
+
+describe("scorePasswordStrength", () => {
+  it("scores nothing for an empty password", () => {
+    expect(scorePasswordStrength("")).toBe(0);
+  });
+
+  it("gives anything typed at least one segment", () => {
+    expect(scorePasswordStrength("a")).toBeGreaterThan(0);
+  });
+
+  it("rises with length", () => {
+    expect(scorePasswordStrength("Aa1!Aa1!")).toBeLessThan(scorePasswordStrength("Aa1!Aa1!Aa1!"));
+    expect(scorePasswordStrength("Aa1!Aa1!Aa1!")).toBeLessThan(scorePasswordStrength("Aa1!Aa1!Aa1!Aa1!"));
+  });
+
+  it("rises with character variety at the same length", () => {
+    expect(scorePasswordStrength("abcdefghijkl")).toBeLessThan(scorePasswordStrength("abcdEFghijkl"));
+    expect(scorePasswordStrength("abcdEFghijkl")).toBeLessThan(scorePasswordStrength("abcdEF12ijkl"));
+    expect(scorePasswordStrength("abcdEF12ijkl")).toBeLessThan(scorePasswordStrength("abcdEF12ij!l"));
+  });
+
+  it("penalises a run of the same character, so length alone cannot read as strong", () => {
+    expect(scorePasswordStrength("aaaaaaaaaaaaaaaa")).toBeLessThan(scorePasswordStrength("abcdefghijklmnop"));
+  });
+
+  it("never exceeds the meter's range", () => {
+    expect(scorePasswordStrength("Xq7#mLp2$wZk9!aB3&nQ8*uV")).toBeLessThanOrEqual(100);
+    expect(scorePasswordStrength("a")).toBeGreaterThanOrEqual(0);
+  });
+
+  it("reaches the top band for a long, varied password", () => {
+    expect(getStrengthLabel(scorePasswordStrength("Xq7#mLp2$wZk9!aB"))).toBe("Strong");
+  });
+
+  it("stays in the weak bands for a short, plain one", () => {
+    expect(getStrengthLabel(scorePasswordStrength("abcdef"))).toBe("Weak");
   });
 });
