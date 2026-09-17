@@ -238,15 +238,6 @@
             </summary>
         </member>
         <!-- Badly formed XML comment ignored for member "M:Api.Controllers.DiscoveryController.JwksJson" -->
-        <member name="M:Api.Controllers.DiscoveryController.ExecutePasswordLogin(Authentication.DomainService.OAuth.RequestModel.EmbeddedLoginRequest)">
-            <summary>
-            Temporary anonymous password-login surface. The absolute route <c>/auth-login</c>
-            deliberately escapes the discovery prefix and mirrors <c>POST /api/auth/login</c>.
-            DEPRECATED: this is a temporary compatibility route pending the device-code flow
-            replacement and is slated for removal once that flow ships. Do not build new clients
-            against it.
-            </summary>
-        </member>
         <member name="M:Api.Controllers.IamController.GetRolePermissionChangeImpact(Iam.DomainService.Resources.RolePermissionChangeImpactRequest)">
             <summary>
             Previews what assigning or unassigning the given permissions would do, before the
