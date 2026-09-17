@@ -81,7 +81,7 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
             aria-valuenow={strength}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuetext={`${strengthLabel} password`}
+            aria-valuetext={`${strengthLabel} password, ${strength} percent`}
             aria-label="Password strength"
           >
             {Array.from({ length: STRENGTH_SEGMENTS }, (_, index) => (
@@ -93,7 +93,9 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
               />
             ))}
           </div>
-          <span className={`text-xs font-medium ${getStrengthTextColor()}`}>{strengthLabel}</span>
+          <span className={`text-xs font-medium ${getStrengthTextColor()}`}>
+            {strengthLabel} <span className="tabular-nums">{strength}%</span>
+          </span>
         </div>
       )}
 

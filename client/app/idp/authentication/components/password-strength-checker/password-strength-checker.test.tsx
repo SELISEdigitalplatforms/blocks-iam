@@ -9,6 +9,9 @@ import {
 const h = vi.hoisted(() => ({
   checks: {} as Record<string, boolean>,
   requirements: [] as { key: string; label: string }[],
+  // Scored from the password alone, so tests set it directly rather than deriving it from the
+  // requirement rows -- the two are independent.
+  strength: 0,
 }));
 const policy = {
   minLength: 8,
@@ -26,8 +29,7 @@ vi.mock("@blocks-idp/authentication/hooks/use-password-strength", async () => {
   return {
     usePasswordStrength: () => {
       const total = h.requirements.length;
-      const met = h.requirements.filter((requirement) => h.checks[requirement.key]).length;
-      const strength = total === 0 ? 0 : Math.round((met / total) * 100);
+      const strength = h.strength;
       return {
         checks: h.checks,
         requirements: h.requirements,
@@ -50,6 +52,7 @@ beforeEach(() => {
     { key: "number", label: "Contains a number" },
   ];
   h.checks = { length: true, number: true };
+  h.strength = 100;
 });
 
 describe("PasswordStrengthChecker", () => {
@@ -103,8 +106,9 @@ describe("PasswordStrengthChecker", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
   });
 
-  it("renders a weak, partly filled bar when few checks pass", () => {
+  it("renders a weak, partly filled bar when the password scores low", () => {
     h.checks = { length: false, number: false };
+    h.strength = 0;
     const { container } = render(
       <PasswordStrengthChecker password="a" confirmPassword="a" policy={policy} onRequirementsMet={vi.fn()} />,
     );
@@ -131,4 +135,23 @@ describe("PasswordStrengthChecker", () => {
     expect(screen.queryByText("At least 8 characters")).not.toBeInTheDocument();
   });
 
+
+  it("shows the score as a percentage beside the band label", () => {
+    h.strength = 66;
+    render(
+      <PasswordStrengthChecker password="Secret1" confirmPassword="Secret1" policy={policy} onRequirementsMet={vi.fn()} />,
+    );
+    expect(screen.getByText("66%")).toBeInTheDocument();
+    expect(screen.getByText(/Good/)).toBeInTheDocument();
+  });
+
+  it("announces the percentage to assistive tech", () => {
+    h.strength = 66;
+    render(
+      <PasswordStrengthChecker password="Secret1" confirmPassword="Secret1" policy={policy} onRequirementsMet={vi.fn()} />,
+    );
+    const meter = screen.getByRole("progressbar");
+    expect(meter).toHaveAttribute("aria-valuenow", "66");
+    expect(meter).toHaveAttribute("aria-valuetext", "Good password, 66 percent");
+  });
 });
