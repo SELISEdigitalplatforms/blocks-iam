@@ -1,4 +1,4 @@
-using Authentication.DomainService.Utilities;
+﻿using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
@@ -485,7 +485,17 @@ namespace Authentication.DomainService.Authentication
             try
             {
                 user.LastUsedOrganizationId = organizationId;
-                await _userRepository.UpdateUserAsync(user);
+
+                // One field, by $set. This used to be a whole-document replace of a snapshot read
+                // earlier in the request, which wrote back every other field as it looked at read
+                // time -- reverting anything a concurrent request had changed in between, the login
+                // counter included. Nothing here needs to write more than the one field it names.
+                await _authenticationRepository.UpdatePartialAsync<User>(
+                    user.ItemId,
+                    new Dictionary<string, object>
+                    {
+                        { nameof(User.LastUsedOrganizationId), organizationId }
+                    });
             }
             catch (Exception ex)
             {

@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Repositories;
@@ -517,7 +517,16 @@ namespace XUnitTest.Auth.Oidc
             var result = await Authorize(blocksUserId: "user-1");
 
             result.Should().BeOfType<RedirectResult>();
-            _userRepo.Verify(u => u.UpdateUserAsync(It.Is<User>(x => x.LastUsedOrganizationId == "org-1")), Times.Once);
+            // A single-field $set, not a document replace: the replace wrote back every other field
+            // as it looked when the user was read earlier in this request, which could revert a
+            // concurrent write - the login counter among them.
+            _authRepo.Verify(r => r.UpdatePartialAsync<User>(
+                    "user-1",
+                    It.Is<Dictionary<string, object>>(d =>
+                        d.Count == 1 && (string)d[nameof(User.LastUsedOrganizationId)] == "org-1"),
+                    It.IsAny<string>()),
+                Times.Once);
+            _userRepo.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
         }
 
         [Fact]
@@ -527,7 +536,8 @@ namespace XUnitTest.Auth.Oidc
             var user = ValidUser();
             user.OrganizationIds = new List<string> { "org-1" };
             _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
-            _userRepo.Setup(u => u.UpdateUserAsync(It.IsAny<User>())).ThrowsAsync(new Exception("db down"));
+            _authRepo.Setup(r => r.UpdatePartialAsync<User>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()))
+                .ThrowsAsync(new Exception("db down"));
 
             var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: true);
 

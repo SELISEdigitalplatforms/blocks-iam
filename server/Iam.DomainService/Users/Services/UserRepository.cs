@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
@@ -284,6 +284,13 @@ namespace Iam.DomainService.Users
         {
             NormalizeUserIdentity(user);
             return await _identityAccessManagementRepository.UpdateUserAsync(user);
+        }
+
+        public async Task<bool> RecordSuccessfulLoginAsync(string userId, string deviceInformationJson, DateTime nowUtc)
+        {
+            // No NormalizeUserIdentity here: this writes three counter/telemetry fields by id and
+            // never carries an identity, so there is nothing to normalize.
+            return await _identityAccessManagementRepository.RecordSuccessfulLoginAsync(userId, deviceInformationJson, nowUtc);
         }
 
         public async Task<string> GetProjectIdFromProjectPeopleAsync(string userId)

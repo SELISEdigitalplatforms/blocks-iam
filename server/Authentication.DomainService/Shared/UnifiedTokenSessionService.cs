@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Entities;
@@ -279,23 +279,19 @@ namespace Authentication.DomainService.Shared
         {
             try
             {
-                var existing = await _userRepository.GetUserByIdAsync(userId);
-                if (existing == null)
+                // One atomic $inc rather than read-increment-replace. The old shape lost a login
+                // whenever two writes to the same user overlapped, and a whole-document replace also
+                // reverted whatever another request had changed in between.
+                var recorded = await _userRepository.RecordSuccessfulLoginAsync(
+                    userId,
+                    JsonSerializer.Serialize(deviceInformation),
+                    DateTime.UtcNow);
+
+                if (!recorded)
                 {
                     _logger.LogError("User not found by this user id: {Id}", userId);
                     return;
                 }
-
-                if (existing.LogInCount == 0)
-                {
-                    existing.FirstLoggedInTime = DateTime.UtcNow;
-                }
-
-                existing.LogInCount += 1;
-                existing.LastLoggedInTime = DateTime.UtcNow;
-                existing.LastLoggedInDeviceInfo = JsonSerializer.Serialize(deviceInformation);
-
-                await _userRepository.UpdateUserAsync(existing);
 
                 _logger.LogInformation("User login info updated for {UserId}", userId);
             }
