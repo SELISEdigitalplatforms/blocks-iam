@@ -123,6 +123,46 @@ namespace Iam.DomainService.Services
             return result.IsAcknowledged;
         }
 
+        public async Task<bool> RecordSuccessfulLoginAsync(string userId, string deviceInformationJson, DateTime nowUtc)
+        {
+            var collection = GetCollection<User>();
+            var filter = Builders<User>.Filter.Eq(x => x.ItemId, userId);
+
+            // $inc, not a read-then-write: the increment is evaluated by the server against whatever
+            // the document holds at that instant, so two logins landing together produce two
+            // increments. The same update carries the other two fields the old replace wrote, so
+            // there is still exactly one round trip on the common path.
+            var update = Builders<User>.Update
+                .Inc(x => x.LogInCount, 1)
+                .Set(x => x.LastLoggedInTime, nowUtc)
+                .Set(x => x.LastLoggedInDeviceInfo, deviceInformationJson);
+
+            var updated = await collection.FindOneAndUpdateAsync(
+                filter,
+                update,
+                new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After });
+
+            if (updated == null)
+            {
+                return false;
+            }
+
+            // Same condition the replace applied - "LogInCount was 0 before this login" - read off the
+            // post-increment document instead of a pre-read one. The extra filter on the field still
+            // being unset makes the write idempotent, so two first logins racing cannot overwrite an
+            // already-recorded FirstLoggedInTime with a later one.
+            if (updated.LogInCount == 1)
+            {
+                await collection.UpdateOneAsync(
+                    Builders<User>.Filter.And(
+                        filter,
+                        Builders<User>.Filter.Eq(x => x.FirstLoggedInTime, default(DateTime))),
+                    Builders<User>.Update.Set(x => x.FirstLoggedInTime, nowUtc));
+            }
+
+            return true;
+        }
+
 
         public async Task<bool> UpdateUserKeyMapActivationAsync(string userId)
         {

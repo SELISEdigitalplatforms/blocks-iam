@@ -59,6 +59,24 @@ describe("SSOCallbackPage", () => {
     expect(container.querySelector("img")).toBeNull();
   });
 
+  it("forwards a provider refusal instead of calling back with no code", () => {
+    // Cancelling on the provider consent screen sends `error` and no `code`. Dropping it here
+    // would leave the backend answering a codeless callback, which the browser renders as raw
+    // JSON; forwarding it lets the backend resolve the state and show the user a real page.
+    renderAt("/sso/tenant-1/callback?error=access_denied&error_description=User%20said%20no&state=s1");
+
+    expect(window.location.href).toContain("/api/oidc/callback");
+    expect(window.location.href).toContain("error=access_denied");
+    expect(window.location.href).toContain("error_description=User+said+no");
+    expect(window.location.href).toContain("state=s1");
+    expect(window.location.href).not.toContain("code=");
+  });
+
+  it("keeps the spinner up while a provider refusal is being forwarded", () => {
+    const { container } = renderAt("/sso/tenant-1/callback?error=access_denied&state=s1");
+    expect(container.querySelector("img")).not.toBeNull();
+  });
+
   describe("device flow (RFC 8628)", () => {
     const deviceReturnUrl = "https://iam.example.com/oidc/device/entry?client_id=dev1";
 
@@ -77,6 +95,11 @@ describe("SSOCallbackPage", () => {
 
       await waitFor(() => expect(fetchMock).toHaveBeenCalled());
       expect(fetchMock.mock.calls[0][0]).toContain("/api/oidc/callback");
+      // Without this the backend treats the call as a browser navigation and answers with a
+      // redirect, which fetch follows to an HTML 200 -- ok, no body, failure never surfaced.
+      expect(fetchMock.mock.calls[0][1]).toMatchObject({
+        headers: { Accept: "application/json" },
+      });
       await waitFor(() =>
         expect(window.location.href).toBe(deviceReturnUrl),
       );
@@ -95,6 +118,22 @@ describe("SSOCallbackPage", () => {
       await waitFor(() =>
         expect(window.location.href).toBe(deviceReturnUrl),
       );
+    });
+
+    it("asks for JSON when forwarding a provider refusal too", async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: false,
+        json: () => Promise.resolve({ error_description: "User said no" }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      renderAt("/sso/tenant-1/callback?error=access_denied&state=s1");
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(fetchMock.mock.calls[0][0]).toContain("error=access_denied");
+      expect(fetchMock.mock.calls[0][1]).toMatchObject({
+        headers: { Accept: "application/json" },
+      });
     });
   });
 });

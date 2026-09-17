@@ -238,15 +238,6 @@
             </summary>
         </member>
         <!-- Badly formed XML comment ignored for member "M:Api.Controllers.DiscoveryController.JwksJson" -->
-        <member name="M:Api.Controllers.DiscoveryController.ExecutePasswordLogin(Authentication.DomainService.OAuth.RequestModel.EmbeddedLoginRequest)">
-            <summary>
-            Temporary anonymous password-login surface. The absolute route <c>/auth-login</c>
-            deliberately escapes the discovery prefix and mirrors <c>POST /api/auth/login</c>.
-            DEPRECATED: this is a temporary compatibility route pending the device-code flow
-            replacement and is slated for removal once that flow ships. Do not build new clients
-            against it.
-            </summary>
-        </member>
         <member name="M:Api.Controllers.IamController.GetRolePermissionChangeImpact(Iam.DomainService.Resources.RolePermissionChangeImpactRequest)">
             <summary>
             Previews what assigning or unassigning the given permissions would do, before the
@@ -369,6 +360,17 @@
             RFC 6749: OAuth 2.0 Authorization Code Flow | RFC 7636: PKCE
             </summary>
         </member>
+        <member name="M:Api.Controllers.IdpController.PasswordCheck(Api.Controllers.PasswordCheckRequest)">
+            <summary>
+            Pass/fail for one candidate password against the tenant's rule. Anonymous like the config
+            endpoint it supports, and answers with a bare boolean -- the rule is never disclosed.
+            Never cached, and the password is only ever read from the body so it cannot land in an
+            access log the way a query string would.
+            </summary>
+        </member>
+        <member name="T:Api.Controllers.PasswordCheckRequest">
+            <summary>Body of <see cref="M:Api.Controllers.IdpController.PasswordCheck(Api.Controllers.PasswordCheckRequest)"/>.</summary>
+        </member>
         <member name="T:Api.Controllers.OidcClientsController">
             <summary>
             OIDC Client Management Controller
@@ -478,7 +480,7 @@
             and returns device_code, user_code, verification_uri, expires_in, interval.
             </summary>
         </member>
-        <member name="M:Blocks.Api.Controllers.AuthorizationController.HandleOidcCallbackGet(System.String,System.String,Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.HandleOidcCallbackGet(System.String,System.String,System.String,System.String,Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
             <summary>
             OIDC callback handler (Browser Redirect Pattern - GET)
             Receives authorization code from provider via browser redirect
@@ -489,11 +491,19 @@
         <member name="M:Blocks.Api.Controllers.AuthorizationController.BuildCallbackFailure(Authentication.DomainService.Oidc.Services.OidcCallbackResult)">
             <summary>
             A failed provider callback arrives as a browser navigation, so a JSON body leaves the
-            user looking at raw error text in the address bar. When the OIDC request context
-            survived the failure we send them back to the login page they started from, carrying
-            <c>error</c> and <c>error_description</c> — the same way <c>/oidc/authorize</c> hands
-            its errors to a login screen. Callers that POST here are APIs, not browsers, and keep
-            getting the JSON body.
+            user looking at raw error text in the address bar. Browsers are sent to the login page
+            when the OIDC request context survived the failure, and to the standalone error page
+            when it did not. Callers that POST here, or that ask for JSON outright, are APIs
+            rather than browsers and keep getting the body.
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.WantsJsonResponse">
+            <summary>
+            Whether this caller parses a body rather than following a redirect. Anything that is
+            not a browser navigation gets the body it always got: a POST is an API caller by
+            definition, and the SPA's device-flow leg fetches this endpoint and asks for JSON
+            outright. A browser navigation asks for HTML and never names <c>application/json</c>,
+            so it falls through to the redirects above.
             </summary>
         </member>
         <!-- Badly formed XML comment ignored for member "T:Blocks.Api.Controllers.IdpSessionController" -->

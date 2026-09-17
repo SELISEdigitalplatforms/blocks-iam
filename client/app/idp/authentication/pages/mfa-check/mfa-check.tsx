@@ -41,7 +41,7 @@ export const MfaCheck = () => {
         <div className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--node-bg)] p-10 backdrop-blur-[16px]">
           <div className="mb-8 flex items-start justify-between gap-4">
             <OidcBrand
-              logoUrl={template.branding.logoUrl}
+              logoUrl={resolvedTheme === "dark" ? template.branding.logoUrlDark : template.branding.logoUrlLight}
               brandName={template.branding.brandName}
             />
           </div>

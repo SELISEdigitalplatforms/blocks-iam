@@ -20,7 +20,12 @@ namespace XUnitTest.Auth
         {
             ItemId = "test-template-id",
             SchemaVersion = OidcUiTemplate.CurrentSchemaVersion,
-            Branding = new OidcUiTemplateBranding { LogoUrl = null, BrandName = "Test IAM" },
+            Branding = new OidcUiTemplateBranding
+            {
+                LogoUrlLight = "https://assets.example.com/logo-light.svg",
+                LogoUrlDark = "https://assets.example.com/logo-dark.svg",
+                BrandName = "Test IAM"
+            },
             Theme = new OidcUiTemplateTheme
             {
                 Light = Palette("#1266aa", "#2288cc", "#f7f8fa", "#ffffff", "#101828", "#667085", "#16a34a", "#dc2626", "#d0d5dd"),
@@ -101,7 +106,8 @@ namespace XUnitTest.Auth
             Danger = danger,
             Border = border,
             BorderStrong = "rgba(18, 102, 170, 0.4)",
-            AccentSoft = "rgba(18, 102, 170, 0.1)"
+            AccentSoft = "rgba(18, 102, 170, 0.1)",
+            ButtonText = "#ffffff"
         };
     }
 }

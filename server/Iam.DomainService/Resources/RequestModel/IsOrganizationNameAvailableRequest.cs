@@ -16,6 +16,14 @@ namespace Iam.DomainService.Resources.RequestModel
         public bool IsAvailable { get; set; }
 
         /// <summary>
+        /// Whether this tenant enforces organization-name uniqueness. When false, every non-blank
+        /// name comes back available because the create path will accept it whatever else holds
+        /// it — the caller should present that as "names need not be unique" rather than as a
+        /// check that passed.
+        /// </summary>
+        public bool IsUniquenessEnforced { get; set; }
+
+        /// <summary>
         /// Free alternatives, populated only when the requested name is taken. May be empty if
         /// none could be found.
         /// </summary>

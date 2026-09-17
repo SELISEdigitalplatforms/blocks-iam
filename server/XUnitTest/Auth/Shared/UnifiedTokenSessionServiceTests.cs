@@ -1,4 +1,4 @@
-using Authentication.DomainService.OAuth.RequestModel;
+﻿using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
@@ -134,7 +134,8 @@ namespace XUnitTest.Auth.Shared
                 LogInCount = 0
             };
             userRepo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(existing);
-            userRepo.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
+            userRepo.Setup(r => r.RecordSuccessfulLoginAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(true);
 
             var service = new UnifiedTokenSessionService(
                 cache.Object,
@@ -174,7 +175,10 @@ namespace XUnitTest.Auth.Shared
                 new[] { "127.0.0.1" },
                 impersoanted: false);
 
-            userRepo.Verify(r => r.UpdateUserAsync(It.Is<User>(u => u.LogInCount == 1)), Times.Once);
+            // The counter is incremented server-side now, so the assertion is that the login was
+            // recorded exactly once for this user -- not that a particular in-memory value was written.
+            userRepo.Verify(r => r.RecordSuccessfulLoginAsync("user-1", It.IsAny<string>(), It.IsAny<DateTime>()), Times.Once);
+            userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
         }
 
         [Fact]
@@ -255,6 +259,7 @@ namespace XUnitTest.Auth.Shared
                 new[] { "127.0.0.1" },
                 impersoanted: false);
 
+            userRepo.Verify(r => r.RecordSuccessfulLoginAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
             userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
             userRepo.Verify(r => r.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
         }

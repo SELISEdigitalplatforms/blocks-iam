@@ -1,8 +1,10 @@
-using System.Linq.Expressions;
+﻿using System.Linq.Expressions;
+using Authentication.DomainService.Shared.Services;
 using Authentication.DomainService.Authentication.RequestModel;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Iam.DomainService.Configurations;
 using Iam.DomainService.Utilities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -60,6 +62,14 @@ namespace Authentication.DomainService.Authentication
                 config?.RecoverAccountUrlLifetimeInMinutes,
                 config?.LogoutOnPasswordChange,
                 config?.PasswordStrengthCheckerRegex,
+                PasswordStrengthCheckerMessage = config?.PasswordStrengthCheckerMessage ?? string.Empty,
+                config?.PasswordPolicyMinLength,
+                config?.PasswordPolicyMaxLength,
+                config?.PasswordPolicyRequireUppercase,
+                config?.PasswordPolicyRequireLowercase,
+                config?.PasswordPolicyRequireNumbers,
+                config?.PasswordPolicyRequireSpecialChars,
+                PasswordPolicyMessage = config?.PasswordPolicyMessage ?? string.Empty,
                 config?.CollectPasswordOnActivation
             });
         }
@@ -90,6 +100,26 @@ namespace Authentication.DomainService.Authentication
                 configuration.CollectPasswordOnActivation
                 ?? current?.CollectPasswordOnActivation
                 ?? IdentityConfiguration.DefaultCollectPasswordOnActivation;
+
+            var passwordPolicyRequireUppercase =
+                configuration.PasswordPolicyRequireUppercase
+                ?? current?.PasswordPolicyRequireUppercase
+                ?? false;
+
+            var passwordPolicyRequireLowercase =
+                configuration.PasswordPolicyRequireLowercase
+                ?? current?.PasswordPolicyRequireLowercase
+                ?? false;
+
+            var passwordPolicyRequireNumbers =
+                configuration.PasswordPolicyRequireNumbers
+                ?? current?.PasswordPolicyRequireNumbers
+                ?? false;
+
+            var passwordPolicyRequireSpecialChars =
+                configuration.PasswordPolicyRequireSpecialChars
+                ?? current?.PasswordPolicyRequireSpecialChars
+                ?? false;
 
             string? accountActionBaseUrl;
 
@@ -148,6 +178,51 @@ namespace Authentication.DomainService.Authentication
                 => !string.IsNullOrWhiteSpace(requested)
                     ? requested
                     : currentValue;
+
+            var regexError = PasswordPolicyRegexValidator.Validate(configuration.PasswordStrengthCheckerRegex);
+            var errorField = nameof(configuration.PasswordStrengthCheckerRegex);
+            if (regexError == null && !string.IsNullOrWhiteSpace(configuration.PasswordStrengthCheckerMessage)
+                && configuration.PasswordStrengthCheckerMessage.Length > 500)
+            {
+                errorField = nameof(configuration.PasswordStrengthCheckerMessage);
+                regexError = "PasswordStrengthCheckerMessage_Too_Long";
+            }
+            if (regexError != null)
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string> { { errorField, regexError } }
+                };
+            }
+
+            var passwordPolicyMinLength = ResolveInt(
+                configuration.PasswordPolicyMinLength,
+                current?.PasswordPolicyMinLength,
+                IdentityConfiguration.DefaultPasswordPolicyMinLength);
+
+            var passwordPolicyMaxLength = ResolveInt(
+                configuration.PasswordPolicyMaxLength,
+                current?.PasswordPolicyMaxLength,
+                IdentityConfiguration.DefaultPasswordPolicyMaxLength);
+
+            var passwordPolicyMessage = ResolveString(
+                configuration.PasswordPolicyMessage,
+                current?.PasswordPolicyMessage ?? string.Empty);
+
+            // The stored structured fields are still screened on save, so a malformed bound can
+            // never be written -- even though the tenant's regex is what is enforced and shown.
+            var policyErrors = PasswordPolicyValidator.ValidateAdminInput(
+                passwordPolicyMinLength, passwordPolicyMaxLength, passwordPolicyMessage);
+
+            if (policyErrors.Count > 0)
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>(policyErrors)
+                };
+            }
 
             var authConfiguration = new IdentityConfiguration
             {
@@ -212,6 +287,18 @@ namespace Authentication.DomainService.Authentication
                 PasswordStrengthCheckerRegex = ResolveString(
                     configuration.PasswordStrengthCheckerRegex,
                     current?.PasswordStrengthCheckerRegex),
+
+                PasswordStrengthCheckerMessage = ResolveString(
+                    configuration.PasswordStrengthCheckerMessage,
+                    current?.PasswordStrengthCheckerMessage ?? string.Empty),
+
+                PasswordPolicyMinLength = passwordPolicyMinLength,
+                PasswordPolicyMaxLength = passwordPolicyMaxLength,
+                PasswordPolicyRequireUppercase = passwordPolicyRequireUppercase,
+                PasswordPolicyRequireLowercase = passwordPolicyRequireLowercase,
+                PasswordPolicyRequireNumbers = passwordPolicyRequireNumbers,
+                PasswordPolicyRequireSpecialChars = passwordPolicyRequireSpecialChars,
+                PasswordPolicyMessage = passwordPolicyMessage,
 
                 IsOidcEnabled = isOidcEnabled,
                 UseAccountActionBaseUrlAsDefault = useAccountActionBaseUrlAsDefault,

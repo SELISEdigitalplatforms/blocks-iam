@@ -47,7 +47,11 @@ namespace XUnitTest.Auth.Shared
                 Permissions = permissions ?? new List<string> { "idp-permission" }
             };
 
-        private void TenantConfig(bool ssoSignup, bool multiOrg = false, bool orgFromSignup = false)
+        private void TenantConfig(
+            bool ssoSignup,
+            bool multiOrg = false,
+            bool orgFromSignup = false,
+            bool nameUniqueness = false)
         {
             _resourceRepository.Setup(r => r.GetTenantConfigurationAsync())
                 .ReturnsAsync(new TenantConfiguration
@@ -55,6 +59,7 @@ namespace XUnitTest.Auth.Shared
                     IsSSoSignUpEnabled = ssoSignup,
                     IsMultiOrgEnabled = multiOrg,
                     AllowOrgCreationFromSignup = orgFromSignup,
+                    IsOrgNameUniquenessEnabled = nameUniqueness,
                     // Deliberately populated: an SSO user must NOT pick these up. They describe
                     // the email-signup route, not what an identity provider grants.
                     DefaultRolesForNewUserOnSignUp = new List<string> { "signup-default-role" },
@@ -168,6 +173,55 @@ namespace XUnitTest.Auth.Shared
                 r => r.CreateOrganizationAsync(
                     It.Is<CreateOrganizationRequest>(req =>
                         req.Name == "Ada Lovelace Organization" && req.CreatedFrom == CreatedFrom.ConstructSignup),
+                    It.IsAny<string>()),
+                Times.Once);
+        }
+
+        /// <summary>
+        /// The random suffix exists only to dodge the uniqueness check. A tenant that does not
+        /// enforce uniqueness must not be handed "Ada Lovelace Organization A3B9C", and the name
+        /// must not even be looked up.
+        /// </summary>
+        [Fact]
+        public async Task NewUser_UniquenessDisabled_TakenName_StillUsesTheUnsuffixedBaseName()
+        {
+            NoExistingUser();
+            TenantConfig(ssoSignup: true, multiOrg: true, orgFromSignup: true, nameUniqueness: false);
+            _resourceRepository.Setup(r => r.GetOrganizationByNameAsync(It.IsAny<string>()))
+                .ReturnsAsync(new Organization { ItemId = "existing", Name = "Ada Lovelace Organization" });
+            _resourceMutation
+                .Setup(r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = "org-78" });
+
+            await Create().ResolveOrProvisionAsync(ExternalUser(), "google");
+
+            _resourceMutation.Verify(
+                r => r.CreateOrganizationAsync(
+                    It.Is<CreateOrganizationRequest>(req => req.Name == "Ada Lovelace Organization"),
+                    It.IsAny<string>()),
+                Times.Once);
+            _resourceRepository.Verify(r => r.GetOrganizationByNameAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task NewUser_UniquenessEnabled_TakenName_SuffixesTheOrganizationName()
+        {
+            NoExistingUser();
+            TenantConfig(ssoSignup: true, multiOrg: true, orgFromSignup: true, nameUniqueness: true);
+            _resourceRepository.Setup(r => r.GetOrganizationByNameAsync("Ada Lovelace Organization"))
+                .ReturnsAsync(new Organization { ItemId = "existing", Name = "Ada Lovelace Organization" });
+            _resourceRepository.Setup(r => r.GetOrganizationByNameAsync(It.Is<string>(n => n != "Ada Lovelace Organization")))
+                .ReturnsAsync((Organization?)null);
+            _resourceMutation
+                .Setup(r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = "org-79" });
+
+            await Create().ResolveOrProvisionAsync(ExternalUser(), "google");
+
+            _resourceMutation.Verify(
+                r => r.CreateOrganizationAsync(
+                    It.Is<CreateOrganizationRequest>(req =>
+                        req.Name.StartsWith("Ada Lovelace Organization ") && req.Name != "Ada Lovelace Organization"),
                     It.IsAny<string>()),
                 Times.Once);
         }

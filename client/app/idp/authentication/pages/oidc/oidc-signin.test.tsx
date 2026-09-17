@@ -117,7 +117,11 @@ describe("OIDCSignin", () => {
       captcha: null,
       template: {
         ...OIDC_UI_TEMPLATE_FIXTURE,
-        branding: { logoUrl: "https://example.test/logo.svg", brandName: "Acme" },
+        branding: {
+          logoUrlLight: "https://example.test/logo-light.svg",
+          logoUrlDark: "https://example.test/logo-dark.svg",
+          brandName: "Acme",
+        },
         pages: {
           ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           login: { ...OIDC_UI_TEMPLATE_FIXTURE.pages.login, heading: "Welcome to Acme" },
@@ -127,7 +131,8 @@ describe("OIDCSignin", () => {
     renderAt("/oidc/login?client_id=client-1&redirect_uri=https://app/cb");
     expect(h.shellProps).toEqual(expect.objectContaining({
       heading: "Welcome to Acme",
-      logoUrl: "https://example.test/logo.svg",
+      logoUrlLight: "https://example.test/logo-light.svg",
+      logoUrlDark: "https://example.test/logo-dark.svg",
       brandName: "Acme",
       theme: OIDC_UI_TEMPLATE_FIXTURE.theme,
     }));

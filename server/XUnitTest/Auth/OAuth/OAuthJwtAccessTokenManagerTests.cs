@@ -1,4 +1,4 @@
-using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
@@ -70,7 +70,7 @@ namespace XUnitTest.Auth.OAuth
 
         private OAuthJwtAccessTokenManager Create() =>
             new(_jwtProvider.Object, _authDomain.Object, _authRepo.Object, _mfaPolicy.Object, _cache.Object,
-                _tenants.Object, _otpFactory.Object, BuildUnifiedTokenSessionService());
+                _tenants.Object, _otpFactory.Object, BuildUnifiedTokenSessionService(), _idpSession.Object);
 
         private static TokenRequest MakeRequest(string grantType) => new()
         {
@@ -337,7 +337,7 @@ namespace XUnitTest.Auth.OAuth
             expiry.Should().BeAfter(DateTime.UtcNow);
             // Initial issue path persists the refresh token model and increments login info.
             _refreshRepo.Verify(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()), Times.Once);
-            _userRepository.Verify(r => r.GetUserByIdAsync("u1"), Times.Once);
+            _userRepository.Verify(r => r.RecordSuccessfulLoginAsync("u1", It.IsAny<string>(), It.IsAny<DateTime>()), Times.Once);
         }
 
         [Fact]

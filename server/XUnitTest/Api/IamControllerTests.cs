@@ -652,6 +652,28 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
+        public async Task IsOrganizationNameAvailable_ReportsWhetherTheTenantEnforcesUniqueness()
+        {
+            _organizationNameResolver.Setup(r => r.CheckAvailabilityAsync("Acme", It.IsAny<int>()))
+                .ReturnsAsync(new OrganizationNameAvailability
+                {
+                    MultiOrgEnabled = true,
+                    UniquenessEnforced = false,
+                    IsAvailable = true
+                });
+
+            var result = await CreateController().IsOrganizationNameAvailable(
+                new IsOrganizationNameAvailableRequest { Name = "Acme" });
+
+            var payload = result.Should().BeOfType<OkObjectResult>().Subject
+                .Value.Should().BeOfType<IsOrganizationNameAvailableResponse>().Subject;
+
+            payload.IsAvailable.Should().BeTrue();
+            payload.IsUniquenessEnforced.Should().BeFalse(
+                "a caller must be able to tell 'free' from 'no uniqueness rule applies here'");
+        }
+
+        [Fact]
         public async Task IsOrganizationNameAvailable_MultiOrgDisabled_RefusesToAnswer()
         {
             _organizationNameResolver.Setup(r => r.CheckAvailabilityAsync(It.IsAny<string>(), It.IsAny<int>()))

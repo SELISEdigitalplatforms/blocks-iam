@@ -1,6 +1,3 @@
-using Authentication.DomainService.Authentication;
-using Authentication.DomainService.OAuth.RequestModel;
-using Authentication.DomainService.OAuth.ResponseModel;
 using Api.Controllers;
 using Blocks.Genesis;
 using FluentAssertions;
@@ -8,22 +5,19 @@ using Idp.DomainService.Oidc.Contracts;
 using Idp.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
 using Moq;
 
 namespace XUnitTest.ApiTests
 {
     /// <summary>
     /// Unit tests for <see cref="DiscoveryController"/> (OIDC discovery / JWKS endpoints). The
-    /// discovery, jwks and flow services are mocked; each test asserts the success result or the
+    /// discovery and jwks services are mocked; each test asserts the success result or the
     /// 500 error branch on exception.
     /// </summary>
     public class DiscoveryControllerTests : IDisposable
     {
         private readonly Mock<IDiscoveryService> _discovery = new();
         private readonly Mock<IJwksService> _jwks = new();
-        private readonly Mock<IAuthenticationFlowService> _flowService = new();
-        private readonly IConfiguration _configuration = new ConfigurationBuilder().Build();
 
         public DiscoveryControllerTests()
         {
@@ -38,7 +32,7 @@ namespace XUnitTest.ApiTests
 
         private DiscoveryController CreateController()
         {
-            var controller = new DiscoveryController(_discovery.Object, _jwks.Object, _flowService.Object, _configuration);
+            var controller = new DiscoveryController(_discovery.Object, _jwks.Object);
             controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
             return controller;
         }
@@ -120,29 +114,6 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().JwksJsonAlias();
 
             result.Should().BeOfType<OkObjectResult>();
-        }
-
-        // ---------- ExecutePasswordLogin ----------
-
-        [Fact]
-        public async Task ExecutePasswordLogin_ReturnsOkWithTokenFields()
-        {
-            _flowService.Setup(f => f.ExecuteEmbeddedLoginAsync(It.IsAny<EmbeddedLoginRequest>(), It.IsAny<HttpRequest>()))
-                .ReturnsAsync(new AuthenticationFlowResult
-                {
-                    TokenResponse = new TokenResponse
-                    {
-                        AccessToken = "at",
-                        RefreshToken = "rt",
-                        TokenType = "Bearer",
-                        ExpiresIn = 3600
-                    }
-                });
-
-            var result = await CreateController().ExecutePasswordLogin(new EmbeddedLoginRequest());
-
-            result.Should().BeOfType<OkObjectResult>();
-            _flowService.Verify(f => f.ExecuteEmbeddedLoginAsync(It.IsAny<EmbeddedLoginRequest>(), It.IsAny<HttpRequest>()), Times.Once);
         }
     }
 }

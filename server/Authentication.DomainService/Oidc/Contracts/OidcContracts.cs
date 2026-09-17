@@ -21,6 +21,11 @@ public sealed class OidcClaims
     public string? Email { get; set; }
     public string? Name { get; set; }
     public string? UserName { get; set; }
+    /// <summary>
+    /// The IdP session this token is minted under (OIDC <c>sid</c>). Left blank by flows that
+    /// have no interactive session, and the claim is then omitted rather than emitted empty.
+    /// </summary>
+    public string? Sid { get; set; }
     public List<string> Amr { get; set; } = [];
     public List<string> Roles { get; set; } = [];
     public List<string> Resources { get; set; } = [];
