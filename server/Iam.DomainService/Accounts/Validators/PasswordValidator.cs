@@ -2,7 +2,6 @@
 using FluentValidation;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Services;
-using System.Text.RegularExpressions;
 
 namespace Iam.DomainService.Accounts
 {
@@ -22,17 +21,7 @@ namespace Iam.DomainService.Accounts
         {
             var config = await _configurationRepository.GetConfigurationAsync();
 
-            if (config == null || string.IsNullOrWhiteSpace(config.PasswordStrengthCheckerRegex))
-                return true;
-
-            try
-            {
-                return Regex.IsMatch(password, config.PasswordStrengthCheckerRegex, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(500));
-            }
-            catch (RegexMatchTimeoutException)
-            {
-                return false; // Consider the password invalid if the regex check times out
-            }
+            return PasswordStrengthEvaluator.IsStrongPassword(config, password);
         }
 
 

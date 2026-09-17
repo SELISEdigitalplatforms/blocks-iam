@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Authentication.DomainService.Authentication
@@ -32,5 +32,11 @@ namespace Authentication.DomainService.Authentication
         Task<IActionResult> HandleCallbackAsync(string? code, string? state, string? error, string? error_description, HttpRequest httpRequest, HttpResponse httpResponse);
 
         Task<IActionResult> GetUiConfigAsync();
+
+        /// <summary>
+        /// Reports whether a candidate password satisfies the tenant's rule, without disclosing
+        /// what the rule is. Runs the same check the account endpoints enforce on submit.
+        /// </summary>
+        Task<IActionResult> CheckPasswordAsync(string? password);
     }
 }

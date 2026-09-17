@@ -10,6 +10,10 @@ import { defineConfig } from "vite";
 import { globSync } from "tinyglobby";
 
 const alias = {
+  "@seliseblocks/genesis-os/observability": path.resolve(
+    __dirname,
+    "./app/test-utils/stubs/observability.tsx",
+  ),
   "@seliseblocks/genesis-os/lib": path.resolve(__dirname, "./app/test-utils/stubs/blocks-kit.tsx"),
   "@seliseblocks/genesis-os/providers": path.resolve(__dirname, "./app/test-utils/stubs/blocks-kit.tsx"),
   "@seliseblocks/genesis-os/hooks": path.resolve(__dirname, "./app/test-utils/stubs/blocks-kit.tsx"),

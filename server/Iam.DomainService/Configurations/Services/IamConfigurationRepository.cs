@@ -19,19 +19,5 @@ namespace Iam.DomainService.Configurations
             var collection = _identityAccessManagementRepository.GetCollectionByName<IamConfiguration>(IdentityConfigurationCollectionName);
             return await collection.Find(_ => true).FirstOrDefaultAsync();
         }
-
-        public async Task<bool> SaveConfigurationAsync(IamConfiguration iamConfiguration)
-        {
-            var collection = _identityAccessManagementRepository.GetCollectionByName<IamConfiguration>(IdentityConfigurationCollectionName);
-
-            var filter = Builders<IamConfiguration>.Filter.Eq("_id", iamConfiguration.ItemId);
-
-            var result = await collection.ReplaceOneAsync(
-                filter,
-                iamConfiguration,
-                new ReplaceOptions { IsUpsert = true });
-
-            return result.IsAcknowledged;
-        }
     }
 }
