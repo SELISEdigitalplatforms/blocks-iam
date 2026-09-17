@@ -9,7 +9,6 @@ import {
 const h = vi.hoisted(() => ({
   checks: {} as Record<string, boolean>,
   requirements: [] as { key: string; label: string }[],
-  policyMessage: null as string | null,
 }));
 const policy = {
   minLength: 8,
@@ -18,7 +17,6 @@ const policy = {
   requireLowercase: false,
   requireNumbers: true,
   requireSpecialChars: false,
-  message: "Tenant policy",
 };
 
 vi.mock("@blocks-idp/authentication/hooks/use-password-strength", async () => {
@@ -36,7 +34,6 @@ vi.mock("@blocks-idp/authentication/hooks/use-password-strength", async () => {
         allRequirementsMet: Object.values(h.checks).every(Boolean),
         strength,
         hasPolicy: total > 0,
-        policyMessage: h.policyMessage,
         getStrengthColor: () => strengthUtil.getStrengthColor(strength),
         getStrengthTextColor: () => strengthUtil.getStrengthTextColor(strength),
         getStrengthLabel: () => strengthUtil.getStrengthLabel(strength),
@@ -53,7 +50,6 @@ beforeEach(() => {
     { key: "number", label: "Contains a number" },
   ];
   h.checks = { length: true, number: true };
-  h.policyMessage = null;
 });
 
 describe("PasswordStrengthChecker", () => {
@@ -135,22 +131,4 @@ describe("PasswordStrengthChecker", () => {
     expect(screen.queryByText("At least 8 characters")).not.toBeInTheDocument();
   });
 
-  it("shows the admin message as a plain note, not a pass/fail row (H4)", () => {
-    h.policyMessage = "Avoid using your username.";
-    render(
-      <PasswordStrengthChecker password="Secret1" confirmPassword="Secret1" policy={policy} onRequirementsMet={vi.fn()} />,
-    );
-    const note = screen.getByText("Avoid using your username.");
-    expect(note).toBeInTheDocument();
-    // It sits outside the requirement list -- no icon, no <li>.
-    expect(note.closest("li")).toBeNull();
-  });
-
-  it("renders no note when the policy carries no message", () => {
-    h.policyMessage = null;
-    const { container } = render(
-      <PasswordStrengthChecker password="Secret1" confirmPassword="Secret1" policy={policy} onRequirementsMet={vi.fn()} />,
-    );
-    expect(container.querySelector("p.italic")).toBeNull();
-  });
 });

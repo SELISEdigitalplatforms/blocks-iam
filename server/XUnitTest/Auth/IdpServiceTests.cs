@@ -144,7 +144,6 @@ namespace XUnitTest.Auth
             response.PasswordPolicy.RequireLowercase.Should().BeTrue();
             response.PasswordPolicy.RequireNumbers.Should().BeTrue();
             response.PasswordPolicy.RequireSpecialChars.Should().BeTrue();
-            response.PasswordPolicy.Message.Should().Be("At least 5 characters including one number.");
 
             response.PasswordPolicy.RequiresServerCheck.Should().BeFalse("the flags say the whole rule");
 
@@ -174,23 +173,6 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task GetUiConfig_ReportsNullMessage_WhenTheRegexMessageIsBlank()
-        {
-            // H3
-            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
-            {
-                PasswordPolicyEnabled = true,
-                PasswordStrengthCheckerRegex = @"^.{8,30}$",
-                PasswordStrengthCheckerMessage = ""
-            });
-
-            var result = (OkObjectResult)await Create().GetUiConfigAsync();
-            var response = (OidcUiConfigResponse)result.Value!;
-
-            response.PasswordPolicy!.Message.Should().BeNull();
-        }
-
-        [Fact]
         public async Task GetUiConfig_AsksForAServerCheck_WhenTheFlagsCannotSayTheRule()
         {
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
@@ -207,7 +189,6 @@ namespace XUnitTest.Auth
             response.PasswordPolicy.MinLength.Should().Be(8);
             response.PasswordPolicy.MaxLength.Should().Be(30);
             response.PasswordPolicy.RequireUppercase.Should().BeFalse();
-            response.PasswordPolicy.Message.Should().Be("Ask IT if unsure.");
 
             // The config endpoint is anonymous: the rule itself must never reach it.
             var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));

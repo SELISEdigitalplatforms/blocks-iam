@@ -64,19 +64,6 @@ namespace XUnitTest.Auth
         public void Derive_TreatsAnOpenEndedRuleAsCappedByTheInputLimit(string pattern, int min) =>
             ShouldRequireAll(pattern, min, PasswordPolicyRegexDeriver.UnboundedMaxLength);
 
-        [Fact]
-        public void Derive_CarriesTheAdminsMessageThrough()
-        {
-            PasswordPolicyRegexDeriver.Derive(@"^.{8,30}$", "Avoid your username.")!
-                .Message.Should().Be("Avoid your username.");
-        }
-
-        [Fact]
-        public void Derive_BlankMessageBecomesNull()
-        {
-            PasswordPolicyRegexDeriver.Derive(@"^.{8,30}$", "   ")!.Message.Should().BeNull();
-        }
-
         // ---------- length stated by an assertion rather than the body ----------
 
         [Fact]
@@ -204,13 +191,6 @@ namespace XUnitTest.Auth
 
             json.Should().NotContain("acmecorp");
             json.Should().NotContain("(?=");
-        }
-
-        [Fact]
-        public void Derive_CarriesTheMessageOnThePatternPathToo()
-        {
-            PasswordPolicyRegexDeriver.Derive(@"^(?=.*[a-zA-Z]).{8,30}$", "Ask IT if unsure.")!
-                .Message.Should().Be("Ask IT if unsure.");
         }
 
         [Fact]

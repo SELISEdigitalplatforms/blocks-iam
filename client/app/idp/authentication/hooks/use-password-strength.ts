@@ -24,12 +24,6 @@ export type {
 export const usePasswordStrength = (
   password: string,
   policy: IOidcPasswordPolicy | null | undefined,
-  /**
-   * The server's verdict on a rule the client cannot evaluate, from `useServerPasswordCheck`.
-   * `undefined` means "not answered yet", which shows the row as not-yet-met without claiming
-   * the password failed.
-   */
-  serverCheck?: boolean,
 ) =>
   useMemo(() => {
     // No tenant policy (unconfigured, still loading, or failed to load) falls back to the FE's
@@ -37,7 +31,6 @@ export const usePasswordStrength = (
     const effectivePolicy = resolvePasswordPolicy(policy);
     const requirements: PasswordPolicyRequirement[] = buildPasswordPolicyRequirements(effectivePolicy);
     const checks: PasswordPolicyChecks = checkPasswordAgainstPolicy(password, effectivePolicy);
-    if (effectivePolicy.requiresServerCheck) checks.custom = serverCheck === true;
 
     // requirements/checks are two views over the same policy flags (built in the same order
     // from the same source), so they always describe the same set of rows -- there is no
@@ -59,9 +52,8 @@ export const usePasswordStrength = (
       requirements,
       allRequirementsMet,
       hasPolicy,
-      policyMessage: effectivePolicy.message,
       getStrengthColor: () => getStrengthColor(strength),
       getStrengthTextColor: () => getStrengthTextColor(strength),
       getStrengthLabel: () => getStrengthLabel(strength),
     };
-  }, [password, policy, serverCheck]);
+  }, [password, policy]);

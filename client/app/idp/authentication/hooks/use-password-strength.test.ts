@@ -12,7 +12,6 @@ const policy: IOidcPasswordPolicy = {
   requireLowercase: true,
   requireNumbers: true,
   requireSpecialChars: false,
-  message: "At least 10 characters including one number.",
 };
 
 describe("usePasswordStrength", () => {
@@ -56,11 +55,6 @@ describe("usePasswordStrength", () => {
     expect(result.current.allRequirementsMet).toBe(false);
   });
 
-  it("surfaces the admin message regardless of pass/fail state", () => {
-    const { result } = renderHook(() => usePasswordStrength("nope", policy));
-    expect(result.current.policyMessage).toBe("At least 10 characters including one number.");
-  });
-
   it("falls back to the FE default policy without a tenant policy, rather than no requirements", () => {
     const empty = renderHook(() => usePasswordStrength("", null));
     expect(empty.result.current.requirements.map((r) => r.key)).toEqual([
@@ -72,7 +66,6 @@ describe("usePasswordStrength", () => {
     ]);
     expect(empty.result.current.hasPolicy).toBe(true);
     expect(empty.result.current.allRequirementsMet).toBe(false);
-    expect(empty.result.current.policyMessage).toBeNull();
 
     // A single character no longer satisfies the fallback rule (8-30, every character class).
     const oneCharacter = renderHook(() => usePasswordStrength("a", null));
@@ -100,17 +93,11 @@ describe("usePasswordStrength", () => {
     expect(result.current.hasPolicy).toBe(false);
   });
 
-  it("reflects the server's verdict on a server-checked rule", () => {
+  it("states only what the policy describes, for a rule the server also checks", () => {
+    // No extra row and no request: the server reports the rest through its own submit error.
     const serverChecked: IOidcPasswordPolicy = { ...policy, requiresServerCheck: true };
+    const { result } = renderHook(() => usePasswordStrength("Sunflower7!", serverChecked));
 
-    const pending = renderHook(() => usePasswordStrength("Sunflower7!", serverChecked, undefined));
-    expect(pending.result.current.checks.custom).toBe(false);
-    expect(pending.result.current.allRequirementsMet).toBe(false);
-
-    const passed = renderHook(() => usePasswordStrength("Sunflower7!", serverChecked, true));
-    expect(passed.result.current.checks.custom).toBe(true);
-
-    const failed = renderHook(() => usePasswordStrength("Sunflower7!", serverChecked, false));
-    expect(failed.result.current.checks.custom).toBe(false);
+    expect(result.current.requirements.map((r) => r.key)).not.toContain("custom");
   });
 });

@@ -64,7 +64,7 @@ public static class PasswordPolicyRegexDeriver
     /// Returns the tenant's rule as structured data, the pattern itself when the rule says more
     /// than the flags can, or null when there is no usable rule at all.
     /// </summary>
-    public static OidcUiPasswordPolicyResponse? Derive(string? pattern, string? message = null)
+    public static OidcUiPasswordPolicyResponse? Derive(string? pattern)
     {
         if (string.IsNullOrWhiteSpace(pattern)) return null;
 
@@ -75,11 +75,7 @@ public static class PasswordPolicyRegexDeriver
         var bounds = EffectiveBounds(structure);
         var policy = structure is null ? null : TryDecode(structure, bounds);
 
-        if (policy is not null)
-        {
-            policy.Message = Blank(message) ? null : message;
-            return policy;
-        }
+        if (policy is not null) return policy;
 
         // The rule is real but not expressible in the four flags. The pattern stays on the
         // server -- this endpoint is public -- and the client asks the server to check it.
@@ -93,12 +89,10 @@ public static class PasswordPolicyRegexDeriver
             RequireLowercase = false,
             RequireNumbers = false,
             RequireSpecialChars = false,
-            Message = Blank(message) ? null : message,
             RequiresServerCheck = true
         };
     }
 
-    private static bool Blank(string? value) => string.IsNullOrWhiteSpace(value);
 
     /// <summary>
     /// The length the whole password must have, from whichever readings of the pattern actually

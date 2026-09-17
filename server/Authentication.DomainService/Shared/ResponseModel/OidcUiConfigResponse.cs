@@ -30,8 +30,6 @@ namespace Authentication.DomainService.Shared.ResponseModel
         public bool RequireLowercase { get; set; }
         public bool RequireNumbers { get; set; }
         public bool RequireSpecialChars { get; set; }
-        public string? Message { get; set; }
-
         /// <summary>
         /// True when the tenant's rule says something the flags above cannot -- "a letter, either
         /// case", "one of !@#$", "no character three times running", a length only an assertion

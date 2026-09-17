@@ -120,9 +120,7 @@ namespace Authentication.DomainService.Authentication
         {
             if (configuration is not { PasswordPolicyEnabled: true }) return null;
 
-            return PasswordPolicyRegexDeriver.Derive(
-                configuration.PasswordStrengthCheckerRegex,
-                configuration.PasswordStrengthCheckerMessage);
+            return PasswordPolicyRegexDeriver.Derive(configuration.PasswordStrengthCheckerRegex);
         }
 
         public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo, string? flow = null, HttpRequest? httpRequest = null)

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  CUSTOM_REQUIREMENT_LABEL,
   DEFAULT_PASSWORD_POLICY,
   PASSWORD_MAX_INPUT_LENGTH,
   applyPasswordPolicyToSchema,
@@ -19,7 +18,6 @@ const policy = (overrides: Partial<IOidcPasswordPolicy> = {}): IOidcPasswordPoli
   requireLowercase: false,
   requireNumbers: false,
   requireSpecialChars: false,
-  message: null,
   ...overrides,
 });
 
@@ -57,7 +55,6 @@ describe("resolvePasswordPolicy", () => {
       requireLowercase: true,
       requireNumbers: true,
       requireSpecialChars: true,
-      message: null,
     });
   });
 });
@@ -243,15 +240,9 @@ describe("server-checked rule (one the four flags cannot express)", () => {
   const serverChecked = (overrides: Partial<IOidcPasswordPolicy> = {}) =>
     policy({ minLength: 8, maxLength: 30, requiresServerCheck: true, ...overrides });
 
-  it("adds a single pass/fail requirement, last", () => {
-    const requirements = buildPasswordPolicyRequirements(serverChecked());
-    expect(requirements.map((r) => r.key)).toEqual(["length", "custom"]);
-    expect(requirements.at(-1)?.label).toBe(CUSTOM_REQUIREMENT_LABEL);
-  });
-
-  it("leaves the verdict to the caller rather than guessing it", () => {
-    // Only the server can answer this one; the util reports the checks it can make and no more.
-    expect(checkPasswordAgainstPolicy("1234567a", serverChecked()).custom).toBeUndefined();
+  it("shows no row for the part only the server can check", () => {
+    // The screens state what the policy actually says; the server reports the rest on submit.
+    expect(buildPasswordPolicyRequirements(serverChecked()).map((r) => r.key)).toEqual(["length"]);
   });
 
   it("still checks everything it can describe", () => {
@@ -265,10 +256,9 @@ describe("server-checked rule (one the four flags cannot express)", () => {
     expect(schema.safeParse("short").success).toBe(false); // the length rule still applies
   });
 
-  it("shows no extra row when the server did not ask for a check", () => {
+  it("is indistinguishable on screen from a policy needing no server check", () => {
     const local = policy({ minLength: 8, maxLength: 30, requiresServerCheck: false });
     expect(buildPasswordPolicyRequirements(local).map((r) => r.key)).toEqual(["length"]);
-    expect(checkPasswordAgainstPolicy("anything", local).custom).toBeUndefined();
   });
 });
 
@@ -276,14 +266,14 @@ describe("a rule that describes nothing the client can show", () => {
   const undescribable = (overrides: Partial<IOidcPasswordPolicy> = {}) =>
     policy({ minLength: 0, maxLength: 0, requiresServerCheck: true, ...overrides });
 
-  it("shows only the server-checked row when nothing about the rule was readable", () => {
-    expect(buildPasswordPolicyRequirements(undescribable()).map((r) => r.key)).toEqual(["custom"]);
+  it("shows no requirements at all when nothing about the rule was readable", () => {
+    expect(buildPasswordPolicyRequirements(undescribable())).toEqual([]);
     expect(checkPasswordAgainstPolicy("anything", undescribable())).toEqual({});
   });
 
   it("still shows the length row when only that much was readable", () => {
     const withLength = undescribable({ minLength: 8, maxLength: 30 });
-    expect(buildPasswordPolicyRequirements(withLength).map((r) => r.key)).toEqual(["length", "custom"]);
+    expect(buildPasswordPolicyRequirements(withLength).map((r) => r.key)).toEqual(["length"]);
     expect(checkPasswordAgainstPolicy("short", withLength).length).toBe(false);
     expect(checkPasswordAgainstPolicy("longenough", withLength).length).toBe(true);
   });
@@ -301,8 +291,4 @@ describe("a rule that describes nothing the client can show", () => {
     expect(schema.safeParse("longenough").success).toBe(true);
   });
 
-  it("surfaces the admin's message, the one clue the server can still give", () => {
-    const withMessage = undescribable({ message: "See the intranet password guide." });
-    expect(resolvePasswordPolicy(withMessage).message).toBe("See the intranet password guide.");
-  });
 });

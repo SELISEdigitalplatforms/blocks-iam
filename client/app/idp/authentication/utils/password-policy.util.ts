@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * The tenant's structured password rule, as published by `GET /api/idp/oidc-ui-config`
  * (server-side: SPEC16). Plain data -- no function, no RegExp, and no compile step exists for
- * this type. `message` is optional admin-authored guidance, never independently enforced.
+ * this type.
  */
 export interface IOidcPasswordPolicy {
   minLength: number;
@@ -12,15 +12,15 @@ export interface IOidcPasswordPolicy {
   requireLowercase: boolean;
   requireNumbers: boolean;
   requireSpecialChars: boolean;
-  message: string | null;
   /**
    * True when the tenant's rule says something the flags above cannot ("a letter, either case",
-   * "one of !@#$", "no character three times running"). The rule itself is never sent: the config
-   * endpoint is public, and a pattern on the wire would disclose whatever it encodes.
+   * "one of !@#$", "no character three times running"). The rule itself is never published: the
+   * config endpoint is public, and a pattern on the wire would disclose whatever it encodes.
    *
-   * The screens show one extra pass/fail row and ask `POST /api/idp/password-check` to evaluate
-   * it -- the same check the account endpoints enforce on submit. This must never fall back to
-   * {@link DEFAULT_PASSWORD_POLICY}: that would state requirements nobody configured.
+   * The screens show only what the other fields state, and the server reports the rest through
+   * its own error on submit. Read here so a policy that says little is still recognised as a
+   * published policy, and never replaced by {@link DEFAULT_PASSWORD_POLICY} -- that would state
+   * requirements nobody configured.
    */
   requiresServerCheck?: boolean;
 }
@@ -34,7 +34,6 @@ export type PasswordPolicyChecks = {
   lowercase?: boolean;
   number?: boolean;
   special?: boolean;
-  custom?: boolean;
 };
 
 export interface PasswordPolicyRequirement {
@@ -49,9 +48,6 @@ const ASCII_UPPER = /[A-Z]/;
 const ASCII_LOWER = /[a-z]/;
 const ASCII_DIGIT = /[0-9]/;
 const ASCII_SPECIAL = /[^A-Za-z0-9]/;
-
-/** The label for a rule only the server can evaluate. */
-export const CUSTOM_REQUIREMENT_LABEL = "Meets your project's password requirements";
 
 /** A policy is only usable once its bounds are sane; a corrupt response degrades to the default. */
 export const hasValidBounds = (policy: IOidcPasswordPolicy): boolean =>
@@ -76,7 +72,6 @@ export const DEFAULT_PASSWORD_POLICY: IOidcPasswordPolicy = {
   requireLowercase: true,
   requireNumbers: true,
   requireSpecialChars: true,
-  message: null,
 };
 
 /**
@@ -115,11 +110,6 @@ export const buildPasswordPolicyRequirements = (
   }
   if (policy.requireSpecialChars) {
     requirements.push({ key: "special", label: "At least one special character" });
-  }
-  // Last, and only when the tenant's rule says more than the flags above can. Whether it is met
-  // is answered by the server; see `useServerPasswordCheck`.
-  if (policy.requiresServerCheck) {
-    requirements.push({ key: "custom", label: CUSTOM_REQUIREMENT_LABEL });
   }
   return requirements;
 };
