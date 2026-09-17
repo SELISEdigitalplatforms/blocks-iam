@@ -213,6 +213,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var idpSessionId = authCode.IdpSessionId;
+            claims.Sid = idpSessionId;
 
             var idToken = await _tokenService.GenerateIdTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);

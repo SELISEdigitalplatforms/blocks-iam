@@ -134,6 +134,8 @@ namespace Authentication.DomainService.Authentication
                     OidcRedirectUrlBuilder.GetClientIpAddress(request.Request))
                 : string.Empty;
 
+            claims.Sid = idpSessionId;
+
             var idToken = await _tokenService.GenerateIdTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer, false, idpSessionId);
