@@ -1,4 +1,4 @@
-using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
@@ -61,6 +61,7 @@ namespace XUnitTest.Auth
             _authorizationEndpoint = new OidcAuthorizationEndpoint(
                 new Mock<IAuthorizationCodeRepository>().Object,
                 new Mock<IIdpSessionRepository>().Object,
+                new Mock<Authentication.DomainService.Oidc.Services.IIdpSessionService>().Object,
                 new Mock<IPkceService>().Object,
                 _userRepo.Object,
                 _repo.Object,

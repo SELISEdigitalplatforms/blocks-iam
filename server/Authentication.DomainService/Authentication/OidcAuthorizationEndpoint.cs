@@ -1,6 +1,7 @@
 ﻿using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Resources;
@@ -26,6 +27,7 @@ namespace Authentication.DomainService.Authentication
     {
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IIdpSessionRepository _sessionRepo;
+        private readonly IIdpSessionService _sessionService;
         private readonly IPkceService _pkceService;
         private readonly IUserRepository _userRepository;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -38,6 +40,7 @@ namespace Authentication.DomainService.Authentication
         public OidcAuthorizationEndpoint(
             IAuthorizationCodeRepository authCodeRepo,
             IIdpSessionRepository sessionRepo,
+            IIdpSessionService sessionService,
             IPkceService pkceService,
             IUserRepository userRepository,
             IAuthenticationRepository authenticationRepository,
@@ -49,6 +52,7 @@ namespace Authentication.DomainService.Authentication
         {
             _authCodeRepo = authCodeRepo;
             _sessionRepo = sessionRepo;
+            _sessionService = sessionService;
             _pkceService = pkceService;
             _userRepository = userRepository;
             _authenticationRepository = authenticationRepository;
@@ -158,12 +162,24 @@ namespace Authentication.DomainService.Authentication
 
                 string? resolvedUserId = blocksUserId;
 
-                // prompt=login demands fresh authentication, so an existing session must not sign
-                // the user in silently. blocksUserId is set only when the login orchestrator has just
-                // verified credentials, and that call passes no prompt, so this cannot loop.
-                var forceLogin = string.IsNullOrWhiteSpace(blocksUserId) && HasPromptValue(prompt, "login");
+                // Set only when the login orchestrator has just verified a username and password.
+                // That verdict is authoritative: /oidc/login carries no way to ask for a second
+                // account -- that is /oidc/session/account/add, a separate endpoint with its own
+                // request model -- so a credentialed login can only ever mean "sign in as this
+                // user", whatever the browser is still carrying.
+                var credentialsJustVerified = !string.IsNullOrWhiteSpace(blocksUserId);
 
-                if (!forceLogin && !string.IsNullOrWhiteSpace(effectiveSessionId))
+                // prompt=login demands fresh authentication, so an existing session must not sign
+                // the user in silently. The credentialed path is exempt because it has already
+                // performed the re-authentication prompt=login asks for, and that call passes no
+                // prompt anyway, so this cannot loop.
+                var forceLogin = !credentialsJustVerified && HasPromptValue(prompt, "login");
+
+                // Silent SSO only. The session says who used this browser before, which is exactly
+                // what a freshly verified password overrules. Resolving from the cookie here used to
+                // overwrite the authenticated user whenever the session held exactly one account for
+                // the tenant, handing the new user an authorization code minted for the previous one.
+                if (!credentialsJustVerified && !forceLogin && !string.IsNullOrWhiteSpace(effectiveSessionId))
                 {
                     var session = await _sessionRepo.GetBySessionIdAsync(effectiveSessionId);
                     if (session != null && !session.RevokedAt.HasValue && !session.IsExpired())
@@ -199,7 +215,7 @@ namespace Authentication.DomainService.Authentication
                     return BuildBrowserError("account_locked", "Account is temporarily locked due to failed authentication attempts");
                 }
 
-                var idpSessionId = await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id);
+                var idpSessionId = await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id, credentialsJustVerified);
 
                 var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
                 if (client == null)
@@ -393,11 +409,32 @@ namespace Authentication.DomainService.Authentication
             return string.Join(' ', scopes);
         }
 
-        private async Task<string> EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, string? tenantId)
+        private async Task<string> EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, string? tenantId, bool credentialsJustVerified)
         {
             var session = string.IsNullOrWhiteSpace(currentSessionId)
                 ? null
                 : await _sessionRepo.GetBySessionIdAsync(currentSessionId);
+
+            // Someone authenticated with a password at a browser whose session belongs to a
+            // different user. That is a new person at a shared browser, not a second account, so the
+            // old session is torn down rather than inherited or extended. RevokeSessionAsync
+            // cascades to the refresh tokens bound to the session, so the previous user cannot be
+            // resumed in another tab of this browser; sessions are per-browser, so their other
+            // devices are untouched.
+            if (credentialsJustVerified
+                && session != null
+                && !session.RevokedAt.HasValue
+                && !session.IsExpired()
+                && SessionHoldsAnotherUser(session, userId, tenantId))
+            {
+                _logger.LogInformation(
+                    "Revoking IdP session {SessionId}: re-authenticated as a different user for tenant {TenantId}",
+                    session.SessionId,
+                    tenantId);
+
+                await _sessionService.RevokeSessionAsync(session.SessionId, "reauthenticated_as_different_user");
+                session = null;
+            }
 
             if (session == null || session.RevokedAt.HasValue || session.IsExpired())
             {
@@ -446,8 +483,39 @@ namespace Authentication.DomainService.Authentication
                 await _sessionRepo.UpdateActivityAsync(session.SessionId);
             }
 
-            SetIdpSessionCookie(request, response, tenantId, session.SessionId, session.AbsoluteExpiry);
-            return session.SessionId;
+            var resolvedSessionId = session.SessionId;
+
+            // Session fixation defence: an id that was already in the browser must not survive an
+            // authentication event. account/add and account/select have always rotated; login did
+            // not, so a planted idp_session_id cookie outlived the login it was planted for.
+            // Rotation carries the accounts over and re-points the refresh tokens, and returns null
+            // if the row went away underneath us -- in which case the existing id still stands.
+            if (credentialsJustVerified)
+            {
+                var rotatedSessionId = await _sessionService.RotateSessionAsync(session.SessionId, "password_login");
+                if (!string.IsNullOrWhiteSpace(rotatedSessionId))
+                {
+                    resolvedSessionId = rotatedSessionId;
+                }
+            }
+
+            SetIdpSessionCookie(request, response, tenantId, resolvedSessionId, session.AbsoluteExpiry);
+            return resolvedSessionId;
+        }
+
+        /// <summary>
+        /// Whether the session speaks for someone other than <paramref name="userId"/>.
+        ///
+        /// Scoped to the tenant slot the login is for, matching how the account-exists check above
+        /// compares accounts. Accounts under other tenants are left alone deliberately: one session
+        /// legitimately holds a user per tenant under multi-account SSO, and signing in to one
+        /// tenant must not sign the person out of the others.
+        /// </summary>
+        private static bool SessionHoldsAnotherUser(IdpSessionModel session, string userId, string? tenantId)
+        {
+            return session.Accounts.Any(a =>
+                string.Equals(a.TenantId ?? string.Empty, tenantId ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool HasPromptValue(string? prompt, string value) =>
