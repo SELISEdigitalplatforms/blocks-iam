@@ -30,8 +30,7 @@ namespace Iam.DomainService.Users
             RuleFor(u => u.Password)
                 .Cascade(CascadeMode.Stop)
                 .MustAsync(BeAStrongPassword)
-                .WithMessage(
-                    "Password weak. Ensure at least one lower and upper case letter, one special character, one digit and minimum 8 characters length")
+                .WithMessage("Does not meet project's password requirements")
                 .MustAsync(CheckBlackListPassword).WithMessage("This password can not be used.")
                 .When(u => !string.IsNullOrWhiteSpace(u.Password));
 
@@ -103,11 +102,7 @@ namespace Iam.DomainService.Users
         {
             var config = await _configurationRepository.GetConfigurationAsync();
 
-            if (config == null || string.IsNullOrWhiteSpace(config.PasswordStrengthCheckerRegex)) return true;
-
-            var doesThePasswordMetTenantPasswordComplexityRequirements = Regex.IsMatch(password, config.PasswordStrengthCheckerRegex, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(500));
-
-            return doesThePasswordMetTenantPasswordComplexityRequirements;
+            return PasswordStrengthEvaluator.IsStrongPassword(config, password);
         }
 
         private async Task<bool> CheckBlackListPassword(string password, CancellationToken cancellationToken)

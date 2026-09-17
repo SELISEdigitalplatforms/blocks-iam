@@ -1,4 +1,4 @@
-using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Repositories;
@@ -8,6 +8,7 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentAssertions;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Idp.DomainService.Oidc.Contracts;
@@ -97,6 +98,233 @@ namespace XUnitTest.Auth
         {
             var json = flowContext == null ? null : JsonSerializer.Serialize(flowContext);
             _cache.Setup(c => c.GetStringValueAsync($"idp_flow:{state}")).ReturnsAsync(json!);
+        }
+
+        // ---------- SPEC16: structured passwordPolicy ----------
+
+        [Theory]
+        // No regex stored is the only case that publishes nothing: the client then falls back to
+        // its own baseline rather than showing no requirements at all.
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task GetUiConfig_PublishesNothing_WhenNoRegexIsStored(string? regex)
+        {
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordStrengthCheckerRegex = regex!
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetUiConfig_PublishesPolicyDerivedFromTheRegex_WhenEnabled()
+        {
+            // H1/H2: the rule is read out of the tenant's regex as plain flags, and the pattern
+            // itself never leaks into the response.
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordStrengthCheckerRegex = @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{5,30}$",
+                PasswordStrengthCheckerMessage = "At least 5 characters including one number."
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy.Should().NotBeNull();
+            response.PasswordPolicy!.MinLength.Should().Be(5);
+            response.PasswordPolicy.MaxLength.Should().Be(30);
+            response.PasswordPolicy.RequireUppercase.Should().BeTrue();
+            response.PasswordPolicy.RequireLowercase.Should().BeTrue();
+            response.PasswordPolicy.RequireNumbers.Should().BeTrue();
+            response.PasswordPolicy.RequireSpecialChars.Should().BeTrue();
+
+            response.PasswordPolicy.RequiresServerCheck.Should().BeFalse("the flags say the whole rule");
+
+            var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            json.ToLowerInvariant().Should().NotContain("regex");
+            json.Should().NotContain("(?=");
+        }
+
+        [Fact]
+        public async Task GetUiConfig_PublishesOnlyTheClassesTheRegexActuallyAsserts()
+        {
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordStrengthCheckerRegex = @"^(?=.*[A-Z])(?=.*\d).{10,64}$"
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy!.MinLength.Should().Be(10);
+            response.PasswordPolicy.MaxLength.Should().Be(64);
+            response.PasswordPolicy.RequireUppercase.Should().BeTrue();
+            response.PasswordPolicy.RequireNumbers.Should().BeTrue();
+            response.PasswordPolicy.RequireLowercase.Should().BeFalse();
+            response.PasswordPolicy.RequireSpecialChars.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task GetUiConfig_AsksForAServerCheck_WhenTheFlagsCannotSayTheRule()
+        {
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                PasswordStrengthCheckerRegex = @"^(?=.*[a-zA-Z])(?!.*password).{8,30}$",
+                PasswordStrengthCheckerMessage = "Ask IT if unsure."
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy!.RequiresServerCheck.Should().BeTrue();
+            response.PasswordPolicy.MinLength.Should().Be(8);
+            response.PasswordPolicy.MaxLength.Should().Be(30);
+            response.PasswordPolicy.RequireUppercase.Should().BeFalse();
+
+            // The config endpoint is anonymous: the rule itself must never reach it.
+            var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            json.Should().NotContain("(?=");
+            json.Should().NotContain("password)");
+        }
+
+        [Fact]
+        public async Task GetUiConfig_AsksForAServerCheck_ForAPatternNoBrowserCouldRun()
+        {
+            // Catastrophically slow: never handed to a browser, but still enforced on submit.
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            { PasswordStrengthCheckerRegex = "^(a+)+$"
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy.Should().NotBeNull();
+            response.PasswordPolicy!.RequiresServerCheck.Should().BeTrue();
+        }
+
+        // ---------- POST /api/idp/password-check ----------
+
+        private static bool MeetsRequirements(IActionResult result) =>
+            (bool)Prop(((OkObjectResult)result).Value, "meetsRequirements")!;
+
+        [Theory]
+        [InlineData("Sunflower7!", true)]
+        [InlineData("Sunflower!", false)]   // no digit
+        [InlineData("Sun7!", false)]        // too short
+        public async Task CheckPassword_AnswersForARuleTheClientCannotEvaluate(string password, bool expected)
+        {
+            _iamRepo.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(new IamConfiguration
+            {
+                PasswordStrengthCheckerRegex = @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{8,30}$"
+            });
+
+            var result = await Create().CheckPasswordAsync(password);
+
+            MeetsRequirements(result).Should().Be(expected);
+        }
+
+        [Fact]
+        public async Task CheckPassword_MatchesEnforcementEvenWhereEnforcementIsCaseInsensitive()
+        {
+            // PasswordStrengthEvaluator matches with RegexOptions.IgnoreCase, so "(?=.*[A-Z])"
+            // is satisfied by a lowercase letter and this password is accepted on submit. The
+            // endpoint is the same call, so it agrees -- which is the property that matters here.
+            // (That the tenant almost certainly did not intend a case-insensitive rule is a
+            // separate defect in the enforcement path, not something this endpoint should paper
+            // over by disagreeing with it.)
+            _iamRepo.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(new IamConfiguration
+            {
+                PasswordStrengthCheckerRegex = @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{8,30}$"
+            });
+
+            MeetsRequirements(await Create().CheckPasswordAsync("sunflower7!")).Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task CheckPassword_AnswersWithNothingButTheVerdict()
+        {
+            // The whole point of the endpoint: it says pass or fail and discloses no rule.
+            var pattern = @"^(?=.*[a-zA-Z])(?!.*acmecorp).{8,30}$";
+            _iamRepo.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(new IamConfiguration
+            {
+                PasswordStrengthCheckerRegex = pattern
+            });
+
+            var result = (OkObjectResult)await Create().CheckPasswordAsync("letmein123");
+            var json = JsonSerializer.Serialize(result.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+            json.Should().Be("{\"meetsRequirements\":true}");
+            json.Should().NotContain("acmecorp");
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData(null)]
+        public async Task CheckPassword_TreatsNothingAsAFailureRatherThanThrowing(string? password)
+        {
+            _iamRepo.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(new IamConfiguration
+            {
+                PasswordStrengthCheckerRegex = @"^.{8,30}$"
+            });
+
+            MeetsRequirements(await Create().CheckPasswordAsync(password)).Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task CheckPassword_AllowsAnythingWhenNoTenantRuleIsConfigured()
+        {
+            // Matches enforcement: no rule stored means nothing to fail.
+            _iamRepo.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(new IamConfiguration
+            {
+                PasswordStrengthCheckerRegex = string.Empty
+            });
+
+            MeetsRequirements(await Create().CheckPasswordAsync("a")).Should().BeTrue();
+        }
+
+        [Theory]
+        // No rule configured at all -- the only case that still publishes nothing.
+        [InlineData("")]
+        [InlineData(null)]
+        public async Task GetUiConfig_PublishesNothing_WhenNoRuleIsConfigured(string? regex)
+        {
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration
+            { PasswordStrengthCheckerRegex = regex!
+            });
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            var response = (OidcUiConfigResponse)result.Value!;
+
+            response.PasswordPolicy.Should().BeNull();
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("zzz-not-a-tenant")]
+        public async Task GetUiConfig_NoTenantConfigurationReturnsFullShape(string? tenantId)
+        {
+            BlocksContext.SetContext(tenantId == null ? null : BlocksContext.Create(
+                tenantId: tenantId, roles: null, userId: null, impersonated: false,
+                isAuthenticated: false, requestUri: "https://test", organizationId: null,
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: null,
+                userName: null, phoneNumber: null, displayName: null, oauthToken: null,
+                originalTenantId: tenantId, impersonationSessionId: null, applicationDomain: "test"));
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+            result.StatusCode.Should().Be(200);
+            var response = (OidcUiConfigResponse)result.Value!;
+            var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            using var document = JsonDocument.Parse(json);
+            document.RootElement.GetProperty("passwordPolicy").ValueKind.Should().Be(JsonValueKind.Null);
+            document.RootElement.GetProperty("captcha").ValueKind.Should().Be(JsonValueKind.Null);
+            document.RootElement.GetProperty("template").ValueKind.Should().Be(JsonValueKind.Null);
+            document.RootElement.GetProperty("collectPasswordOnActivation").GetBoolean().Should().BeTrue();
         }
 
         // ---------- GetUiConfigAsync ----------
@@ -200,6 +428,7 @@ namespace XUnitTest.Auth
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             var response = ok.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
             response.CollectPasswordOnActivation.Should().BeTrue();
+            response.PasswordPolicy.Should().BeNull();
         }
 
         [Fact]
