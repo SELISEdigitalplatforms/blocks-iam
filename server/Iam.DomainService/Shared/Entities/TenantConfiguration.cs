@@ -18,5 +18,16 @@ namespace Iam.DomainService.Shared.Entities
         public bool ConsentForMultiOrgEnable { get; set; }
         public DateTime ConsentTimeForMultiOrgEnable { get; set; }
 
+        /// <summary>
+        /// Whether organization names must be unique within the tenant, case-insensitively.
+        /// <para>
+        /// Off by default, including for every configuration document written before this field
+        /// existed -- a missing value deserializes as false. A tenant that wants the check turns
+        /// it on through <c>POST iam/organizations/config</c>. Nothing in the system keys on an
+        /// organization's name (memberships, tokens and scoping all carry ItemId), so duplicates
+        /// are a presentation concern rather than an integrity one.
+        /// </para>
+        /// </summary>
+        public bool IsOrgNameUniquenessEnabled { get; set; }
     }
 }

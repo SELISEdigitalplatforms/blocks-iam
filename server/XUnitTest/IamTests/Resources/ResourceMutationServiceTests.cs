@@ -410,12 +410,32 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
-        public async Task CreateOrganization_NameExists_ReturnsError()
+        public async Task CreateOrganization_NameExists_UniquenessEnabled_ReturnsError()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true, IsOrgNameUniquenessEnabled = true });
             _repo.Setup(r => r.GetOrganizationByNameAsync("Org")).ReturnsAsync(new Organization { Name = "Org" });
             var result = await Create().CreateOrganizationAsync(new CreateOrganizationRequest { Name = "Org", CreatedFrom = CreatedFrom.Cloud });
             result.Errors.Should().ContainKey("name_already_exists");
+            _repo.Verify(r => r.SaveOrganizationAsync(It.IsAny<Organization>()), Times.Never);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<OrganizationProvisioningEvent>()), Times.Never);
+        }
+
+        /// <summary>
+        /// The tenant flag is off by default, and with it off the name is not even looked up --
+        /// a duplicate is allowed through, because nothing keys on an organization's name.
+        /// </summary>
+        [Fact]
+        public async Task CreateOrganization_NameExists_UniquenessDisabled_CreatesWithoutLookup()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true });
+            _repo.Setup(r => r.GetOrganizationByNameAsync("Org")).ReturnsAsync(new Organization { Name = "Org" });
+            _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
+
+            var result = await Create().CreateOrganizationAsync(new CreateOrganizationRequest { Name = "Org", CreatedFrom = CreatedFrom.Cloud });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationAsync(It.Is<Organization>(o => o.Name == "Org")), Times.Once);
+            _repo.Verify(r => r.GetOrganizationByNameAsync(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
@@ -613,6 +633,105 @@ namespace XUnitTest.IamTests.Resources
             org.Email.Should().Be("e@x.com");
         }
 
+        /// <summary>
+        /// Arranges a rename of "id1" (currently named <paramref name="currentName"/>) on a tenant
+        /// whose uniqueness setting is <paramref name="uniquenessEnabled"/>, with
+        /// <paramref name="nameHolder"/> as whatever already answers to the requested name.
+        /// </summary>
+        private Organization ArrangeRename(
+            bool uniquenessEnabled,
+            string currentName = "Old",
+            Organization? nameHolder = null)
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            {
+                IsMultiOrgEnabled = true,
+                IsOrgNameUniquenessEnabled = uniquenessEnabled
+            });
+
+            var org = new Organization { ItemId = "id1", Name = currentName };
+            _repo.Setup(r => r.GetOrganizationById("id1")).ReturnsAsync(org);
+            _repo.Setup(r => r.GetOrganizationByNameAsync(It.IsAny<string>())).ReturnsAsync(nameHolder!);
+            _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
+            return org;
+        }
+
+        [Fact]
+        public async Task UpdateOrganization_RenameOntoTakenName_UniquenessEnabled_RejectsAndWritesNothing()
+        {
+            var org = ArrangeRename(true, nameHolder: new Organization { ItemId = "other", Name = "Taken" });
+
+            var result = await Create().UpdateOrganizationAsync("id1",
+                new SaveOrganizationRequest { Name = "Taken", Description = "should not stick" });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("name_already_exists");
+            org.Name.Should().Be("Old");
+            org.Description.Should().BeNull("a rejected rename must not half-apply the rest of the request");
+            _repo.Verify(r => r.SaveOrganizationAsync(It.IsAny<Organization>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdateOrganization_RenameOntoTakenName_UniquenessDisabled_IsAllowed()
+        {
+            var org = ArrangeRename(false, nameHolder: new Organization { ItemId = "other", Name = "Taken" });
+
+            var result = await Create().UpdateOrganizationAsync("id1", new SaveOrganizationRequest { Name = "Taken" });
+
+            result.IsSuccess.Should().BeTrue();
+            org.Name.Should().Be("Taken");
+            _repo.Verify(r => r.GetOrganizationByNameAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdateOrganization_CaseOnlyRenameOfItsOwnName_IsNotACollision()
+        {
+            var org = ArrangeRename(true, "acme", new Organization { ItemId = "id1", Name = "acme" });
+
+            var result = await Create().UpdateOrganizationAsync("id1", new SaveOrganizationRequest { Name = "Acme" });
+
+            result.IsSuccess.Should().BeTrue();
+            org.Name.Should().Be("Acme");
+        }
+
+        [Fact]
+        public async Task UpdateOrganization_UnchangedName_UniquenessEnabled_SkipsTheLookup()
+        {
+            ArrangeRename(true, "Old");
+
+            var result = await Create().UpdateOrganizationAsync("id1",
+                new SaveOrganizationRequest { Name = "Old", Email = "e@x.com" });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.GetOrganizationByNameAsync(It.IsAny<string>()), Times.Never,
+                "an organization cannot collide with itself");
+        }
+
+        [Fact]
+        public async Task UpdateOrganization_NoNameInRequest_UniquenessEnabled_SkipsTheLookup()
+        {
+            var org = ArrangeRename(true, "Old");
+
+            var result = await Create().UpdateOrganizationAsync("id1", new SaveOrganizationRequest { Email = "e@x.com" });
+
+            result.IsSuccess.Should().BeTrue();
+            org.Name.Should().Be("Old");
+            _repo.Verify(r => r.GetOrganizationByNameAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdateOrganization_RenameOntoFreeName_UniquenessEnabled_IsApplied()
+        {
+            var org = ArrangeRename(true, "Old");
+
+            var result = await Create().UpdateOrganizationAsync("id1",
+                new SaveOrganizationRequest { Name = "Fresh", Email = "e@x.com" });
+
+            result.IsSuccess.Should().BeTrue();
+            org.Name.Should().Be("Fresh");
+            org.Email.Should().Be("e@x.com");
+        }
+
         // ---------- GetOrganizations / GetOrganization / GetMyOrganization ----------
 
         [Fact]
@@ -701,12 +820,64 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
+        public async Task SaveOrganizationConfig_UniquenessFlagSent_IsPersisted()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration());
+            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>())).Returns(Task.CompletedTask);
+
+            await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { IsOrgNameUniquenessEnabled = true });
+
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c => c.IsOrgNameUniquenessEnabled)), Times.Once);
+        }
+
+        /// <summary>
+        /// The flag is absent from every payload written before it existed. Reading that absence
+        /// as "false" would switch a tenant's enforcement off on an unrelated config save.
+        /// </summary>
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task SaveOrganizationConfig_UniquenessFlagOmitted_LeavesStoredValueAlone(bool stored)
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsOrgNameUniquenessEnabled = stored });
+            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>())).Returns(Task.CompletedTask);
+
+            await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { AllowOrgCreationFromCloud = true });
+
+            _repo.Verify(r => r.SaveOrganizationConfig(
+                It.Is<TenantConfiguration>(c => c.IsOrgNameUniquenessEnabled == stored && c.AllowOrgCreationFromCloud)), Times.Once);
+        }
+
+        [Fact]
+        public async Task SaveOrganizationConfig_UniquenessFlagSentFalse_TurnsItOff()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsOrgNameUniquenessEnabled = true });
+            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>())).Returns(Task.CompletedTask);
+
+            await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { IsOrgNameUniquenessEnabled = false });
+
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c => !c.IsOrgNameUniquenessEnabled)), Times.Once);
+        }
+
+        [Fact]
         public async Task GetOrganizationConfig_NullConfig_ReturnsDefaults()
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((TenantConfiguration)null!);
             var result = await Create().GetOrganizationConfigAsync();
             result["isMultiOrgEnabled"].Should().Be(false);
+            result["isOrgNameUniquenessEnabled"].Should().Be(false);
             result["itemId"].Should().Be("");
+        }
+
+        [Fact]
+        public async Task GetOrganizationConfig_ReportsTheUniquenessFlag()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { ItemId = "cfg-1", IsOrgNameUniquenessEnabled = true });
+
+            (await Create().GetOrganizationConfigAsync())["isOrgNameUniquenessEnabled"].Should().Be(true);
         }
 
         [Fact]

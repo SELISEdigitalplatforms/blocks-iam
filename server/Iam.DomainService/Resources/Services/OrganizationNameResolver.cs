@@ -5,11 +5,13 @@ namespace Iam.DomainService.Resources
     /// <summary>
     /// Organization-name availability and alternative-name generation.
     /// <para>
-    /// Organization names are unique case-insensitively (enforced in
+    /// Organization names are unique case-insensitively only for a tenant that has turned
+    /// <c>IsOrgNameUniquenessEnabled</c> on (enforced in
     /// <c>ResourceMutationService.CreateOrganizationAsync</c>), so a caller that picks a taken
-    /// name fails outright. This resolver is the single place that answers "is this free?" and
-    /// "what else could they use?", shared by the anonymous availability endpoint, the signup
-    /// error path, and the SSO callback.
+    /// name fails outright there and nowhere else. This resolver is the single place that answers
+    /// "is this free?" and "what else could they use?", shared by the anonymous availability
+    /// endpoint, the signup error path, and the SSO callback. With the tenant's check off every
+    /// non-blank name is free, because the create path will accept it whatever else holds it.
     /// </para>
     /// <para>
     /// Advisory only. Nothing here reserves a name, so a candidate returned as available can be
@@ -33,12 +35,35 @@ namespace Iam.DomainService.Resources
 
         public async Task<bool> IsNameAvailableAsync(string? name)
         {
+            return await IsNameAvailableAsync(name, await IsUniquenessEnforcedAsync());
+        }
+
+        /// <summary>
+        /// The answer for a caller that has already resolved the tenant's enforcement setting, so
+        /// the loops below read the configuration once per call rather than once per candidate.
+        /// </summary>
+        private async Task<bool> IsNameAvailableAsync(string? name, bool uniquenessEnforced)
+        {
             if (string.IsNullOrWhiteSpace(name))
             {
                 return false;
             }
 
+            // Nothing can be taken when the tenant does not enforce uniqueness: the create path
+            // accepts the name regardless, so reporting it unavailable would be an answer the
+            // caller cannot act on.
+            if (!uniquenessEnforced)
+            {
+                return true;
+            }
+
             return await _resourceRepository.GetOrganizationByNameAsync(name.Trim()) == null;
+        }
+
+        private async Task<bool> IsUniquenessEnforcedAsync()
+        {
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            return tenantConfig?.IsOrgNameUniquenessEnabled ?? false;
         }
 
         /// <summary>
@@ -53,9 +78,10 @@ namespace Iam.DomainService.Resources
                 return string.Empty;
             }
 
+            var uniquenessEnforced = await IsUniquenessEnforcedAsync();
             var normalized = baseName.Trim();
 
-            if (await IsNameAvailableAsync(normalized))
+            if (await IsNameAvailableAsync(normalized, uniquenessEnforced))
             {
                 return normalized;
             }
@@ -63,7 +89,7 @@ namespace Iam.DomainService.Resources
             for (var attempt = 0; attempt < MaxAttempts; attempt++)
             {
                 var candidate = $"{normalized} {GenerateSuffix()}";
-                if (await IsNameAvailableAsync(candidate))
+                if (await IsNameAvailableAsync(candidate, uniquenessEnforced))
                 {
                     return candidate;
                 }
@@ -75,13 +101,20 @@ namespace Iam.DomainService.Resources
         /// <summary>
         /// Up to <paramref name="count"/> free alternatives, for offering the user a one-click
         /// fix instead of only telling them the name is taken. Returns fewer (possibly none)
-        /// rather than looping indefinitely.
+        /// rather than looping indefinitely, and none at all for a tenant that does not enforce
+        /// uniqueness — there is no clash to offer a way out of.
         /// </summary>
         public async Task<List<string>> SuggestAvailableNamesAsync(string? baseName, int count = 2)
         {
             var suggestions = new List<string>();
 
             if (string.IsNullOrWhiteSpace(baseName) || count <= 0)
+            {
+                return suggestions;
+            }
+
+            var uniquenessEnforced = await IsUniquenessEnforcedAsync();
+            if (!uniquenessEnforced)
             {
                 return suggestions;
             }
@@ -97,7 +130,7 @@ namespace Iam.DomainService.Resources
                     continue;
                 }
 
-                if (await IsNameAvailableAsync(candidate))
+                if (await IsNameAvailableAsync(candidate, uniquenessEnforced))
                 {
                     suggestions.Add(candidate);
                 }
@@ -117,11 +150,14 @@ namespace Iam.DomainService.Resources
                 return new OrganizationNameAvailability { MultiOrgEnabled = false };
             }
 
-            var isAvailable = await IsNameAvailableAsync(name);
+            // Reuses the one configuration read above rather than resolving the flag again.
+            var uniquenessEnforced = tenantConfig.IsOrgNameUniquenessEnabled;
+            var isAvailable = await IsNameAvailableAsync(name, uniquenessEnforced);
 
             return new OrganizationNameAvailability
             {
                 MultiOrgEnabled = true,
+                UniquenessEnforced = uniquenessEnforced,
                 IsAvailable = isAvailable,
                 Suggestions = isAvailable
                     ? new List<string>()
