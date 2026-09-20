@@ -37,8 +37,13 @@ export const OIDCForgotPasswordForm = () => {
     undefined;
   const [serverError, setServerError] = useState<string | null>(null);
 
+  // mode: "onChange" so the submit button can flip from disabled → enabled as
+  // the user types; the default "onSubmit" mode only re-evaluates isValid on
+  // submit, leaving the button disabled the whole time even after a valid
+  // email has been entered.
   const form = useForm({
     defaultValues: forgotPasswordFormDefaultValue,
+    mode: "onChange",
     resolver: zodResolver(forgotPasswordFormSchema),
   });
   const { isPending, mutateAsync } = useAccountRecover();
