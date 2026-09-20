@@ -14,10 +14,9 @@ using XUnitTest.TestSupport;
 namespace XUnitTest.IamTests.Resources
 {
     /// <summary>
-    /// Integration-style tests for <see cref="TenantPermissionPropagator"/>. The per-tenant write path
-    /// news up a real <c>MongoClient</c> through <c>OpenDatabase</c> with no seam, so the "succeeded"
-    /// tenant branches (ApplyInsertAsync, ApplyUpdateAsync and the Delete archive) can only be covered
-    /// against a live MongoDB. These run against a local mongod, each test using its own throwaway
+    /// Integration tests for <see cref="TenantPermissionPropagator"/> using a provider backed by a
+    /// real MongoClient. The create, update and archive paths run against a local mongod,
+    /// each test using its own throwaway
     /// database named from a <see cref="Guid"/> which is dropped in <see cref="Dispose"/>.
     ///
     /// Requires a MongoDB reachable at mongodb://localhost:27017.
@@ -30,11 +29,21 @@ namespace XUnitTest.IamTests.Resources
 
         private readonly Mock<IResourceRepository> _resourceRepo = new();
         private readonly Mock<IDbContextProvider> _dbContextProvider = new();
+        private readonly Mock<IMongoDatabase> _rootDb = new();
+        private readonly BlocksSecret _secret = new()
+        {
+            DatabaseConnectionString = "mongodb://localhost:27017",
+            RootDatabaseName = "BlocksRootDb"
+        };
         private readonly MongoClient _client = new(ConnectionString);
         private readonly List<string> _databases = new();
 
         public TenantPermissionPropagatorIntegrationTests()
         {
+            _dbContextProvider.Setup(p => p.GetDatabase(It.IsAny<string>(), It.IsAny<string>(), false))
+                .Returns((string connection, string database, bool _) => new MongoClient(connection).GetDatabase(database));
+            _dbContextProvider.Setup(p => p.GetDatabase(_secret.DatabaseConnectionString, _secret.RootDatabaseName, false))
+                .Returns(_rootDb.Object);
             BlocksContext.IsTestMode = true;
             BlocksContext.SetContext(BlocksContext.Create(
                 tenantId: SourceTenantId, roles: null, userId: "actor-1", impersonated: false,
@@ -64,7 +73,7 @@ namespace XUnitTest.IamTests.Resources
         }
 
         private TenantPermissionPropagator CreateSut() =>
-            new(_resourceRepo.Object, _dbContextProvider.Object, NullLogger<TenantPermissionPropagator>.Instance);
+            new(_resourceRepo.Object, _dbContextProvider.Object, NullLogger<TenantPermissionPropagator>.Instance, _secret);
 
         private static Permission BuiltInPermission() => new()
         {
@@ -96,7 +105,7 @@ namespace XUnitTest.IamTests.Resources
                 DBName = dbName,
                 JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = "", IssueDate = DateTime.UtcNow }
             };
-            _dbContextProvider.Setup(d => d.GetCollection<Tenant>("Tenants"))
+            _rootDb.Setup(d => d.GetCollection<Tenant>("Tenants", null))
                 .Returns(MongoMock.Collection(new List<Tenant> { tenant }).Object);
         }
 
