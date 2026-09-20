@@ -97,6 +97,11 @@ describe("Activation", () => {
       captcha: null,
       template: {
         ...OIDC_UI_TEMPLATE_FIXTURE,
+        branding: {
+          logoUrlLight: "https://example.test/activation-light.svg",
+          logoUrlDark: "https://example.test/activation-dark.svg",
+          brandName: "Acme",
+        },
         pages: {
           ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           activation: {
@@ -113,6 +118,8 @@ describe("Activation", () => {
     expect(h.shellProps).toEqual(expect.objectContaining({
       successTitle: "Acme account enabled",
       successSubtitle: "You can now continue",
+      logoUrlLight: "https://example.test/activation-light.svg",
+      logoUrlDark: "https://example.test/activation-dark.svg",
     }));
   });
 

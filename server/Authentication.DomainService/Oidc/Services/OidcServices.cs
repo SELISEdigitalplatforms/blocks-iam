@@ -210,6 +210,15 @@ public sealed class OidcSigningKeyMaterial
             }
         }
 
+        // The IdP session. Omitted when absent: a consumer cannot tell an empty claim from
+        // "this token has no session", and blank would read as a valid session id downstream.
+        if (!string.IsNullOrWhiteSpace(claims.Sid))
+        {
+            // Literal rather than BlocksContext.SESSION_ID_CLAIM: that constant lands in the next
+            // Genesis release, and IAM still builds against the published 4.2.0. Same claim name.
+            jwtClaims.Add(new Claim("sid", claims.Sid));
+        }
+
         // Add token_use claim to distinguish id_token from access_token
         jwtClaims.Add(new Claim("token_use", includeNonce ? "id_token" : "access_token"));
 

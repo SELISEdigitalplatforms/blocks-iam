@@ -1,11 +1,11 @@
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useForm } from "react-hook-form";
-import { activationFormDefaultValue, activationFormSchema } from "./utils";
+import { activationFormDefaultValue, activationFormSchema, buildActivationFormSchema } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Captcha } from "@/components/captcha";
 import { useNavigate } from "react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useAccountActivation,
   useAccountActivationCodeExpiration,
@@ -19,6 +19,7 @@ import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
 import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { resolveActivationCodeStatus } from "./activation-status";
+import { PASSWORD_MAX_INPUT_LENGTH } from "@blocks-idp/authentication/utils/password-policy.util";
 
 /** Pulls a readable message out of the several shapes an activation failure arrives in. */
 const readErrorMessage = (source: unknown, fallback: string): string => {
@@ -55,6 +56,16 @@ export const ActivationForm = ({
   const [requirementsMet, setRequirementsMet] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const {
+    data: oidcUiConfig,
+    captchaEnabled,
+    passwordPolicy,
+    isLoading: isConfigLoading,
+  } = useOidcUiConfig(tenantId);
+  const formSchema = useMemo(
+    () => buildActivationFormSchema(passwordPolicy),
+    [passwordPolicy],
+  );
 
   const form = useForm({
     // The parent only renders this form once validate-activation has resolved, so these
@@ -67,10 +78,9 @@ export const ActivationForm = ({
     },
     mode: "all",
     reValidateMode: "onChange",
-    resolver: zodResolver(activationFormSchema),
+    resolver: zodResolver(formSchema),
   });
 
-  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const {
@@ -165,6 +175,7 @@ export const ActivationForm = ({
       <PasswordStrengthChecker
         password={password}
         confirmPassword={confirmPassword}
+        policy={passwordPolicy}
         onRequirementsMet={setRequirementsMet}
       />,
     );
@@ -172,10 +183,9 @@ export const ActivationForm = ({
       setPanelIdleSlot?.(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [password, confirmPassword, setPanelIdleSlot, collectPassword]);
+  }, [password, confirmPassword, passwordPolicy, setPanelIdleSlot, collectPassword]);
 
-  if (!oidcUiConfig?.template) return null;
-  const activationCopy = oidcUiConfig.template.pages.activation;
+  const activationCopy = oidcUiConfig?.template?.pages.activation;
 
   const isAuthenticating =
     isPending ||
@@ -266,6 +276,8 @@ export const ActivationForm = ({
         shake();
       },
     );
+
+  if (!activationCopy) return null;
 
   // Nothing is asked for when the password step is off, so there is no form to render: either the
   // captcha is waiting for its one gesture, or the activation is already on its way.
@@ -360,6 +372,7 @@ export const ActivationForm = ({
                 type={showPassword ? "text" : "password"}
                 placeholder="••••••••"
                 autoComplete="new-password"
+                maxLength={PASSWORD_MAX_INPUT_LENGTH}
                 className="oidc-sci-fi-input"
                 style={{ paddingRight: "2.75rem" }}
                 aria-invalid={!!form.formState.errors.password}
@@ -391,6 +404,7 @@ export const ActivationForm = ({
                 type={showConfirmPassword ? "text" : "password"}
                 placeholder="••••••••"
                 autoComplete="new-password"
+                maxLength={PASSWORD_MAX_INPUT_LENGTH}
                 className="oidc-sci-fi-input"
                 style={{ paddingRight: "2.75rem" }}
                 aria-invalid={!!form.formState.errors.confirmPassword}
@@ -421,7 +435,7 @@ export const ActivationForm = ({
 
       <button
         type="submit"
-        disabled={isAuthenticating || (captchaEnabled && !captchaCode) || !canSubmit}
+        disabled={isConfigLoading || isAuthenticating || (captchaEnabled && !captchaCode) || !canSubmit}
         className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
       >
         {isAuthenticating ? (

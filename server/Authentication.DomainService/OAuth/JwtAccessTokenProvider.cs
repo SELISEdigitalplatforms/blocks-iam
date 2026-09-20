@@ -132,6 +132,16 @@ namespace Authentication.DomainService.OAuth
             claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));
             claimsIdentity.AddClaim(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
 
+            // The IdP session. Omitted when absent rather than emitted empty -- unlike
+            // impersonation_session_id below, which writes "" and leaves consumers unable to
+            // distinguish "no session" from "session unknown".
+            if (!string.IsNullOrWhiteSpace(tokenRequest.IdpSessionId))
+            {
+                // Literal rather than BlocksContext.SESSION_ID_CLAIM: that constant lands in the
+                // next Genesis release, and IAM still builds against the published 4.2.0.
+                claimsIdentity.AddClaim(new Claim("sid", tokenRequest.IdpSessionId));
+            }
+
             if (!string.IsNullOrWhiteSpace(stateInfo?.Nonce))
             {
                 claimsIdentity.AddClaim(new Claim("nonce", stateInfo?.Nonce ?? ""));

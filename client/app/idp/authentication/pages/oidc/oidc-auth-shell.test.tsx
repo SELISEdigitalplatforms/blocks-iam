@@ -36,7 +36,8 @@ const renderShell = (props: Partial<React.ComponentProps<typeof OidcAuthShell>> 
     <OidcAuthShell
       panelConfig={OIDC_LOGIN_PANEL}
       theme={OIDC_UI_TEMPLATE_FIXTURE.theme}
-      logoUrl={null}
+      logoUrlLight={null}
+      logoUrlDark={null}
       brandName="Blocks IAM"
       heading="Sign in to Blocks"
       footerNote={<span>footer</span>}
@@ -135,6 +136,7 @@ describe("OidcAuthShell", () => {
         dark: {
           ...OIDC_UI_TEMPLATE_FIXTURE.theme.dark,
           primary: "#123456",
+          buttonText: "#0c1024",
         },
       },
     });
@@ -142,23 +144,42 @@ describe("OidcAuthShell", () => {
     expect(root.style.getPropertyValue("--accent")).toBe("#123456");
     expect(root.style.getPropertyValue("--bg")).toBe("#080b14");
     expect(root.style.getPropertyValue("--border")).toBe("#273142");
+    expect(root.style.getPropertyValue("--button-text")).toBe("#0c1024");
     expect(root).toHaveAttribute("data-theme", "dark");
   });
 
-  it("renders a custom logo and brand name with the auto, light and dark switcher", () => {
+  it("renders the light-mode logo and brand name with the auto, light and dark switcher", () => {
     renderShell({
-      logoUrl: "https://example.test/acme.png",
+      logoUrlLight: "https://example.test/acme-light.png",
+      logoUrlDark: "https://example.test/acme-dark.png",
       brandName: "Acme Identity",
     });
     expect(screen.getByRole("img", { name: "Acme Identity logo" })).toHaveAttribute(
       "src",
-      "https://example.test/acme.png",
+      "https://example.test/acme-light.png",
     );
     expect(screen.queryByTestId("blocks-default-logo")).not.toBeInTheDocument();
     expect(screen.getByText("Acme Identity")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Auto" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Light" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Dark" })).toBeInTheDocument();
+  });
+
+  it("renders the dark-mode logo and updates it when the resolved mode changes", async () => {
+    document.documentElement.classList.add("dark");
+    renderShell({
+      logoUrlLight: "https://example.test/acme-light.png",
+      logoUrlDark: "https://example.test/acme-dark.png",
+      brandName: "Acme Identity",
+    });
+
+    const logo = screen.getByRole("img", { name: "Acme Identity logo" });
+    expect(logo).toHaveAttribute("src", "https://example.test/acme-dark.png");
+
+    await act(async () => {
+      document.documentElement.classList.remove("dark");
+    });
+    await waitFor(() => expect(logo).toHaveAttribute("src", "https://example.test/acme-light.png"));
   });
 
   it("reacts to the resolved html theme and applies the stored light palette", async () => {

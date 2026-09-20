@@ -1,25 +1,29 @@
 import { z } from "zod";
 import {
-  PASSWORD_COMPLEXITY_MESSAGE,
-  PASSWORD_COMPLEXITY_REGEX,
-} from "@blocks-idp/authentication/utils/password-strength.util";
+  applyPasswordPolicyToSchema,
+  PASSWORD_MAX_INPUT_LENGTH,
+  type IOidcPasswordPolicy,
+} from "@blocks-idp/authentication/utils/password-policy.util";
 
-export const resetPasswordFormSchema = z
-  .object({
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters long")
-      .max(30, "Password must be at most 30 characters long")
-      .regex(PASSWORD_COMPLEXITY_REGEX, PASSWORD_COMPLEXITY_MESSAGE),
-    confirmPassword: z
-      .string()
-      .min(8, "Confirm password must be at least 8 characters long"),
+export const buildResetPasswordFormSchema = (policy: IOidcPasswordPolicy | null | undefined) => {
+  const basePassword = z
+    .string()
+    .min(1, "Password is required")
+    .max(PASSWORD_MAX_INPUT_LENGTH, "Password is too long");
+  const password = applyPasswordPolicyToSchema(basePassword, policy);
+
+  return z.object({
+    password,
+    confirmPassword: z.string(),
     logoutFromAllDevices: z.boolean().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords must be matched",
     path: ["confirmPassword"],
   });
+};
+
+export const resetPasswordFormSchema = buildResetPasswordFormSchema(null);
 
 export type ResetPasswordFormValuesType = z.infer<
   typeof resetPasswordFormSchema

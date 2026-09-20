@@ -1954,17 +1954,24 @@ namespace Iam.DomainService.Resources
                 };
             }
 
-            var existingOrganization = await _resourceRepository.GetOrganizationByNameAsync(request.Name);
-            if (existingOrganization != null)
+            // Opt-in per tenant, off by default: a tenant that has not turned uniqueness on may
+            // hold any number of organizations sharing a name. Nothing keys on the name --
+            // memberships, tokens and scoping all carry ItemId -- so a duplicate is a display
+            // concern rather than an integrity one, and the lookup is skipped entirely.
+            if (tenantConfig.IsOrgNameUniquenessEnabled)
             {
-                return new BaseMutationResponse
+                var existingOrganization = await _resourceRepository.GetOrganizationByNameAsync(request.Name);
+                if (existingOrganization != null)
                 {
-                    IsSuccess = false,
-                    Errors = new Dictionary<string, string>
+                    return new BaseMutationResponse
                     {
-                        { "name_already_exists", "Organization with same name already exists." }
-                    }
-                };
+                        IsSuccess = false,
+                        Errors = new Dictionary<string, string>
+                        {
+                            { "name_already_exists", "Organization with same name already exists." }
+                        }
+                    };
+                }
             }
 
             // Create organization
@@ -2262,7 +2269,12 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseResponse> UpdateOrganizationAsync(string id, SaveOrganizationRequest request)
         {
-            if (!await IsMultiOrgEnabledAsync())
+            // Read once and reuse: the rename guard further down needs the configuration object
+            // itself. The guard below is what keeps that dereference safe -- a tenant with no
+            // configuration document returns here and never reaches it.
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+
+            if (!IsMultiOrgEnabled(tenantConfig))
             {
                 return new GetOrganizationsResponse
                 {
@@ -2346,6 +2358,29 @@ namespace Iam.DomainService.Resources
                         { "not_found", "Organization not found" }
                     }
                 };
+            }
+
+            // A rename can collide exactly as a creation can, so it answers to the same tenant flag.
+            // Placed before the first mutation below: a rejected rename must leave every other
+            // field of the request unwritten, not just the name. Skipped when the name is not
+            // changing, so an organization never collides with itself, and a lookup that returns
+            // this same organization -- what a case-only rename does -- is not a collision either.
+            if (tenantConfig.IsOrgNameUniquenessEnabled
+                && !string.IsNullOrWhiteSpace(request.Name)
+                && !string.Equals(request.Name.Trim(), organization.Name?.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                var nameHolder = await _resourceRepository.GetOrganizationByNameAsync(request.Name);
+                if (nameHolder != null && !string.Equals(nameHolder.ItemId, id, StringComparison.Ordinal))
+                {
+                    return new BaseResponse
+                    {
+                        IsSuccess = false,
+                        Errors = new Dictionary<string, string>
+                        {
+                            { "name_already_exists", "Organization with same name already exists." }
+                        }
+                    };
+                }
             }
 
             var userId = BlocksContext.GetContext()?.UserId;
@@ -2597,6 +2632,15 @@ namespace Iam.DomainService.Resources
             tenantConfig.AllowOrgCreationFromSignup = request.AllowOrgCreationFromSignup;
             tenantConfig.AllowOrgCreationFromPortal = request.AllowOrgCreationFromPortal;
 
+            // Applied only when the caller actually sent it, unlike the flags above. The field is
+            // absent from every payload written before it existed, and treating that absence as
+            // "false" would switch a tenant's name-uniqueness enforcement off on an unrelated
+            // config save. Left alone, the value read from the document above is written back.
+            if (request.IsOrgNameUniquenessEnabled.HasValue)
+            {
+                tenantConfig.IsOrgNameUniquenessEnabled = request.IsOrgNameUniquenessEnabled.Value;
+            }
+
             tenantConfig.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             tenantConfig.LastUpdatedDate = DateTime.UtcNow;
 
@@ -2624,6 +2668,7 @@ namespace Iam.DomainService.Resources
                 { "allowOrgCreationFromPortal", tenantConfig?.AllowOrgCreationFromPortal ?? false },
                 { "isMultiOrgEnabled", tenantConfig?.IsMultiOrgEnabled ?? false },
                 { "consentForMultiOrgEnable", tenantConfig?.ConsentForMultiOrgEnable ?? false },
+                { "isOrgNameUniquenessEnabled", tenantConfig?.IsOrgNameUniquenessEnabled ?? false },
                 { "itemId", tenantConfig?.ItemId ?? "" }
             };
         }

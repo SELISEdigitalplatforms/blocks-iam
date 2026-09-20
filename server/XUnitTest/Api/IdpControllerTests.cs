@@ -67,7 +67,9 @@ namespace XUnitTest.ApiTests
             var sentinel = new OkObjectResult("ui-config");
             _idpService.Setup(s => s.GetUiConfigAsync()).ReturnsAsync(sentinel);
 
-            var result = await CreateController().OidcUiConfig();
+            var controller = CreateController();
+            var result = await controller.OidcUiConfig();
+            controller.Response.Headers.CacheControl.ToString().Should().Be("public, max-age=60");
 
             result.Should().BeSameAs(sentinel);
         }

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using Api.Controllers;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
@@ -28,6 +29,38 @@ namespace XUnitTest.ApiTests
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             var response = ok.Value.Should().BeOfType<GetOidcUiTemplateResponse>().Subject;
             response.Template.Should().BeSameAs(template);
+        }
+
+        [Fact]
+        public void ResponseJson_UsesSplitLogosAndHidesLegacyLogoUrl()
+        {
+            var template = OidcUiTemplateTestData.ValidTemplate();
+            template.Branding!.LogoUrl = "https://assets.example.com/legacy.svg";
+            var response = new GetOidcUiTemplateResponse { Template = template };
+            var json = JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+            using var document = JsonDocument.Parse(json);
+            var branding = document.RootElement.GetProperty("template").GetProperty("branding");
+
+            branding.GetProperty("logoUrlLight").GetString().Should().Be("https://assets.example.com/logo-light.svg");
+            branding.GetProperty("logoUrlDark").GetString().Should().Be("https://assets.example.com/logo-dark.svg");
+            branding.TryGetProperty("logoUrl", out _).Should().BeFalse();
+            document.RootElement.GetProperty("template").GetProperty("theme").GetProperty("light")
+                .GetProperty("buttonText").GetString().Should().Be("#ffffff");
+        }
+
+        [Fact]
+        public void LegacyLogoUrl_IsIgnoredWhenDeserializingNewApiPayloads()
+        {
+            var branding = JsonSerializer.Deserialize<Authentication.DomainService.Entities.OidcUiTemplateBranding>(
+                """{"logoUrl":"relative.svg","brandName":"Acme"}""",
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+            branding.Should().NotBeNull();
+            branding!.LogoUrl.Should().BeNull();
+            branding.LogoUrlLight.Should().BeNull();
+            branding.LogoUrlDark.Should().BeNull();
+            branding.BrandName.Should().Be("Acme");
         }
 
         [Fact]

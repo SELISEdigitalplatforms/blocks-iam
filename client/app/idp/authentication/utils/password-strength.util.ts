@@ -1,6 +1,3 @@
-const PASSWORD_MIN_LENGTH = 8;
-const PASSWORD_MAX_LENGTH = 30;
-export const STRENGTH_MULTIPLIER = 25;
 export const STRENGTH_THRESHOLDS = {
   WEAK: 25,
   MEDIUM: 50,
@@ -14,78 +11,105 @@ export const STRENGTH_COLORS = {
   STRONG: "bg-green-600",
 } as const;
 
-/**
- * Canonical password complexity pattern — single source of truth for
- * Zod schemas and PasswordStrengthChecker UI checks.
- *
- * Requires: 8–30 chars, lower, upper, digit, and a special/`_` (`[\W_]`).
- */
-export const PASSWORD_COMPLEXITY_REGEX =
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{8,30}$/;
-
-export const PASSWORD_COMPLEXITY_MESSAGE =
-  "Password must be 8–30 characters and include uppercase, lowercase, a digit, and a special character or underscore";
-
-export const REGEX_PATTERNS = {
-  LOWERCASE: /[a-z]/,
-  UPPERCASE: /[A-Z]/,
-  DIGIT: /\d/,
-  /** Matches `(?=.*[\W_])` — any non-alphanumeric, including `_`. */
-  SPECIAL: /[\W_]/,
+export const STRENGTH_TEXT_COLORS = {
+  WEAK: "text-red-500",
+  MEDIUM_WEAK: "text-orange-500",
+  MEDIUM_STRONG: "text-yellow-600",
+  STRONG: "text-green-600",
 } as const;
 
-export interface PasswordChecks {
-  length: boolean;
-  case: boolean;
-  number: boolean;
-  special: boolean;
-}
+export const STRENGTH_LABELS = {
+  WEAK: "Weak",
+  MEDIUM_WEAK: "Fair",
+  MEDIUM_STRONG: "Good",
+  STRONG: "Strong",
+} as const;
 
-export interface PasswordRequirement {
-  key: keyof PasswordChecks;
-  label: string;
-}
+export type StrengthBand = keyof typeof STRENGTH_COLORS;
 
-export const getPasswordRequirements = (): PasswordRequirement[] => [
-  { key: "length", label: "Between 8 and 30 characters" },
-  { key: "case", label: "At least 1 uppercase and 1 lowercase letter" },
-  { key: "number", label: "At least 1 digit" },
-  {
-    key: "special",
-    label: "At least 1 special character or underscore",
-  },
-];
+/** Number of segments the meter is drawn with; one band each. */
+export const STRENGTH_SEGMENTS = 4;
 
-export const createInitialChecks = (): PasswordChecks => ({
-  length: false,
-  case: false,
-  number: false,
-  special: false,
-});
-
-export const matchesPasswordComplexity = (password: string): boolean =>
-  PASSWORD_COMPLEXITY_REGEX.test(password);
-
-export const validatePasswordChecks = (password: string): PasswordChecks => ({
-  length: password.length >= PASSWORD_MIN_LENGTH && password.length <= PASSWORD_MAX_LENGTH,
-  case: REGEX_PATTERNS.LOWERCASE.test(password) && REGEX_PATTERNS.UPPERCASE.test(password),
-  number: REGEX_PATTERNS.DIGIT.test(password),
-  special: REGEX_PATTERNS.SPECIAL.test(password),
-});
-
-export const calculateStrength = (checks: PasswordChecks): number =>
-  Object.values(checks).filter(Boolean).length * STRENGTH_MULTIPLIER;
-
-export const areAllRequirementsMet = (checks: PasswordChecks, password?: string): boolean => {
-  const checksPass = Object.values(checks).every(Boolean);
-  if (!checksPass) return false;
-  if (password === undefined) return true;
-  return matchesPasswordComplexity(password);
+export const getStrengthBand = (strength: number): StrengthBand => {
+  if (strength <= STRENGTH_THRESHOLDS.WEAK) return "WEAK";
+  if (strength <= STRENGTH_THRESHOLDS.MEDIUM) return "MEDIUM_WEAK";
+  if (strength <= STRENGTH_THRESHOLDS.STRONG) return "MEDIUM_STRONG";
+  return "STRONG";
 };
 
-export const getStrengthColor = (strength: number): string => {
-  if (strength <= STRENGTH_THRESHOLDS.WEAK) return STRENGTH_COLORS.WEAK;
-  if (strength <= STRENGTH_THRESHOLDS.MEDIUM) return STRENGTH_COLORS.MEDIUM_WEAK;
-  if (strength <= STRENGTH_THRESHOLDS.STRONG) return STRENGTH_COLORS.MEDIUM_STRONG;
-  return STRENGTH_COLORS.STRONG;
+export const getStrengthColor = (strength: number): string =>
+  STRENGTH_COLORS[getStrengthBand(strength)];
+
+export const getStrengthTextColor = (strength: number): string =>
+  STRENGTH_TEXT_COLORS[getStrengthBand(strength)];
+
+export const getStrengthLabel = (strength: number): string =>
+  STRENGTH_LABELS[getStrengthBand(strength)];
+
+/** How many of the meter's segments a score lights up, always at least one above zero. */
+export const getFilledSegments = (strength: number): number =>
+  strength <= 0 ? 0 : Math.max(1, Math.ceil((strength / 100) * STRENGTH_SEGMENTS));
+
+// Fixed literals written directly in this file's own source, never built from a policy.
+const HAS_UPPER = /[A-Z]/;
+const HAS_LOWER = /[a-z]/;
+const HAS_DIGIT = /[0-9]/;
+const HAS_SPECIAL = /[^A-Za-z0-9]/;
+const HAS_RUN_OF_THREE = /(.)\1\1/;
+
+/** Lengths the score steps up at, and what each step is worth. */
+const LENGTH_TIERS = [
+  { atLeast: 16, score: 50 },
+  { atLeast: 12, score: 40 },
+  { atLeast: 10, score: 30 },
+  { atLeast: 8, score: 20 },
+  { atLeast: 6, score: 10 },
+] as const;
+
+/** Each distinct character class present is worth this much. */
+const VARIETY_PER_CLASS = 12;
+
+/**
+ * The most a password can score for each number of distinct character classes it uses, indexed by
+ * that count. Length cannot buy its way past this: "sunflowereeeee" is fourteen characters of one
+ * class, which is a weak password however long it runs.
+ */
+const VARIETY_CEILING = [0, STRENGTH_THRESHOLDS.WEAK, STRENGTH_THRESHOLDS.MEDIUM, STRENGTH_THRESHOLDS.STRONG, 100] as const;
+
+/** Charged once for an obvious weakness, so "aaaaaaaaaaaa" cannot read as strong on length alone. */
+const RUN_PENALTY = 20;
+
+/**
+ * How strong this password is *as a password* -- length and character variety -- with no reference
+ * to the tenant's rule.
+ *
+ * Character variety sets the ceiling and length fills it in: a password drawing on one class only
+ * cannot leave the weak band, two classes cannot pass fair, three cannot pass good, and only all
+ * four can reach strong.
+ *
+ * Deliberately independent of {@link buildPasswordPolicyRequirements}: the requirement rows answer
+ * "may I use this password here", which is pass/fail and the server's call, while the meter answers
+ * "how good is this password", which is advice. Tying the meter to the rule made it meaningless for
+ * a tenant whose rule is mostly length -- one requirement met reads as 100%.
+ */
+export const scorePasswordStrength = (password: string): number => {
+  if (password === "") return 0;
+
+  const length = LENGTH_TIERS.find((tier) => password.length >= tier.atLeast)?.score ?? 0;
+
+  const variety =
+    (HAS_UPPER.test(password) ? 1 : 0) +
+    (HAS_LOWER.test(password) ? 1 : 0) +
+    (HAS_DIGIT.test(password) ? 1 : 0) +
+    (HAS_SPECIAL.test(password) ? 1 : 0);
+
+  // Capped by variety first, then charged for the run, so a long single-class password with a
+  // repeat still scores below a long single-class one without.
+  const penalty = HAS_RUN_OF_THREE.test(password) ? RUN_PENALTY : 0;
+  const score = Math.min(length + variety * VARIETY_PER_CLASS, VARIETY_CEILING[variety]) - penalty;
+
+  // Anything typed scores at least 1, so the meter shows a first segment rather than reading as
+  // "nothing entered".
+  return Math.min(100, Math.max(1, score));
 };
+

@@ -28,7 +28,8 @@ export const ResetPassword = ({ code, tenantId }: ResetPasswordProps) => {
     <OidcAuthShell
       panelConfig={RESET_PASSWORD_PANEL}
       theme={template.theme}
-      logoUrl={template.branding.logoUrl}
+      logoUrlLight={template.branding.logoUrlLight}
+      logoUrlDark={template.branding.logoUrlDark}
       brandName={template.branding.brandName}
       heading={template.pages.resetPassword.heading}
       headingDimFirst={3}
