@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Camera } from "lucide-react";
 import {
+  useCompleteUpload,
   useGetPreSignedUrlForUpload,
   useUploadFile,
 } from "@blocks-storage/hooks/use-storage-file";
@@ -42,6 +43,7 @@ export const ProfileImageUploader = ({
   const data = own ? meData : userByIdData;
   const { mutateAsync } = useGetPreSignedUrlForUpload();
   const { mutateAsync: uploadImageMutate } = useUploadFile();
+  const { mutateAsync: completeUploadMutate } = useCompleteUpload();
   const { mutateAsync: updateUserMutate } = useUpdateUser({
     projectKey,
     id,
@@ -69,6 +71,17 @@ export const ProfileImageUploader = ({
       if (!res.isSuccess) return;
       const profileImageId = res.fileId;
       await uploadImageMutate({ url: res.uploadUrl, file });
+      if (res.uploadCompletionRequired) {
+        const completion = await completeUploadMutate({
+          fileId: profileImageId,
+          fileVersionId: res.fileVersionId ?? "",
+        });
+        if (completion.verificationStatus !== "Verified") {
+          return showErrorToast({
+            errors: completion.rejectionReason ?? "Profile picture failed verification",
+          });
+        }
+      }
       const userProfileFile = await storageService.file.getFileByFileId({
         itemId: profileImageId,
         projectKey,
