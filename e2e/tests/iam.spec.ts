@@ -26,15 +26,9 @@ const revertPasswordIfChanged = async (page: Page) => {
       return;
     }
     await updateButton.click();
-    await page
-      .getByPlaceholder("Enter your current password")
-      .fill(currentPassword);
-    await page
-      .getByPlaceholder("Enter your new password")
-      .fill(ORIGINAL_PASSWORD);
-    await page
-      .getByPlaceholder("Confirm your new password")
-      .fill(ORIGINAL_PASSWORD);
+    await page.getByPlaceholder("Enter your current password").fill(currentPassword);
+    await page.getByPlaceholder("Enter your new password").fill(ORIGINAL_PASSWORD);
+    await page.getByPlaceholder("Confirm your new password").fill(ORIGINAL_PASSWORD);
 
     const saveButton = page.getByRole("button", { name: /save changes/i });
     if (await saveButton.isEnabled().catch(() => false)) {
@@ -612,13 +606,9 @@ test.describe("profile", () => {
 
     await test.step("[Positive] Saving a valid password change shows a titled success toast and closes the dialog", async () => {
       await page.getByRole("button", { name: "Update Password" }).click();
-      await page
-        .getByPlaceholder("Enter your current password")
-        .fill(currentPassword);
+      await page.getByPlaceholder("Enter your current password").fill(currentPassword);
       await page.getByPlaceholder("Enter your new password").fill(TEMP_PASSWORD);
-      await page
-        .getByPlaceholder("Confirm your new password")
-        .fill(TEMP_PASSWORD);
+      await page.getByPlaceholder("Confirm your new password").fill(TEMP_PASSWORD);
 
       const saveButton = page.getByRole("button", { name: /save changes/i });
       if (await saveButton.isEnabled().catch(() => false)) {
@@ -627,9 +617,7 @@ test.describe("profile", () => {
           timeout: 15000,
         });
         await expect(
-          page
-            .getByText("Your password has been changed successfully.")
-            .first(),
+          page.getByText("Your password has been changed successfully.").first(),
         ).toBeVisible();
         // Track the change so later steps (and the afterEach revert hook at
         // the top of this file) know the account's current real password.
@@ -863,9 +851,7 @@ test.describe("profile", () => {
           .getByRole("button", { name: "Sign out", exact: true })
           .click();
 
-        await expect(
-          page.getByText("Something went wrong").first(),
-        ).toBeVisible({
+        await expect(page.getByText("Something went wrong").first()).toBeVisible({
           timeout: 15000,
         });
 
