@@ -17,6 +17,61 @@ using StorageDriver;
 
 namespace XUnitTest.Mfa.TOTP
 {
+    /// <summary>
+    /// A minimal loopback HTTP server for tests exercising the QR-code upload's provider PUT,
+    /// which builds its own <see cref="HttpClient"/> internally rather than taking an injectable
+    /// factory - so the only way to observe the PUT's outcome is to actually receive it.
+    /// </summary>
+    internal sealed class TestHttpServer : IDisposable
+    {
+        private readonly System.Net.HttpListener _listener;
+        private readonly Task _acceptLoop;
+
+        public string Url { get; }
+
+        public TestHttpServer(System.Net.HttpStatusCode respondWith)
+        {
+            var port = GetFreeTcpPort();
+            Url = $"http://127.0.0.1:{port}/upload";
+            _listener = new System.Net.HttpListener();
+            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            _listener.Start();
+
+            _acceptLoop = Task.Run(async () =>
+            {
+                try
+                {
+                    var context = await _listener.GetContextAsync();
+                    context.Response.StatusCode = (int)respondWith;
+                    context.Response.Close();
+                }
+                catch (System.Net.HttpListenerException)
+                {
+                    // Listener stopped while awaiting a request - fine, the test is tearing down.
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Same as above.
+                }
+            });
+        }
+
+        private static int GetFreeTcpPort()
+        {
+            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            listener.Start();
+            var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+            return port;
+        }
+
+        public void Dispose()
+        {
+            _listener.Stop();
+            _listener.Close();
+        }
+    }
+
     public class TotpServiceTests
     {
         private static IHttpContextAccessor BuildHttpContextAccessor(string? authorization = "Bearer test-token", string? xBlocksKey = "key-1")
@@ -286,6 +341,88 @@ namespace XUnitTest.Mfa.TOTP
 
             result.IsSuccess.Should().BeFalse();
             result.Errors.Should().ContainKey("configuration_not_exit");
+        }
+
+        private static Tenant TenantWithApplication() => new()
+        {
+            DbConnectionString = "mongodb://x",
+            JwtTokenParameters = new JwtTokenParameters { IssueDate = DateTime.UtcNow, PrivateCertificatePassword = "priv" },
+            Applications = new List<Applications> { new() { Domain = "https://app.example.com" } },
+        };
+
+        [Fact]
+        public async Task GenerateTotpImageByUserAsync_SkipsCompletion_WhenNotRequired()
+        {
+            var service = CreateService(out var repo, out _, out _, out var tenants, out var storage, out _, out _);
+            using var server = new TestHttpServer(System.Net.HttpStatusCode.Created);
+            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
+            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync((UserTotpDetail?)null);
+            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApplication());
+            storage.Setup(s => s.GetPerSignedUrlForUploadAsync(It.IsAny<GetPreSignedUrlForUploadRequest>()))
+                .ReturnsAsync(new GetPreSignedUrlForUploadResponse { UploadUrl = server.Url, UploadCompletionRequired = false });
+            storage.Setup(s => s.GetUrlForDownloadFileAsync(It.IsAny<GetFileRequest>()))
+                .ReturnsAsync(new FileResponse { IsSuccess = true, Url = "https://img.test/qr.png" });
+            repo.Setup(r => r.SaveAsync(It.IsAny<UserTotpDetail>(), It.IsAny<string>())).Returns(Task.CompletedTask);
+
+            var result = await service.GenerateTotpImageByUserAsync("u1");
+
+            result.IsSuccess.Should().BeTrue();
+            storage.Verify(s => s.CompleteUploadAsync(It.IsAny<CompleteUploadRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GenerateTotpImageByUserAsync_CallsCompletion_AndSucceeds_WhenVerified()
+        {
+            var service = CreateService(out var repo, out _, out _, out var tenants, out var storage, out _, out _);
+            using var server = new TestHttpServer(System.Net.HttpStatusCode.Created);
+            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
+            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync((UserTotpDetail?)null);
+            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApplication());
+            storage.Setup(s => s.GetPerSignedUrlForUploadAsync(It.IsAny<GetPreSignedUrlForUploadRequest>()))
+                .ReturnsAsync(new GetPreSignedUrlForUploadResponse { UploadUrl = server.Url, FileVersionId = "v1", UploadCompletionRequired = true });
+            storage.Setup(s => s.CompleteUploadAsync(It.Is<CompleteUploadRequest>(r => r.FileVersionId == "v1")))
+                .ReturnsAsync(new CompleteUploadResponse
+                {
+                    IsSuccess = true,
+                    VerificationStatus = Storage.DomainService.Enums.FileVerificationStatus.Verified,
+                });
+            storage.Setup(s => s.GetUrlForDownloadFileAsync(It.IsAny<GetFileRequest>()))
+                .ReturnsAsync(new FileResponse { IsSuccess = true, Url = "https://img.test/qr.png" });
+            repo.Setup(r => r.SaveAsync(It.IsAny<UserTotpDetail>(), It.IsAny<string>())).Returns(Task.CompletedTask);
+
+            var result = await service.GenerateTotpImageByUserAsync("u1");
+
+            result.IsSuccess.Should().BeTrue();
+            result.QrImageUrl.Should().Be("https://img.test/qr.png");
+        }
+
+        [Fact]
+        public async Task GenerateTotpImageByUserAsync_ReturnsFailure_WhenCompletionRejects()
+        {
+            var service = CreateService(out var repo, out _, out _, out var tenants, out var storage, out _, out _);
+            using var server = new TestHttpServer(System.Net.HttpStatusCode.Created);
+            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
+            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync((UserTotpDetail?)null);
+            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApplication());
+            storage.Setup(s => s.GetPerSignedUrlForUploadAsync(It.IsAny<GetPreSignedUrlForUploadRequest>()))
+                .ReturnsAsync(new GetPreSignedUrlForUploadResponse { UploadUrl = server.Url, FileVersionId = "v1", UploadCompletionRequired = true });
+            storage.Setup(s => s.CompleteUploadAsync(It.IsAny<CompleteUploadRequest>()))
+                .ReturnsAsync(new CompleteUploadResponse
+                {
+                    IsSuccess = true,
+                    VerificationStatus = Storage.DomainService.Enums.FileVerificationStatus.Rejected,
+                    RejectionReason = "real_file_type_mismatch",
+                });
+
+            var result = await service.GenerateTotpImageByUserAsync("u1");
+
+            result.IsSuccess.Should().BeFalse();
         }
     }
 }
