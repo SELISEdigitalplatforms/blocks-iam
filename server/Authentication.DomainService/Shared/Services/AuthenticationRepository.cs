@@ -420,7 +420,7 @@ namespace Authentication.DomainService.Services
 
         public async Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "")
         {
-            IMongoCollection<T> collection = string.IsNullOrWhiteSpace(collectionName) ? GetCollection<T>() : GetCollection<T>(collectionName);
+            IMongoCollection<T> collection = string.IsNullOrWhiteSpace(collectionName) ? GetCollection<T>() : GetCollectionByName<T>(collectionName);
 
             var filter = Builders<T>.Filter.Eq("_id", id);
             var updateDefinition = new List<UpdateDefinition<T>>();
