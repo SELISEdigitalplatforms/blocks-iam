@@ -256,6 +256,8 @@ namespace XUnitTest.Auth.Shared
         {
             var col = Register<User>();
             await Sut().UpdatePartialAsync<User>("u1", new Dictionary<string, object> { { "Email", "z@x.com" } });
+            _db.Verify(d => d.GetCollection<User>("Users"), Times.Once);
+            _db.Verify(d => d.GetCollection<User>(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             col.Verify(c => c.UpdateOneAsync(
                 It.IsAny<FilterDefinition<User>>(), It.IsAny<UpdateDefinition<User>>(),
                 It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -266,6 +268,8 @@ namespace XUnitTest.Auth.Shared
         {
             var col = Register<User>();
             await Sut().UpdatePartialAsync<User>("u1", new Dictionary<string, object> { { "Email", "z@x.com" } }, "Users");
+            _db.Verify(d => d.GetCollection<User>("Users"), Times.Once);
+            _db.Verify(d => d.GetCollection<User>(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             col.Verify(c => c.UpdateOneAsync(
                 It.IsAny<FilterDefinition<User>>(), It.IsAny<UpdateDefinition<User>>(),
                 It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()), Times.Once);

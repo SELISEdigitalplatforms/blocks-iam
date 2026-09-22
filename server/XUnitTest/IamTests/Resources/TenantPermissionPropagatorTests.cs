@@ -13,19 +13,28 @@ namespace XUnitTest.IamTests.Resources
 {
     /// <summary>
     /// Unit tests for <see cref="TenantPermissionPropagator"/>. Repository and db-context-provider
-    /// dependencies are mocked. The per-tenant write path news up a real <c>MongoClient</c> with no
-    /// seam, so the "succeeded" tenant branch requires a live MongoDB and is not covered here; the
-    /// attempted/failed branches are exercised by pointing a target at an unparsable connection string.
+    /// dependencies are mocked. Target connections are resolved through the shared provider;
+    /// routing tests distinguish main, dev and other even when database names match.
     /// </summary>
-    public class TenantPermissionPropagatorTests : IDisposable
+    public partial class TenantPermissionPropagatorTests : IDisposable
     {
         private const string SourceTenantId = "tenant-source";
 
         private readonly Mock<IResourceRepository> _resourceRepo = new();
         private readonly Mock<IDbContextProvider> _dbContextProvider = new();
+        private readonly Mock<IMongoDatabase> _rootDb = new();
+        private readonly BlocksSecret _secret = new()
+        {
+            DatabaseConnectionString = "mongodb://localhost:27017",
+            RootDatabaseName = "BlocksRootDb"
+        };
 
         public TenantPermissionPropagatorTests()
         {
+            _dbContextProvider.Setup(p => p.GetDatabase(It.IsAny<string>(), It.IsAny<string>(), false))
+                .Returns((string connection, string database, bool _) => new MongoClient(connection).GetDatabase(database));
+            _dbContextProvider.Setup(p => p.GetDatabase(_secret.DatabaseConnectionString, _secret.RootDatabaseName, false))
+                .Returns(_rootDb.Object);
             BlocksContext.IsTestMode = true;
             SetContext(SourceTenantId);
         }
@@ -53,7 +62,7 @@ namespace XUnitTest.IamTests.Resources
         }
 
         private TenantPermissionPropagator CreateSut() =>
-            new(_resourceRepo.Object, _dbContextProvider.Object, NullLogger<TenantPermissionPropagator>.Instance);
+            new(_resourceRepo.Object, _dbContextProvider.Object, NullLogger<TenantPermissionPropagator>.Instance, _secret);
 
         private static Mock<IMongoCollection<T>> MockCollection<T>(IEnumerable<T> items)
         {
@@ -133,7 +142,7 @@ namespace XUnitTest.IamTests.Resources
         {
             _resourceRepo.Setup(r => r.GetPermissionByIdAsync("perm-1"))
                 .ReturnsAsync(new Permission { ItemId = "perm-1", Resource = "res", IsBuiltIn = true });
-            _dbContextProvider.Setup(d => d.GetCollection<Tenant>("Tenants"))
+            _rootDb.Setup(d => d.GetCollection<Tenant>("Tenants", null))
                 .Returns(MockCollection(new List<Tenant>()).Object);
 
             var summary = await CreateSut().PropagateAsync(Event());
@@ -151,7 +160,7 @@ namespace XUnitTest.IamTests.Resources
                 .ReturnsAsync(new Permission { ItemId = "perm-1", Resource = "res", IsBuiltIn = true });
             var tenant = MakeTenant("target-1", "Target One", isRoot: false, isDisabled: false,
                 connString: "this-is-not-a-valid-connection-string", dbName: "TargetDb");
-            _dbContextProvider.Setup(d => d.GetCollection<Tenant>("Tenants"))
+            _rootDb.Setup(d => d.GetCollection<Tenant>("Tenants", null))
                 .Returns(MockCollection(new List<Tenant> { tenant }).Object);
 
             var summary = await CreateSut().PropagateAsync(Event(MutationEventType.Update));
@@ -180,25 +189,26 @@ namespace XUnitTest.IamTests.Resources
                 MakeTenant("t-5", "NoDb", isRoot: false, isDisabled: false, connString: "mongodb://t5", dbName: ""),
                 MakeTenant("", "NoId", isRoot: false, isDisabled: false, connString: "mongodb://x", dbName: "Db6")
             };
-            _dbContextProvider.Setup(d => d.GetCollection<Tenant>("Tenants"))
+            _rootDb.Setup(d => d.GetCollection<Tenant>("Tenants", null))
                 .Returns(MockCollection(tenants).Object);
 
             var targets = await CreateSut().GetTargetsAsync(SourceTenantId);
 
             targets.Should().HaveCount(2);
+            _dbContextProvider.Verify(p => p.GetDatabase(_secret.DatabaseConnectionString, _secret.RootDatabaseName, false), Times.Once);
+            _dbContextProvider.Verify(p => p.GetCollection<Tenant>(It.IsAny<string>()), Times.Never);
+            targets.Single(t => t.TenantId == "root-1").DbConnectionString.Should().Be(_secret.DatabaseConnectionString);
             targets.Should().ContainSingle(t => t.TenantId == "root-1" && t.DBName == "BlocksConfiguration");
             targets.Should().ContainSingle(t => t.TenantId == "t-2" && t.DBName == "Db2");
         }
 
         [Fact]
-        public async Task GetTargetsAsync_WhenEnumerationThrows_ReturnsEmpty()
+        public async Task GetTargetsAsync_WhenEnumerationThrows_FailsSoWorkerCanRetry()
         {
-            _dbContextProvider.Setup(d => d.GetCollection<Tenant>("Tenants"))
+            _rootDb.Setup(d => d.GetCollection<Tenant>("Tenants", null))
                 .Throws(new InvalidOperationException("db unavailable"));
 
-            var targets = await CreateSut().GetTargetsAsync(SourceTenantId);
-
-            targets.Should().BeEmpty();
+            await Assert.ThrowsAsync<InvalidOperationException>(() => CreateSut().GetTargetsAsync(SourceTenantId));
         }
 
         // ---------- OpenDatabase ----------
@@ -220,15 +230,18 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
-        public void OpenDatabase_ValidArguments_ReturnsDatabaseAndCachesClient()
+        public void OpenDatabase_ValidArguments_DelegatesToSharedProvider()
         {
+            var database = new Mock<IMongoDatabase>();
+            _dbContextProvider.Setup(p => p.GetDatabase("mongodb://localhost:27017", "testdb", false)).Returns(database.Object);
             var sut = CreateSut();
 
             var db1 = sut.OpenDatabase("mongodb://localhost:27017", "testdb");
             var db2 = sut.OpenDatabase("mongodb://localhost:27017", "testdb");
 
-            db1.Should().NotBeNull();
-            db2.Should().NotBeNull();
+            db1.Should().BeSameAs(database.Object);
+            db2.Should().BeSameAs(database.Object);
+            _dbContextProvider.Verify(p => p.GetDatabase("mongodb://localhost:27017", "testdb", false), Times.Exactly(2));
         }
     }
 }

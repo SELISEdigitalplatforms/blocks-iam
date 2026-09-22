@@ -162,6 +162,14 @@ all IAM nodes — the ±60s signature window makes clock drift a hard auth failu
 
 Frontend dev server and backend API serve HTTPS on `dev-iam.blocksdevelopers.com` when the machine env vars `IAM_SSL_CERT` and `IAM_SSL_KEY` (mkcert PEM cert + key paths) are both set and both files exist; otherwise they fall back to HTTP (no crash). No cert path is committed, and the deployed Docker artifact is unaffected. One-time setup: generate a certificate for the named host with mkcert, add a hosts entry pointing it at `127.0.0.1`, and set the two environment variables.
 
+## Tenant database routing
+
+The API and worker use `SeliseBlocks.Genesis.OS` 4.2.2. Runtime operations follow each tenant's persisted `DbConnectionString` and `DBName`; IAM does not choose a connection from the environment name. Tenant-aware repositories resolve collections per operation, so shared service instances can serve different placements.
+
+Keep `DatabaseConnectionString` and `RootDatabaseName` pointed at the single main/root registry. Permission propagation discovers tenants there regardless of the worker's ambient tenant, uses each target's stored connection, and keeps the root template target in main's `BlocksConfiguration`. Registry failures propagate for worker retries; target failures remain individually reported. The global password blacklist and certificate storage also remain on main/root.
+
+Run `dotnet test server/XUnitTest/XUnitTest.csproj` with local MongoDB available. Routing tests cover explicit root discovery, matching database names on different configured targets, partial propagation failures, and shared repositories serving concurrent users, organizations, MFA data, roles, permissions, refresh tokens and sessions. Integration tests use disposable databases on local MongoDB; validate authentication and propagation against independent dev/other/main deployments before enabling split placement in OS. Existing tenant migration and reliable cache cutover remain separate rollout work.
+
 ## Contributing and security
 
 - Contribution conventions and workflow: [CONTRIBUTING.md](CONTRIBUTING.md)
