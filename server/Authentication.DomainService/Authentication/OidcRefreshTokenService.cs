@@ -27,6 +27,9 @@ namespace Authentication.DomainService.Authentication
     /// </summary>
     public sealed class OidcRefreshTokenService
     {
+        /// <summary>The only impersonation-session status a refresh may continue.</summary>
+        private const string ActiveImpersonationStatus = "active";
+
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
@@ -88,6 +91,24 @@ namespace Authentication.DomainService.Authentication
                 ? null
                 : tokenCache.RefreshToken;
 
+            // Impersonation is restored BEFORE the rotation, never after it.
+            //
+            // This used to be two rotations: the lineage was first rotated into a plain root token pair,
+            // and ExecuteImpersonateAsync then rotated that into an impersonated one. The intermediate
+            // was never sent to the browser, but it was persisted unrevoked AND the impersonated
+            // predecessor was revoked pointing straight at it, so RefreshSessionResolver's grace-window
+            // chain walk could resolve a concurrent refresh onto a root token -- and did so permanently
+            // whenever the second rotation failed. A project screen then held root-scoped cookies behind
+            // an HTTP 200 that nothing downstream could tell apart from success.
+            //
+            // Resolving first collapses it to one impersonated -> impersonated rotation. No root token is
+            // ever written, so there is nothing root for the chain to reach.
+            var (impersonationError, impersonationSession) = await ResolveImpersonationForRefreshAsync(tokenCache);
+            if (impersonationError != null)
+            {
+                return impersonationError;
+            }
+
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.RefreshToken,
@@ -104,7 +125,14 @@ namespace Authentication.DomainService.Authentication
                 // (mobile, native, server-side) started a brand-new session on every refresh.
                 IdpSessionId = tokenCache.SessionId,
                 GraceReplayTokenId = graceReplayTokenId,
-                GraceReplayAbsoluteExpiry = graceReplayTokenId == null ? null : tokenCache.AbsoluteExpiresUtc
+                GraceReplayAbsoluteExpiry = graceReplayTokenId == null ? null : tokenCache.AbsoluteExpiresUtc,
+                // The single rotation carries the impersonation forward itself: JwtAccessTokenProvider
+                // mints the target-tenant claims and CreateOrRotateRefreshToken persists the successor
+                // with Impersonated = true, so the successor is a continuation rather than a de-escalation.
+                IsImpersonation = impersonationSession != null,
+                OriginalTenantId = impersonationSession == null ? null : tokenCache.TenantId,
+                TargetTenantId = impersonationSession?.TargetTenantId,
+                ImpersonationSessionId = impersonationSession == null ? null : tokenCache.ImpersonationId
             };
 
             var response = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration!, user!);
@@ -122,7 +150,12 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            return await BuildRefreshTokenResponseAsync(client, tokenCache, response, request);
+            if (impersonationSession != null)
+            {
+                await TouchImpersonationSessionAsync(tokenCache.ImpersonationId!, tokenCache.OrganizationId);
+            }
+
+            return BuildRefreshTokenResponse(client, response, request);
         }
 
         private async Task<string> ResolveRefreshTokenFromRequestAsync(OidcClientRegistration client, HttpRequest request)
@@ -204,29 +237,146 @@ namespace Authentication.DomainService.Authentication
             return (null, configuration, tokenCache, user);
         }
 
-        private async Task<IActionResult> BuildRefreshTokenResponseAsync(
+        /// <summary>
+        /// Decides whether this refresh continues an impersonated session, and refuses the refresh when
+        /// it cannot.
+        /// </summary>
+        /// <remarks>
+        /// Every rejection here happens before the rotation, so the presented impersonated token is left
+        /// intact and no token of any kind is written: the caller retries or logs out. Failing open in any
+        /// one of these branches is what put root-scoped cookies on a project screen, so each of them
+        /// ends the refresh rather than continuing without impersonation.
+        /// </remarks>
+        private async Task<(IActionResult? Error, ImpersonationSession? Session)> ResolveImpersonationForRefreshAsync(RefreshTokenCache tokenCache)
+        {
+            if (!tokenCache.Impersonated)
+            {
+                return (null, null);
+            }
+
+            if (string.IsNullOrWhiteSpace(tokenCache.ImpersonationId))
+            {
+                // Flagged impersonated but naming no session, so the target tenant is unknowable.
+                // Continuing would mint a root token for a browser that believes it is inside a project.
+                _logger.LogWarning(
+                    "Impersonated refresh token names no impersonation session. reason=impersonation_id_missing userId={UserId} tenantId={TenantId}",
+                    tokenCache.UserId,
+                    tokenCache.TenantId);
+
+                return (InvalidGrant("Impersonated session cannot be restored"), null);
+            }
+
+            ImpersonationSession? session;
+            try
+            {
+                session = await _authenticationRepository.GetImpersonationSessionByIdAsync(tokenCache.ImpersonationId);
+            }
+            catch (Exception ex)
+            {
+                // A store outage is not a licence to de-impersonate. Nothing is written and the caller
+                // can retry against the token it still holds.
+                _logger.LogError(
+                    ex,
+                    "Impersonation session lookup failed during refresh. reason=session_lookup_failed impersonationId={ImpersonationId} userId={UserId}",
+                    tokenCache.ImpersonationId,
+                    tokenCache.UserId);
+
+                return (new ObjectResult(new
+                {
+                    error = "temporarily_unavailable",
+                    error_description = "Impersonated session could not be verified"
+                })
+                {
+                    StatusCode = StatusCodes.Status503ServiceUnavailable
+                }, null);
+            }
+
+            if (session == null || !string.Equals(session.Status, ActiveImpersonationStatus, StringComparison.Ordinal))
+            {
+                _logger.LogInformation(
+                    "Impersonation session is not active during refresh. reason=session_not_active impersonationId={ImpersonationId} status={Status} userId={UserId}",
+                    tokenCache.ImpersonationId,
+                    session?.Status ?? "missing",
+                    tokenCache.UserId);
+
+                return (InvalidGrant("Impersonation session is no longer active"), null);
+            }
+
+            if (string.IsNullOrWhiteSpace(session.TargetTenantId) || _tenants.GetTenantByID(session.TargetTenantId) == null)
+            {
+                // A tenant-cache miss used to surface as a failed second rotation, which is precisely the
+                // interruption that stranded a root token at the head of the lineage.
+                _logger.LogWarning(
+                    "Impersonation refresh denied: target tenant does not resolve. reason=target_tenant_unresolvable impersonationId={ImpersonationId} targetTenantId={TargetTenantId}",
+                    tokenCache.ImpersonationId,
+                    session.TargetTenantId);
+
+                return (new BadRequestObjectResult(new
+                {
+                    error = "invalid_target_tenant",
+                    error_description = "Target tenant does not exist"
+                }), null);
+            }
+
+            // Access is re-checked on every refresh, exactly as the ExecuteImpersonateAsync detour did.
+            // Dropping it would let a revoked project share keep refreshing until the absolute cap. The
+            // check fails closed on its own errors, so an unverifiable share ends the session instead of
+            // silently widening it.
+            if (!await _authenticationService.IsTenantSharedWithUserAsync(tokenCache.UserId!, session.TargetTenantId))
+            {
+                _logger.LogWarning(
+                    "Impersonation refresh denied: target tenant is not shared with the user. reason=not_shared_with_user userId={UserId} targetTenantId={TargetTenantId}",
+                    tokenCache.UserId,
+                    session.TargetTenantId);
+
+                return (new ObjectResult(new
+                {
+                    error = "forbidden",
+                    error_description = "Target tenant is not shared with the requesting user"
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                }, null);
+            }
+
+            return (null, session);
+        }
+
+        private static BadRequestObjectResult InvalidGrant(string description) =>
+            new(new { error = "invalid_grant", error_description = description });
+
+        /// <summary>
+        /// Keeps the session's activity stamp and organization current, which the switch-organization
+        /// detour used to do as a side effect of every impersonated refresh. Best effort by design: the
+        /// tokens are already issued and already in the response, so a bookkeeping failure must not turn a
+        /// completed refresh into an error the caller would react to by logging out.
+        /// </summary>
+        private async Task TouchImpersonationSessionAsync(string impersonationSessionId, string? organizationId)
+        {
+            try
+            {
+                await _authenticationRepository.UpdateImpersonationSessionAsync(
+                    impersonationSessionId,
+                    new Dictionary<string, object>
+                    {
+                        { "OrganizationId", string.IsNullOrWhiteSpace(organizationId) ? "default" : organizationId },
+                        { "LastActivity", DateTime.UtcNow }
+                    });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Impersonation session activity stamp could not be updated after a refresh. reason=session_touch_failed impersonationId={ImpersonationId}",
+                    impersonationSessionId);
+            }
+        }
+
+        private IActionResult BuildRefreshTokenResponse(
             OidcClientRegistration client,
-            RefreshTokenCache tokenCache,
             TokenResponse response,
             HttpRequest request)
         {
-            if (tokenCache.Impersonated && !string.IsNullOrWhiteSpace(tokenCache.ImpersonationId))
-            {
-                var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(tokenCache.ImpersonationId);
-                return await _authenticationService.ExecuteImpersonateAsync(
-                    new ImpersonateRequest
-                    {
-                        TargetTenantId = existingSession.TargetTenantId,
-                        OrganizationId = tokenCache.OrganizationId,
-                        ImpersonationId = tokenCache.ImpersonationId,
-                        ImpersontingUserId = tokenCache.UserId,
-                        RefreshToken = response.RefreshToken
-                    },
-                    request.HttpContext.Request,
-                    request.HttpContext.Response
-                );
-            }
-
             if (client.UseTokensCookie)
             {
                 var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";

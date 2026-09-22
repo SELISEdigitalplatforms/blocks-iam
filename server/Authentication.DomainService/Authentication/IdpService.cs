@@ -232,6 +232,21 @@ namespace Authentication.DomainService.Authentication
                     );
 
                     await _cacheClient.RemoveKeyAsync(cacheKey);
+
+                    // The result is returned, not discarded. This used to answer a flat
+                    // { Impersonated = true } whatever came back, so a 403/400/500 from impersonation
+                    // reached the caller as success and left it rendering a project it never entered.
+                    if (impersonatedResult is ObjectResult { StatusCode: >= 400 } failed)
+                    {
+                        _logger.LogWarning(
+                            "IdP callback impersonation failed. reason=callback_impersonation_failed statusCode={StatusCode} targetTenantId={TargetTenantId} userId={UserId}",
+                            failed.StatusCode,
+                            authCode.TargetedTenantId,
+                            authCode.ImpersonatedUserId);
+
+                        return impersonatedResult;
+                    }
+
                     return new OkObjectResult(new { Impersonated = true });
                 }
 

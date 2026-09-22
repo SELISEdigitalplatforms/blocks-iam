@@ -544,6 +544,25 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task Refresh_ImpersonatedSession_IsRejectedBeforeRotating()
+        {
+            // Nothing below this point carries IsImpersonation, so rotating here would hand the browser
+            // root-scoped cookies for a session the UI still shows as a project -- behind an HTTP 200.
+            var impersonated = Session();
+            impersonated.Impersonated = true;
+            impersonated.ImpersonationId = "imp-1";
+            Resolves(impersonated);
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
+            var ctx = new DefaultHttpContext();
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be(OAuthError.InvalidRefreshToken);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
         public async Task Refresh_SharedCheckAccepts_RotatesNormally()
         {
             Resolves(Session());

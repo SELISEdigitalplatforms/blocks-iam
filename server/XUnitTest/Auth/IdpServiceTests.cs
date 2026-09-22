@@ -910,6 +910,34 @@ namespace XUnitTest.Auth
             _cache.Verify(c => c.RemoveKeyAsync("idp_flow:st"), Times.Once);
         }
 
+        [Theory]
+        [InlineData(StatusCodes.Status403Forbidden)]
+        [InlineData(StatusCodes.Status400BadRequest)]
+        [InlineData(StatusCodes.Status500InternalServerError)]
+        public async Task HandleCallback_ImpersonationFails_SurfacesTheFailure(int statusCode)
+        {
+            // The result used to be awaited and then thrown away behind a flat { Impersonated = true },
+            // so a callback that never entered the project still read as success to the caller.
+            var (req, res) = HttpPair();
+            SetupValidCallbackPrerequisites();
+            SetupHttpTokenResponse(new OidcTokenEndpointResponse { AccessToken = "at", RefreshToken = "rt" });
+            _authCodeRepo.Setup(c => c.GetByCodeAsync("code-1")).ReturnsAsync(new AuthorizationCodeModel
+            {
+                Impersonated = true,
+                TargetedTenantId = "target-tenant",
+                ImpersonatedUserId = "imp-user",
+                OrganizationId = "org-1"
+            });
+            _flowService.Setup(f => f.ExecuteImpersonateAsync(It.IsAny<ImpersonateRequest>(), It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>()))
+                .ReturnsAsync(new ObjectResult(new { error = "forbidden" }) { StatusCode = statusCode });
+            _cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>())).ReturnsAsync(true);
+
+            var result = await Create().HandleCallbackAsync("code-1", "st", null, null, req, res);
+
+            var obj = result.Should().BeOfType<ObjectResult>().Subject;
+            obj.StatusCode.Should().Be(statusCode);
+        }
+
         [Fact]
         public async Task HandleCallback_ReturnsTokens_OnHappyPath_WhenDomainNotResolved()
         {
