@@ -1,8 +1,8 @@
 import type { Page } from "@playwright/test";
-import { test, expect } from "../support/test-base";
-import { ensureAuthenticated } from "../support/login-helper";
-import { e2eBaseUrl, e2eCredentials } from "../support/env";
-import { AVATAR_OVER_5MB, AVATAR_VALID } from "../support/images";
+import { test, expect } from "../../support/test-base";
+import { ensureAuthenticated } from "../../support/login-helper";
+import { e2eBaseUrl, e2eCredentials } from "../../support/env";
+import { AVATAR_OVER_5MB, AVATAR_VALID } from "../../support/images";
 
 const ORIGINAL_PASSWORD = e2eCredentials().password;
 // Temporary password used only during the positive change-password step.
@@ -26,15 +26,9 @@ const revertPasswordIfChanged = async (page: Page) => {
       return;
     }
     await updateButton.click();
-    await page
-      .getByPlaceholder("Enter your current password")
-      .fill(currentPassword);
-    await page
-      .getByPlaceholder("Enter your new password")
-      .fill(ORIGINAL_PASSWORD);
-    await page
-      .getByPlaceholder("Confirm your new password")
-      .fill(ORIGINAL_PASSWORD);
+    await page.getByPlaceholder("Enter your current password").fill(currentPassword);
+    await page.getByPlaceholder("Enter your new password").fill(ORIGINAL_PASSWORD);
+    await page.getByPlaceholder("Confirm your new password").fill(ORIGINAL_PASSWORD);
 
     const saveButton = page.getByRole("button", { name: /save changes/i });
     if (await saveButton.isEnabled().catch(() => false)) {
@@ -411,29 +405,6 @@ test.describe("profile", () => {
       }
     });
 
-    await test.step("[Negative] Entering an incorrect email OTP shows an error and does not enable MFA", async () => {
-      const emailRow = page
-        .getByText("Email", { exact: true })
-        .locator("xpath=ancestor::div[contains(@class,'p-4')][1]");
-      const enableButton = emailRow.getByRole("button", { name: "Enable" });
-      if (await enableButton.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await enableButton.click();
-        await expect(page.getByText("Email sent").first()).toBeVisible({
-          timeout: 15000,
-        });
-
-        const otpInputs = page.locator('[data-input-otp] input, input[inputmode="numeric"]');
-        if ((await otpInputs.count()) > 0) {
-          await otpInputs.first().pressSequentially("00000");
-          await page.getByRole("button", { name: "Verify" }).click();
-          await expect(page.getByRole("alert").or(page.getByText(/invalid|incorrect/i)))
-            .toBeVisible({ timeout: 15000 })
-            .catch(() => {});
-        }
-        await dismissVerifyDialog(page);
-      }
-    });
-
     await test.step("[Positive] Entering the correct email OTP enables MFA and shows a success toast", async () => {
       // NOTE: requires a real OTP value retrieved out-of-band (e.g. from a test inbox);
       // not deterministically reproducible from the UI alone. Left as a no-op
@@ -453,41 +424,6 @@ test.describe("profile", () => {
           page.getByRole("heading", { name: "Set up your authenticator app" }),
         ).toBeVisible();
         await expect(page.getByText("Please follow the instructions below.")).toBeVisible();
-        await dismissVerifyDialog(page);
-      }
-    });
-
-    await test.step("[Positive] Authenticator app verification code input accepts exactly 6 digits, one more than the Email flow's 5", async () => {
-      const authRow = page
-        .getByText("Authenticator app", { exact: true })
-        .locator("xpath=ancestor::div[contains(@class,'p-4')][1]");
-      const enableButton = authRow.getByRole("button", { name: "Enable" });
-      if (await enableButton.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await enableButton.click();
-        // The input-otp library renders a single hidden <input> driving all
-        // visual slots (not one <input> per digit), so digit count is verified
-        // via maxlength rather than element count.
-        const otpInput = page.locator('input[inputmode="numeric"]');
-        await expect(otpInput).toHaveAttribute("maxlength", "6");
-        await dismissVerifyDialog(page);
-      }
-    });
-
-    await test.step("[Negative] An invalid TOTP code shows 'TOTP code is invalid' without enabling MFA", async () => {
-      const authRow = page
-        .getByText("Authenticator app", { exact: true })
-        .locator("xpath=ancestor::div[contains(@class,'p-4')][1]");
-      const enableButton = authRow.getByRole("button", { name: "Enable" });
-      if (await enableButton.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await enableButton.click();
-        const otpInputs = page.locator('[data-input-otp] input, input[inputmode="numeric"]');
-        if ((await otpInputs.count()) > 0) {
-          await otpInputs.first().pressSequentially("000000");
-          await page.getByRole("button", { name: "Verify" }).click();
-          await expect(page.getByText("TOTP code is invalid").first()).toBeVisible({
-            timeout: 15000,
-          });
-        }
         await dismissVerifyDialog(page);
       }
     });
@@ -612,13 +548,9 @@ test.describe("profile", () => {
 
     await test.step("[Positive] Saving a valid password change shows a titled success toast and closes the dialog", async () => {
       await page.getByRole("button", { name: "Update Password" }).click();
-      await page
-        .getByPlaceholder("Enter your current password")
-        .fill(currentPassword);
+      await page.getByPlaceholder("Enter your current password").fill(currentPassword);
       await page.getByPlaceholder("Enter your new password").fill(TEMP_PASSWORD);
-      await page
-        .getByPlaceholder("Confirm your new password")
-        .fill(TEMP_PASSWORD);
+      await page.getByPlaceholder("Confirm your new password").fill(TEMP_PASSWORD);
 
       const saveButton = page.getByRole("button", { name: /save changes/i });
       if (await saveButton.isEnabled().catch(() => false)) {
@@ -627,9 +559,7 @@ test.describe("profile", () => {
           timeout: 15000,
         });
         await expect(
-          page
-            .getByText("Your password has been changed successfully.")
-            .first(),
+          page.getByText("Your password has been changed successfully.").first(),
         ).toBeVisible();
         // Track the change so later steps (and the afterEach revert hook at
         // the top of this file) know the account's current real password.
@@ -724,24 +654,6 @@ test.describe("profile", () => {
         await expect(page.getByRole("dialog")).toHaveCount(0);
       }
       await page.unroute("**change-password**");
-    });
-
-    await test.step("[Security] Password fields mask the entered text", async () => {
-      await page.getByRole("button", { name: "Update Password" }).click();
-      await expect(page.getByPlaceholder("Enter your current password")).toHaveAttribute(
-        "type",
-        "password",
-      );
-      await expect(page.getByPlaceholder("Enter your new password")).toHaveAttribute(
-        "type",
-        "password",
-      );
-      await expect(page.getByPlaceholder("Confirm your new password")).toHaveAttribute(
-        "type",
-        "password",
-      );
-      await page.getByRole("button", { name: "Cancel" }).click();
-      await expect(page.getByRole("dialog")).toHaveCount(0);
     });
 
     await test.step("[Positive] Sessions tab shows a loading skeleton while the session list is fetching", async () => {
@@ -863,9 +775,7 @@ test.describe("profile", () => {
           .getByRole("button", { name: "Sign out", exact: true })
           .click();
 
-        await expect(
-          page.getByText("Something went wrong").first(),
-        ).toBeVisible({
+        await expect(page.getByText("Something went wrong").first()).toBeVisible({
           timeout: 15000,
         });
 

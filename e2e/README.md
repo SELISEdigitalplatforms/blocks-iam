@@ -113,8 +113,9 @@ npm run codegen -- <E2E_BASE_URL>/login
 
 ```
 e2e/
-  tests/auth/login.spec.ts   # setup project: login once -> fixtures/auth.json
-  tests/iam.spec.ts          # authenticated suite (reuses the saved session)
+  tests/auth/login.spec.ts       # setup project: login once -> fixtures/auth.json
+  tests/auth/*.spec.ts           # auth-page suites (login, signup, recovery, ...)
+  tests/profile/profile.spec.ts  # authenticated suite (reuses the saved session)
   support/env.ts             # IAM URL + OS derivation
   support/login-helper.ts    # OIDC login + ensureAuthenticated
   support/test-base.ts       # shared test/expect with the headed pause
