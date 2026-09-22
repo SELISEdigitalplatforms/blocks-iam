@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   preSigned: vi.fn(),
   upload: vi.fn(),
+  completeUpload: vi.fn(),
   updateUser: vi.fn(),
   getFileByFileId: vi.fn(),
   invalidateQueries: vi.fn(),
@@ -15,6 +16,7 @@ const h = vi.hoisted(() => ({
 vi.mock("@blocks-storage/hooks/use-storage-file", () => ({
   useGetPreSignedUrlForUpload: () => ({ mutateAsync: h.preSigned }),
   useUploadFile: () => ({ mutateAsync: h.upload }),
+  useCompleteUpload: () => ({ mutateAsync: h.completeUpload }),
 }));
 vi.mock("@blocks-storage/services/storage.service", () => ({
   storageService: { file: { getFileByFileId: (...a: unknown[]) => h.getFileByFileId(...a) } },
@@ -88,5 +90,69 @@ describe("ProfileImageUploader", () => {
     const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [makeFile("image/png")] } });
     await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "update failed" }));
+  });
+
+  it("skips completion and succeeds when the upload does not require it", async () => {
+    h.preSigned.mockResolvedValue({
+      isSuccess: true,
+      fileId: "f1",
+      uploadUrl: "https://up",
+      uploadCompletionRequired: false,
+    });
+    h.upload.mockResolvedValue(undefined);
+    h.getFileByFileId.mockResolvedValue({ itemId: "f1", url: "https://cdn/img.png" });
+    h.updateUser.mockResolvedValue({ isSuccess: true });
+    const { container } = render(<ProfileImageUploader projectKey="p1" id="u1" own />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [makeFile("image/png")] } });
+
+    await waitFor(() => expect(h.showSuccess).toHaveBeenCalled());
+    expect(h.completeUpload).not.toHaveBeenCalled();
+  });
+
+  it("calls completion and succeeds when the upload is verified", async () => {
+    h.preSigned.mockResolvedValue({
+      isSuccess: true,
+      fileId: "f1",
+      fileVersionId: "v1",
+      uploadUrl: "https://up",
+      uploadCompletionRequired: true,
+    });
+    h.upload.mockResolvedValue(undefined);
+    h.completeUpload.mockResolvedValue({ isSuccess: true, verificationStatus: "Verified" });
+    h.getFileByFileId.mockResolvedValue({ itemId: "f1", url: "https://cdn/img.png" });
+    h.updateUser.mockResolvedValue({ isSuccess: true });
+    const { container } = render(<ProfileImageUploader projectKey="p1" id="u1" own />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [makeFile("image/png")] } });
+
+    await waitFor(() =>
+      expect(h.completeUpload).toHaveBeenCalledWith({ fileId: "f1", fileVersionId: "v1" }),
+    );
+    await waitFor(() => expect(h.showSuccess).toHaveBeenCalled());
+  });
+
+  it("surfaces an error toast and skips the user update when completion is rejected", async () => {
+    h.preSigned.mockResolvedValue({
+      isSuccess: true,
+      fileId: "f1",
+      fileVersionId: "v1",
+      uploadUrl: "https://up",
+      uploadCompletionRequired: true,
+    });
+    h.upload.mockResolvedValue(undefined);
+    h.completeUpload.mockResolvedValue({
+      isSuccess: true,
+      verificationStatus: "Rejected",
+      rejectionReason: "real_file_type_mismatch",
+    });
+    const { container } = render(<ProfileImageUploader projectKey="p1" id="u1" own />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [makeFile("image/png")] } });
+
+    await waitFor(() =>
+      expect(h.showError).toHaveBeenCalledWith({ errors: "real_file_type_mismatch" }),
+    );
+    expect(h.updateUser).not.toHaveBeenCalled();
   });
 });

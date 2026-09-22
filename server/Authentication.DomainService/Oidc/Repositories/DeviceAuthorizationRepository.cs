@@ -27,37 +27,42 @@ namespace Authentication.DomainService.Oidc.Repositories
         private IMongoCollection<DeviceAuthorizationRequestModel> Collection() =>
             GetDatabase().GetCollection<DeviceAuthorizationRequestModel>(CollectionName);
 
+        private IMongoCollection<DeviceAuthorizationRequestModel> Collection(string tenantId) =>
+            _dbContextProvider.GetDatabase(tenantId).GetCollection<DeviceAuthorizationRequestModel>(CollectionName);
+
         public async Task EnsureIndexesAsync(CancellationToken ct = default)
         {
             try
             {
-                var keys = Builders<DeviceAuthorizationRequestModel>.IndexKeys;
-                await Collection().Indexes.CreateManyAsync(new[]
-                {
-                    new CreateIndexModel<DeviceAuthorizationRequestModel>(
-                        keys.Ascending(x => x.DeviceCodeHash),
-                        new CreateIndexOptions<DeviceAuthorizationRequestModel> { Name = "ix_device_code_hash_unique", Unique = true }),
-                    // Terminal rows (Denied/Expired/Consumed) are never deleted — they're kept as an
-                    // RFC 8628 §6.5 audit trail — so the index must cover every status, not just
-                    // Pending/Approved, or a collision against a terminal row would slip past this
-                    // unique constraint and rely solely on the in-process pre-check in
-                    // DeviceAuthorizationService.GenerateUniqueUserCodeAsync.
-                    new CreateIndexModel<DeviceAuthorizationRequestModel>(
-                        keys.Ascending(x => x.UserCode),
-                        new CreateIndexOptions<DeviceAuthorizationRequestModel>
-                        {
-                            Name = "ix_user_code_unique",
-                            Unique = true
-                        }),
-                    new CreateIndexModel<DeviceAuthorizationRequestModel>(
-                        keys.Ascending(x => x.ExpiresAt),
-                        new CreateIndexOptions<DeviceAuthorizationRequestModel> { Name = "ix_expires_at" })
-                }, ct);
+                await EnsureIndexesAsync(Collection(), ct);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "DeviceAuthorizationRepository.EnsureIndexesAsync failed; index creation is idempotent and will be retried.");
             }
+        }
+
+        // Background work has no request context. Let the worker observe failures so it
+        // can retry index creation for this tenant on its next sweep.
+        public Task EnsureIndexesAsync(string tenantId, CancellationToken ct = default) =>
+            EnsureIndexesAsync(Collection(tenantId), ct);
+
+        private static async Task EnsureIndexesAsync(IMongoCollection<DeviceAuthorizationRequestModel> collection, CancellationToken ct)
+        {
+            var keys = Builders<DeviceAuthorizationRequestModel>.IndexKeys;
+            await collection.Indexes.CreateManyAsync(new[]
+            {
+                new CreateIndexModel<DeviceAuthorizationRequestModel>(
+                    keys.Ascending(x => x.DeviceCodeHash),
+                    new CreateIndexOptions<DeviceAuthorizationRequestModel> { Name = "ix_device_code_hash_unique", Unique = true }),
+                // Terminal rows remain as an audit trail, so uniqueness covers every status.
+                new CreateIndexModel<DeviceAuthorizationRequestModel>(
+                    keys.Ascending(x => x.UserCode),
+                    new CreateIndexOptions<DeviceAuthorizationRequestModel> { Name = "ix_user_code_unique", Unique = true }),
+                new CreateIndexModel<DeviceAuthorizationRequestModel>(
+                    keys.Ascending(x => x.ExpiresAt),
+                    new CreateIndexOptions<DeviceAuthorizationRequestModel> { Name = "ix_expires_at" })
+            }, ct);
         }
 
         public async Task CreateAsync(DeviceAuthorizationRequestModel entity, CancellationToken ct = default)
@@ -134,7 +139,14 @@ namespace Authentication.DomainService.Oidc.Repositories
             return result.ModifiedCount > 0;
         }
 
-        public async Task<bool> MarkExpiredAsync(IEnumerable<string> ids, CancellationToken ct = default)
+        public Task<bool> MarkExpiredAsync(IEnumerable<string> ids, CancellationToken ct = default) =>
+            MarkExpiredAsync(Collection(), ids, ct);
+
+        public Task<bool> MarkExpiredAsync(string tenantId, IEnumerable<string> ids, CancellationToken ct = default) =>
+            MarkExpiredAsync(Collection(tenantId), ids, ct);
+
+        private static async Task<bool> MarkExpiredAsync(
+            IMongoCollection<DeviceAuthorizationRequestModel> collection, IEnumerable<string> ids, CancellationToken ct)
         {
             var idList = ids?.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList() ?? new List<string>();
             if (idList.Count == 0)
@@ -149,7 +161,7 @@ namespace Authentication.DomainService.Oidc.Repositories
 
             var update = Builders<DeviceAuthorizationRequestModel>.Update.Set(x => x.Status, DeviceAuthorizationStatus.Expired);
 
-            var result = await Collection().UpdateManyAsync(filter, update, cancellationToken: ct);
+            var result = await collection.UpdateManyAsync(filter, update, cancellationToken: ct);
             return result.ModifiedCount > 0;
         }
 
@@ -205,7 +217,15 @@ namespace Authentication.DomainService.Oidc.Repositories
             return result.ModifiedCount > 0 ? newInterval : currentInterval;
         }
 
-        public async Task<IReadOnlyList<string>> GetExpiredIdsAsync(DateTime olderThanUtc, int limit, CancellationToken ct = default)
+        public Task<IReadOnlyList<string>> GetExpiredIdsAsync(DateTime olderThanUtc, int limit, CancellationToken ct = default) =>
+            GetExpiredIdsAsync(Collection(), olderThanUtc, limit, ct);
+
+        public Task<IReadOnlyList<string>> GetExpiredIdsAsync(
+            string tenantId, DateTime olderThanUtc, int limit, CancellationToken ct = default) =>
+            GetExpiredIdsAsync(Collection(tenantId), olderThanUtc, limit, ct);
+
+        private static async Task<IReadOnlyList<string>> GetExpiredIdsAsync(
+            IMongoCollection<DeviceAuthorizationRequestModel> collection, DateTime olderThanUtc, int limit, CancellationToken ct)
         {
             var filter = Builders<DeviceAuthorizationRequestModel>.Filter.And(
                 Builders<DeviceAuthorizationRequestModel>.Filter.Lt(x => x.ExpiresAt, olderThanUtc),
@@ -214,7 +234,7 @@ namespace Authentication.DomainService.Oidc.Repositories
 
             var projection = Builders<DeviceAuthorizationRequestModel>.Projection.Include(x => x.Id);
 
-            var docs = await Collection()
+            var docs = await collection
                 .Find(filter)
                 .Limit(limit)
                 .Project<DeviceAuthorizationRequestModel>(projection)

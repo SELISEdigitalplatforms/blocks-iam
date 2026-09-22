@@ -68,7 +68,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
         {
             var result = await Create().ValidateAsync(Req(newPw: "short")); // < 8 chars, fails the regex
             result.IsValid.Should().BeFalse();
-            result.Errors.Should().Contain(e => e.ErrorMessage.StartsWith("Password weak"));
+            result.Errors.Should().Contain(e => e.ErrorMessage == "Does not meet project's password requirements");
         }
 
         [Fact]

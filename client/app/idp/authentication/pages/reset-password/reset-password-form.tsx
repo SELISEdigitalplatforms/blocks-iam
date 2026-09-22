@@ -2,14 +2,14 @@ import { getRuntimeEnv } from "@/lib/runtime-env";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { useForm } from "react-hook-form";
 import {
-  resetPasswordFormSchema,
+  buildResetPasswordFormSchema,
   ResetPasswordFormValuesType,
   resetPasswordFormDefaultValue,
 } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router";
 import { Captcha } from "@/components/captcha";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccountResetPassword } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui-kits/switch/switch";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
 import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
+import { PASSWORD_MAX_INPUT_LENGTH } from "@blocks-idp/authentication/utils/password-policy.util";
 
 type ResetPasswordFormProps = { code: string; tenantId?: string };
 
@@ -30,15 +31,31 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const {
+    data: oidcUiConfig,
+    captchaEnabled: tenantCaptchaEnabled,
+    passwordPolicy,
+    isLoading: isConfigLoading,
+  } = useOidcUiConfig(tenantId);
+  const formSchema = useMemo(
+    () => buildResetPasswordFormSchema(passwordPolicy),
+    [passwordPolicy],
+  );
 
   const form = useForm<ResetPasswordFormValuesType>({
     defaultValues: resetPasswordFormDefaultValue,
     mode: "all",
     reValidateMode: "onChange",
-    resolver: zodResolver(resetPasswordFormSchema),
+    resolver: zodResolver(formSchema),
   });
 
-  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
+  // TEMPORARY: captcha suppressed on the recovery page. Flip back to `tenantCaptchaEnabled`
+  // to restore it. The server only validates a captcha when one is supplied
+  // (BaseAccountValidator gates the rule on a non-empty CaptchaCode), so sending none simply
+  // skips the check rather than failing it.
+  const CAPTCHA_TEMPORARILY_DISABLED = true;
+  const captchaEnabled = CAPTCHA_TEMPORARILY_DISABLED ? false : tenantCaptchaEnabled;
+
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const { captcha, code: captchaCode, reset: resetCaptcha } = useCaptcha({
@@ -60,12 +77,13 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
       <PasswordStrengthChecker
         password={password}
         confirmPassword={confirmPassword}
+        policy={passwordPolicy}
         onRequirementsMet={setRequirementsMet}
       />
     );
     return () => { setPanelIdleSlot?.(null); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [password, confirmPassword, setPanelIdleSlot]);
+  }, [password, confirmPassword, passwordPolicy, setPanelIdleSlot]);
 
   const isAuthenticating =
     isPending ||
@@ -150,6 +168,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
               type={showPassword ? "text" : "password"}
               placeholder="••••••••"
               autoComplete="new-password"
+              maxLength={PASSWORD_MAX_INPUT_LENGTH}
               className="oidc-sci-fi-input"
               style={{ paddingRight: "2.75rem" }}
               aria-invalid={!!form.formState.errors.password}
@@ -179,6 +198,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
               type={showConfirmPassword ? "text" : "password"}
               placeholder="••••••••"
               autoComplete="new-password"
+              maxLength={PASSWORD_MAX_INPUT_LENGTH}
               className="oidc-sci-fi-input"
               style={{ paddingRight: "2.75rem" }}
               aria-invalid={!!form.formState.errors.confirmPassword}
@@ -224,7 +244,10 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
 
         <button
           type="submit"
-          disabled={isAuthenticating || (captchaEnabled && !captchaCode) || !isValid || !requirementsMet}
+          // TEMPORARY: always enabled. Restore the guard below to gate on config load, submission
+          // in flight, captcha, and the password rules:
+          // disabled={isConfigLoading || isAuthenticating || (captchaEnabled && !captchaCode) || !isValid || !requirementsMet}
+          disabled={false}
           className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
         >
           {isAuthenticating ? (

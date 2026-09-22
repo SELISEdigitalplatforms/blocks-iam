@@ -147,5 +147,39 @@ namespace XUnitTest.Auth.Oidc
             Register(new[] { Entity("d1"), Entity("d2") });
             (await Sut().GetExpiredIdsAsync(DateTime.UtcNow, 100)).Should().BeEquivalentTo(new[] { "d1", "d2" });
         }
+
+        [Fact]
+        public async Task CleanupMethods_UseExplicitTenantDatabaseWithoutAmbientContext()
+        {
+            var rootDatabase = MongoMock.Database();
+            var devDatabase = MongoMock.Database();
+            var rootCollection = MongoMock.Collection(new[] { Entity("root-request") });
+            var devCollection = MongoMock.Collection(new[] { Entity("dev-request") });
+            MongoMock.SetupIndexes(rootCollection);
+            MongoMock.SetupIndexes(devCollection);
+            MongoMock.OnDatabase(rootDatabase, CollectionName, rootCollection);
+            MongoMock.OnDatabase(devDatabase, CollectionName, devCollection);
+            _db.Setup(d => d.GetDatabase("root")).Returns(rootDatabase.Object);
+            _db.Setup(d => d.GetDatabase("dev")).Returns(devDatabase.Object);
+
+            var repository = Sut();
+            await repository.EnsureIndexesAsync("root");
+            await repository.EnsureIndexesAsync("dev");
+            (await repository.GetExpiredIdsAsync("root", DateTime.UtcNow, 10)).Should().BeEquivalentTo(new[] { "root-request" });
+            (await repository.GetExpiredIdsAsync("dev", DateTime.UtcNow, 10)).Should().BeEquivalentTo(new[] { "dev-request" });
+            (await repository.MarkExpiredAsync("dev", new[] { "dev-request" })).Should().BeTrue();
+
+            rootCollection.Verify(c => c.Indexes, Times.Once);
+            devCollection.Verify(c => c.Indexes, Times.Once);
+            devCollection.Verify(c => c.UpdateManyAsync(
+                It.IsAny<FilterDefinition<DeviceAuthorizationRequestModel>>(),
+                It.IsAny<UpdateDefinition<DeviceAuthorizationRequestModel>>(),
+                It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+            rootCollection.Verify(c => c.UpdateManyAsync(
+                It.IsAny<FilterDefinition<DeviceAuthorizationRequestModel>>(),
+                It.IsAny<UpdateDefinition<DeviceAuthorizationRequestModel>>(),
+                It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()), Times.Never);
+            _db.Verify(d => d.GetDatabase(), Times.Never);
+        }
     }
 }

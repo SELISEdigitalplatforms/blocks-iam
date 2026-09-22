@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
   buildOIDCNavigationUrl: (path: string) => `${path}?tenant=t1`,
+  extractOIDCParams: () => ({}),
   // Used by LoginReturnLink, which this page renders for "Go to login".
   resolveLoginReturnTarget: (isOidc: boolean) => ({
     href: isOidc ? "/oidc/login?tenant=t1" : "/login",
@@ -15,6 +16,9 @@ vi.mock("@blocks-idp/authentication/components/success-confirmation-card-header"
 }));
 vi.mock("@blocks-idp/authentication/components/success-confirmation-icon", () => ({
   SuccessConfirmationIcon: () => <div data-testid="card-icon" />,
+}));
+vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
+  useOidcUiConfig: () => ({ data: undefined }),
 }));
 
 import { ForgotEmailSent } from "./forgot-email-sent";

@@ -99,6 +99,10 @@ namespace Authentication.DomainService.Authentication
                 ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,
                 Request = request,
+                // Carry the lineage's IdP session forward. Without this the mint fell back to
+                // resolving from the request cookie, so a client refreshing without that cookie
+                // (mobile, native, server-side) started a brand-new session on every refresh.
+                IdpSessionId = tokenCache.SessionId,
                 GraceReplayTokenId = graceReplayTokenId,
                 GraceReplayAbsoluteExpiry = graceReplayTokenId == null ? null : tokenCache.AbsoluteExpiresUtc
             };

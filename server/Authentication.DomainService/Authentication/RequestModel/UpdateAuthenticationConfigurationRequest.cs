@@ -1,4 +1,4 @@
-namespace Authentication.DomainService.Authentication.RequestModel
+﻿namespace Authentication.DomainService.Authentication.RequestModel
 {
     public sealed class UpdateAuthenticationConfigurationRequest
     {
@@ -37,6 +37,24 @@ namespace Authentication.DomainService.Authentication.RequestModel
         public bool? LogoutOnPasswordChange { get; set; }
 
         public string PasswordStrengthCheckerRegex { get; set; }
+
+        /// <summary>Short plain-text explanation of the password rule. Empty means no message written.</summary>
+        public string PasswordStrengthCheckerMessage { get; set; } = string.Empty;
+
+        public int PasswordPolicyMinLength { get; set; }
+
+        public int PasswordPolicyMaxLength { get; set; }
+
+        public bool? PasswordPolicyRequireUppercase { get; set; }
+
+        public bool? PasswordPolicyRequireLowercase { get; set; }
+
+        public bool? PasswordPolicyRequireNumbers { get; set; }
+
+        public bool? PasswordPolicyRequireSpecialChars { get; set; }
+
+        /// <summary>Short plain-text explanation of the password rule. Empty means no message written.</summary>
+        public string PasswordPolicyMessage { get; set; } = string.Empty;
 
         public bool? CollectPasswordOnActivation { get; set; }
     }

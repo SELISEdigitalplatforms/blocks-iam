@@ -1,4 +1,4 @@
-using Authentication.DomainService.Entities;
+﻿using Authentication.DomainService.Entities;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -8,6 +8,7 @@ using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
 using Authentication.DomainService.Shared.Services;
+using Iam.DomainService.Configurations;
 using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Blocks.CaptchaDriver;
@@ -80,9 +81,47 @@ namespace Authentication.DomainService.Authentication
                     Provider = captchaConfiguration.Provider,
                     Generator = captchaConfiguration.CaptchaGenerator
                 },
+                // Derived from the tenant's regex and published as plain data -- no pattern text
+                // reaches the response, so the browser builds no RegExp.
+                PasswordPolicy = BuildPasswordPolicy(authenticationConfiguration),
                 Template = savedTemplate
             });
         }
+
+        /// <summary>
+        /// The pass/fail the client cannot work out for itself, for a rule the config endpoint
+        /// published as <c>RequiresServerCheck</c>.
+        ///
+        /// Deliberately returns nothing but a boolean: no pattern, no reason, no per-requirement
+        /// breakdown. The caller learns whether this password passes, never what the rule is, so
+        /// the answer leaks nothing the user could not get by pressing submit.
+        /// </summary>
+        public async Task<IActionResult> CheckPasswordAsync(string? password)
+        {
+            var configuration = await _iamRepository.GetIamConfigurationAsync();
+
+            // The same call the account validators make, so the tick and the submit can never
+            // disagree about the same password.
+            var meetsRequirements = PasswordStrengthEvaluator.IsStrongPassword(configuration, password ?? string.Empty);
+
+            return new OkObjectResult(new { meetsRequirements });
+        }
+
+        /// <summary>
+        /// The tenant's password rule, published as plain data derived from their configured
+        /// <c>PasswordStrengthCheckerRegex</c>, which is the rule the account endpoints enforce.
+        /// Published for every tenant that has one -- there is no separate switch, because a rule
+        /// that is enforced is a rule the screens should describe.
+        ///
+        /// Null only when no regex is stored at all, which the client answers with its own
+        /// baseline rather than showing no requirements.
+        ///
+        /// No pattern text reaches the response, so the browser still builds no RegExp.
+        /// </summary>
+        private static OidcUiPasswordPolicyResponse? BuildPasswordPolicy(IdentityConfiguration? configuration) =>
+            configuration is null
+                ? null
+                : PasswordPolicyRegexDeriver.Derive(configuration.PasswordStrengthCheckerRegex);
 
         public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo, string? flow = null, HttpRequest? httpRequest = null)
         {

@@ -1,7 +1,8 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using FluentAssertions;
@@ -27,6 +28,7 @@ namespace XUnitTest.Auth.Oidc
     {
         private readonly Mock<IAuthorizationCodeRepository> _authCodeRepo = new();
         private readonly Mock<IIdpSessionRepository> _sessionRepo = new();
+        private readonly Mock<IIdpSessionService> _sessionService = new();
         private readonly Mock<IPkceService> _pkce = new();
         private readonly Mock<IUserRepository> _userRepo = new();
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
@@ -57,10 +59,13 @@ namespace XUnitTest.Auth.Oidc
             _authCodeRepo.Setup(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>())).ReturnsAsync("code-id");
             _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync((string)null!);
             _userRepo.Setup(u => u.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
+            _sessionService.Setup(s => s.RevokeSessionAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+            _sessionService.Setup(s => s.RotateSessionAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync("rotated-sess");
 
             _endpoint = new OidcAuthorizationEndpoint(
                 _authCodeRepo.Object,
                 _sessionRepo.Object,
+                _sessionService.Object,
                 _pkce.Object,
                 _userRepo.Object,
                 _authRepo.Object,
@@ -293,6 +298,132 @@ namespace XUnitTest.Auth.Oidc
             _sessionRepo.Verify(s => s.AddAccountAsync("SID", It.Is<IdpSessionAccount>(a => a.UserId == "user-3")), Times.Once);
         }
 
+        // ================= credentialed login vs. live session =================
+        //
+        // The quadrant that was never covered: blocksUserId set (the login orchestrator has just
+        // verified a password) AND a live session cookie in the same request. Resolving from the
+        // cookie here handed the new user an authorization code minted for the previous one.
+
+        [Fact]
+        public async Task AuthorizeAsync_VerifiedPassword_BeatsLiveSessionCookieForAnotherUser()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>()))
+                .ReturnsAsync((string id) => ValidUser(id));
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "previous-user", TenantId = "tenant-1" }));
+
+            var result = await Authorize(
+                tenant_id: "tenant-1",
+                ctx: Ctx("idp_session_id_tenant-1=SID"),
+                blocksUserId: "just-authenticated-user");
+
+            result.Should().BeOfType<RedirectResult>();
+            _authCodeRepo.Verify(
+                a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.UserId == "just-authenticated-user")),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_VerifiedPassword_RevokesSessionBelongingToAnotherUser()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>()))
+                .ReturnsAsync((string id) => ValidUser(id));
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "previous-user", TenantId = "tenant-1" }));
+
+            await Authorize(
+                tenant_id: "tenant-1",
+                ctx: Ctx("idp_session_id_tenant-1=SID"),
+                blocksUserId: "just-authenticated-user");
+
+            // Torn down, not extended: the previous user must not stay resumable in this browser.
+            _sessionService.Verify(s => s.RevokeSessionAsync("SID", "reauthenticated_as_different_user"), Times.Once);
+            _sessionRepo.Verify(s => s.AddAccountAsync("SID", It.IsAny<IdpSessionAccount>()), Times.Never);
+            _sessionRepo.Verify(s => s.CreateAsync(It.Is<IdpSessionModel>(
+                m => m.Accounts.Count == 1 && m.Accounts[0].UserId == "just-authenticated-user")), Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_VerifiedPassword_RotatesSessionWhenItIsTheSameUser()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>()))
+                .ReturnsAsync((string id) => ValidUser(id));
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "tenant-1" }));
+
+            await Authorize(
+                tenant_id: "tenant-1",
+                ctx: Ctx("idp_session_id_tenant-1=SID"),
+                blocksUserId: "user-1");
+
+            // Session fixation: the id the browser arrived with must not survive authentication.
+            _sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _sessionService.Verify(s => s.RotateSessionAsync("SID", "password_login"), Times.Once);
+            _authCodeRepo.Verify(
+                a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.UserId == "user-1" && m.IdpSessionId == "rotated-sess")),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_SilentSso_StillResolvesFromSessionAndDoesNotRotate()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "tenant-1" }));
+
+            await Authorize(tenant_id: "tenant-1", ctx: Ctx("idp_session_id_tenant-1=SID"));
+
+            // No password was presented, so nothing outranks the session and nothing is torn down.
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.UserId == "user-1")), Times.Once);
+            _sessionService.Verify(s => s.RotateSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_VerifiedPassword_LeavesOtherTenantsAccountsAlone()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>()))
+                .ReturnsAsync((string id) => ValidUser(id));
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "other-user", TenantId = "tenant-b" }));
+
+            await Authorize(
+                tenant_id: "tenant-1",
+                ctx: Ctx("idp_session_id_tenant-1=SID"),
+                blocksUserId: "user-1");
+
+            // Multi-account SSO holds one user per tenant; signing in to tenant-1 must not sign the
+            // person out of tenant-b.
+            _sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _sessionRepo.Verify(s => s.AddAccountAsync("SID", It.Is<IdpSessionAccount>(a => a.UserId == "user-1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_VerifiedPassword_KeepsCurrentSessionWhenRotationFails()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "tenant-1" }));
+            _sessionService.Setup(s => s.RotateSessionAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync((string?)null);
+
+            await Authorize(
+                tenant_id: "tenant-1",
+                ctx: Ctx("idp_session_id_tenant-1=SID"),
+                blocksUserId: "user-1");
+
+            // Rotation is best-effort: losing it must not cost the user their login.
+            _authCodeRepo.Verify(
+                a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.UserId == "user-1" && m.IdpSessionId == "SID")),
+                Times.Once);
+        }
+
         // ================= lockout gates =================
 
         [Fact]
@@ -517,7 +648,16 @@ namespace XUnitTest.Auth.Oidc
             var result = await Authorize(blocksUserId: "user-1");
 
             result.Should().BeOfType<RedirectResult>();
-            _userRepo.Verify(u => u.UpdateUserAsync(It.Is<User>(x => x.LastUsedOrganizationId == "org-1")), Times.Once);
+            // A single-field $set, not a document replace: the replace wrote back every other field
+            // as it looked when the user was read earlier in this request, which could revert a
+            // concurrent write - the login counter among them.
+            _authRepo.Verify(r => r.UpdatePartialAsync<User>(
+                    "user-1",
+                    It.Is<Dictionary<string, object>>(d =>
+                        d.Count == 1 && (string)d[nameof(User.LastUsedOrganizationId)] == "org-1"),
+                    It.IsAny<string>()),
+                Times.Once);
+            _userRepo.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
         }
 
         [Fact]
@@ -527,7 +667,8 @@ namespace XUnitTest.Auth.Oidc
             var user = ValidUser();
             user.OrganizationIds = new List<string> { "org-1" };
             _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
-            _userRepo.Setup(u => u.UpdateUserAsync(It.IsAny<User>())).ThrowsAsync(new Exception("db down"));
+            _authRepo.Setup(r => r.UpdatePartialAsync<User>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()))
+                .ThrowsAsync(new Exception("db down"));
 
             var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: true);
 
