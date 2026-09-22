@@ -281,7 +281,13 @@ test.describe("Account recovery", () => {
         await submit.click();
         await page.waitForURL(/\/reset-password-success/, { timeout: 15_000 }).catch(() => {});
         if (page.url().includes("/reset-password-success")) {
-          await expect(page.getByText(/password updated/i)).toBeVisible();
+          // The success toast ("Password Updated" span + "Password updated
+          // successfully" body) can still be mounted alongside the page's
+          // h2, so a text query matches 3 elements under strict mode. The
+          // heading is the unambiguous confirmation.
+          await expect(
+            page.getByRole("heading", { name: /password updated/i }),
+          ).toBeVisible();
         }
       }
 
