@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OtpNet;
 using QRCoder;
+using Storage.DomainService.Enums;
 using StorageDriver;
 using System.Net;
 using System.Text;
@@ -73,21 +74,38 @@ namespace Mfa.DomainService.TOTP
 
             var fileId = GenerateGuid();
             var twoFactorId = GenerateGuid();
-            var preSignedUrl = await GetPreSignedUrlAsync(fileId);
+            var presignedUrlResponse = await GetPreSignedUrlAsync(fileId);
             var tenant = _tenant.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? string.Empty);
             var applicationDomain = tenant?.Applications != null && tenant.Applications.Count > 0
                 ? tenant.Applications[0].Domain?.Replace("https://", string.Empty, StringComparison.Ordinal) ?? string.Empty
                 : string.Empty;
 
-            if (string.IsNullOrWhiteSpace(preSignedUrl)) { return new SetUpUserTotpResponse { Errors = new Dictionary<string, string> { { "configuration_not_exit", "please_check_default_storage_configuration" } } }; }
+            if (string.IsNullOrWhiteSpace(presignedUrlResponse?.UploadUrl)) { return new SetUpUserTotpResponse { Errors = new Dictionary<string, string> { { "configuration_not_exit", "please_check_default_storage_configuration" } } }; }
 
             var qrCodeData = GenerateQrCodeImageData(applicationDomain, userInfo.Email ?? string.Empty, secret);
-            var response = await UploadQrCodeAsync(preSignedUrl, qrCodeData);
+            var response = await UploadQrCodeAsync(presignedUrlResponse.UploadUrl, qrCodeData);
 
             if (response.StatusCode != HttpStatusCode.Created)
             {
                 _logger.LogError("QR code upload failed. statusCode: {0}", response.StatusCode);
                 return CreateOtpResponse(false);
+            }
+
+            if (presignedUrlResponse.UploadCompletionRequired)
+            {
+                var completion = await _storageDriverService.CompleteUploadAsync(new CompleteUploadRequest
+                {
+                    FileId = fileId,
+                    FileVersionId = presignedUrlResponse.FileVersionId,
+                });
+
+                if (completion?.VerificationStatus != FileVerificationStatus.Verified)
+                {
+                    _logger.LogError(
+                        "QR code upload completion rejected. fileId: {0}, reason: {1}",
+                        fileId, completion?.RejectionReason);
+                    return CreateOtpResponse(false);
+                }
             }
 
             var imageUri = await GetFileUriAsync(fileId);
@@ -109,7 +127,7 @@ namespace Mfa.DomainService.TOTP
             return (await _repository.GetItemAsync<UserTotpDetail>(t => t.CreatedBy == userId));
         }
 
-        private async Task<string> GetPreSignedUrlAsync(string fileId)
+        private async Task<GetPreSignedUrlForUploadResponse> GetPreSignedUrlAsync(string fileId)
         {
             var requestBody = new GetPreSignedUrlForUploadRequest
             {
@@ -121,9 +139,7 @@ namespace Mfa.DomainService.TOTP
                 AccessModifier = "Public"
             };
 
-
-            var presignedUrlResponse = await _storageDriverService.GetPerSignedUrlForUploadAsync(requestBody);
-            return presignedUrlResponse.UploadUrl;
+            return await _storageDriverService.GetPerSignedUrlForUploadAsync(requestBody);
         }
 
         private async Task<string> GetFileUriAsync(string fileId)

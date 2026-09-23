@@ -13,6 +13,7 @@ export const STORAGE_FILE_ENDPOINTS = {
   DELETE_FILE: `/api${STORAGE_SUBPATH}/DeleteFile`,
   DELETE_FOLDER: `/api${STORAGE_SUBPATH}/DeleteFolder`,
   GET_PRESIGNED_URL: `/api${STORAGE_SUBPATH}/GetPreSignedUrlForUpload`,
+  COMPLETE_UPLOAD: `/api${STORAGE_SUBPATH}/CompleteUpload`,
   GET_FILES_INFO: `/api${STORAGE_SUBPATH}/GetFilesInfo`,
   UPDATE_FILE_ADDITIONAL_INFO: `/api${STORAGE_SUBPATH}/updateFileAdditionalInfo`,
   UPLOAD_TO_LOCAL_STORAGE: `/api${STORAGE_SUBPATH}/UploadFileToLocalStorage`,

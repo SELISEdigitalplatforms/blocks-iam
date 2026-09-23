@@ -32,7 +32,7 @@ using Mfa.DomainService.Validators;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Storage.DomainService.Shared.Services;
+using Storage.DomainService.Services;
 using Storage.DomainService.Storage;
 using Storage.DomainService.Storage.Validators;
 
@@ -235,11 +235,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IImpersonationFlowHelper, ImpersonationFlowHelper>();
 
             // Drivers
-            serviceCollection.AddSingleton<DmsArtifactBuilderFactory>();
             serviceCollection.AddTransient<IValidator<UpdateFileRequest>, UpdateFileRequestValidator>();
             serviceCollection.AddTransient<AwsS3CompatibleStorageService>();
-            serviceCollection.AddSingleton<FileArtifactBuilder>();
-            serviceCollection.AddSingleton<FolderArtifactBuilder>();
 
             serviceCollection.RegisterBlocksStorageServices();
         }

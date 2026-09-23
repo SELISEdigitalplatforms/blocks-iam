@@ -16,19 +16,21 @@ namespace Iam.DomainService.Resources.TenantPropagation
 
         private const int MaxConcurrentTenants = 8;
         
-        private readonly ConcurrentDictionary<string, MongoClient> _clients = new();
         private readonly IResourceRepository _resourceRepository;
         private readonly IDbContextProvider _dbContextProvider;
+        private readonly IBlocksSecret _blocksSecret;
         private readonly ILogger<TenantPermissionPropagator> _logger;
 
         public TenantPermissionPropagator(
             IResourceRepository resourceRepository,
             IDbContextProvider dbContextProvider,
-            ILogger<TenantPermissionPropagator> logger)
+            ILogger<TenantPermissionPropagator> logger,
+            IBlocksSecret blocksSecret)
         {
             _resourceRepository = resourceRepository;
             _dbContextProvider = dbContextProvider;
             _logger = logger;
+            _blocksSecret = blocksSecret;
         }
 
         public async Task<PropagationSummary> PropagateAsync(PermissionMutationForTenantsEvent context)
@@ -97,7 +99,10 @@ namespace Iam.DomainService.Resources.TenantPropagation
         {
             try
             {
-                var collection = _dbContextProvider.GetCollection<Tenant>("Tenants");
+                // Discovery always belongs to main/root, regardless of the worker's tenant.
+                var collection = _dbContextProvider
+                    .GetDatabase(_blocksSecret.DatabaseConnectionString, _blocksSecret.RootDatabaseName)
+                    .GetCollection<Tenant>("Tenants");
 
                 var filter = Builders<Tenant>.Filter.Eq("IsDisabled", false);
 
@@ -117,7 +122,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
                         {
                             TenantId = tenantId,
                             TenantName = doc.Name,
-                            DbConnectionString = doc.DbConnectionString,
+                            DbConnectionString = _blocksSecret.DatabaseConnectionString,
                             DBName = "BlocksConfiguration"
                         });
 
@@ -149,7 +154,8 @@ namespace Iam.DomainService.Resources.TenantPropagation
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to enumerate tenants from root DB (Tenants collection).");
-                return Array.Empty<PermissionMutationTarget>();
+                // Let the worker retry; a registry outage is not a successful empty propagation.
+                throw;
             }
         }
 
@@ -226,8 +232,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
                 throw new ArgumentException("Tenant database name is required", nameof(databaseName));
             }
 
-            var client = _clients.GetOrAdd(connectionString, static cs => new MongoClient(cs));
-            return client.GetDatabase(databaseName);
+            return _dbContextProvider.GetDatabase(connectionString, databaseName);
         }
 
         private async Task<long> ApplyInsertAsync(
