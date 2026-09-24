@@ -1,5 +1,7 @@
+﻿using System.Reflection;
 using Blocks.Genesis;
 using FluentAssertions;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources;
@@ -168,6 +170,57 @@ namespace XUnitTest.IamTests.Resources
             await Create().GetRolesAsync(query);
 
             _repo.Verify(r => r.GetRolesAsync(query, It.Is<string>(o => o == null)), Times.Once);
+        }
+
+        // ---------- Optional filter fields must stay optional ----------
+
+        [Theory]
+        [InlineData(typeof(GetRolesFilter), nameof(GetRolesFilter.Search))]
+        [InlineData(typeof(GetPermissionFilter), nameof(GetPermissionFilter.Search))]
+        [InlineData(typeof(GetPermissionFilter), nameof(GetPermissionFilter.IsBuiltIn))]
+        public void OptionalFilterStrings_AreNullable_SoModelBindingDoesNotRequireThem(
+            Type filterType,
+            string propertyName)
+        {
+            // This project builds with <Nullable>enable</Nullable>, and MVC turns a NON-nullable
+            // reference type on a bound model into an implicit [Required]. So declaring
+            // `public string Search` made "filter by slugs only" -- a legitimate request, and the
+            // only thing the bulk role dialog sends -- fail model binding with
+            // { "Filter.Search": ["The Search field is required."] } before any code ran.
+            //
+            // Reflection rather than a request test because the rule lives in model binding, which
+            // a unit test does not exercise; this pins the declaration that caused it.
+            var property = filterType.GetProperty(propertyName);
+            property.Should().NotBeNull();
+
+            var nullability = new NullabilityInfoContext().Create(property!);
+
+            nullability.WriteState.Should().Be(
+                NullabilityState.Nullable,
+                $"{filterType.Name}.{propertyName} is an optional filter; making it non-nullable " +
+                "silently turns it into a required field for every caller");
+        }
+
+        [Fact]
+        public async Task GetRoles_SlugsOnlyFilter_IsAValidQuery()
+        {
+            // The shape the bulk role dialog sends when it resolves held slugs to role names.
+            SetContext(orgId: "default");
+            var roles = new List<Role> { new() { Slug = "manager" } }.AsQueryable();
+            _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
+                .ReturnsAsync((roles, 1L));
+
+            var query = new GetRolesRequest
+            {
+                OrganizationId = "org-x",
+                Filter = new GetRolesFilter { Slugs = ["manager", "clouduser"] },
+            };
+
+            var result = await Create().GetRolesAsync(query);
+
+            query.Filter.Search.Should().BeNull();
+            result.TotalCount.Should().Be(1);
+            _repo.Verify(r => r.GetRolesAsync(query, "org-x"), Times.Once);
         }
 
         // ---------- GetResourceGroupsAsync ----------
