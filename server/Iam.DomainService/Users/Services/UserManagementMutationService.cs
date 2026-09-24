@@ -1548,6 +1548,460 @@ namespace Iam.DomainService.Users
             };
         }
 
+        #region Bulk role change
+
+        /// <summary>Request-shape guard, not a business rule: nobody may hold "only 50" roles.</summary>
+        private const int MaxRolesPerBulkRequest = 50;
+
+        /// <summary>Upper bound on a hand-picked target, so one payload cannot be unbounded.</summary>
+        private const int MaxUserIdsPerBulkRequest = 1000;
+
+        /// <summary>
+        /// The blast radius one submit may have. A truncated count would be a number the operator
+        /// acts on that does not describe what would happen, so over-cap is a rejection rather than a
+        /// partial success.
+        /// </summary>
+        private const int MaxBulkMatchedUsers = 5000;
+
+        /// <summary>Resolved ids per queue message. Bounds message size and per-message time.</summary>
+        private const int BulkRoleChunkSize = 500;
+
+        /// <summary>Page size used while walking the matched set; an implementation detail only.</summary>
+        private const int BulkResolutionPageSize = 1000;
+
+        /// <summary>
+        /// Apply a role delta to one user, in memory. <strong>Pure</strong>: it touches nothing but the
+        /// <paramref name="user"/> instance handed to it and never persists.
+        /// <para>
+        /// The preview and the worker both call this one function, which is the only way to guarantee
+        /// the count the operator approved is the change the worker writes. It is public rather than
+        /// internal because the worker lives in another assembly and the test project has no
+        /// <c>InternalsVisibleTo</c>.
+        /// </para>
+        /// <para>
+        /// Idempotent by construction: applying the same add/remove lists twice produces no change
+        /// the second time, so a redelivered queue message converges instead of double-writing.
+        /// </para>
+        /// </summary>
+        /// <returns><c>true</c> when the user's role list for this organization actually changed.</returns>
+        public static bool ApplyRoleDelta(
+            User user,
+            string organizationId,
+            IReadOnlyList<string> addRoles,
+            IReadOnlyList<string> removeRoles)
+        {
+            var current = user.Roles.TryGetValue(organizationId, out var existing) && existing is not null
+                ? new List<string>(existing)
+                : new List<string>();
+
+            var next = current.Where(r => !removeRoles.Contains(r, StringComparer.Ordinal)).ToList();
+
+            // Append-only, so a user's existing order survives and re-running the same delta is a
+            // no-op rather than a reshuffle.
+            foreach (var role in addRoles)
+            {
+                if (!next.Contains(role, StringComparer.Ordinal))
+                {
+                    next.Add(role);
+                }
+            }
+
+            if (next.SequenceEqual(current, StringComparer.Ordinal))
+            {
+                return false;
+            }
+
+            // Matching the single-user grant path: writing a role into an organization implies
+            // membership of it, rather than silently dropping the write.
+            if (!user.OrganizationIds.Contains(organizationId))
+            {
+                user.OrganizationIds.Add(organizationId);
+            }
+
+            user.Roles[organizationId] = next;
+            return true;
+        }
+
+        public async Task<BulkRoleChangePreviewResponse> PreviewBulkRoleChangeAsync(BulkRoleChangeRequest command)
+        {
+            _logger.LogInformation("Bulk role change preview start");
+
+            var (errors, plan) = await ValidateBulkRoleChangeAsync(command);
+            if (errors is not null)
+            {
+                _logger.LogInformation("Bulk role change preview end -- Validation Error");
+                return new BulkRoleChangePreviewResponse { Errors = errors };
+            }
+
+            var (users, overCap) = await ResolveBulkRoleTargetAsync(plan!);
+            if (overCap)
+            {
+                _logger.LogInformation("Bulk role change preview end -- over the matched cap");
+                return new BulkRoleChangePreviewResponse { Errors = OverMatchedCapError() };
+            }
+
+            long affected = 0;
+            foreach (var user in users)
+            {
+                // Safe to mutate: these are documents loaded into memory and thrown away. Nothing on
+                // this path writes, which a collection diff in the E2E steps proves.
+                if (ApplyRoleDelta(user, plan!.OrganizationId, plan.AddRoles, plan.RemoveRoles))
+                {
+                    affected++;
+                }
+            }
+
+            // Counted from the set actually evaluated rather than from CountDocuments, so the
+            // matched == affected + unchanged invariant holds even if the collection moves between
+            // the count and the pages.
+            long matched = users.Count;
+
+            _logger.LogInformation(
+                "Bulk role change preview end -- matched {Matched}, affected {Affected}",
+                matched,
+                affected);
+
+            return new BulkRoleChangePreviewResponse
+            {
+                IsSuccess = true,
+                MatchedCount = matched,
+                AffectedCount = affected,
+                UnchangedCount = matched - affected
+            };
+        }
+
+        public async Task<BulkRoleChangeSubmitResponse> SubmitBulkRoleChangeAsync(BulkRoleChangeRequest command)
+        {
+            _logger.LogInformation("Bulk role change submit start");
+
+            // Re-run rather than trust the preview: a console may submit without previewing, and the
+            // data can move between the two calls. Sharing one validator is what keeps the two
+            // endpoints' error strings identical.
+            var (errors, plan) = await ValidateBulkRoleChangeAsync(command);
+            if (errors is not null)
+            {
+                _logger.LogInformation("Bulk role change submit end -- Validation Error");
+                return new BulkRoleChangeSubmitResponse { Errors = errors };
+            }
+
+            var (users, overCap) = await ResolveBulkRoleTargetAsync(plan!);
+            if (overCap)
+            {
+                _logger.LogInformation("Bulk role change submit end -- over the matched cap");
+                return new BulkRoleChangeSubmitResponse { Errors = OverMatchedCapError() };
+            }
+
+            var userIds = users
+                .Select(u => u.ItemId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var batchId = $"b_{Guid.NewGuid():N}"[..10];
+            var tenantId = BlocksContext.GetContext()?.TenantId;
+
+            try
+            {
+                for (var offset = 0; offset < userIds.Count; offset += BulkRoleChunkSize)
+                {
+                    var chunk = userIds.Skip(offset).Take(BulkRoleChunkSize).ToList();
+
+                    await _messageClient.SendToConsumerAsync(
+                        new ConsumerMessage<BulkUserRoleChangeEvent>
+                        {
+                            ConsumerName = IdpConstants.IamBulkRoleQueue,
+                            Payload = new BulkUserRoleChangeEvent
+                            {
+                                BatchId = batchId,
+                                OrganizationId = plan!.OrganizationId,
+                                TenantId = tenantId,
+                                AddRoles = plan.AddRoles,
+                                RemoveRoles = plan.RemoveRoles,
+                                UserIds = chunk
+                            }
+                        });
+                }
+            }
+            catch (Exception ex)
+            {
+                // The console must never show "submitted" for work that was never queued. Chunks
+                // already published are left to run -- they are legitimate work -- and this response
+                // deliberately does not claim otherwise.
+                _logger.LogError(
+                    ex,
+                    "Bulk role change submit end -- publishing failed for batch {BatchId}",
+                    batchId);
+
+                return new BulkRoleChangeSubmitResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "Queue", "The bulk role change could not be queued. Try again." }
+                    }
+                };
+            }
+
+            _logger.LogInformation(
+                "Bulk role change submit end -- batch {BatchId} queued for {Matched} users",
+                batchId,
+                userIds.Count);
+
+            return new BulkRoleChangeSubmitResponse
+            {
+                IsSuccess = true,
+                BatchId = batchId,
+                MatchedCount = userIds.Count
+            };
+        }
+
+        public async Task ApplyBulkRoleChangeAsync(BulkUserRoleChangeEvent command)
+        {
+            _logger.LogInformation(
+                "Bulk role change apply start -- batch {BatchId}, {Count} users",
+                command.BatchId,
+                command.UserIds.Count);
+
+            foreach (var userId in command.UserIds)
+            {
+                // Per-user failures are logged and swallowed. Rethrowing would have the broker
+                // redeliver the whole chunk, re-scanning hundreds of healthy users for one bad id and
+                // looping forever on a permanently failing one.
+                try
+                {
+                    var user = await _userRepository.GetUserByIdAsync(userId);
+                    if (user is null)
+                    {
+                        _logger.LogWarning(
+                            "Bulk role change -- batch {BatchId}, user {UserId}: failed (not found)",
+                            command.BatchId,
+                            userId);
+                        continue;
+                    }
+
+                    if (!ApplyRoleDelta(user, command.OrganizationId, command.AddRoles, command.RemoveRoles))
+                    {
+                        _logger.LogInformation(
+                            "Bulk role change -- batch {BatchId}, user {UserId}: no-op",
+                            command.BatchId,
+                            userId);
+                        continue;
+                    }
+
+                    user.LastUpdatedDate = DateTime.UtcNow;
+                    user.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? user.ItemId;
+
+                    var updated = await _userRepository.UpdateUserAsync(user);
+
+                    if (updated)
+                    {
+                        _logger.LogInformation(
+                            "Bulk role change -- batch {BatchId}, user {UserId}: applied",
+                            command.BatchId,
+                            userId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "Bulk role change -- batch {BatchId}, user {UserId}: failed (update rejected)",
+                            command.BatchId,
+                            userId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Bulk role change -- batch {BatchId}, user {UserId}: failed",
+                        command.BatchId,
+                        userId);
+                }
+            }
+
+            _logger.LogInformation("Bulk role change apply end -- batch {BatchId}", command.BatchId);
+        }
+
+        /// <summary>
+        /// A validated request, with the lists normalised once so the preview and the submit path
+        /// cannot normalise them differently.
+        /// </summary>
+        private sealed record BulkRoleChangePlan(
+            string OrganizationId,
+            List<string> AddRoles,
+            List<string> RemoveRoles,
+            BulkRoleTarget Target);
+
+        private static Dictionary<string, string> OverMatchedCapError() =>
+            new()
+            {
+                { "Matched", $"This filter matches more than {MaxBulkMatchedUsers} users. Narrow it and try again." }
+            };
+
+        /// <summary>
+        /// The single validator both bulk endpoints run. Shared rather than duplicated so the submit
+        /// response can never disagree with the preview the operator approved.
+        /// </summary>
+        private async Task<(IDictionary<string, string>? Errors, BulkRoleChangePlan? Plan)> ValidateBulkRoleChangeAsync(
+            BulkRoleChangeRequest command)
+        {
+            var organizationId = command.OrganizationId;
+
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                return (Error(nameof(command.OrganizationId), "OrganizationId is required"), null);
+            }
+
+            // Reused verbatim from the single-user path, so the cross-organization rule cannot drift
+            // between the two.
+            var callerGuard = ValidateCallerMayWriteToOrganization(organizationId);
+            if (callerGuard is not null)
+            {
+                return (callerGuard.Errors, null);
+            }
+
+            // Blank entries are dropped rather than rejected: the contract has no error string for
+            // them, and an empty string is not a role anyone can hold. If dropping empties both
+            // lists, the "at least one role" rule below reports it.
+            var addRoles = Clean(command.AddRoles);
+            var removeRoles = Clean(command.RemoveRoles);
+
+            if (addRoles.Count == 0 && removeRoles.Count == 0)
+            {
+                return (Error("Roles", "At least one role to add or remove is required"), null);
+            }
+
+            if (addRoles.Count > MaxRolesPerBulkRequest || removeRoles.Count > MaxRolesPerBulkRequest)
+            {
+                return (Error("Roles", $"A maximum of {MaxRolesPerBulkRequest} roles is allowed per request"), null);
+            }
+
+            if (HasDuplicates(addRoles) || HasDuplicates(removeRoles))
+            {
+                return (Error("Roles", "Duplicate role in the same request"), null);
+            }
+
+            if (addRoles.Intersect(removeRoles, StringComparer.Ordinal).Any())
+            {
+                return (Error("Roles", "The same role cannot be both added and removed"), null);
+            }
+
+            var target = command.Target;
+            var userIds = Clean(target?.UserIds);
+            var hasUserIds = userIds.Count > 0;
+            var hasFilter = target?.Filter is not null;
+
+            if (hasUserIds == hasFilter)
+            {
+                return (Error("Target", "Exactly one of userIds or filter is required"), null);
+            }
+
+            if (hasUserIds)
+            {
+                if (userIds.Count > MaxUserIdsPerBulkRequest)
+                {
+                    return (Error("Target", $"A maximum of {MaxUserIdsPerBulkRequest} userIds is allowed per request"), null);
+                }
+
+                if (HasDuplicates(userIds))
+                {
+                    return (Error("Target", "Duplicate userId in the same request"), null);
+                }
+            }
+
+            // "default" is the tenant-wide organization and has no Organization document, exactly as
+            // the single-user path already assumes.
+            if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal)
+                && _resourceRepository is not null)
+            {
+                var organization = await _resourceRepository.GetOrganizationById(organizationId);
+                if (organization is null)
+                {
+                    return (Error(nameof(command.OrganizationId), "Organization not found"), null);
+                }
+            }
+
+            var plan = new BulkRoleChangePlan(
+                organizationId,
+                addRoles,
+                removeRoles,
+                new BulkRoleTarget { UserIds = hasUserIds ? userIds : null, Filter = target!.Filter });
+
+            return (null, plan);
+
+            static Dictionary<string, string> Error(string field, string message) =>
+                new() { { field, message } };
+
+            static List<string> Clean(List<string>? values) =>
+                values is null
+                    ? new List<string>()
+                    : values.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+
+            static bool HasDuplicates(List<string> values) =>
+                values.Distinct(StringComparer.Ordinal).Count() != values.Count;
+        }
+
+        /// <summary>
+        /// Walk the matched set through the same filter/scope path the user list uses, so the console
+        /// and the mutation can never disagree about who matched.
+        /// </summary>
+        /// <returns>
+        /// Every matched user, and whether the match exceeded <see cref="MaxBulkMatchedUsers"/> -- in
+        /// which case the list is deliberately empty, because partial counts are worse than none.
+        /// </returns>
+        private async Task<(List<User> Users, bool OverCap)> ResolveBulkRoleTargetAsync(BulkRoleChangePlan plan)
+        {
+            // The requested organization is passed explicitly rather than taken from the filter body,
+            // so a filter can never widen the scope beyond the one organization the caller named and
+            // was authorised for.
+            var scope = UserListOrganizationScope.Resolve(
+                BlocksContext.GetContext()?.OrganizationId,
+                [plan.OrganizationId]);
+
+            if (scope.Kind == UserListScopeKind.Denied)
+            {
+                // A token carrying no organization is answered without touching the database, the way
+                // the user list already answers it.
+                return (new List<User>(), false);
+            }
+
+            var filter = plan.Target.Filter ?? new GetUsersFilter { UserIds = plan.Target.UserIds! };
+
+            var users = new List<User>();
+            long totalCount = 0;
+
+            for (var page = 0; ; page++)
+            {
+                var query = new GetUsersRequest
+                {
+                    Filter = filter,
+                    Page = page,
+                    PageSize = BulkResolutionPageSize
+                };
+
+                var (data, count) = await _userRepository.GetUsersAsync<User, GetUsersRequest>(query, scope);
+
+                if (page == 0)
+                {
+                    totalCount = count;
+                    if (totalCount > MaxBulkMatchedUsers)
+                    {
+                        return (new List<User>(), true);
+                    }
+                }
+
+                var items = data?.ToList() ?? new List<User>();
+                users.AddRange(items);
+
+                if (items.Count < BulkResolutionPageSize || users.Count >= totalCount)
+                {
+                    break;
+                }
+            }
+
+            return (users, false);
+        }
+
+        #endregion
+
         private async Task<bool> SendPostEventAsync(User user, string mailPurpose)
         {
             return await _identityAccessManagementService.SendAccountActivationEmailAsync(user, mailPurpose);

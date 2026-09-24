@@ -571,6 +571,75 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
+        public async Task PreviewBulkRoleChange_Success_ReturnsOk()
+        {
+            _userMutation.Setup(s => s.PreviewBulkRoleChangeAsync(It.IsAny<BulkRoleChangeRequest>()))
+                .ReturnsAsync(new BulkRoleChangePreviewResponse
+                {
+                    IsSuccess = true,
+                    MatchedCount = 312,
+                    AffectedCount = 309,
+                    UnchangedCount = 3
+                });
+
+            var result = await CreateController().PreviewBulkRoleChange(new BulkRoleChangeRequest
+            {
+                OrganizationId = "org_acme",
+                AddRoles = ["viewer"],
+                Target = new BulkRoleTarget { UserIds = ["u-1"] }
+            });
+
+            result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task PreviewBulkRoleChange_ValidationErrors_ReturnsBadRequest()
+        {
+            _userMutation.Setup(s => s.PreviewBulkRoleChangeAsync(It.IsAny<BulkRoleChangeRequest>()))
+                .ReturnsAsync(new BulkRoleChangePreviewResponse
+                {
+                    Errors = new Dictionary<string, string> { { "Target", "Exactly one of userIds or filter is required" } }
+                });
+
+            var result = await CreateController().PreviewBulkRoleChange(new BulkRoleChangeRequest { OrganizationId = "org_acme" });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task SubmitBulkRoleChange_Success_ReturnsAcceptedNotOk()
+        {
+            // 202 is the only place the contract can say "this has not happened yet" -- the write is
+            // queued to a worker that reports nothing back, and the console's copy depends on that
+            // distinction being real.
+            _userMutation.Setup(s => s.SubmitBulkRoleChangeAsync(It.IsAny<BulkRoleChangeRequest>()))
+                .ReturnsAsync(new BulkRoleChangeSubmitResponse { IsSuccess = true, BatchId = "b_1", MatchedCount = 312 });
+
+            var result = await CreateController().SubmitBulkRoleChange(new BulkRoleChangeRequest
+            {
+                OrganizationId = "org_acme",
+                AddRoles = ["viewer"],
+                Target = new BulkRoleTarget { UserIds = ["u-1"] }
+            });
+
+            result.Should().BeOfType<AcceptedResult>();
+        }
+
+        [Fact]
+        public async Task SubmitBulkRoleChange_ValidationErrors_ReturnsBadRequest()
+        {
+            _userMutation.Setup(s => s.SubmitBulkRoleChangeAsync(It.IsAny<BulkRoleChangeRequest>()))
+                .ReturnsAsync(new BulkRoleChangeSubmitResponse
+                {
+                    Errors = new Dictionary<string, string> { { "Roles", "At least one role to add or remove is required" } }
+                });
+
+            var result = await CreateController().SubmitBulkRoleChange(new BulkRoleChangeRequest { OrganizationId = "org_acme" });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
         public async Task RevokeUserAccessControl_Failure_ReturnsBadRequest()
         {
             _userMutation.Setup(s => s.RevokeUserAccessControlAsync(It.IsAny<RevokeUserAccessControlRequest>()))

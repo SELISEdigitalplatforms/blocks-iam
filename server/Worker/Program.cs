@@ -52,6 +52,7 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         services.AddSingleton<IConsumer<CreateUserViaSsoEvent>, CreateUserViaSsoConsumer>();
         services.AddSingleton<IConsumer<OrganizationProvisioningEvent>, OrganizationProvisioningConsumer>();
         services.AddSingleton<IConsumer<UpdateOrganizationUserEvent>, UpdateOrganizationUserConsumer>();
+        services.AddSingleton<IConsumer<BulkUserRoleChangeEvent>, BulkUserRoleChangeConsumer>();
         services.AddSingleton<IConsumer<PermissionMutationForTenantsEvent>, PermissionMutationForTenantsConsumer>();
         services.AddSingleton<IConsumer<PropagationRolePermissionUpdateEvent>, PropagationRolePermissionUpdateConsumer>();
 
