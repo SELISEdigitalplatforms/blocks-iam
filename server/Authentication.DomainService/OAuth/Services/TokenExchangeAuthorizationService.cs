@@ -1,6 +1,7 @@
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
@@ -33,13 +34,32 @@ namespace Authentication.DomainService.OAuth.Services
     /// 7.1: clock window, nonce replay, signature, then -- and only then -- the grant lookup.
     /// A bad signature performs no Redis read at all.
     /// </para>
+    /// <para>
+    /// A grant names either a user or, for a <c>client_credentials</c> caller, a client. A client
+    /// grant has no version material; instead the client is re-read and must still be active, and
+    /// the token is minted with the client's current roles and permissions.
+    /// </para>
     /// </summary>
     public sealed class TokenExchangeAuthorizationService : ITokenService
     {
+        /// <summary>
+        /// IAM's read model of the grant record. Mirrors <see cref="DelegationGrantRecord"/> plus
+        /// <c>ClientId</c>, which the referenced Genesis package may predate. Same PascalCase wire names.
+        /// </summary>
+        private sealed record StoredGrant(
+            string? TenantId,
+            string? UserId,
+            string? OrganizationId,
+            string? TokenVersion,
+            string? SecurityStamp,
+            string? ClientId);
+
         private readonly ITenants _tenants;
         private readonly ICacheClient _cacheClient;
         private readonly IUserRepository _userRepository;
         private readonly IJwtAccessTokenProvider _jwtAccessTokenProvider;
+        private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IClientAccessTokenIssuer _clientAccessTokenIssuer;
         private readonly ILogger<TokenExchangeAuthorizationService> _logger;
 
         public TokenExchangeAuthorizationService(
@@ -47,12 +67,16 @@ namespace Authentication.DomainService.OAuth.Services
             ICacheClient cacheClient,
             IUserRepository userRepository,
             IJwtAccessTokenProvider jwtAccessTokenProvider,
+            IAuthenticationRepository authenticationRepository,
+            IClientAccessTokenIssuer clientAccessTokenIssuer,
             ILogger<TokenExchangeAuthorizationService> logger)
         {
             _tenants = tenants;
             _cacheClient = cacheClient;
             _userRepository = userRepository;
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
+            _authenticationRepository = authenticationRepository;
+            _clientAccessTokenIssuer = clientAccessTokenIssuer;
             _logger = logger;
         }
 
@@ -141,9 +165,12 @@ namespace Authentication.DomainService.OAuth.Services
                 return Failure("invalid_grant", "Delegation grant does not belong to this tenant");
             }
 
-            if (string.IsNullOrWhiteSpace(record.UserId))
+            var hasUser = !string.IsNullOrWhiteSpace(record.UserId);
+            var hasClient = !string.IsNullOrWhiteSpace(record.ClientId);
+            if (hasUser == hasClient)
             {
-                return Failure("invalid_grant", "Delegation grant carries no user");
+                // Exactly one subject. A record naming both, or neither, was not written by an SDK.
+                return Failure("invalid_grant", "Delegation grant must name exactly one of a user or a client");
             }
 
             // ---- 8. redemption rate cap
@@ -152,9 +179,14 @@ namespace Authentication.DomainService.OAuth.Services
                 return Failure("slow_down", "Redemption rate exceeded", StatusCodes.Status429TooManyRequests);
             }
 
+            if (hasClient)
+            {
+                return await RedeemClientGrantAsync(record, tenantId!, authenticationConfiguration).ConfigureAwait(false);
+            }
+
             // ---- 9. current user state from the tenant DB. The grant is a pointer to an identity,
             //         never a snapshot of its authority: everything below is re-read now.
-            var delegatedUser = await _userRepository.GetUserByIdAsync(record.UserId).ConfigureAwait(false);
+            var delegatedUser = await _userRepository.GetUserByIdAsync(record.UserId!).ConfigureAwait(false);
             if (delegatedUser == null || string.IsNullOrWhiteSpace(delegatedUser.ItemId))
             {
                 return Failure("invalid_grant", "User no longer exists");
@@ -171,7 +203,7 @@ namespace Authentication.DomainService.OAuth.Services
                 return Failure("invalid_grant", "Token version has changed");
             }
 
-            if (!string.Equals(delegatedUser.SecurityStamp ?? string.Empty, record.SecurityStamp, StringComparison.Ordinal))
+            if (!string.Equals(delegatedUser.SecurityStamp ?? string.Empty, record.SecurityStamp ?? string.Empty, StringComparison.Ordinal))
             {
                 // Credentials or security-relevant state changed since the grant was written.
                 return Failure("invalid_grant", "Security stamp has changed");
@@ -189,7 +221,7 @@ namespace Authentication.DomainService.OAuth.Services
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.TokenExchange,
-                OrganizationId = record.OrganizationId,
+                OrganizationId = record.OrganizationId ?? string.Empty,
                 Request = request?.Request
             };
 
@@ -221,6 +253,49 @@ namespace Authentication.DomainService.OAuth.Services
                 TokenType = "Bearer",
                 ExpiresIn = lifetimeSeconds,
                 ExpiresUtc = jwtAccessToken.Expires,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+
+        /// <summary>
+        /// Client grant: the client is re-read from the tenant DB and must still exist and be
+        /// active. Deactivating or deleting the client stops every outstanding grant for it.
+        /// The token carries the client's current roles and permissions, exactly as a
+        /// <c>client_credentials</c> token would, and no refresh token.
+        /// </summary>
+        private async Task<TokenResponse> RedeemClientGrantAsync(
+            StoredGrant record,
+            string tenantId,
+            IdentityConfiguration authenticationConfiguration)
+        {
+            var client = await _authenticationRepository.GetClientCredentialByIdAsync(record.ClientId!).ConfigureAwait(false);
+            if (client == null || string.IsNullOrWhiteSpace(client.ItemId))
+            {
+                return Failure("invalid_grant", "Client no longer exists");
+            }
+
+            if (!client.IsActive)
+            {
+                return Failure("invalid_grant", "Client is not active");
+            }
+
+            var result = await _clientAccessTokenIssuer.IssueForClientAsync(authenticationConfiguration, client).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(result.Error) || string.IsNullOrWhiteSpace(result.AccessToken))
+            {
+                return Failure(
+                    string.IsNullOrWhiteSpace(result.Error) ? "server_error" : result.Error!,
+                    result.ErrorDescription ?? "Unable to mint an access token",
+                    StatusCodes.Status500InternalServerError);
+            }
+
+            TokenExchangeLog.ClientGrantRedeemed(_logger, tenantId);
+
+            return new TokenResponse
+            {
+                AccessToken = result.AccessToken,
+                TokenType = "Bearer",
+                ExpiresIn = result.ExpiresIn,
+                ExpiresUtc = result.ExpiresUtc,
                 StatusCode = StatusCodes.Status200OK
             };
         }
@@ -259,14 +334,14 @@ namespace Authentication.DomainService.OAuth.Services
             }
         }
 
-        private async Task<DelegationGrantRecord?> ReadGrantAsync(string delegationId)
+        private async Task<StoredGrant?> ReadGrantAsync(string delegationId)
         {
             var json = await _cacheClient.GetStringValueAsync(DelegationPolicy.GrantKey(delegationId)).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(json)) return null;
 
             try
             {
-                return JsonSerializer.Deserialize<DelegationGrantRecord>(json);
+                return JsonSerializer.Deserialize<StoredGrant>(json);
             }
             catch (JsonException ex)
             {
@@ -330,5 +405,8 @@ namespace Authentication.DomainService.OAuth.Services
 
         [LoggerMessage(EventId = 8006, Level = LogLevel.Information, Message = "Delegation grant redeemed for tenant {TenantId}.")]
         public static partial void Redeemed(ILogger logger, string tenantId);
+
+        [LoggerMessage(EventId = 8007, Level = LogLevel.Information, Message = "Client delegation grant redeemed for tenant {TenantId}.")]
+        public static partial void ClientGrantRedeemed(ILogger logger, string tenantId);
     }
 }
