@@ -86,6 +86,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<BYOSsoAuthorizationService>();
             serviceCollection.AddSingleton<BiometricAuthorizationService>();
             serviceCollection.AddSingleton<ClientCredentialAuthorizationService>();
+            serviceCollection.AddSingleton<IClientAccessTokenIssuer>(sp => sp.GetRequiredService<ClientCredentialAuthorizationService>());
             serviceCollection.AddSingleton<ClientUserCodeAuthorizationService>();
             serviceCollection.AddSingleton<SSOConsentAuthenticationService>();
             serviceCollection.AddSingleton<IAuthorizationClaimsResolver, AuthorizationClaimsResolver>();
