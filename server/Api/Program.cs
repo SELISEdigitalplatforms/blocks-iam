@@ -1,4 +1,3 @@
-using Api.Middleware;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
@@ -57,7 +56,6 @@ var app = builder.Build();
 // Configure DomainResolver with IHttpContextAccessor instance
 DomainResolver.Configure(app.Services.GetRequiredService<IHttpContextAccessor>());
 
-app.UseMiddleware<SecurityHeadersMiddleware>();
 
 
 // Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
