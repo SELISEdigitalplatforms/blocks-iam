@@ -13,7 +13,16 @@ using Iam.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth.Services
 {
-    public sealed class ClientCredentialAuthorizationService : ITokenService
+    /// <summary>
+    /// Mints a <c>client_credentials</c>-shaped access token for a client that has already been
+    /// authenticated some other way. Used by the delegation token exchange for client grants.
+    /// </summary>
+    public interface IClientAccessTokenIssuer
+    {
+        Task<TokenResponse> IssueForClientAsync(IdentityConfiguration authenticationConfiguration, ClientCredential client);
+    }
+
+    public sealed class ClientCredentialAuthorizationService : ITokenService, IClientAccessTokenIssuer
     {
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ICertificateProviderFactory _certificateProviderFactory;
@@ -49,7 +58,16 @@ namespace Authentication.DomainService.OAuth.Services
             if (validationResult != null)
                 return validationResult;
 
-            var jwtToken = await GetJwtAccessToken(authenticationConfiguration, client!);
+            return await IssueForClientAsync(authenticationConfiguration, client!);
+        }
+
+        /// <summary>
+        /// Mints the token for an already-authenticated client. The caller is responsible for
+        /// having verified the client exists and is active.
+        /// </summary>
+        public async Task<TokenResponse> IssueForClientAsync(IdentityConfiguration authenticationConfiguration, ClientCredential client)
+        {
+            var jwtToken = await GetJwtAccessToken(authenticationConfiguration, client);
             if (jwtToken == null)
                 return new TokenResponse
                 {
