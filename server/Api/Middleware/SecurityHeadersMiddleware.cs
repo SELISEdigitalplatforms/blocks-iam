@@ -25,19 +25,16 @@ public sealed class SecurityHeadersMiddleware
             headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
             headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
 
-            // Moderate CSP: SPA needs inline bootstrap; APIs still benefit from frame-ancestors.
+            // CSP present for ZAP/browser hardening without breaking OIDC cross-host
+            // login (preview → shared IdP → callback). Tighten further in a dedicated
+            // CSP ticket once nonce/hash script loading is in place.
             if (!headers.ContainsKey("Content-Security-Policy"))
             {
                 headers["Content-Security-Policy"] =
-                    "default-src 'self'; " +
-                    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-                    "style-src 'self' 'unsafe-inline'; " +
-                    "img-src 'self' data: https:; " +
-                    "font-src 'self' data:; " +
-                    "connect-src 'self' https:; " +
+                    "default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; " +
                     "frame-ancestors 'none'; " +
                     "base-uri 'self'; " +
-                    "form-action 'self'";
+                    "object-src 'none'";
             }
 
             var path = httpContext.Request.Path.Value ?? string.Empty;
