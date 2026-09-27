@@ -1,4 +1,5 @@
-﻿using Authentication.DomainService.Authentication;
+﻿using System.Reflection;
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Authentication.RequestModel;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
@@ -113,6 +114,35 @@ namespace XUnitTest.Auth
             _repo.Verify(r => r.UpdateAuthenticationConfigurationAsync(It.Is<IdentityConfiguration>(c =>
                 c.PasswordStrengthCheckerRegex == current.PasswordStrengthCheckerRegex &&
                 c.PasswordStrengthCheckerMessage == current.PasswordStrengthCheckerMessage)), Times.Once);
+        }
+
+        // ASP.NET Core implicitly treats a non-nullable reference-type property on a request DTO as
+        // [Required] when nullable reference types are enabled project-wide (as they are here), even
+        // with no explicit [Required] attribute -- so model binding 400s a request that omits this
+        // field, regardless of what the service method below would have done with it. A fresh project
+        // has no stored regex (GetAuthenticationConfigAsync legitimately returns null for it), so the
+        // field must stay nullable or every such project is unable to ever call this endpoint.
+        [Fact]
+        public void PasswordStrengthCheckerRegex_IsNullable_SoItIsNotImplicitlyRequiredByModelBinding()
+        {
+            var property = typeof(UpdateAuthenticationConfigurationRequest)
+                .GetProperty(nameof(UpdateAuthenticationConfigurationRequest.PasswordStrengthCheckerRegex))!;
+
+            new NullabilityInfoContext().Create(property).WriteState.Should().Be(NullabilityState.Nullable);
+        }
+
+        [Fact]
+        public async Task Update_OmittedPolicyOnFreshProjectSucceeds()
+        {
+            var current = new IdentityConfiguration { IsOidcEnabled = false };
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
+            {
+                IsOidcEnabled = true, AccountActionBaseUrl = "https://app.test"
+            });
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.UpdateAuthenticationConfigurationAsync(It.Is<IdentityConfiguration>(c =>
+                c.PasswordStrengthCheckerRegex == null)), Times.Once);
         }
 
         [Fact]

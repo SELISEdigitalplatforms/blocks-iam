@@ -174,7 +174,7 @@ namespace Authentication.DomainService.Authentication
                     ? requested
                     : currentValue ?? defaultValue;
 
-            static string ResolveString(string requested, string currentValue)
+            static string? ResolveString(string? requested, string? currentValue)
                 => !string.IsNullOrWhiteSpace(requested)
                     ? requested
                     : currentValue;

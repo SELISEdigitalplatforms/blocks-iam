@@ -45,7 +45,7 @@ namespace Authentication.DomainService.Entities
         public int ActivationUrlLifetimeInMinutes { get; set; } = DefaultActivationUrlLifetimeInMinutes;
         public int RecoverAccountUrlLifetimeInMinutes { get; set; } = DefaultRecoverAccountUrlLifetimeInMinutes;
         public bool LogoutOnPasswordChange { get; set; } = true;
-        public string PasswordStrengthCheckerRegex { get; set; }
+        public string? PasswordStrengthCheckerRegex { get; set; }
 
         /// <summary>Short plain-text explanation of the password rule. Empty means no message written.</summary>
         public string PasswordStrengthCheckerMessage { get; set; } = string.Empty;
