@@ -272,6 +272,29 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
+        /// <summary>
+        /// Dry-run a bulk role delta. Writes nothing; answers how many users would change.
+        /// </summary>
+        [HttpPost("users/roles/bulk/preview")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        public async Task<IActionResult> PreviewBulkRoleChange(BulkRoleChangeRequest command)
+        {
+            var result = await _userManagementMutationService.PreviewBulkRoleChangeAsync(command);
+            return result.Errors is { Count: > 0 } ? BadRequest(result) : Ok(result);
+        }
+
+        /// <summary>
+        /// Queue a bulk role delta. 202 rather than 200: the status code is the only place the
+        /// contract can say the change has not happened yet.
+        /// </summary>
+        [HttpPost("users/roles/bulk")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        public async Task<IActionResult> SubmitBulkRoleChange(BulkRoleChangeRequest command)
+        {
+            var result = await _userManagementMutationService.SubmitBulkRoleChangeAsync(command);
+            return result.Errors is { Count: > 0 } ? BadRequest(result) : Accepted(result);
+        }
+
         [HttpPost("users/revoke-access")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
         public async Task<IActionResult> RevokeUserAccessControl(RevokeUserAccessControlRequest command)

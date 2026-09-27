@@ -41,6 +41,8 @@ namespace XUnitTest.Auth.OAuth
         private readonly Mock<IDatabase> _cacheDb = new();
         private readonly Mock<IUserRepository> _userRepository = new();
         private readonly Mock<IJwtAccessTokenProvider> _jwtAccessTokenProvider = new();
+        private readonly Mock<Authentication.DomainService.Services.IAuthenticationRepository> _authenticationRepository = new();
+        private readonly Mock<IClientAccessTokenIssuer> _clientAccessTokenIssuer = new();
 
         private readonly bool _originalTestMode = BlocksContext.IsTestMode;
 
@@ -204,6 +206,8 @@ namespace XUnitTest.Auth.OAuth
             _cache.Object,
             _userRepository.Object,
             _jwtAccessTokenProvider.Object,
+            _authenticationRepository.Object,
+            _clientAccessTokenIssuer.Object,
             NullLogger<TokenExchangeAuthorizationService>.Instance);
 
         private static TokenRequest Request(
@@ -729,6 +733,99 @@ namespace XUnitTest.Auth.OAuth
 
             _cache.Verify(c => c.RemoveKeyAsync(It.IsAny<string>()), Times.Never);
             _cacheDb.Verify(db => db.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()), Times.Never);
+        }
+
+        // ------------------------------------------------------------------ client grants
+
+        private const string ClientId = "client-1";
+
+        private void StoreClientGrant(string? userId = null, string clientId = ClientId, string tenantId = TenantId)
+        {
+            // Serialized by hand: the referenced Genesis package's record may predate ClientId.
+            var json = JsonSerializer.Serialize(new
+            {
+                TenantId = tenantId,
+                UserId = userId ?? string.Empty,
+                OrganizationId = OrganizationId,
+                TokenVersion = string.Empty,
+                SecurityStamp = string.Empty,
+                ClientId = clientId
+            });
+            _cache.Setup(c => c.GetStringValueAsync(DelegationPolicy.GrantKey(GrantId))).ReturnsAsync(json);
+        }
+
+        private void StoreClient(bool active = true)
+        {
+            _authenticationRepository
+                .Setup(r => r.GetClientCredentialByIdAsync(ClientId))
+                .ReturnsAsync(new ClientCredential { ItemId = ClientId, IsActive = active, OrganizationId = OrganizationId });
+        }
+
+        [Fact]
+        public async Task ClientGrant_ShouldMintAClientToken_WithoutTouchingUsers()
+        {
+            StoreClientGrant();
+            StoreClient();
+            _clientAccessTokenIssuer
+                .Setup(i => i.IssueForClientAsync(It.IsAny<IdentityConfiguration>(), It.Is<ClientCredential>(c => c.ItemId == ClientId)))
+                .ReturnsAsync(new Authentication.DomainService.OAuth.ResponseModel.TokenResponse
+                {
+                    AccessToken = "client-token", TokenType = "Bearer", ExpiresIn = 300, StatusCode = 200
+                });
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().BeNullOrWhiteSpace();
+            result.AccessToken.Should().Be("client-token");
+            result.ExpiresIn.Should().Be(300);
+            result.RefreshToken.Should().BeNull();
+            _userRepository.Verify(r => r.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ClientGrant_ShouldBeRejected_WhenTheClientIsInactive()
+        {
+            StoreClientGrant();
+            StoreClient(active: false);
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("invalid_grant");
+            _clientAccessTokenIssuer.Verify(i => i.IssueForClientAsync(It.IsAny<IdentityConfiguration>(), It.IsAny<ClientCredential>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ClientGrant_ShouldBeRejected_WhenTheClientNoLongerExists()
+        {
+            StoreClientGrant();
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("invalid_grant");
+        }
+
+        [Fact]
+        public async Task Grant_ShouldBeRejected_WhenItNamesBothAUserAndAClient()
+        {
+            StoreClientGrant(userId: UserId);
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("invalid_grant");
+            _userRepository.Verify(r => r.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+            _authenticationRepository.Verify(r => r.GetClientCredentialByIdAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ClientGrant_FromAnotherTenant_ShouldBeRejected()
+        {
+            StoreClientGrant(tenantId: "tenant-other");
+            StoreClient();
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("invalid_grant");
+            _authenticationRepository.Verify(r => r.GetClientCredentialByIdAsync(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

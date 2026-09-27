@@ -250,6 +250,17 @@
             change before deciding to ask someone else to make it.
             </remarks>
         </member>
+        <member name="M:Api.Controllers.IamController.PreviewBulkRoleChange(Iam.DomainService.Users.BulkRoleChangeRequest)">
+            <summary>
+            Dry-run a bulk role delta. Writes nothing; answers how many users would change.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IamController.SubmitBulkRoleChange(Iam.DomainService.Users.BulkRoleChangeRequest)">
+            <summary>
+            Queue a bulk role delta. 202 rather than 200: the status code is the only place the
+            contract can say the change has not happened yet.
+            </summary>
+        </member>
         <member name="M:Api.Controllers.IamController.IsOrganizationNameAvailable(Iam.DomainService.Resources.RequestModel.IsOrganizationNameAvailableRequest)">
             <summary>
             Whether an organization name is free, with alternatives when it is not.

@@ -40,6 +40,13 @@ namespace Authentication.DomainService.Authentication
         Task<BaseResponse> DeleteIdentityProviderAsync(string id);
         Task<BaseResponse> UpdateIdentityProviderStatusAsync(string id, bool isActive);
         Task<RotateOidcClientSecretResponse> RotateOidcClientSecretAsync(string itemId);
+        /// <summary>
+        /// Whether <paramref name="targetTenantId"/> is shared with <paramref name="userId"/> through
+        /// ProjectPeoples. Re-checked on impersonation start AND on every impersonated refresh, so a
+        /// revoked share ends the session at the next rotation rather than surviving to the absolute cap.
+        /// Fails closed: an error reading the share reads as "not shared".
+        /// </summary>
+        Task<bool> IsTenantSharedWithUserAsync(string userId, string targetTenantId);
         Task<IActionResult> ExecuteImpersonateAsync(ImpersonateRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
         Task<IActionResult> ExecuteStopImpersonationAsync(StopImpersonationRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
     }
