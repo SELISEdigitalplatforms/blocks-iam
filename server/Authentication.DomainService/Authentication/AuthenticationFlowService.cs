@@ -512,6 +512,26 @@ namespace Authentication.DomainService.Authentication
                 ? null
                 : tokenCache.RefreshToken;
 
+            // This endpoint mints a plain, non-impersonated pair: nothing below carries IsImpersonation,
+            // so continuing here would silently rotate an impersonated session back to its root tenant and
+            // overwrite the browser's cookies with root-scoped ones -- an HTTP 200 the caller cannot tell
+            // apart from a correct refresh. An impersonated lineage rotates only through /api/oidc/token,
+            // which restores the impersonation as part of the same rotation.
+            if (tokenCache.Impersonated)
+            {
+                _logger.LogWarning(
+                    "Impersonated refresh rejected on the non-impersonating refresh endpoint. reason=impersonated_session_wrong_endpoint userId={UserId} tenantId={TenantId} impersonationId={ImpersonationId}",
+                    tokenCache.UserId,
+                    tokenCache.TenantId,
+                    tokenCache.ImpersonationId);
+
+                return new BadRequestObjectResult(new
+                {
+                    error = OAuthError.InvalidRefreshToken,
+                    error_description = "An impersonated session must be refreshed through the OIDC token endpoint"
+                });
+            }
+
             var currentTenantId = BlocksContext.GetContext()?.TenantId;
 
             if (!string.Equals(tokenCache.TenantId, currentTenantId, StringComparison.OrdinalIgnoreCase))

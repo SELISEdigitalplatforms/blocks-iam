@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 
 namespace Iam.DomainService.Utilities
 {
@@ -11,6 +11,10 @@ namespace Iam.DomainService.Utilities
         public const string IamResourceQueue = "blocks_iam_listener_resource";
         public const string IamPermissionQueue = "blocks_iam_listener_permission";
         public const string IamOrgQueue = "blocks_iam_org_listener";
+
+        // A dedicated queue rather than IamUserQueue: a 5000-user batch on the shared user queue
+        // would head-of-line-block ordinary per-user mutation events behind it.
+        public const string IamBulkRoleQueue = "blocks_iam_listener_bulk_role";
         public const string MailQueue = "blocks_email_listener";
         public const string MfaQueueName = "blocks_mfa_listener";
         public const string UserActivityQueue = "blocks_user_activity_listener";
@@ -195,6 +199,7 @@ namespace Iam.DomainService.Utilities
                 {
                     ConsumerSubscriptions = [ConsumerSubscription.BindToQueue(AuthenticationQueue),
                                              ConsumerSubscription.BindToQueue(IamUserQueue),
+                                             ConsumerSubscription.BindToQueue(IamBulkRoleQueue),
                                              ConsumerSubscription.BindToQueue(IamResourceQueue),
                                              ConsumerSubscription.BindToQueue(MfaQueueName),
                                              ConsumerSubscription.BindToQueue(IamOrgQueue),
@@ -210,7 +215,7 @@ namespace Iam.DomainService.Utilities
             {
                 AzureServiceBusConfiguration = new AzureServiceBusConfiguration
                 {
-                    Queues = [AuthenticationQueue, IamUserQueue, IamResourceQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue, UserActivityQueue],
+                    Queues = [AuthenticationQueue, IamUserQueue, IamBulkRoleQueue, IamResourceQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue, UserActivityQueue],
                     Topics = []
                 }
             };

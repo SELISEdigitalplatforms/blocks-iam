@@ -1407,7 +1407,7 @@ namespace Authentication.DomainService.Authentication
         {
             return await _authenticationDomainService.RotateOidcClientSecretAsync(itemId);
         }
-        private async Task<bool> IsTenantSharedWithUserAsync(string userId, string targetTenantId)
+        public async Task<bool> IsTenantSharedWithUserAsync(string userId, string targetTenantId)
         {
             try
             {
