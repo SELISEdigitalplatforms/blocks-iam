@@ -54,7 +54,7 @@ namespace Authentication.DomainService.OAuth
                 return false;
             }
 
-            var segments = key.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var segments = key.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.None);
             if (segments.Length == 0 || segments.Any(static s => s is ".." or ""))
             {
                 return false;

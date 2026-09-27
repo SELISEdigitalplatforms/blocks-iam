@@ -62,9 +62,8 @@ jobs:
           set -euo pipefail
           trivy fs --quiet --format cyclonedx --output sbom.cdx.json .
           # Dependency-Track rejects spec versions it does not know yet.
-          sed -E 's/"specVersion"[[:space:]]*:[[:space:]]*"1\.7"/"specVersion": "${INPUTS_SPEC_VERSION}"/' \
-            sbom.cdx.json > sbom.upload.json
-          python3 -c "import json;d=json.load(open('sbom.upload.json'));print('components:',len(d.get('components',[])))"
+          # Use python (not single-quoted sed) so INPUTS_SPEC_VERSION expands.
+          python3 -c "import json,os;d=json.load(open('sbom.cdx.json'));d['specVersion']=os.environ['INPUTS_SPEC_VERSION'];json.dump(d,open('sbom.upload.json','w'));print('components:',len(d.get('components',[])),'specVersion:',d['specVersion'])"
 
       - name: Upload SBOM to SCA portal
         env:

@@ -14,6 +14,9 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
     private readonly IValidator<UpdateSignupLinkConfigurationRequest> _updateValidator;
     private readonly IValidator<QuerySignupLinkConfigurationsRequest> _queryValidator;
 
+    private const string TenantIdKey = "TenantId";
+    private const string TenantIdRequiredMessage = "TenantId is required";
+
     public SignupLinkConfigurationService(
         ISignupLinkConfigurationRepository repository,
         IOidcClientRegistrationLookup oidcLookup,
@@ -41,7 +44,7 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         var tenantId = RequireTenantId();
         if (tenantId == null)
         {
-            return Failure("TenantId", "TenantId is required");
+            return Failure(TenantIdKey, TenantIdRequiredMessage);
         }
 
         var nameClash = await _repository.FindByNameAsync(tenantId, request.Name.Trim());
@@ -101,7 +104,7 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         var tenantId = RequireTenantId();
         if (tenantId == null)
         {
-            return Failure("TenantId", "TenantId is required");
+            return Failure(TenantIdKey, TenantIdRequiredMessage);
         }
 
         var entity = await _repository.GetByIdAsync(id, tenantId);
@@ -110,16 +113,29 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             return NotFoundMutation();
         }
 
-        if (request.Name != null)
+        var applyError = await ApplyUpdateFieldsAsync(entity, tenantId, request);
+        if (applyError != null)
         {
-            var trimmed = request.Name.Trim();
-            var clash = await _repository.FindByNameAsync(tenantId, trimmed, excludeItemId: entity.ItemId);
-            if (clash != null)
-            {
-                return Failure("Name", "A configuration with this name already exists");
-            }
+            return applyError;
+        }
 
-            entity.Name = trimmed;
+        var ctx = BlocksContext.GetContext();
+        entity.LastUpdatedBy = ctx?.UserId;
+        entity.LastUpdatedDate = DateTime.UtcNow;
+
+        await _repository.ReplaceAsync(entity);
+        return new BaseMutationResponse { IsSuccess = true, ItemId = entity.ItemId };
+    }
+
+    private async Task<BaseMutationResponse?> ApplyUpdateFieldsAsync(
+        SignupLinkConfiguration entity,
+        string tenantId,
+        UpdateSignupLinkConfigurationRequest request)
+    {
+        var nameError = await ApplyNameAsync(entity, tenantId, request.Name);
+        if (nameError != null)
+        {
+            return nameError;
         }
 
         if (request.Description != null)
@@ -143,25 +159,10 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             entity.DefaultPermissions = request.DefaultPermissions.ToList();
         }
 
-        var clientId = request.ClientId ?? entity.ClientId;
-        var redirectUri = request.RedirectUri ?? entity.RedirectUri;
-        if (request.ClientId != null || request.RedirectUri != null)
+        var clientError = await ApplyClientRedirectAsync(entity, request);
+        if (clientError != null)
         {
-            var clientError = await ValidateClientAndRedirectAsync(clientId, redirectUri);
-            if (clientError != null)
-            {
-                return clientError;
-            }
-
-            if (request.ClientId != null)
-            {
-                entity.ClientId = request.ClientId;
-            }
-
-            if (request.RedirectUri != null)
-            {
-                entity.RedirectUri = request.RedirectUri;
-            }
+            return clientError;
         }
 
         if (request.DefaultForwardedTo != null)
@@ -179,20 +180,64 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             entity.DefaultLifetimeMinutes = request.DefaultLifetimeMinutes.Value;
         }
 
-        // Allow explicitly setting null only when the JSON property is present — for v1 the
-        // nullable int? means "omit" vs "set null" cannot be distinguished; treat HasValue
-        // updates only. Spec A4: accepting null on create is the default; patch may set 1.
+        // Spec A4: patch may set max redemptions to 1; omit leaves unchanged.
         if (request.DefaultMaxRedemptions.HasValue)
         {
             entity.DefaultMaxRedemptions = request.DefaultMaxRedemptions;
         }
 
-        var ctx = BlocksContext.GetContext();
-        entity.LastUpdatedBy = ctx?.UserId;
-        entity.LastUpdatedDate = DateTime.UtcNow;
+        return null;
+    }
 
-        await _repository.ReplaceAsync(entity);
-        return new BaseMutationResponse { IsSuccess = true, ItemId = entity.ItemId };
+    private async Task<BaseMutationResponse?> ApplyNameAsync(
+        SignupLinkConfiguration entity,
+        string tenantId,
+        string? name)
+    {
+        if (name == null)
+        {
+            return null;
+        }
+
+        var trimmed = name.Trim();
+        var clash = await _repository.FindByNameAsync(tenantId, trimmed, excludeItemId: entity.ItemId);
+        if (clash != null)
+        {
+            return Failure("Name", "A configuration with this name already exists");
+        }
+
+        entity.Name = trimmed;
+        return null;
+    }
+
+    private async Task<BaseMutationResponse?> ApplyClientRedirectAsync(
+        SignupLinkConfiguration entity,
+        UpdateSignupLinkConfigurationRequest request)
+    {
+        if (request.ClientId == null && request.RedirectUri == null)
+        {
+            return null;
+        }
+
+        var clientId = request.ClientId ?? entity.ClientId;
+        var redirectUri = request.RedirectUri ?? entity.RedirectUri;
+        var clientError = await ValidateClientAndRedirectAsync(clientId, redirectUri);
+        if (clientError != null)
+        {
+            return clientError;
+        }
+
+        if (request.ClientId != null)
+        {
+            entity.ClientId = request.ClientId;
+        }
+
+        if (request.RedirectUri != null)
+        {
+            entity.RedirectUri = request.RedirectUri;
+        }
+
+        return null;
     }
 
     public async Task<BaseMutationResponse> ArchiveAsync(string id)
@@ -200,7 +245,7 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         var tenantId = RequireTenantId();
         if (tenantId == null)
         {
-            return Failure("TenantId", "TenantId is required");
+            return Failure(TenantIdKey, TenantIdRequiredMessage);
         }
 
         var entity = await _repository.GetByIdAsync(id, tenantId);
@@ -246,7 +291,7 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         var tenantId = RequireTenantId();
         if (tenantId == null)
         {
-            return (null, new Dictionary<string, string> { { "TenantId", "TenantId is required" } });
+            return (null, new Dictionary<string, string> { { TenantIdKey, TenantIdRequiredMessage } });
         }
 
         var (items, total) = await _repository.QueryAsync(tenantId, request);
