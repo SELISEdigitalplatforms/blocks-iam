@@ -2,6 +2,7 @@
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
+using Iam.DomainService.SignupLinks;
 using Iam.DomainService.Users;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +30,9 @@ namespace Iam.DomainService.Utilities
 
             services.AddSingleton<IAccountService, AccountService>();
             services.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
+
+            services.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();
+            services.AddSingleton<ISignupLinkConfigurationService, SignupLinkConfigurationService>();
             services.AddHttpContextAccessor();
 
 
@@ -46,6 +50,9 @@ namespace Iam.DomainService.Utilities
             services.AddTransient<IValidator<UpdatePermissionRequest>, UpdatePermissionValidator>();
             services.AddTransient<IValidator<RecoveryUserRequest>, RecoveryUserRequestValidator>();
             services.AddTransient<IValidator<SignupOrganizationInfo>, SignupOrganizationValidator>();
+            services.AddTransient<IValidator<CreateSignupLinkConfigurationRequest>, CreateSignupLinkConfigurationValidator>();
+            services.AddTransient<IValidator<UpdateSignupLinkConfigurationRequest>, UpdateSignupLinkConfigurationValidator>();
+            services.AddTransient<IValidator<QuerySignupLinkConfigurationsRequest>, QuerySignupLinkConfigurationsValidator>();
             #endregion
 
         }

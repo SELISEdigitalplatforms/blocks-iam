@@ -17,7 +17,7 @@ report if any path is unknown.
 
 import os
 import sys
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from xml.sax.saxutils import escape, quoteattr
 
 

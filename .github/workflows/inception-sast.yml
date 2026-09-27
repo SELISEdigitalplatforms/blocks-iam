@@ -39,6 +39,10 @@ on:
         type: boolean
         default: true
 
+    secrets:
+      INCEPTION_SONAR_TOKEN:
+        required: true
+
 permissions:
   contents: read
 
@@ -68,28 +72,28 @@ jobs:
       LCOV: ${{ github.workspace }}/client/coverage/lcov.info
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # Full history so SonarQube can attribute new code / blame.
           fetch-depth: 0
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: ${{ inputs.DOTNET_VERSION }}
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: ${{ inputs.JAVA_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ inputs.NODE_VERSION }}
           cache: npm
           cache-dependency-path: client/package-lock.json
 
       - name: Cache SonarQube scanner
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.dotnet/tools
           key: sonar-scanner-${{ runner.os }}-dotnet
@@ -109,13 +113,16 @@ jobs:
       - name: Sonar begin
         env:
           SONAR_TOKEN: ${{ secrets.INCEPTION_SONAR_TOKEN }}
+          INPUTS_SONAR_PROJECT_KEY: ${{ inputs.SONAR_PROJECT_KEY }}
+          INPUTS_SONAR_PROJECT_VERSION: ${{ inputs.SONAR_PROJECT_VERSION }}
+          INPUTS_SONAR_HOST_URL: ${{ inputs.SONAR_HOST_URL }}
         run: |
           set -euo pipefail
           mkdir -p "$COV_DIR"
           dotnet sonarscanner begin \
-            /k:"${{ inputs.SONAR_PROJECT_KEY }}" \
-            /v:"${{ inputs.SONAR_PROJECT_VERSION }}" \
-            /d:sonar.host.url="${{ inputs.SONAR_HOST_URL }}" \
+            /k:"${INPUTS_SONAR_PROJECT_KEY}" \
+            /v:"${INPUTS_SONAR_PROJECT_VERSION}" \
+            /d:sonar.host.url="${INPUTS_SONAR_HOST_URL}" \
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.scanner.scanAll=true \
             /d:sonar.exclusions="**/node_modules/**,**/dist/**,**/wwwroot/**,**/bin/**,**/obj/**,**/coverage/**,**/TestResults/**,**/.coverage/**" \
@@ -143,6 +150,8 @@ jobs:
       - name: Server unit tests + coverage
         id: test_server
         continue-on-error: true
+        env:
+          STEPS_BUILD_SERVER_OUTPUTS_SLN: ${{ steps.build_server.outputs.sln }}
         run: |
           set -euo pipefail
           # Only some repos ship a runsettings; use it when present.
@@ -150,7 +159,7 @@ jobs:
           rs="$(ls server/*/coverage.runsettings 2>/dev/null | head -1 || true)"
           [ -n "$rs" ] && { settings="--settings $rs"; echo "runsettings: $rs"; }
           # Force opencover: Sonar cannot read coverlet's default cobertura for C#.
-          dotnet test "${{ steps.build_server.outputs.sln }}" -c Release --no-build --nologo -v q \
+          dotnet test "${STEPS_BUILD_SERVER_OUTPUTS_SLN}" -c Release --no-build --nologo -v q \
             $settings \
             --collect:"XPlat Code Coverage;Format=opencover,cobertura" \
             --logger "trx;LogFileName=blocks-iam-server.trx" \
@@ -201,15 +210,21 @@ jobs:
 
       - name: Report test outcome
         if: always()
+        env:
+          STEPS_TEST_SERVER_OUTCOME: ${{ steps.test_server.outcome }}
+          STEPS_TEST_CLIENT_OUTCOME: ${{ steps.test_client.outcome }}
+          INPUTS_SONAR_HOST_URL: ${{ inputs.SONAR_HOST_URL }}
+          INPUTS_SONAR_PROJECT_KEY: ${{ inputs.SONAR_PROJECT_KEY }}
+          INPUTS_FAIL_ON_TEST_FAILURE: ${{ inputs.FAIL_ON_TEST_FAILURE }}
         run: |
           set -euo pipefail
-          srv="${{ steps.test_server.outcome }}"
-          cli="${{ steps.test_client.outcome }}"
+          srv="${STEPS_TEST_SERVER_OUTCOME}"
+          cli="${STEPS_TEST_CLIENT_OUTCOME}"
           echo "server tests: $srv"
           echo "client tests: $cli"
-          echo "results: ${{ inputs.SONAR_HOST_URL }}/dashboard?id=${{ inputs.SONAR_PROJECT_KEY }}"
+          echo "results: ${INPUTS_SONAR_HOST_URL}/dashboard?id=${INPUTS_SONAR_PROJECT_KEY}"
           if [ "$srv" != "success" ] || [ "$cli" != "success" ]; then
-            if [ "${{ inputs.FAIL_ON_TEST_FAILURE }}" = "true" ]; then
+            if [ "${INPUTS_FAIL_ON_TEST_FAILURE}" = "true" ]; then
               echo "::error::unit tests failed (results published to SonarQube)"
               exit 1
             fi
