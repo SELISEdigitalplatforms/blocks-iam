@@ -83,12 +83,10 @@ app.Use(async (context, next) =>
         // Referrer-Policy: no-referrer (fetch to /api/oidc/token loses Referer).
         headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
 
-        // IAM SPA still bootstraps runtime config via inline <script> in index.html,
-        // so script/style must allow 'unsafe-inline' (unlike blocks-os runtime-config.js).
+        // External /runtime-config.js + /theme-init.js (no inline script). Explicit
+        // hosts avoid CSP wildcards that ZAP flags (blocks-os pattern).
         if (!headers.ContainsKey("Content-Security-Policy"))
         {
-            // Explicit hosts (no CSP wildcards). Include blob storage + SignalR + Rollbar
-            // used by the IAM SPA on preview, or avatar upload / notifications break.
             var connectHosts =
                 "https://dev-iam.blocksdevelopers.com " +
                 "https://dev-api.blocksdevelopers.com " +
@@ -108,9 +106,9 @@ app.Use(async (context, next) =>
                 "https://code.selise.biz";
             headers["Content-Security-Policy"] =
                 "default-src 'self'; " +
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+                "script-src 'self'; " +
                 "style-src 'self' 'unsafe-inline'; " +
-                "img-src 'self' data: blob: https:; " +
+                "img-src 'self' data: blob: https://blocksdev.blob.core.windows.net https://az-cdn.selise.biz; " +
                 "font-src 'self' data:; " +
                 "connect-src 'self' " + connectHosts + "; " +
                 "frame-ancestors 'none'; " +
@@ -125,6 +123,8 @@ app.Use(async (context, next) =>
             if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase)
                 || path == "/"
                 || path.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith("runtime-config.js", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith("theme-init.js", StringComparison.OrdinalIgnoreCase)
                 || !Path.HasExtension(path))
             {
                 headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
