@@ -133,27 +133,32 @@ namespace Authentication.DomainService.Authentication
                 // happens below, at its original place in the flow. Skipped entirely when
                 // client_id itself is blank, so invalid input still fails validation without
                 // touching any dependency, same as before this lookup existed.
-                var isDeviceFlowClient = !string.IsNullOrWhiteSpace(client_id)
-                    && ((await _authenticationRepository.GetOidcClientRegistrationAsync(client_id))?.IsDeviceFlowClient ?? false);
+                var earlyClient = !string.IsNullOrWhiteSpace(client_id)
+                    ? await _authenticationRepository.GetOidcClientRegistrationAsync(client_id)
+                    : null;
+                var isDeviceFlowClient = earlyClient?.IsDeviceFlowClient ?? false;
                 var validationResult = OidcAuthRequestValidator.Validate(authorizeRequest, isDeviceFlowClient);
 
                 if (!validationResult.IsValid)
                 {
                     _logger.LogWarning("Authorization request validation failed for {ClientId}: {Errors}", client_id, string.Join(", ", validationResult.Errors));
 
-                    var errorParams = new Dictionary<string, string>
-                    {
-                        { "error", "invalid_request" },
-                        { "error_description", string.Join("; ", validationResult.Errors) },
-                        { "state", state }
-                    };
-
-                    if (returnRedirectResponse && !string.IsNullOrWhiteSpace(redirect_uri))
-                    {
-                        return new RedirectResult(OidcRedirectUrlBuilder.BuildRedirectUri(redirect_uri, errorParams));
-                    }
-
+                    // Never bounce to redirect_uri until it has been matched to a registered
+                    // client (RFC 6749 §4.1.2.1 / CWE-601). An unvalidated URI here is exactly
+                    // how an attacker-controlled Location is produced. Same-origin login error
+                    // page (or 400 for API callers) instead.
                     return BuildBrowserError("invalid_request", string.Join("; ", validationResult.Errors));
+                }
+
+                // Reject unregistered redirect_uri before the login hop or any later client
+                // callback. Unknown clients are still handled later (invalid_client) so the
+                // unauthenticated "please sign in" path is unchanged when client_id is typo'd.
+                if (earlyClient != null
+                    && !earlyClient.IsDeviceFlowClient
+                    && !earlyClient.RedirectUris.Contains(redirect_uri))
+                {
+                    _logger.LogWarning("Invalid redirect_uri for {ClientId}: {RedirectUri}", client_id, redirect_uri);
+                    return BuildBrowserError("invalid_request", "Invalid redirect_uri");
                 }
 
                 scope = EnsureOfflineAccess(scope);

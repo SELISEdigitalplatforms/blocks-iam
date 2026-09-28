@@ -214,14 +214,49 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
-        public async Task AuthorizeAsync_RedirectsWithError_WhenValidationFails_AndRedirectUriPresent()
+        public async Task AuthorizeAsync_RedirectsToSameOriginLogin_WhenValidationFails_AndRedirectUriPresent()
         {
+            // Must NOT bounce to redirect_uri before it is matched to a registered client
+            // (CWE-601 / RFC 6749 §4.1.2.1). Same-origin login error page instead.
             var result = await Authorize(scope: "profile", returnRedirectResponse: true);
 
             var redirect = result.Should().BeOfType<RedirectResult>().Subject;
-            redirect.Url.Should().StartWith(RedirectUri);
+            redirect.Url.Should().StartWith("/oidc/login?");
             redirect.Url.Should().Contain("error=invalid_request");
-            redirect.Url.Should().Contain("state=st");
+            redirect.Url.Should().NotStartWith("https://");
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_DoesNotRedirectToExternalHost_WhenValidationFails_WithAttackerRedirectUri()
+        {
+            const string attacker = "https://2369250200165828074.owasp.org";
+            var result = await Authorize(
+                client_id: "client_id",
+                response_type: "response_type",
+                redirect_uri: attacker,
+                scope: "scope",
+                returnRedirectResponse: true);
+
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            redirect.Url.Should().Contain("error=invalid_request");
+            redirect.Url.Should().NotStartWith(attacker);
+            redirect.Url.Should().NotContain("://2369250200165828074.owasp.org?");
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_RejectsUnregisteredRedirectUri_BeforeLogin_WhenClientKnown()
+        {
+            ClientExists("https://app.example.com/callback");
+            const string attacker = "https://evil.example/callback";
+
+            var result = await Authorize(redirect_uri: attacker, returnRedirectResponse: true);
+
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            redirect.Url.Should().Contain("error=invalid_request");
+            redirect.Url.Should().Contain("error_description=Invalid%20redirect_uri");
+            redirect.Url.Should().NotStartWith(attacker);
         }
 
         // ================= session / auth resolution =================
