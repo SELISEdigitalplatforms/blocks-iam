@@ -39,31 +39,22 @@ namespace Authentication.DomainService.Authentication
         private readonly ILogger<OidcAuthorizationEndpoint> _logger;
 
         public OidcAuthorizationEndpoint(
-            IAuthorizationCodeRepository authCodeRepo,
-            IIdpSessionRepository sessionRepo,
-            IIdpSessionService sessionService,
-            IPkceService pkceService,
-            IUserRepository userRepository,
-            IAuthenticationRepository authenticationRepository,
-            IAuthenticationService authenticationService,
-            ITenants tenants,
-            ICacheClient cacheClient,
-            IResourceRepository resourceRepository,
-            ILinkSessionRepository linkSessionRepo,
+            OidcAuthorizationSessionStores sessionStores,
+            OidcAuthorizationIdentityStores identityStores,
             ILogger<OidcAuthorizationEndpoint> logger)
         {
-            _authCodeRepo = authCodeRepo;
-            _sessionRepo = sessionRepo;
-            _sessionService = sessionService;
-            _pkceService = pkceService;
-            _userRepository = userRepository;
-            _authenticationRepository = authenticationRepository;
-            _authenticationService = authenticationService;
-            _tenants = tenants;
-            _cacheClient = cacheClient;
-            _resourceRepository = resourceRepository;
-            _linkSessionRepo = linkSessionRepo;
+            _authCodeRepo = sessionStores.AuthCodes;
+            _sessionRepo = sessionStores.Sessions;
+            _sessionService = sessionStores.SessionService;
+            _pkceService = sessionStores.Pkce;
+            _linkSessionRepo = sessionStores.LinkSessions;
             _logger = logger;
+            _userRepository = identityStores.Users;
+            _authenticationRepository = identityStores.Authentication;
+            _authenticationService = identityStores.AuthenticationService;
+            _tenants = identityStores.Tenants;
+            _cacheClient = identityStores.Cache;
+            _resourceRepository = identityStores.Resources;
         }
 
         public async Task<IActionResult> AuthorizeAsync( // NOSONAR S3776 — OIDC authorize branches are intentional; tracked separately from signup-links

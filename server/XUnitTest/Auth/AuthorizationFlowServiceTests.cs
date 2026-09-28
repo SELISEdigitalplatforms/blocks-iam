@@ -52,7 +52,9 @@ namespace XUnitTest.Auth
         {
             // Real OidcAuthorizationEndpoint; invalid inputs fail validation before any dependency is used.
             var authorizationEndpoint = new OidcAuthorizationEndpoint(
-                null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, NullLogger<OidcAuthorizationEndpoint>.Instance);
+                new OidcAuthorizationSessionStores(null!, null!, null!, null!, null!),
+                new OidcAuthorizationIdentityStores(null!, null!, null!, null!, null!, null!),
+                NullLogger<OidcAuthorizationEndpoint>.Instance);
             var flow = new AuthorizationFlowService(null!, authorizationEndpoint, null!);
 
             var result = await flow.AuthorizeAsync(

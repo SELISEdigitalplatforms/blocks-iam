@@ -46,7 +46,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private readonly ITenants _tenants;
     private readonly IConfiguration _configuration;
     private readonly IMfaChallengeIssuer _mfaChallengeIssuer;
-    private readonly ILogger<SignupLinkRedemptionOrchestrator> _logger;
+    private readonly ILogger<SignupLinkRedemptionCollaborators> _logger;
 
     public SignupLinkRedemptionOrchestrator(
         SignupLinkRedemptionStores stores,
@@ -84,30 +84,10 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return InvalidLink();
         }
 
-        if (!string.IsNullOrWhiteSpace(tenantIdHint)
-            && !string.Equals(link.TenantId, tenantIdHint, StringComparison.OrdinalIgnoreCase))
+        var gate = await RejectIfLinkNotRedeemableAsync(link, tenantIdHint, request);
+        if (gate != null)
         {
-            await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1);
-            return InvalidLink();
-        }
-
-        if (link.Status == SignupLinkStatus.Revoked)
-        {
-            await RecordRejectionAsync(link, "revoked", request, ordinal: link.RedemptionCount + 1);
-            return InvalidLink();
-        }
-
-        if (link.ExpiresAtUtc <= DateTime.UtcNow || link.Status == SignupLinkStatus.Expired)
-        {
-            await RecordRejectionAsync(link, "expired", request, ordinal: link.RedemptionCount + 1);
-            return InvalidLink();
-        }
-
-        var (clientOk, clientRejection) = await ValidateClientAsync(link);
-        if (!clientOk)
-        {
-            await RecordRejectionAsync(link, clientRejection!, request, ordinal: link.RedemptionCount + 1);
-            return InvalidLink();
+            return gate;
         }
 
         var existing = await _userRepository.GetUserByEmailAsync(link.Email);
@@ -150,6 +130,41 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         }
 
         return await HandlePasswordlessNewAsync(link, request, response);
+    }
+
+
+    private async Task<IActionResult?> RejectIfLinkNotRedeemableAsync(
+        SignupLink link,
+        string? tenantIdHint,
+        HttpRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(tenantIdHint)
+            && !string.Equals(link.TenantId, tenantIdHint, StringComparison.OrdinalIgnoreCase))
+        {
+            await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1);
+            return InvalidLink();
+        }
+
+        if (link.Status == SignupLinkStatus.Revoked)
+        {
+            await RecordRejectionAsync(link, "revoked", request, ordinal: link.RedemptionCount + 1);
+            return InvalidLink();
+        }
+
+        if (link.ExpiresAtUtc <= DateTime.UtcNow || link.Status == SignupLinkStatus.Expired)
+        {
+            await RecordRejectionAsync(link, "expired", request, ordinal: link.RedemptionCount + 1);
+            return InvalidLink();
+        }
+
+        var (clientOk, clientRejection) = await ValidateClientAsync(link);
+        if (!clientOk)
+        {
+            await RecordRejectionAsync(link, clientRejection!, request, ordinal: link.RedemptionCount + 1);
+            return InvalidLink();
+        }
+
+        return null;
     }
 
     public async Task<IActionResult> CompleteRedeemMfaAsync(

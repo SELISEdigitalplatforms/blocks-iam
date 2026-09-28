@@ -15,7 +15,7 @@ import { JoinLoading } from "./join-loading";
 import type { RedeemSignupLinkResponse } from "@blocks-idp/authentication/services/signup-link.service";
 
 function readAndClearLinkCode(): string | null {
-  if (typeof globalThis.window === "undefined") return null;
+  if (globalThis.window === undefined) return null;
   const { location, history } = globalThis.window;
   const hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
   const params = new URLSearchParams(hash);

@@ -104,6 +104,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<OidcLoginAuditWriter>();
             serviceCollection.AddSingleton<OidcCaptchaEvaluator>();
             serviceCollection.AddSingleton<OidcLoginOrchestrator>();
+            serviceCollection.AddSingleton<OidcAuthorizationSessionStores>();
+            serviceCollection.AddSingleton<OidcAuthorizationIdentityStores>();
             serviceCollection.AddSingleton<OidcAuthorizationEndpoint>();
             serviceCollection.AddSingleton<AuthorizationCodeExchangeService>();
             serviceCollection.AddSingleton<OidcRefreshTokenService>();

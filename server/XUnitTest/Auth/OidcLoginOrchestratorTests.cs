@@ -59,16 +59,20 @@ namespace XUnitTest.Auth
             _auditWriter = new OidcLoginAuditWriter(_authDomain.Object, _activity.Object, NullLogger<OidcLoginAuditWriter>.Instance);
             _captchaEvaluator = new OidcCaptchaEvaluator(_captcha.Object);
             _authorizationEndpoint = new OidcAuthorizationEndpoint(
-                new Mock<IAuthorizationCodeRepository>().Object,
-                new Mock<IIdpSessionRepository>().Object,
-                new Mock<Authentication.DomainService.Oidc.Services.IIdpSessionService>().Object,
-                new Mock<IPkceService>().Object,
-                _userRepo.Object,
-                _repo.Object,
-                _authService.Object,
-                _tenants.Object,
-                _cache.Object,
-                new Mock<IResourceRepository>().Object, new Mock<ILinkSessionRepository>().Object, NullLogger<OidcAuthorizationEndpoint>.Instance);
+                new OidcAuthorizationSessionStores(
+                    new Mock<IAuthorizationCodeRepository>().Object,
+                    new Mock<IIdpSessionRepository>().Object,
+                    new Mock<Authentication.DomainService.Oidc.Services.IIdpSessionService>().Object,
+                    new Mock<IPkceService>().Object,
+                    new Mock<ILinkSessionRepository>().Object),
+                new OidcAuthorizationIdentityStores(
+                    _userRepo.Object,
+                    _repo.Object,
+                    _authService.Object,
+                    _tenants.Object,
+                    _cache.Object,
+                    new Mock<IResourceRepository>().Object),
+                NullLogger<OidcAuthorizationEndpoint>.Instance);
         }
 
         public void Dispose()

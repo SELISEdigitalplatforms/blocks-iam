@@ -63,17 +63,19 @@ namespace XUnitTest.Auth.Oidc
             _sessionService.Setup(s => s.RotateSessionAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync("rotated-sess");
 
             _endpoint = new OidcAuthorizationEndpoint(
-                _authCodeRepo.Object,
-                _sessionRepo.Object,
-                _sessionService.Object,
-                _pkce.Object,
-                _userRepo.Object,
-                _authRepo.Object,
-                _authService.Object,
-                _tenants.Object,
-                _cache.Object,
-                _resourceRepo.Object,
-                new Mock<ILinkSessionRepository>().Object,
+                new OidcAuthorizationSessionStores(
+                    _authCodeRepo.Object,
+                    _sessionRepo.Object,
+                    _sessionService.Object,
+                    _pkce.Object,
+                    new Mock<ILinkSessionRepository>().Object),
+                new OidcAuthorizationIdentityStores(
+                    _userRepo.Object,
+                    _authRepo.Object,
+                    _authService.Object,
+                    _tenants.Object,
+                    _cache.Object,
+                    _resourceRepo.Object),
                 NullLogger<OidcAuthorizationEndpoint>.Instance);
         }
 

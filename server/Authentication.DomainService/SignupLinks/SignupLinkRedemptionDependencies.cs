@@ -41,7 +41,7 @@ public sealed class SignupLinkRedemptionCollaborators
     public ITenants Tenants { get; }
     public IConfiguration Configuration { get; }
     public IMfaChallengeIssuer Mfa { get; }
-    public ILogger<SignupLinkRedemptionOrchestrator> Logger { get; }
+    public ILogger<SignupLinkRedemptionCollaborators> Logger { get; }
 
     public SignupLinkRedemptionCollaborators(
         IOidcClientRegistrationLookup oidc,
@@ -50,7 +50,7 @@ public sealed class SignupLinkRedemptionCollaborators
         ITenants tenants,
         IConfiguration configuration,
         IMfaChallengeIssuer mfa,
-        ILogger<SignupLinkRedemptionOrchestrator> logger)
+        ILogger<SignupLinkRedemptionCollaborators> logger)
     {
         Oidc = oidc;
         UserMutation = userMutation;
