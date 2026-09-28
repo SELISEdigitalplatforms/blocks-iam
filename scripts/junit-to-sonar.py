@@ -19,10 +19,7 @@ import os
 import sys
 from xml.sax.saxutils import escape, quoteattr
 
-try:
-    import defusedxml.ElementTree as ET
-except ImportError:  # CI may not have pip deps yet; JUnit input is trusted
-    import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 
 
 def duration_ms(node):

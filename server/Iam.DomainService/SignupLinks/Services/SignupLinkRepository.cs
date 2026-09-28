@@ -1,0 +1,111 @@
+using Iam.DomainService.Services;
+using Microsoft.Extensions.Logging;
+using MongoDB.Driver;
+
+namespace Iam.DomainService.SignupLinks;
+
+public class SignupLinkRepository : ISignupLinkRepository
+{
+    public const string CollectionName = "SignupLinks";
+    private const string CodeHashIndex = "ix_codehash_unique";
+    private const string StatusExpiryIndex = "ix_tenant_status_expires";
+    private const string ConfigurationIndex = "ix_tenant_configuration";
+
+    private readonly IIdentityAccessManagementRepository _iamRepository;
+    private readonly ILogger<SignupLinkRepository> _logger;
+
+    public SignupLinkRepository(
+        IIdentityAccessManagementRepository iamRepository,
+        ILogger<SignupLinkRepository> logger)
+    {
+        _iamRepository = iamRepository;
+        _logger = logger;
+    }
+
+    private IMongoCollection<SignupLink> Collection =>
+        _iamRepository.GetCollectionByName<SignupLink>(CollectionName);
+
+    public async Task EnsureIndexesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var keys = Builders<SignupLink>.IndexKeys;
+            var models = new[]
+            {
+                new CreateIndexModel<SignupLink>(
+                    keys.Ascending(x => x.CodeHash),
+                    new CreateIndexOptions { Name = CodeHashIndex, Unique = true }),
+                new CreateIndexModel<SignupLink>(
+                    keys.Ascending(x => x.TenantId).Ascending(x => x.Status).Ascending(x => x.ExpiresAtUtc),
+                    new CreateIndexOptions { Name = StatusExpiryIndex }),
+                new CreateIndexModel<SignupLink>(
+                    keys.Ascending(x => x.TenantId).Ascending(x => x.ConfigurationId),
+                    new CreateIndexOptions { Name = ConfigurationIndex }),
+            };
+            await Collection.Indexes.CreateManyAsync(models, cancellationToken: ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "SignupLinkRepository.EnsureIndexesAsync failed; index creation is idempotent and will be retried.");
+        }
+    }
+
+    public Task InsertAsync(SignupLink entity) =>
+        Collection.InsertOneAsync(entity);
+
+    public async Task<bool> ReplaceAsync(SignupLink entity)
+    {
+        var result = await Collection.ReplaceOneAsync(
+            x => x.ItemId == entity.ItemId && x.TenantId == entity.TenantId,
+            entity);
+        return result.IsAcknowledged && result.MatchedCount > 0;
+    }
+
+    public async Task<SignupLink?> GetByIdAsync(string itemId, string tenantId)
+    {
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.ItemId, itemId)
+            & Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId);
+        return await Collection.Find(filter).FirstOrDefaultAsync();
+    }
+
+    public async Task<(List<SignupLink> Items, long TotalCount)> QueryAsync(
+        string tenantId,
+        QuerySignupLinksRequest request)
+    {
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId);
+        if (!string.IsNullOrWhiteSpace(request.ConfigurationId))
+        {
+            filter &= Builders<SignupLink>.Filter.Eq(x => x.ConfigurationId, request.ConfigurationId);
+        }
+
+        var total = await Collection.CountDocumentsAsync(filter);
+        var items = await Collection.Find(filter)
+            .Sort(Builders<SignupLink>.Sort.Descending(x => x.CreatedDate))
+            .Skip(request.Page * request.PageSize)
+            .Limit(request.PageSize)
+            .ToListAsync();
+        return (items, total);
+    }
+
+    public async Task<long> RevokeActiveByConfigurationAsync(
+        string tenantId,
+        string configurationId,
+        string revokedBy,
+        DateTime revokedAtUtc)
+    {
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId)
+            & Builders<SignupLink>.Filter.Eq(x => x.ConfigurationId, configurationId)
+            & Builders<SignupLink>.Filter.Eq(x => x.Status, SignupLinkStatus.Active);
+
+        var update = Builders<SignupLink>.Update
+            .Set(x => x.Status, SignupLinkStatus.Revoked)
+            .Set(x => x.RevokedAtUtc, revokedAtUtc)
+            .Set(x => x.RevokedBy, revokedBy)
+            .Set(x => x.LastUpdatedDate, revokedAtUtc)
+            .Set(x => x.LastUpdatedBy, revokedBy);
+
+        var result = await Collection.UpdateManyAsync(filter, update);
+        return result.ModifiedCount;
+    }
+}

@@ -466,6 +466,12 @@
             All routes live under <c>/security</c>.
             </summary>
         </member>
+        <member name="T:Api.Middleware.SecurityHeadersMiddleware">
+            <summary>
+            Browser security headers via Response.OnStarting so Genesis/OIDC Set-Cookie
+            still works on PR previews. Skips Cache-Control on cookie-issuing auth paths.
+            </summary>
+        </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">
             <summary>
             OIDC Login Endpoint — authenticates credentials, sets IDP session, then issues authorization code.
