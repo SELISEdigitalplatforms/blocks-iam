@@ -186,7 +186,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();
             serviceCollection.AddSingleton<ISignupLinkConfigurationService, SignupLinkConfigurationService>();
             serviceCollection.AddSingleton<ISignupLinkRepository, SignupLinkRepository>();
-            serviceCollection.AddSingleton<SignupLinkGenerationDependencies>();
+            serviceCollection.AddSingleton<SignupLinkGenerationRepositories>();
+            serviceCollection.AddSingleton<SignupLinkGenerationValidators>();
             serviceCollection.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
             serviceCollection.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();

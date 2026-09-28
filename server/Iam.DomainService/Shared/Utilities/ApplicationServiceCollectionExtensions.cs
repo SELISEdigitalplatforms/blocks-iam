@@ -34,7 +34,8 @@ namespace Iam.DomainService.Utilities
             services.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();
             services.AddSingleton<ISignupLinkConfigurationService, SignupLinkConfigurationService>();
             services.AddSingleton<ISignupLinkRepository, SignupLinkRepository>();
-            services.AddSingleton<SignupLinkGenerationDependencies>();
+            services.AddSingleton<SignupLinkGenerationRepositories>();
+            services.AddSingleton<SignupLinkGenerationValidators>();
             services.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
             services.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
             services.AddHttpContextAccessor();

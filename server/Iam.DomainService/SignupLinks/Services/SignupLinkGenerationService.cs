@@ -27,18 +27,21 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
     private readonly IValidator<RevokeSignupLinksByConfigurationRequest> _revokeByConfigValidator;
     private readonly ILogger<SignupLinkGenerationService> _logger;
 
-    public SignupLinkGenerationService(SignupLinkGenerationDependencies deps)
+    public SignupLinkGenerationService(
+        SignupLinkGenerationRepositories repositories,
+        SignupLinkGenerationValidators validators,
+        ILogger<SignupLinkGenerationService> logger)
     {
-        _linkRepository = deps.Links;
-        _configurationRepository = deps.Configurations;
-        _oidcLookup = deps.Oidc;
-        _grantAuthorization = deps.GrantAuthorization;
-        _userRepository = deps.Users;
-        _configuration = deps.Configuration;
-        _generateValidator = deps.GenerateValidator;
-        _queryValidator = deps.QueryValidator;
-        _revokeByConfigValidator = deps.RevokeByConfigValidator;
-        _logger = deps.Logger;
+        _linkRepository = repositories.Links;
+        _configurationRepository = repositories.Configurations;
+        _oidcLookup = repositories.Oidc;
+        _grantAuthorization = repositories.GrantAuthorization;
+        _userRepository = repositories.Users;
+        _configuration = validators.Configuration;
+        _generateValidator = validators.GenerateValidator;
+        _queryValidator = validators.QueryValidator;
+        _revokeByConfigValidator = validators.RevokeByConfigValidator;
+        _logger = logger;
     }
 
     public async Task<GenerateSignupLinkResult> GenerateAsync(GenerateSignupLinkRequest request)

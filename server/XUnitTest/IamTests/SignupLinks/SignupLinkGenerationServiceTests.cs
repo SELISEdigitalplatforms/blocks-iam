@@ -126,17 +126,19 @@ public class SignupLinkGenerationServiceTests : IDisposable
         DefaultLifetimeMinutes = 1440
     };
 
-    private SignupLinkGenerationService Sut() => new(new SignupLinkGenerationDependencies(
-        _links.Object,
-        _configs.Object,
-        _oidc.Object,
-        new GrantAuthorizationService(_resources.Object),
-        _users.Object,
-        _configuration,
-        _generateValidator.Object,
-        _queryValidator.Object,
-        _revokeValidator.Object,
-        NullLogger<SignupLinkGenerationService>.Instance));
+    private SignupLinkGenerationService Sut() => new(
+        new SignupLinkGenerationRepositories(
+            _links.Object,
+            _configs.Object,
+            _oidc.Object,
+            new GrantAuthorizationService(_resources.Object),
+            _users.Object),
+        new SignupLinkGenerationValidators(
+            _configuration,
+            _generateValidator.Object,
+            _queryValidator.Object,
+            _revokeValidator.Object),
+        NullLogger<SignupLinkGenerationService>.Instance);
 
     private static GenerateSignupLinkRequest ValidRequest(Action<GenerateSignupLinkRequest>? tweak = null)
     {
