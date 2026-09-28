@@ -303,6 +303,12 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
+        // Reject GET so the SPA fallback cannot 200 an email-bearing URL (ZAP 10024).
+        [HttpGet("email/available")]
+        [AllowAnonymous]
+        public IActionResult IsEmailAvailableGetRejected()
+            => StatusCode(405, new { error = "use POST" });
+
         // POST body so the address is not reflected in the URL (CWE-598 / ZAP 10024).
         [HttpPost("email/available")]
         [AllowAnonymous]
@@ -320,10 +326,12 @@ namespace Api.Controllers
             });
         }
 
-        [HttpGet("users/exists")]
+        // POST body so addresses are not placed in the URL (ZAP 10024 / CWE-598).
+        [HttpPost("users/exists")]
         [Authorize]
-        public async Task<IActionResult> IsUserExist([FromQuery] string? email)
+        public async Task<IActionResult> IsUserExist([FromBody] IsEmailAvailableRequest? body)
         {
+            var email = body?.Email;
             if (string.IsNullOrWhiteSpace(email))
                 return BadRequest(new { error = "email is required" });
 
