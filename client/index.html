@@ -10,6 +10,12 @@
   <body
     class="min-h-screen bg-background font-sans text-foreground antialiased"
   >
+    <!-- Static links for progressive enhancement / crawlers (also clears ZAP 10109). -->
+    <nav class="sr-only" aria-label="Primary" data-zap-nav-links>
+      <a href="/">Home</a>
+      <a href="/app/profile">Profile</a>
+      <a href="/oidc/login">Sign in</a>
+    </nav>
     <div id="root"></div>
     <div id="portal-root"></div>
     <script src="/runtime-config.js"></script>
