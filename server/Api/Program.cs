@@ -87,6 +87,8 @@ app.Use(async (context, next) =>
         // so script/style must allow 'unsafe-inline' (unlike blocks-os runtime-config.js).
         if (!headers.ContainsKey("Content-Security-Policy"))
         {
+            // Explicit hosts (no CSP wildcards). Include blob storage + SignalR + Rollbar
+            // used by the IAM SPA on preview, or avatar upload / notifications break.
             var connectHosts =
                 "https://dev-iam.blocksdevelopers.com " +
                 "https://dev-api.blocksdevelopers.com " +
@@ -96,10 +98,13 @@ app.Use(async (context, next) =>
                 "https://dev-data.blocksdevelopers.com " +
                 "https://dev-utilities.blocksdevelopers.com " +
                 "https://dev-logic.blocksdevelopers.com " +
+                "wss://dev-logic.blocksdevelopers.com " +
                 "https://dev-monitor.blocksdevelopers.com " +
                 "https://dev-release.blocksdevelopers.com " +
                 "https://dev-studio.blocksdevelopers.com " +
                 "https://dev-os.blocksdevelopers.com " +
+                "https://blocksdev.blob.core.windows.net " +
+                "https://api.rollbar.com " +
                 "https://code.selise.biz";
             headers["Content-Security-Policy"] =
                 "default-src 'self'; " +
