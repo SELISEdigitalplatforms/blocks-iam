@@ -72,7 +72,9 @@ public class SignupLinkConfigurationsControllerTests
 public class SignupLinksControllerTests
 {
     private readonly Mock<ISignupLinkGenerationService> _generation = new();
-    private SignupLinksController Sut() => new(_generation.Object);
+    private readonly Mock<ISignupLinkContextService> _context = new();
+    private readonly Mock<Authentication.DomainService.SignupLinks.ISignupLinkRedemptionOrchestrator> _redeem = new();
+    private SignupLinksController Sut() => new(_generation.Object, _context.Object, _redeem.Object);
 
     [Fact]
     public async Task Generate_Success_ReturnsOk()

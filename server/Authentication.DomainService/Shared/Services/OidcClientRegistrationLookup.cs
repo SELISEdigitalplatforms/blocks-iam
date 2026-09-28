@@ -30,6 +30,7 @@ public sealed class OidcClientRegistrationLookup : IOidcClientRegistrationLookup
         return new OidcClientRegistrationInfo(
             client.ClientId ?? client.ItemId,
             client.RedirectUris ?? [],
-            client.IsActive);
+            client.IsActive,
+            client.ClientName);
     }
 }

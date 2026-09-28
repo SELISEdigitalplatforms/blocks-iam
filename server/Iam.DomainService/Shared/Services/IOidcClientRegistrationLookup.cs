@@ -13,4 +13,5 @@ public interface IOidcClientRegistrationLookup
 public sealed record OidcClientRegistrationInfo(
     string ClientId,
     IReadOnlyList<string> RedirectUris,
-    bool IsActive);
+    bool IsActive,
+    string? ClientName = null);

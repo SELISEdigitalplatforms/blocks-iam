@@ -35,6 +35,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ITenants _tenants;
         private readonly ICacheClient _cacheClient;
         private readonly IResourceRepository _resourceRepository;
+        private readonly ILinkSessionRepository _linkSessionRepo;
         private readonly ILogger<OidcAuthorizationEndpoint> _logger;
 
         public OidcAuthorizationEndpoint(
@@ -48,6 +49,7 @@ namespace Authentication.DomainService.Authentication
             ITenants tenants,
             ICacheClient cacheClient,
             IResourceRepository resourceRepository,
+            ILinkSessionRepository linkSessionRepo,
             ILogger<OidcAuthorizationEndpoint> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -60,6 +62,7 @@ namespace Authentication.DomainService.Authentication
             _tenants = tenants;
             _cacheClient = cacheClient;
             _resourceRepository = resourceRepository;
+            _linkSessionRepo = linkSessionRepo;
             _logger = logger;
         }
 
@@ -166,6 +169,25 @@ namespace Authentication.DomainService.Authentication
                 var effectiveSessionId = request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant_id)];
 
                 string? resolvedUserId = blocksUserId;
+                LinkSessionModel? matchedLinkSession = null;
+                var linkCookieId = request.Cookies[IdpConstants.BuildLinkSessionCookieKey(tenant_id)];
+                if (!string.IsNullOrWhiteSpace(linkCookieId))
+                {
+                    var linkSession = await _linkSessionRepo.GetBySessionIdAsync(linkCookieId);
+                    if (linkSession != null
+                        && !linkSession.IsExpired()
+                        && string.Equals(linkSession.ClientId, client_id, StringComparison.Ordinal)
+                        && (string.IsNullOrWhiteSpace(tenant_id)
+                            || string.Equals(linkSession.TenantId, tenant_id, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        matchedLinkSession = linkSession;
+                        if (string.IsNullOrWhiteSpace(resolvedUserId))
+                        {
+                            resolvedUserId = linkSession.UserId;
+                        }
+                    }
+                    // Wrong client or expired: ignore entirely (C4) — fall through to IdP / login.
+                }
 
                 // Set only when the login orchestrator has just verified a username and password.
                 // That verdict is authoritative: /oidc/login carries no way to ask for a second
@@ -184,7 +206,12 @@ namespace Authentication.DomainService.Authentication
                 // what a freshly verified password overrules. Resolving from the cookie here used to
                 // overwrite the authenticated user whenever the session held exactly one account for
                 // the tenant, handing the new user an authorization code minted for the previous one.
-                if (!credentialsJustVerified && !forceLogin && !string.IsNullOrWhiteSpace(effectiveSessionId))
+                // Link-session resolution is authoritative for its matching client (H3/C4).
+                // Do not let a lingering IdP cookie overwrite the freshly redeemed user.
+                if (matchedLinkSession == null
+                    && !credentialsJustVerified
+                    && !forceLogin
+                    && !string.IsNullOrWhiteSpace(effectiveSessionId))
                 {
                     var session = await _sessionRepo.GetBySessionIdAsync(effectiveSessionId);
                     if (session != null && !session.RevokedAt.HasValue && !session.IsExpired())
@@ -288,13 +315,17 @@ namespace Authentication.DomainService.Authentication
                 // becomes the claim at exchange time without being re-validated, so the tenant's
                 // real multi-organization mode has to be read here.
                 var tenantConfiguration = await _resourceRepository.GetTenantConfigurationAsync();
-                var effectiveOrganizationId = OrganizationAccessResolver.ResolveEffectiveOrganizationId(
-                    user,
-                    tenantConfiguration?.IsMultiOrgEnabled ?? false);
+                var effectiveOrganizationId = matchedLinkSession != null
+                    ? matchedLinkSession.OrganizationId
+                    : OrganizationAccessResolver.ResolveEffectiveOrganizationId(
+                        user,
+                        tenantConfiguration?.IsMultiOrgEnabled ?? false);
                 await PersistLastUsedOrganizationAsync(user, effectiveOrganizationId);
 
                 var authCode = _pkceService.GenerateRandomCode(32);
-                var amr = BuildAmr(user, mfaCompleted);
+                var amr = matchedLinkSession != null
+                    ? new List<string> { "link" }
+                    : BuildAmr(user, mfaCompleted);
 
                 var codeModel = new AuthorizationCodeModel
                 {
@@ -314,6 +345,9 @@ namespace Authentication.DomainService.Authentication
                     CreatedAt = DateTime.UtcNow,
                     CreatedByIpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request),
                     IdpSessionId = idpSessionId,
+                    IsLinkAuthentication = matchedLinkSession != null,
+                    RestrictedRoles = matchedLinkSession?.Roles?.ToList() ?? [],
+                    RestrictedPermissions = matchedLinkSession?.Permissions?.ToList() ?? [],
                 };
 
                 // Blocks Cloud Impersonation Support

@@ -68,8 +68,7 @@ namespace XUnitTest.Auth
                 _authService.Object,
                 _tenants.Object,
                 _cache.Object,
-                new Mock<IResourceRepository>().Object,
-                NullLogger<OidcAuthorizationEndpoint>.Instance);
+                new Mock<IResourceRepository>().Object, new Mock<ILinkSessionRepository>().Object, NullLogger<OidcAuthorizationEndpoint>.Instance);
         }
 
         public void Dispose()

@@ -23,6 +23,7 @@ using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
 using Iam.DomainService.SignupLinks;
+using Authentication.DomainService.SignupLinks;
 using Idp.DomainService.Oidc.Services;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.OTP.Services;
@@ -186,6 +187,10 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();
             serviceCollection.AddSingleton<ISignupLinkConfigurationService, SignupLinkConfigurationService>();
             serviceCollection.AddSingleton<ISignupLinkRepository, SignupLinkRepository>();
+            serviceCollection.AddSingleton<ISignupLinkRedemptionRepository, SignupLinkRedemptionRepository>();
+            serviceCollection.AddSingleton<ISignupLinkContextService, SignupLinkContextService>();
+            serviceCollection.AddSingleton<ILinkSessionRepository, LinkSessionRepository>();
+            serviceCollection.AddSingleton<ISignupLinkRedemptionOrchestrator, SignupLinkRedemptionOrchestrator>();
             serviceCollection.AddSingleton<SignupLinkGenerationRepositories>();
             serviceCollection.AddSingleton<SignupLinkGenerationValidators>();
             serviceCollection.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();

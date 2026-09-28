@@ -33,6 +33,15 @@ namespace Iam.DomainService.Utilities
                 : $"{IdpSessionCookieName}_{tenantId}";
         }
 
+        public const string LinkSessionCookieName = "blocks-link-session";
+
+        public static string BuildLinkSessionCookieKey(string? tenantId)
+        {
+            return string.IsNullOrWhiteSpace(tenantId)
+                ? LinkSessionCookieName
+                : $"{LinkSessionCookieName}-{tenantId}";
+        }
+
         #endregion
 
         #region Providers / Protocols
@@ -102,6 +111,9 @@ namespace Iam.DomainService.Utilities
         public const int MaxIdpSessionHours = 168;
         public const int DefaultIdpSessionIdleHours = 24;
         public const int DefaultIdpSessionAbsoluteHours = 5;
+
+        /// <summary>Restricted signup-link session lifetime (minutes). Independent of IdP session timeouts.</summary>
+        public const int LinkSessionLifetimeMinutes = 30;
 
         #endregion
 

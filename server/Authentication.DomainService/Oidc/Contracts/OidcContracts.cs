@@ -30,6 +30,9 @@ public sealed class OidcClaims
     public List<string> Roles { get; set; } = [];
     public List<string> Resources { get; set; } = [];
     public List<string> Permissions { get; set; } = [];
+    public bool IsLinkAuthentication { get; set; }
+    public List<string> RestrictedRoles { get; set; } = [];
+    public List<string> RestrictedPermissions { get; set; } = [];
 }
 
 public sealed class AuthorizationCodeModel
@@ -59,6 +62,15 @@ public sealed class AuthorizationCodeModel
     public string? TargetedTenantId { get; set; } = string.Empty;
 
     public string? ImpersonatedUserId { get; set; } = string.Empty;
+
+    /// <summary>True when the code was minted from a signup-link restricted session.</summary>
+    public bool IsLinkAuthentication { get; set; }
+
+    /// <summary>Frozen link roles to intersect with the user's current org roles at exchange/refresh.</summary>
+    public List<string> RestrictedRoles { get; set; } = [];
+
+    /// <summary>Frozen link permissions to intersect at exchange/refresh.</summary>
+    public List<string> RestrictedPermissions { get; set; } = [];
 }
 
 [BsonIgnoreExtraElements]
@@ -73,6 +85,12 @@ public sealed class RefreshTokenModel
     public string? Audience { get; set; }
     public string? Scope { get; set; }
     public string? SessionId { get; set; }
+
+    /// <summary>Signup-link restricted session marker preserved across refresh.</summary>
+    public bool IsLinkAuthentication { get; set; }
+    public List<string> RestrictedRoles { get; set; } = [];
+    public List<string> RestrictedPermissions { get; set; } = [];
+    public List<string> Amr { get; set; } = [];
 
     /// <summary>
     /// Identifies one refresh-token lineage: the sequence of tokens created by a single

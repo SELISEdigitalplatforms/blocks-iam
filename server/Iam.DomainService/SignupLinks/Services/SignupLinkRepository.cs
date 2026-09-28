@@ -69,6 +69,46 @@ public class SignupLinkRepository : ISignupLinkRepository
         return await Collection.Find(filter).FirstOrDefaultAsync();
     }
 
+
+    public async Task<SignupLink?> GetByCodeHashAsync(string codeHash)
+    {
+        if (string.IsNullOrWhiteSpace(codeHash))
+        {
+            return null;
+        }
+
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.CodeHash, codeHash);
+        return await Collection.Find(filter).FirstOrDefaultAsync();
+    }
+
+    public async Task<SignupLink?> TryIncrementRedemptionAsync(
+        string linkId,
+        string tenantId,
+        string createdUserId,
+        DateTime nowUtc)
+    {
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.ItemId, linkId)
+            & Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId)
+            & Builders<SignupLink>.Filter.Eq(x => x.Status, SignupLinkStatus.Active)
+            & Builders<SignupLink>.Filter.Gt(x => x.ExpiresAtUtc, nowUtc)
+            & Builders<SignupLink>.Filter.Where(x => x.RedemptionCount < x.MaxRedemptions);
+
+        var update = Builders<SignupLink>.Update
+            .Inc(x => x.RedemptionCount, 1)
+            .Set(x => x.CreatedUserId, createdUserId)
+            .Set(x => x.Status, SignupLinkStatus.Redeemed)
+            .Set(x => x.LastUpdatedDate, nowUtc)
+            .Set(x => x.LastUpdatedBy, createdUserId);
+
+        return await Collection.FindOneAndUpdateAsync(
+            filter,
+            update,
+            new FindOneAndUpdateOptions<SignupLink>
+            {
+                ReturnDocument = ReturnDocument.After
+            });
+    }
+
     public async Task<(List<SignupLink> Items, long TotalCount)> QueryAsync(
         string tenantId,
         QuerySignupLinksRequest request)

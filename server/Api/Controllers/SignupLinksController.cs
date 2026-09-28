@@ -1,6 +1,8 @@
-using Iam.DomainService.SignupLinks;
-using Microsoft.AspNetCore.Mvc;
+using Authentication.DomainService.SignupLinks;
 using Blocks.Genesis;
+using Iam.DomainService.SignupLinks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers;
 
@@ -9,10 +11,41 @@ namespace Api.Controllers;
 public class SignupLinksController : ControllerBase
 {
     private readonly ISignupLinkGenerationService _generationService;
+    private readonly ISignupLinkContextService _contextService;
+    private readonly ISignupLinkRedemptionOrchestrator _redemptionOrchestrator;
 
-    public SignupLinksController(ISignupLinkGenerationService generationService)
+    public SignupLinksController(
+        ISignupLinkGenerationService generationService,
+        ISignupLinkContextService contextService,
+        ISignupLinkRedemptionOrchestrator redemptionOrchestrator)
     {
         _generationService = generationService;
+        _contextService = contextService;
+        _redemptionOrchestrator = redemptionOrchestrator;
+    }
+
+    [HttpGet("signup-links/context")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetContext(
+        [FromHeader(Name = "X-Signup-Link-Code")] string? code)
+    {
+        var tenantId = BlocksContext.GetContext()?.TenantId
+            ?? Request.Headers["X-Blocks-Key"].FirstOrDefault();
+        var result = await _contextService.GetContextAsync(code, tenantId);
+        return Ok(result);
+    }
+
+    [HttpPost("signup-links/redeem")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Redeem([FromBody] RedeemSignupLinkRequest? request)
+    {
+        var tenantId = BlocksContext.GetContext()?.TenantId
+            ?? Request.Headers["X-Blocks-Key"].FirstOrDefault();
+        return await _redemptionOrchestrator.RedeemAsync(
+            request?.Code,
+            tenantId,
+            Request,
+            Response);
     }
 
     [HttpPost("signup-links")]

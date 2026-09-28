@@ -73,6 +73,7 @@ namespace XUnitTest.Auth.Oidc
                 _tenants.Object,
                 _cache.Object,
                 _resourceRepo.Object,
+                new Mock<ILinkSessionRepository>().Object,
                 NullLogger<OidcAuthorizationEndpoint>.Instance);
         }
 
