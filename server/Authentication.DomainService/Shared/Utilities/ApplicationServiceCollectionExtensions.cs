@@ -198,6 +198,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<SignupLinkGenerationRepositories>();
             serviceCollection.AddSingleton<SignupLinkGenerationValidators>();
             serviceCollection.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
+            serviceCollection.AddSingleton<ISignupLinkSummaryService, SignupLinkSummaryService>();
             serviceCollection.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
 
@@ -219,6 +220,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IValidator<GenerateSignupLinkRequest>, GenerateSignupLinkValidator>();
             serviceCollection.AddSingleton<IValidator<QuerySignupLinksRequest>, QuerySignupLinksValidator>();
             serviceCollection.AddSingleton<IValidator<RevokeSignupLinksByConfigurationRequest>, RevokeSignupLinksByConfigurationValidator>();
+            serviceCollection.AddSingleton<IValidator<SignupLinkSummaryRequest>, SignupLinkSummaryValidator>();
             serviceCollection.AddSingleton<IValidator<CreatePermissionRequest>, CreatePermissionValidator>();
             serviceCollection.AddSingleton<IValidator<CreateRoleRequest>, RoleValidator>();
             serviceCollection.AddSingleton<IValidator<UpdatePermissionRequest>, UpdatePermissionValidator>();
