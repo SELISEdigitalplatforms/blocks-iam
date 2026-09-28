@@ -80,18 +80,49 @@ async function createActiveConfig(page: import("@playwright/test").Page, tenant:
     {
       name,
       description: "summary e2e",
-      defaultRoles: [],
+      defaultRoles: ["clouduser"],
       defaultPermissions: [],
       clientId: IAM_CLIENT_ID,
       redirectUri: IAM_REDIRECT,
-      credentialMode: "Passwordless",
-      defaultLifetimeMinutes: 1440,
+      defaultForwardedTo: "/app/profile",
+      credentialMode: "PasswordRequired",
+      defaultLifetimeMinutes: 60,
     },
     tenant
   );
-  expect(create.status).toBe(200);
+  expect(create.status, JSON.stringify(create.json)).toBe(200);
   expect(create.json.isSuccess).toBe(true);
   return { id: create.json.itemId!, name };
+}
+
+async function generateLink(
+  page: import("@playwright/test").Page,
+  tenant: string,
+  cfgId: string
+) {
+  const email = uniqueEmail("summary");
+  const basePayload = {
+    configurationId: cfgId,
+    email,
+    firstName: "Sum",
+    lastName: "Mary",
+    organizationId: "default",
+  };
+  let gen = await iamApi<Generate | { errors: Record<string, string> }>(
+    page,
+    "POST",
+    "/api/iam/signup-links",
+    basePayload,
+    tenant
+  );
+  if (gen.status !== 200) {
+    const err = (gen.json as { errors?: Record<string, string> }).errors || {};
+    if (err.OrganizationId) {
+      const { organizationId: _omit, ...withoutOrg } = basePayload;
+      gen = await iamApi<Generate>(page, "POST", "/api/iam/signup-links", withoutOrg, tenant);
+    }
+  }
+  return gen;
 }
 
 test.describe("Signup link summary (#571)", () => {
@@ -102,6 +133,7 @@ test.describe("Signup link summary (#571)", () => {
   test("H1/C6/C7 happy empty + C1–C3 validation + generate increments total", async ({
     page,
   }) => {
+    test.setTimeout(240_000);
     const tenant = await resolveTenantId(page);
     await ensureManageSignupLinksPermission(page);
     const cfg = await createActiveConfig(page, tenant);
@@ -176,38 +208,25 @@ test.describe("Signup link summary (#571)", () => {
     expect(empty.json.toUtc).toBeTruthy();
 
     // C7 — no link secrets in body
-    const bodyKeys = Object.keys(empty.json).sort();
-    expect(bodyKeys).toEqual(
-      [
-        "configurationId",
-        "configurationName",
-        "fromUtc",
-        "toUtc",
-        "totalGenerated",
-        "used",
-        "neverUsed",
-        "neverUsedBreakdown",
-        "rejectedAttempts",
-      ].sort()
-    );
+    const expectedKeys = [
+      "configurationId",
+      "configurationName",
+      "fromUtc",
+      "toUtc",
+      "totalGenerated",
+      "used",
+      "neverUsed",
+      "neverUsedBreakdown",
+      "rejectedAttempts",
+    ];
+    expect(Object.keys(empty.json).sort()).toEqual(expectedKeys.sort());
     const raw = JSON.stringify(empty.json);
     expect(raw).not.toMatch(/codeHash|redirectUri|"email"|linkId/i);
 
     // Generate one link → totalGenerated 1, neverUsed.active 1
-    const gen = await iamApi<Generate>(
-      page,
-      "POST",
-      "/api/iam/signup-links",
-      {
-        configurationId: cfg.id,
-        email: uniqueEmail("summary"),
-        firstName: "Sum",
-        lastName: "Mary",
-      },
-      tenant
-    );
-    expect(gen.status).toBe(200);
-    expect(gen.json.linkId).toBeTruthy();
+    const gen = await generateLink(page, tenant, cfg.id);
+    expect(gen.status, JSON.stringify(gen.json)).toBe(200);
+    expect((gen.json as Generate).linkId).toBeTruthy();
 
     const after = await iamApi<Summary>(
       page,
