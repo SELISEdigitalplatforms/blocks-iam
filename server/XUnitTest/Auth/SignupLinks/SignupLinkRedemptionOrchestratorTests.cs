@@ -95,7 +95,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
             _tenants.Object,
             config,
             _mfa.Object,
-            NullLogger<SignupLinkRedemptionOrchestrator>.Instance);
+            NullLogger<SignupLinkRedemptionCollaborators>.Instance);
         return new SignupLinkRedemptionOrchestrator(stores, collaborators);
     }
 
