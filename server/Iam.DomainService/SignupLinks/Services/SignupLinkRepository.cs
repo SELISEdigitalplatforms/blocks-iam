@@ -70,6 +70,18 @@ public class SignupLinkRepository : ISignupLinkRepository
     }
 
 
+
+    public async Task<SignupLink?> GetByItemIdAsync(string itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return null;
+        }
+
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.ItemId, itemId);
+        return await Collection.Find(filter).FirstOrDefaultAsync();
+    }
+
     public async Task<SignupLink?> GetByCodeHashAsync(string codeHash)
     {
         if (string.IsNullOrWhiteSpace(codeHash))
@@ -95,10 +107,16 @@ public class SignupLinkRepository : ISignupLinkRepository
 
         var update = Builders<SignupLink>.Update
             .Inc(x => x.RedemptionCount, 1)
-            .Set(x => x.CreatedUserId, createdUserId)
             .Set(x => x.Status, SignupLinkStatus.Redeemed)
             .Set(x => x.LastUpdatedDate, nowUtc)
-            .Set(x => x.LastUpdatedBy, createdUserId);
+            .Set(x => x.LastUpdatedBy, string.IsNullOrWhiteSpace(createdUserId) ? "signup-link" : createdUserId);
+
+        // Only stamp CreatedUserId when this redemption created (or owns) the account.
+        // Pre-existing org-join / redirect branches must not overwrite it (Phase 4 C1/H2).
+        if (!string.IsNullOrWhiteSpace(createdUserId))
+        {
+            update = update.Set(x => x.CreatedUserId, createdUserId);
+        }
 
         return await Collection.FindOneAndUpdateAsync(
             filter,

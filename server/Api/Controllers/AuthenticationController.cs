@@ -9,6 +9,7 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
+using Authentication.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -34,13 +35,15 @@ public class AuthenticationController : ControllerBase
     private readonly IAuthenticationConfigurationService _configurationService;
     private readonly IAuthenticationRepository _authenticationRepository;
     private readonly IAuthenticationDomainService _authenticationDomainService;
+    private readonly ISignupLinkRedemptionOrchestrator _signupLinkRedemption;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
         IAccountService accountService,
         IAuthenticationFlowService authenticationFlowService,
         IAuthenticationConfigurationService configurationService, IAuthenticationRepository authenticationRepository,
-        IAuthenticationDomainService authenticationDomainService
+        IAuthenticationDomainService authenticationDomainService,
+        ISignupLinkRedemptionOrchestrator signupLinkRedemption
     )
     {
         _authenticationService = authenticationService;
@@ -49,6 +52,7 @@ public class AuthenticationController : ControllerBase
         _configurationService= configurationService;
         _authenticationRepository = authenticationRepository;
         _authenticationDomainService = authenticationDomainService;
+        _signupLinkRedemption = signupLinkRedemption;
     }
 
     /// <summary>
@@ -149,6 +153,11 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> Activate([FromBody] ActivateUserRequest command)
     {
         var result = await _accountService.ActivateAccountAsync(command);
+        if (result.IsSuccess)
+        {
+            // H3: signup-link activation keys bind the restricted link-session cookie.
+            await _signupLinkRedemption.TryBindLinkSessionAfterActivationAsync(command?.Code, Request, Response);
+        }
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

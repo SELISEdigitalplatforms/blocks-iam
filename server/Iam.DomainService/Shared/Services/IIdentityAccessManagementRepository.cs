@@ -38,6 +38,7 @@ namespace Iam.DomainService.Services
         /// </summary>
         Task<bool> RecordSuccessfulLoginAsync(string userId, string deviceInformationJson, DateTime nowUtc);
         Task<string> GetUserIdFromKeyMapByKeyAsync(string key);
+        Task<UserKeyMap?> GetUserKeyMapByKeyAsync(string key);
         Task SaveSignUpSettingAsync(TenantConfiguration tenantConfiguration);
         Task<TenantConfiguration> GetTenantConfigurationAsync();
     }

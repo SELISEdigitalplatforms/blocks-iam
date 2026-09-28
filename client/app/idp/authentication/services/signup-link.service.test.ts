@@ -41,4 +41,15 @@ describe("signupLinkService", () => {
       { skipBlocksKey: true },
     );
   });
+
+  it("posts mfa id and code to redeem/mfa", async () => {
+    post.mockResolvedValue({ authorizeUrl: "https://iam/api/oidc/authorize" });
+    await signupLinkService.completeMfa("mfa-1", "123456", "t1");
+    expect(post).toHaveBeenCalledWith(
+      SIGNUP_LINK_ENDPOINTS.REDEEM_MFA,
+      { mfaId: "mfa-1", mfaCode: "123456" },
+      { "X-Blocks-Key": "t1" },
+      { skipBlocksKey: true },
+    );
+  });
 });

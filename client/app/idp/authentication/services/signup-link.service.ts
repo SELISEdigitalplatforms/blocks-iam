@@ -11,7 +11,16 @@ export type SignupLinkContext =
     }
   | { valid: false };
 
-export type RedeemSignupLinkResponse = { authorizeUrl: string };
+export type RedeemSignupLinkResponse = {
+  authorizeUrl?: string;
+  activationKey?: string;
+  activationKeyExpiresAtUtc?: string;
+  credentialMode?: "Passwordless" | "PasswordRequired";
+  loginUrl?: string;
+  mfaId?: string;
+  userMfa?: string;
+  error?: string;
+};
 
 /**
  * Stateless signup-link API. The code is never placed in a URL path, query key,
@@ -39,6 +48,22 @@ export const signupLinkService = {
     return serviceInstances.idpService.post(
       SIGNUP_LINK_ENDPOINTS.REDEEM,
       { code },
+      headers,
+      tenantId ? { skipBlocksKey: true } : undefined,
+    ) as Promise<RedeemSignupLinkResponse>;
+  },
+
+  completeMfa(
+    mfaId: string,
+    mfaCode: string,
+    tenantId?: string,
+  ): Promise<RedeemSignupLinkResponse> {
+    const headers: Record<string, string> = tenantId
+      ? { "X-Blocks-Key": tenantId }
+      : {};
+    return serviceInstances.idpService.post(
+      SIGNUP_LINK_ENDPOINTS.REDEEM_MFA,
+      { mfaId, mfaCode },
       headers,
       tenantId ? { skipBlocksKey: true } : undefined,
     ) as Promise<RedeemSignupLinkResponse>;

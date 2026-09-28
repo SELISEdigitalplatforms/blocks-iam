@@ -10,4 +10,19 @@ public interface ISignupLinkRedemptionOrchestrator
         string? tenantIdHint,
         HttpRequest request,
         HttpResponse response);
+
+    Task<IActionResult> CompleteRedeemMfaAsync(
+        string? mfaId,
+        string? mfaCode,
+        HttpRequest request,
+        HttpResponse response);
+
+    /// <summary>
+    /// After a successful <c>ProcessActivationAsync</c>, bind the link-session cookie when the
+    /// activation key's UserKeyMap.Value carries <c>signup-link:{linkId}</c>. No-op for ordinary invites.
+    /// </summary>
+    Task TryBindLinkSessionAfterActivationAsync(
+        string? activationCode,
+        HttpRequest request,
+        HttpResponse response);
 }

@@ -19,3 +19,11 @@ export function useRedeemSignupLink(tenantId?: string) {
     mutationFn: (code: string) => signupLinkService.redeem(code, tenantId),
   });
 }
+
+export function useCompleteSignupLinkMfa(tenantId?: string) {
+  return useMutation({
+    mutationKey: ["signup-link", "redeem-mfa"],
+    mutationFn: (payload: { mfaId: string; mfaCode: string }) =>
+      signupLinkService.completeMfa(payload.mfaId, payload.mfaCode, tenantId),
+  });
+}

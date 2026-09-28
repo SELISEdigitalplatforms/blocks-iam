@@ -93,4 +93,5 @@ export { DEVICE_ENDPOINTS } from "./endpoints/device.endpoint";
 export const SIGNUP_LINK_ENDPOINTS = {
   CONTEXT: "/api/iam/signup-links/context",
   REDEEM: "/api/iam/signup-links/redeem",
+  REDEEM_MFA: "/api/iam/signup-links/redeem/mfa",
 } as const;

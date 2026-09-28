@@ -324,7 +324,9 @@ namespace Authentication.DomainService.Authentication
 
                 var authCode = _pkceService.GenerateRandomCode(32);
                 var amr = matchedLinkSession != null
-                    ? new List<string> { "link" }
+                    ? (matchedLinkSession.Amr is { Count: > 0 }
+                        ? matchedLinkSession.Amr.ToList()
+                        : new List<string> { "link" })
                     : BuildAmr(user, mfaCompleted);
 
                 var codeModel = new AuthorizationCodeModel

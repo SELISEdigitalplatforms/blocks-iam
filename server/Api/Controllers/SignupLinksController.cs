@@ -48,6 +48,18 @@ public class SignupLinksController : ControllerBase
             Response);
     }
 
+
+    [HttpPost("signup-links/redeem/mfa")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RedeemMfa([FromBody] RedeemSignupLinkMfaRequest? request)
+    {
+        return await _redemptionOrchestrator.CompleteRedeemMfaAsync(
+            request?.MfaId,
+            request?.MfaCode,
+            Request,
+            Response);
+    }
+
     [HttpPost("signup-links")]
     [ProtectedEndPoint("blocks-iam::iam::manage-signup-links")]
     public async Task<IActionResult> Generate([FromBody] GenerateSignupLinkRequest request)

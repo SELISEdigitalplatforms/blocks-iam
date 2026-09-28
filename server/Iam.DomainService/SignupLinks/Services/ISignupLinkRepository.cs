@@ -7,6 +7,7 @@ public interface ISignupLinkRepository
     Task<bool> ReplaceAsync(SignupLink entity);
     Task<SignupLink?> GetByIdAsync(string itemId, string tenantId);
     Task<SignupLink?> GetByCodeHashAsync(string codeHash);
+    Task<SignupLink?> GetByItemIdAsync(string itemId);
     /// <summary>
     /// Atomically increments RedemptionCount when the link is still redeemable.
     /// Returns the updated document, or null if the race/guard failed.

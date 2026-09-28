@@ -6,5 +6,8 @@ namespace Iam.DomainService.SignupLinks;
 public enum SignupLinkRedemptionOutcome
 {
     UserCreated = 0,
-    Rejected = 1
+    Rejected = 1,
+    LinkUserReturned = 2,
+    OrganizationJoined = 3,
+    ExistingUserRedirected = 4
 }
