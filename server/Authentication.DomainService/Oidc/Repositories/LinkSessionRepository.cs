@@ -47,7 +47,7 @@ public sealed class LinkSessionRepository : ILinkSessionRepository
     public async Task CreateAsync(LinkSessionModel session)
     {
         await Collection.InsertOneAsync(session);
-        _logger.LogInformation("Link session created for user {UserId} link {LinkId}", session.UserId, session.LinkId);
+        _logger.LogInformation("Link session created");
     }
 
     public async Task<LinkSessionModel?> GetBySessionIdAsync(string sessionId)

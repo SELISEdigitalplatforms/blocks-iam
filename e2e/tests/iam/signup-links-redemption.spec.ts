@@ -10,7 +10,9 @@ test.describe("Signup link redemption (Phase 3)", () => {
     const res = await request.get("/api/iam/signup-links/context");
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
-    expect(body).toEqual({ valid: false });
+    expect(body.valid).toBe(false);
+    expect(body.firstName ?? null).toBeNull();
+    expect(body.maskedEmail ?? null).toBeNull();
   });
 
   test("POST redeem with fabricated code returns invalid_link", async ({

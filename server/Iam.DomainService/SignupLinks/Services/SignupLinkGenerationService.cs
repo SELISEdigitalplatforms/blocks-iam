@@ -147,12 +147,8 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
 
         await _linkRepository.InsertAsync(entity);
 
-        // Correlate on ItemId / email only — never log the code or a URL containing it (C5).
-        _logger.LogInformation(
-            "Signup link generated. LinkId={LinkId} Email={Email} ConfigurationId={ConfigurationId}",
-            linkId,
-            email,
-            config.ItemId);
+        // Never log the code, URL, or email (C5 / CodeQL exposure + log-forging).
+        _logger.LogInformation("Signup link generated");
 
         var baseUrl = IamHelper.GetConfiguredIamBaseUrl(_configuration).TrimEnd('/');
         var url = $"{baseUrl}/oidc/join/{tenantId}#link={code}";
@@ -229,7 +225,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         entity.LastUpdatedBy = ctx?.UserId;
         await _linkRepository.ReplaceAsync(entity);
 
-        _logger.LogInformation("Signup link revoked. LinkId={LinkId}", linkId);
+        _logger.LogInformation("Signup link revoked");
 
         return new RevokeSignupLinkResponse { IsSuccess = true, ItemId = entity.ItemId };
     }
@@ -265,10 +261,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             ctx?.UserId ?? string.Empty,
             now);
 
-        _logger.LogInformation(
-            "Signup links revoked by configuration. ConfigurationId={ConfigurationId} RevokedCount={RevokedCount}",
-            request.ConfigurationId,
-            count);
+        _logger.LogInformation("Signup links revoked by configuration. RevokedCount={RevokedCount}", count);
 
         return new RevokeSignupLinksByConfigurationResponse
         {

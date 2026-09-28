@@ -116,7 +116,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return InvalidLink();
         }
 
-        var userId = await CreatePasswordlessUserAsync(link);
+        var userId = await CreateSignupLinkUserAsync(link);
         if (string.IsNullOrWhiteSpace(userId))
         {
             _logger.LogError("Signup link redeem failed to create user for link {LinkId}", link.ItemId);
@@ -202,7 +202,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         return null;
     }
 
-    private async Task<string> CreatePasswordlessUserAsync(SignupLink link)
+    private async Task<string> CreateSignupLinkUserAsync(SignupLink link)
     {
         // Establish BlocksContext tenant for MapUser / CreateUser.
         var previous = BlocksContext.GetContext();
