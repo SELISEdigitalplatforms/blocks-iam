@@ -55,6 +55,9 @@ namespace XUnitTest.TestSupport
             indexes.Setup(i => i.CreateManyAsync(
                     It.IsAny<IEnumerable<CreateIndexModel<T>>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new[] { "ix" });
+            indexes.Setup(i => i.DropOneAsync(
+                    It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
             col.Setup(c => c.Indexes).Returns(indexes.Object);
         }
 

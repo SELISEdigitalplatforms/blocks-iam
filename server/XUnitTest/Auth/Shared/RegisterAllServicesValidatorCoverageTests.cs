@@ -31,6 +31,19 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
+        public void RegisterAllServices_RegistersSignupLinkSummaryServiceAndValidator()
+        {
+            var services = Registered();
+            services.Should().Contain(d =>
+                d.ServiceType.Name == "ISignupLinkSummaryService" &&
+                d.Lifetime == ServiceLifetime.Singleton);
+            services.Should().Contain(d =>
+                d.ServiceType.Name == "IValidator`1" &&
+                d.ImplementationType != null &&
+                d.ImplementationType.Name == "SignupLinkSummaryValidator");
+        }
+
+        [Fact]
         public void RegisterAllServices_RegistersEveryValidatorItsOwnImplementationsRequire()
         {
             var services = Registered();

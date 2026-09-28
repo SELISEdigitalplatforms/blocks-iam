@@ -39,17 +39,20 @@ jobs:
       id-token: write
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Compute preview identifiers
         id: vars
+        env:
+          GITHUB_EVENT_PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_EVENT_PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          PR="${{ github.event.pull_request.number }}"
+          PR="${GITHUB_EVENT_PULL_REQUEST_NUMBER}"
           HOST="dev-${SERVICE}-${PR}.blocksdevelopers.com"
           RELEASE="pr-${PR}-blocks-iam"
-          IMAGE_TAG="pr-${PR}-${{ github.event.pull_request.head.sha }}"
+          IMAGE_TAG="pr-${PR}-${GITHUB_EVENT_PULL_REQUEST_HEAD_SHA}"
           echo "pr=${PR}"               >> "$GITHUB_OUTPUT"
           echo "host=${HOST}"           >> "$GITHUB_OUTPUT"
           echo "release=${RELEASE}"     >> "$GITHUB_OUTPUT"
@@ -62,27 +65,31 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Azure login
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
         with:
           creds: ${{ secrets.AZURE_AKS_BLOCKS_CREDENTIALS }}
 
       - name: Build and push preview image
+        env:
+          SECRETS_AZURE_BLOCKS_CONTAINER_REGISTRY: ${{ secrets.AZURE_BLOCKS_CONTAINER_REGISTRY }}
+          SECRETS_CLUSTER_AKS_BLOCKS_RESOURCE_GROUP: ${{ secrets.ClUSTER_AKS_BLOCKS_RESOURCE_GROUP }}
+          STEPS_VARS_OUTPUTS_IMAGE_TAG: ${{ steps.vars.outputs.image_tag }}
         run: |
           az acr build \
-            --registry "${{ secrets.AZURE_BLOCKS_CONTAINER_REGISTRY }}" \
-            --resource-group "${{ secrets.ClUSTER_AKS_BLOCKS_RESOURCE_GROUP }}" \
-            --image "${IMAGE_REPO}:${{ steps.vars.outputs.image_tag }}" \
+            --registry "${SECRETS_AZURE_BLOCKS_CONTAINER_REGISTRY}" \
+            --resource-group "${SECRETS_CLUSTER_AKS_BLOCKS_RESOURCE_GROUP}" \
+            --image "${IMAGE_REPO}:${STEPS_VARS_OUTPUTS_IMAGE_TAG}" \
             --file Dockerfile \
             .
 
       - name: Get AKS context
-        uses: azure/aks-set-context@v4
+        uses: azure/aks-set-context@c7eb093e5a5d47caa333f64974d5fd1cd4bf069d # v4
         with:
           resource-group: ${{ secrets.ClUSTER_AKS_BLOCKS_RESOURCE_GROUP }}
           cluster-name: ${{ env.CLUSTER_NAME }}
 
       - name: Setup kubelogin
-        uses: azure/use-kubelogin@v1
+        uses: azure/use-kubelogin@76597ae0fcbaace21b05e13a2cbf8daee2c6e820 # v1
         with:
           kubelogin-version: v0.0.24
 
@@ -90,10 +97,10 @@ jobs:
         run: kubelogin convert-kubeconfig -l azurecli
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
 
       - name: Checkout GitOps Helm repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: ${{ env.HELM_REPO }}
           token: ${{ secrets.SELISE_GITHUB_PAT }}
@@ -101,16 +108,21 @@ jobs:
 
       - name: Deploy preview
         working-directory: helm-repo
+        env:
+          STEPS_VARS_OUTPUTS_HOST: ${{ steps.vars.outputs.host }}
+          STEPS_VARS_OUTPUTS_RELEASE: ${{ steps.vars.outputs.release }}
+          SECRETS_AZURE_BLOCKS_CONTAINER_REGISTRY: ${{ secrets.AZURE_BLOCKS_CONTAINER_REGISTRY }}
+          STEPS_VARS_OUTPUTS_IMAGE_TAG: ${{ steps.vars.outputs.image_tag }}
         run: |
-          HOST="${{ steps.vars.outputs.host }}"
-          RELEASE="${{ steps.vars.outputs.release }}"
-          REGISTRY="${{ secrets.AZURE_BLOCKS_CONTAINER_REGISTRY }}"
+          HOST="${STEPS_VARS_OUTPUTS_HOST}"
+          RELEASE="${STEPS_VARS_OUTPUTS_RELEASE}"
+          REGISTRY="${SECRETS_AZURE_BLOCKS_CONTAINER_REGISTRY}"
 
           helm upgrade --install "${RELEASE}" "./${CHART_PATH}" \
             --namespace "${NAMESPACE}" \
             --values "./${VALUES_FILE}" \
             --set image.repository="${REGISTRY}.azurecr.io/${IMAGE_REPO}" \
-            --set image.tag="${{ steps.vars.outputs.image_tag }}" \
+            --set image.tag="${STEPS_VARS_OUTPUTS_IMAGE_TAG}" \
             --set environment=dev \
             --set serviceName=blocks-iam \
             --set fullnameOverride="${RELEASE}" \
@@ -121,10 +133,13 @@ jobs:
             --wait --timeout 5m
 
       - name: Register preview with IAM
+        env:
+          SECRETS_PREVIEW_REGISTRAR_SECRET: ${{ secrets.PREVIEW_REGISTRAR_SECRET }}
+          STEPS_VARS_OUTPUTS_PR: ${{ steps.vars.outputs.pr }}
         run: |
           curl -sS -f -X POST "${PREVIEW_REGISTRAR_URL}/register" \
             -H "Content-Type: application/json" \
-            -d "{\"secret\":\"${{ secrets.PREVIEW_REGISTRAR_SECRET }}\",\"repoName\":\"blocks-iam\",\"prNumber\":${{ steps.vars.outputs.pr }}}"
+            -d "{\"secret\":\"${SECRETS_PREVIEW_REGISTRAR_SECRET}\",\"repoName\":\"blocks-iam\",\"prNumber\":${STEPS_VARS_OUTPUTS_PR}}"
 
       - name: Restart iam-client to reload cache
         run: |
@@ -132,7 +147,7 @@ jobs:
           kubectl rollout status deployment "${IAM_DEPLOYMENT}" -n "${NAMESPACE}" --timeout=120s
 
       - name: Comment preview URL on PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -174,23 +189,25 @@ jobs:
     steps:
       - name: Compute release name
         id: vars
+        env:
+          GITHUB_EVENT_PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          echo "release=pr-${{ github.event.pull_request.number }}-blocks-iam" >> "$GITHUB_OUTPUT"
-          echo "pr=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          echo "release=pr-${GITHUB_EVENT_PULL_REQUEST_NUMBER}-blocks-iam" >> "$GITHUB_OUTPUT"
+          echo "pr=${GITHUB_EVENT_PULL_REQUEST_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Azure login
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
         with:
           creds: ${{ secrets.AZURE_AKS_BLOCKS_CREDENTIALS }}
 
       - name: Get AKS context
-        uses: azure/aks-set-context@v4
+        uses: azure/aks-set-context@c7eb093e5a5d47caa333f64974d5fd1cd4bf069d # v4
         with:
           resource-group: ${{ secrets.ClUSTER_AKS_BLOCKS_RESOURCE_GROUP }}
           cluster-name: ${{ env.CLUSTER_NAME }}
 
       - name: Setup kubelogin
-        uses: azure/use-kubelogin@v1
+        uses: azure/use-kubelogin@76597ae0fcbaace21b05e13a2cbf8daee2c6e820 # v1
         with:
           kubelogin-version: v0.0.24
 
@@ -198,19 +215,24 @@ jobs:
         run: kubelogin convert-kubeconfig -l azurecli
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
 
       - name: Uninstall preview release
-        run: helm uninstall "${{ steps.vars.outputs.release }}" --namespace "${NAMESPACE}" --ignore-not-found
+        env:
+          STEPS_VARS_OUTPUTS_RELEASE: ${{ steps.vars.outputs.release }}
+        run: helm uninstall "$STEPS_VARS_OUTPUTS_RELEASE" --namespace "${NAMESPACE}" --ignore-not-found
 
       - name: Deregister preview from IAM
+        env:
+          SECRETS_PREVIEW_REGISTRAR_SECRET: ${{ secrets.PREVIEW_REGISTRAR_SECRET }}
+          STEPS_VARS_OUTPUTS_PR: ${{ steps.vars.outputs.pr }}
         run: |
           curl -sS -f -X POST "${PREVIEW_REGISTRAR_URL}/deregister" \
             -H "Content-Type: application/json" \
-            -d "{\"secret\":\"${{ secrets.PREVIEW_REGISTRAR_SECRET }}\",\"repoName\":\"blocks-iam\",\"prNumber\":${{ steps.vars.outputs.pr }}}"
+            -d "{\"secret\":\"${SECRETS_PREVIEW_REGISTRAR_SECRET}\",\"repoName\":\"blocks-iam\",\"prNumber\":${STEPS_VARS_OUTPUTS_PR}}"
 
       - name: Comment teardown on PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

@@ -49,25 +49,29 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Wait for deployment to become healthy
+        env:
+          INPUTS_BASE_URL: ${{ inputs.BASE_URL }}
+          INPUTS_HEALTHCHECK_RETRIES: ${{ inputs.HEALTHCHECK_RETRIES }}
+          INPUTS_HEALTHCHECK_INTERVAL_SECONDS: ${{ inputs.HEALTHCHECK_INTERVAL_SECONDS }}
         run: |
-          echo "Polling ${{ inputs.BASE_URL }} for up to $(( ${{ inputs.HEALTHCHECK_RETRIES }} * ${{ inputs.HEALTHCHECK_INTERVAL_SECONDS }} ))s ..."
-          for i in $(seq 1 ${{ inputs.HEALTHCHECK_RETRIES }}); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "${{ inputs.BASE_URL }}" || echo "000")
-            echo "  attempt $i/${{ inputs.HEALTHCHECK_RETRIES }}: HTTP $code"
+          echo "Polling ${INPUTS_BASE_URL} for up to $(( ${INPUTS_HEALTHCHECK_RETRIES} * ${INPUTS_HEALTHCHECK_INTERVAL_SECONDS} ))s ..."
+          for i in $(seq 1 ${INPUTS_HEALTHCHECK_RETRIES}); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "${INPUTS_BASE_URL}" || echo "000")
+            echo "  attempt $i/${INPUTS_HEALTHCHECK_RETRIES}: HTTP $code"
             if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
               echo "Host is responding."
               exit 0
             fi
-            sleep ${{ inputs.HEALTHCHECK_INTERVAL_SECONDS }}
+            sleep ${INPUTS_HEALTHCHECK_INTERVAL_SECONDS}
           done
-          echo "::error::${{ inputs.BASE_URL }} never became healthy after the GitOps deploy — skipping E2E run."
+          echo "::error::${INPUTS_BASE_URL} never became healthy after the GitOps deploy — skipping E2E run."
           exit 1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ inputs.NODE_VERSION }}
           cache: npm
@@ -86,9 +90,10 @@ jobs:
         env:
           E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
           E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+          INPUTS_BASE_URL: ${{ inputs.BASE_URL }}
         run: |
           cat > .env.e2e <<EOF
-          E2E_BASE_URL=${{ inputs.BASE_URL }}
+          E2E_BASE_URL=${INPUTS_BASE_URL}
           E2E_USERNAME=$E2E_USERNAME
           E2E_PASSWORD=$E2E_PASSWORD
           E2E_NO_WEBSERVER=1
@@ -102,7 +107,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report
           path: |
@@ -113,13 +118,17 @@ jobs:
 
       - name: Summary
         if: always()
+        env:
+          INPUTS_BASE_URL: ${{ inputs.BASE_URL }}
+          STEPS_RUN_TESTS_OUTCOME: ${{ steps.run_tests.outcome }}
+          INPUTS_CONTINUE_ON_FAILURE: ${{ inputs.CONTINUE_ON_FAILURE }}
         run: |
           {
             echo "### 🎭 E2E Tests (Playwright)"
             echo ""
-            echo "- Target: \`${{ inputs.BASE_URL }}\`"
-            echo "- Result: \`${{ steps.run_tests.outcome }}\`"
-            if [ "${{ steps.run_tests.outcome }}" = "failure" ] && [ "${{ inputs.CONTINUE_ON_FAILURE }}" = "true" ]; then
+            echo "- Target: \`${INPUTS_BASE_URL}\`"
+            echo "- Result: \`${STEPS_RUN_TESTS_OUTCOME}\`"
+            if [ "${STEPS_RUN_TESTS_OUTCOME}" = "failure" ] && [ "${INPUTS_CONTINUE_ON_FAILURE}" = "true" ]; then
               echo "- Note: non-blocking bake-in period — this failure did not fail the pipeline."
             fi
             echo "- Report: see the \`playwright-report\` artifact on this run."

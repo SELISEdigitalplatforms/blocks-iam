@@ -111,7 +111,7 @@ export class UserService {
   isUserExist(
     email: string,
   ): Promise<{ userId?: string; organizationIds?: string[] }> {
-    return serviceInstances.idpService.get(`${USER_ENDPOINTS.EXISTS}?email=${encodeURIComponent(email)}`);
+    return serviceInstances.idpService.post(USER_ENDPOINTS.EXISTS, { email });
   }
 
   async updateUser(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {

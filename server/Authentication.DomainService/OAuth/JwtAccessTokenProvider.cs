@@ -97,20 +97,34 @@ namespace Authentication.DomainService.OAuth
 
         public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, OrganizationScope organizationScope, StateInfo? stateInfo = null)
         {
+            var effectiveClaims = resolvedClaims;
+            if (tokenRequest.IsLinkAuthentication)
+            {
+                effectiveClaims = new ResolvedAuthorizationClaims
+                {
+                    Roles = IntersectClaims(resolvedClaims.Roles, tokenRequest.RestrictedRoles),
+                    Permissions = IntersectClaims(resolvedClaims.Permissions, tokenRequest.RestrictedPermissions)
+                };
+            }
+
+            var audience = tokenRequest.IsLinkAuthentication
+                ? (tokenRequest.Audience ?? tokenRequest.ClientId ?? DomainResolver.GetAudience(tenant))
+                : DomainResolver.GetAudience(tenant);
+
             var jwtAccessToken = new JwtAccessToken
             {
                 RefreshTokenValidForNumberMinute = authenticationConfiguration.RefreshTokenValidForNumberMinutes,
                 AccessTokenValidForNumberMinute = authenticationConfiguration.AccessTokenValidForNumberMinutes,
                 RememberMeRefreshTokenValidForNumberMinute = authenticationConfiguration.RememberMeRefreshTokenValidForNumberMinutes,
                 Issuer = tenant.JwtTokenParameters.Issuer,
-                Audience = DomainResolver.GetAudience(tenant),
+                Audience = audience,
                 NotBefore = DateTime.UtcNow,
                 Expires = DateTime.UtcNow.AddMinutes(authenticationConfiguration.AccessTokenValidForNumberMinutes),
                 SigningCredentials = MakeSigningCredentials(certificate, tenant.JwtTokenParameters.PrivateCertificatePassword)
             };
 
             var claimsIdentity = new ClaimsIdentity("seliseblocks-authentication");
-            AddClaims(claimsIdentity, tenant, user, resolvedClaims, tokenRequest, organizationScope, stateInfo: stateInfo);
+            AddClaims(claimsIdentity, tenant, user, effectiveClaims, tokenRequest, organizationScope, stateInfo: stateInfo);
             jwtAccessToken.Claims = claimsIdentity.Claims;
 
             return jwtAccessToken;
@@ -155,6 +169,15 @@ namespace Authentication.DomainService.OAuth
             foreach (var permission in resolvedClaims.Permissions)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
+            }
+
+            if (tokenRequest.IsLinkAuthentication)
+            {
+                var amrValues = tokenRequest.Amr is { Count: > 0 } ? tokenRequest.Amr : new List<string> { "link" };
+                foreach (var amr in amrValues.Where(a => !string.IsNullOrWhiteSpace(a)).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    claimsIdentity.AddClaim(new Claim("amr", amr));
+                }
             }
 
             if (tokenRequest.IsImpersonation)
@@ -227,5 +250,14 @@ namespace Authentication.DomainService.OAuth
             return new SigningCredentials(new RsaSecurityKey(rsa), SecurityAlgorithms.RsaSha256, SecurityAlgorithms.Sha256Digest);
         }
 
+
+        private static List<string> IntersectClaims(IEnumerable<string>? left, IEnumerable<string>? right)
+        {
+            var rightSet = new HashSet<string>(right ?? [], StringComparer.OrdinalIgnoreCase);
+            return (left ?? [])
+                .Where(r => rightSet.Contains(r))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
     }
 }

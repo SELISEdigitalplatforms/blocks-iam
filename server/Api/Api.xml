@@ -238,6 +238,12 @@
             </summary>
         </member>
         <!-- Badly formed XML comment ignored for member "M:Api.Controllers.DiscoveryController.JwksJson" -->
+        <member name="T:Api.Controllers.EmailAvailabilityController">
+            <summary>
+            Email availability / existence checks. Kept separate from <see cref="T:Api.Controllers.IamController"/>
+            so addresses are handled on their own surface (POST bodies — ZAP 10024 / CWE-598).
+            </summary>
+        </member>
         <member name="M:Api.Controllers.IamController.GetRolePermissionChangeImpact(Iam.DomainService.Resources.RolePermissionChangeImpactRequest)">
             <summary>
             Previews what assigning or unassigning the given permissions would do, before the
@@ -464,6 +470,12 @@
             <summary>
             Self-service security endpoints.
             All routes live under <c>/security</c>.
+            </summary>
+        </member>
+        <member name="T:Api.Middleware.SecurityHeadersMiddleware">
+            <summary>
+            Browser security headers via Response.OnStarting so Genesis/OIDC Set-Cookie
+            still works on PR previews. Skips Cache-Control on cookie-issuing auth paths.
             </summary>
         </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">

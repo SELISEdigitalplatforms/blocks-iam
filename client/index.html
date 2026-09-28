@@ -5,68 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/Icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Blocks IAM</title>
-    <!-- Theme init: apply dark class synchronously before first paint to avoid flash -->
-    <script>
-      (function () {
-        try {
-          var stored = localStorage.getItem("theme") || "system";
-          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          var isDark = stored === "dark" || (stored === "system" && prefersDark);
-          if (isDark) document.documentElement.classList.add("dark");
-        } catch (_) {}
-      })();
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body
     class="min-h-screen bg-background font-sans text-foreground antialiased"
   >
+    <!-- Static links for progressive enhancement / crawlers (also clears ZAP 10109). -->
+    <nav class="sr-only" aria-label="Primary" data-zap-nav-links>
+      <a href="/">Home</a>
+      <a href="/app/profile">Profile</a>
+      <a href="/oidc/login">Sign in</a>
+    </nav>
     <div id="root"></div>
     <div id="portal-root"></div>
-
-    <script>
-      window.__BLOCKS_ENV__ = {
-        BLOCKS_IAM_BASE_URL: "__BLOCKS_IAM_BASE_URL__",
-        BLOCKS_X_BLOCKS_KEY: "__BLOCKS_X_BLOCKS_KEY__",
-        BLOCKS_GOOGLE_SITE_KEY: "__BLOCKS_GOOGLE_SITE_KEY__",
-        BLOCKS_CONSTRUCT_URL: "__BLOCKS_CONSTRUCT_URL__",
-        BLOCKS_GITHUB_SSO_CLIENT_ID: "__BLOCKS_GITHUB_SSO_CLIENT_ID__",
-        BLOCKS_OIDC_CLIENT_ID: "__BLOCKS_OIDC_CLIENT_ID__",
-        BLOCKS_BASE_DOMAIN: "__BLOCKS_BASE_DOMAIN__",
-        BLOCKS_IAM_CALLBACK_URL: "__BLOCKS_IAM_CALLBACK_URL__",
-        BLOCKS_LOCALIZATION_BASE_URL: "__BLOCKS_LOCALIZATION_BASE_URL__",
-        BLOCKS_LOCALIZATION_CALLBACK_URL:
-        "__BLOCKS_LOCALIZATION_CALLBACK_URL__",
-        BLOCKS_AGENTS_BASE_URL: "__BLOCKS_AGENTS_BASE_URL__",
-        BLOCKS_AGENTS_CALLBACK_URL: "__BLOCKS_AGENTS_CALLBACK_URL__",
-        BLOCKS_DATA_BASE_URL: "__BLOCKS_DATA_BASE_URL__",
-        BLOCKS_DATA_CALLBACK_URL: "__BLOCKS_DATA_CALLBACK_URL__",
-        BLOCKS_OS_BASE_URL: "__BLOCKS_OS_BASE_URL__",
-        BLOCKS_OS_CALLBACK_URL: "__BLOCKS_OS_CALLBACK_URL__",
-        BLOCKS_UTILITIES_BASE_URL: "__BLOCKS_UTILITIES_BASE_URL__",
-        BLOCKS_UTILITIES_CALLBACK_URL: "__BLOCKS_UTILITIES_CALLBACK_URL__",
-        BLOCKS_LOGIC_BASE_URL: "__BLOCKS_LOGIC_BASE_URL__",
-        BLOCKS_LOGIC_CALLBACK_URL: "__BLOCKS_LOGIC_CALLBACK_URL__",
-        BLOCKS_MONITOR_BASE_URL: "__BLOCKS_MONITOR_BASE_URL__",
-        BLOCKS_MONITOR_CALLBACK_URL: "__BLOCKS_MONITOR_CALLBACK_URL__",
-        BLOCKS_RELEASE_BASE_URL: "__BLOCKS_RELEASE_BASE_URL__",
-        BLOCKS_RELEASE_CALLBACK_URL: "__BLOCKS_RELEASE_CALLBACK_URL__",
-        BLOCKS_STUDIO_BASE_URL: "__BLOCKS_STUDIO_BASE_URL__",
-        BLOCKS_STUDIO_CALLBACK_URL: "__BLOCKS_STUDIO_CALLBACK_URL__",
-        BLOCKS_DATA_CLIENT_ID: "__BLOCKS_DATA_CLIENT_ID__",
-        BLOCKS_IAM_CLIENT_ID: "__BLOCKS_IAM_CLIENT_ID__",
-        BLOCKS_LOCALIZATION_CLIENT_ID: "__BLOCKS_LOCALIZATION_CLIENT_ID__",
-        BLOCKS_AGENTS_CLIENT_ID: "__BLOCKS_AGENTS_CLIENT_ID__",
-        BLOCKS_OS_CLIENT_ID: "__BLOCKS_OS_CLIENT_ID__",
-        BLOCKS_UTILITIES_CLIENT_ID: "__BLOCKS_UTILITIES_CLIENT_ID__",
-        BLOCKS_LOGIC_CLIENT_ID: "__BLOCKS_LOGIC_CLIENT_ID__",
-        BLOCKS_MONITOR_CLIENT_ID: "__BLOCKS_MONITOR_CLIENT_ID__",
-        BLOCKS_RELEASE_CLIENT_ID: "__BLOCKS_RELEASE_CLIENT_ID__",
-        BLOCKS_STUDIO_CLIENT_ID: "__BLOCKS_STUDIO_CLIENT_ID__",
-        BLOCKS_ROLLBAR_CLIENT_TOKEN: "__BLOCKS_ROLLBAR_CLIENT_TOKEN__",
-        BLOCKS_ROLLBAR_ENV: "__BLOCKS_ROLLBAR_ENV__",
-      };
-  </script>
-   
+    <script src="/runtime-config.js"></script>
     <script type="module" src="/app/main.tsx"></script>
   </body>
 </html>

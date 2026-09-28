@@ -35,35 +35,29 @@ namespace Authentication.DomainService.Authentication
         private readonly ITenants _tenants;
         private readonly ICacheClient _cacheClient;
         private readonly IResourceRepository _resourceRepository;
+        private readonly ILinkSessionRepository _linkSessionRepo;
         private readonly ILogger<OidcAuthorizationEndpoint> _logger;
 
         public OidcAuthorizationEndpoint(
-            IAuthorizationCodeRepository authCodeRepo,
-            IIdpSessionRepository sessionRepo,
-            IIdpSessionService sessionService,
-            IPkceService pkceService,
-            IUserRepository userRepository,
-            IAuthenticationRepository authenticationRepository,
-            IAuthenticationService authenticationService,
-            ITenants tenants,
-            ICacheClient cacheClient,
-            IResourceRepository resourceRepository,
+            OidcAuthorizationSessionStores sessionStores,
+            OidcAuthorizationIdentityStores identityStores,
             ILogger<OidcAuthorizationEndpoint> logger)
         {
-            _authCodeRepo = authCodeRepo;
-            _sessionRepo = sessionRepo;
-            _sessionService = sessionService;
-            _pkceService = pkceService;
-            _userRepository = userRepository;
-            _authenticationRepository = authenticationRepository;
-            _authenticationService = authenticationService;
-            _tenants = tenants;
-            _cacheClient = cacheClient;
-            _resourceRepository = resourceRepository;
+            _authCodeRepo = sessionStores.AuthCodes;
+            _sessionRepo = sessionStores.Sessions;
+            _sessionService = sessionStores.SessionService;
+            _pkceService = sessionStores.Pkce;
+            _linkSessionRepo = sessionStores.LinkSessions;
             _logger = logger;
+            _userRepository = identityStores.Users;
+            _authenticationRepository = identityStores.Authentication;
+            _authenticationService = identityStores.AuthenticationService;
+            _tenants = identityStores.Tenants;
+            _cacheClient = identityStores.Cache;
+            _resourceRepository = identityStores.Resources;
         }
 
-        public async Task<IActionResult> AuthorizeAsync(
+        public async Task<IActionResult> AuthorizeAsync( // NOSONAR S3776 — OIDC authorize branches are intentional; tracked separately from signup-links
             string client_id,
             string response_type,
             string redirect_uri,
@@ -133,27 +127,32 @@ namespace Authentication.DomainService.Authentication
                 // happens below, at its original place in the flow. Skipped entirely when
                 // client_id itself is blank, so invalid input still fails validation without
                 // touching any dependency, same as before this lookup existed.
-                var isDeviceFlowClient = !string.IsNullOrWhiteSpace(client_id)
-                    && ((await _authenticationRepository.GetOidcClientRegistrationAsync(client_id))?.IsDeviceFlowClient ?? false);
+                var earlyClient = !string.IsNullOrWhiteSpace(client_id)
+                    ? await _authenticationRepository.GetOidcClientRegistrationAsync(client_id)
+                    : null;
+                var isDeviceFlowClient = earlyClient?.IsDeviceFlowClient ?? false;
                 var validationResult = OidcAuthRequestValidator.Validate(authorizeRequest, isDeviceFlowClient);
 
                 if (!validationResult.IsValid)
                 {
                     _logger.LogWarning("Authorization request validation failed for {ClientId}: {Errors}", client_id, string.Join(", ", validationResult.Errors));
 
-                    var errorParams = new Dictionary<string, string>
-                    {
-                        { "error", "invalid_request" },
-                        { "error_description", string.Join("; ", validationResult.Errors) },
-                        { "state", state }
-                    };
-
-                    if (returnRedirectResponse && !string.IsNullOrWhiteSpace(redirect_uri))
-                    {
-                        return new RedirectResult(OidcRedirectUrlBuilder.BuildRedirectUri(redirect_uri, errorParams));
-                    }
-
+                    // Never bounce to redirect_uri until it has been matched to a registered
+                    // client (RFC 6749 §4.1.2.1 / CWE-601). An unvalidated URI here is exactly
+                    // how an attacker-controlled Location is produced. Same-origin login error
+                    // page (or 400 for API callers) instead.
                     return BuildBrowserError("invalid_request", string.Join("; ", validationResult.Errors));
+                }
+
+                // Reject unregistered redirect_uri before the login hop or any later client
+                // callback. Unknown clients are still handled later (invalid_client) so the
+                // unauthenticated "please sign in" path is unchanged when client_id is typo'd.
+                if (earlyClient != null
+                    && !earlyClient.IsDeviceFlowClient
+                    && !earlyClient.RedirectUris.Contains(redirect_uri))
+                {
+                    _logger.LogWarning("Invalid redirect_uri rejected for OIDC client registration check");
+                    return BuildBrowserError("invalid_request", "Invalid redirect_uri");
                 }
 
                 scope = EnsureOfflineAccess(scope);
@@ -161,6 +160,25 @@ namespace Authentication.DomainService.Authentication
                 var effectiveSessionId = request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant_id)];
 
                 string? resolvedUserId = blocksUserId;
+                LinkSessionModel? matchedLinkSession = null;
+                var linkCookieId = request.Cookies[IdpConstants.BuildLinkSessionCookieKey(tenant_id)];
+                if (!string.IsNullOrWhiteSpace(linkCookieId))
+                {
+                    var linkSession = await _linkSessionRepo.GetBySessionIdAsync(linkCookieId);
+                    if (linkSession != null
+                        && !linkSession.IsExpired()
+                        && string.Equals(linkSession.ClientId, client_id, StringComparison.Ordinal)
+                        && (string.IsNullOrWhiteSpace(tenant_id)
+                            || string.Equals(linkSession.TenantId, tenant_id, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        matchedLinkSession = linkSession;
+                        if (string.IsNullOrWhiteSpace(resolvedUserId))
+                        {
+                            resolvedUserId = linkSession.UserId;
+                        }
+                    }
+                    // Wrong client or expired: ignore entirely (C4) — fall through to IdP / login.
+                }
 
                 // Set only when the login orchestrator has just verified a username and password.
                 // That verdict is authoritative: /oidc/login carries no way to ask for a second
@@ -179,7 +197,12 @@ namespace Authentication.DomainService.Authentication
                 // what a freshly verified password overrules. Resolving from the cookie here used to
                 // overwrite the authenticated user whenever the session held exactly one account for
                 // the tenant, handing the new user an authorization code minted for the previous one.
-                if (!credentialsJustVerified && !forceLogin && !string.IsNullOrWhiteSpace(effectiveSessionId))
+                // Link-session resolution is authoritative for its matching client (H3/C4).
+                // Do not let a lingering IdP cookie overwrite the freshly redeemed user.
+                if (matchedLinkSession == null
+                    && !credentialsJustVerified
+                    && !forceLogin
+                    && !string.IsNullOrWhiteSpace(effectiveSessionId))
                 {
                     var session = await _sessionRepo.GetBySessionIdAsync(effectiveSessionId);
                     if (session != null && !session.RevokedAt.HasValue && !session.IsExpired())
@@ -236,7 +259,7 @@ namespace Authentication.DomainService.Authentication
 
                 if (!client.RedirectUris.Contains(redirect_uri))
                 {
-                    _logger.LogWarning("Invalid redirect_uri for {ClientId}: {RedirectUri}", client_id, redirect_uri);
+                    _logger.LogWarning("Invalid redirect_uri rejected for OIDC client registration check");
                     return BuildBrowserError("invalid_request", "Invalid redirect_uri");
                 }
 
@@ -283,13 +306,25 @@ namespace Authentication.DomainService.Authentication
                 // becomes the claim at exchange time without being re-validated, so the tenant's
                 // real multi-organization mode has to be read here.
                 var tenantConfiguration = await _resourceRepository.GetTenantConfigurationAsync();
-                var effectiveOrganizationId = OrganizationAccessResolver.ResolveEffectiveOrganizationId(
-                    user,
-                    tenantConfiguration?.IsMultiOrgEnabled ?? false);
+                var effectiveOrganizationId = matchedLinkSession != null
+                    ? matchedLinkSession.OrganizationId
+                    : OrganizationAccessResolver.ResolveEffectiveOrganizationId(
+                        user,
+                        tenantConfiguration?.IsMultiOrgEnabled ?? false);
                 await PersistLastUsedOrganizationAsync(user, effectiveOrganizationId);
 
                 var authCode = _pkceService.GenerateRandomCode(32);
-                var amr = BuildAmr(user, mfaCompleted);
+                List<string> amr;
+                if (matchedLinkSession != null)
+                {
+                    amr = matchedLinkSession.Amr is { Count: > 0 }
+                        ? matchedLinkSession.Amr.ToList()
+                        : new List<string> { "link" };
+                }
+                else
+                {
+                    amr = BuildAmr(user, mfaCompleted);
+                }
 
                 var codeModel = new AuthorizationCodeModel
                 {
@@ -309,6 +344,9 @@ namespace Authentication.DomainService.Authentication
                     CreatedAt = DateTime.UtcNow,
                     CreatedByIpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request),
                     IdpSessionId = idpSessionId,
+                    IsLinkAuthentication = matchedLinkSession != null,
+                    RestrictedRoles = matchedLinkSession?.Roles?.ToList() ?? [],
+                    RestrictedPermissions = matchedLinkSession?.Permissions?.ToList() ?? [],
                 };
 
                 // Blocks Cloud Impersonation Support

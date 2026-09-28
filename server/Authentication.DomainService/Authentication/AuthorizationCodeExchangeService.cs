@@ -175,7 +175,17 @@ namespace Authentication.DomainService.Authentication
                 authCode.Scope,
                 requireExplicitScope: true);
 
+            var roles = resolvedClaims.Roles;
+            var permissions = resolvedClaims.Permissions;
+            if (authCode.IsLinkAuthentication)
+            {
+                roles = IntersectClaims(resolvedClaims.Roles, authCode.RestrictedRoles);
+                permissions = IntersectClaims(resolvedClaims.Permissions, authCode.RestrictedPermissions);
+            }
+
+            // Link sessions mint aud = the link's client only (H4); ordinary codes keep the tenant audience.
             var tenantAudience = DomainResolver.GetAudience(tenant);
+            var audience = authCode.IsLinkAuthentication ? clientId : tenantAudience;
 
             var fullName = string.Join(' ', new[] { user!.FirstName, user.LastName }
                 .Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -189,14 +199,17 @@ namespace Authentication.DomainService.Authentication
                 AuthTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 Iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 ClientId = clientId,
-                Audience = tenantAudience,
+                Audience = audience,
                 Scope = authCode.Scope,
                 Email = user.Email,
                 Name = string.IsNullOrWhiteSpace(fullName) ? null : fullName,
                 UserName = user.UserName,
                 Amr = authCode.Amr is { Count: > 0 } ? authCode.Amr : ["pwd"],
-                Roles = resolvedClaims.Roles,
-                Permissions = resolvedClaims.Permissions
+                Roles = roles,
+                Permissions = permissions,
+                IsLinkAuthentication = authCode.IsLinkAuthentication,
+                RestrictedRoles = authCode.RestrictedRoles?.ToList() ?? [],
+                RestrictedPermissions = authCode.RestrictedPermissions?.ToList() ?? []
             };
 
 
@@ -399,6 +412,15 @@ namespace Authentication.DomainService.Authentication
                     RefreshExpiry = refreshExpiry
                 };
             }
+        }
+
+        private static List<string> IntersectClaims(IEnumerable<string>? left, IEnumerable<string>? right)
+        {
+            var rightSet = new HashSet<string>(right ?? [], StringComparer.OrdinalIgnoreCase);
+            return (left ?? [])
+                .Where(r => rightSet.Contains(r))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
     }
 }

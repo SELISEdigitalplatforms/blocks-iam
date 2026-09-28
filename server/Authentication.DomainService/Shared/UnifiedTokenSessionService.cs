@@ -74,6 +74,8 @@ namespace Authentication.DomainService.Shared
             var isRotation = !string.IsNullOrWhiteSpace(oldRefreshToken);
             string refreshTokenSessionId = refreshTokenId;
 
+            PreserveLinkAuthenticationOnRotation(isRotation, oldRefreshTokenCache, tokenRequest);
+
             if (isRotation)
             {
                 // Rotation inherits the lineage and its cap. A rotation that cannot find its predecessor
@@ -134,7 +136,12 @@ namespace Authentication.DomainService.Shared
                 RememberMeExpiresUtc = tokenRequest.RememberMe ? absoluteRefreshTokenExpireOn : null,
                 Scope = tokenRequest.Scope,
                 Impersonated = impersoanted,
-                ImpersonationId = tokenRequest.ImpersonationSessionId
+                ImpersonationId = tokenRequest.ImpersonationSessionId,
+                IsLinkAuthentication = tokenRequest.IsLinkAuthentication,
+                RestrictedRoles = tokenRequest.RestrictedRoles?.ToList() ?? [],
+                RestrictedPermissions = tokenRequest.RestrictedPermissions?.ToList() ?? [],
+                Amr = tokenRequest.Amr?.ToList() ?? [],
+                Audience = tokenRequest.Audience
             };
 
             // Persist to Redis cache. The TTL never reaches past the lineage's cap, so no cached entry
@@ -165,7 +172,12 @@ namespace Authentication.DomainService.Shared
                 IsRevoked = false,
                 Impersonated = impersoanted,
                 ImpersonationId = tokenRequest.ImpersonationSessionId,
-                UserAgent = userAgent
+                UserAgent = userAgent,
+                IsLinkAuthentication = tokenRequest.IsLinkAuthentication,
+                RestrictedRoles = tokenRequest.RestrictedRoles?.ToList() ?? [],
+                RestrictedPermissions = tokenRequest.RestrictedPermissions?.ToList() ?? [],
+                Amr = tokenRequest.Amr?.ToList() ?? [],
+                Audience = tokenRequest.Audience
             };
             await _refreshTokenRepository.CreateAsync(refreshTokenModel);
 
@@ -406,6 +418,23 @@ namespace Authentication.DomainService.Shared
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
             await _refreshTokenRepository.DeleteAsync(refreshToken);
+        }
+
+        private static void PreserveLinkAuthenticationOnRotation(
+            bool isRotation,
+            RefreshTokenCache? oldRefreshTokenCache,
+            TokenRequest tokenRequest)
+        {
+            if (!isRotation || oldRefreshTokenCache is not { IsLinkAuthentication: true })
+            {
+                return;
+            }
+
+            tokenRequest.IsLinkAuthentication = true;
+            tokenRequest.RestrictedRoles = oldRefreshTokenCache.RestrictedRoles?.ToList() ?? [];
+            tokenRequest.RestrictedPermissions = oldRefreshTokenCache.RestrictedPermissions?.ToList() ?? [];
+            tokenRequest.Amr = oldRefreshTokenCache.Amr?.ToList() ?? ["link"];
+            tokenRequest.Audience = oldRefreshTokenCache.Audience ?? tokenRequest.ClientId;
         }
     }
 }
