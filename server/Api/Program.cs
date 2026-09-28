@@ -68,6 +68,8 @@ app.Use(async (context, next) =>
         var isOidcOrTokenPath =
             path.StartsWith("/api/oidc", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/oidc", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/idp", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/login", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/auth/token", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/auth/refresh", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/connect/token", StringComparison.OrdinalIgnoreCase);
@@ -77,18 +79,9 @@ app.Use(async (context, next) =>
         headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
         headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
 
-        if (isOidcOrTokenPath)
-        {
-            // Cross-host OIDC login (preview → IdP → callback) needs a referrer.
-            if (!headers.ContainsKey("Referrer-Policy"))
-            {
-                headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-            }
-        }
-        else
-        {
-            headers["Referrer-Policy"] = "no-referrer";
-        }
+        // IAM OIDC token exchange on PR previews fails when the SPA sends
+        // Referrer-Policy: no-referrer (fetch to /api/oidc/token loses Referer).
+        headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
 
         // IAM SPA still bootstraps runtime config via inline <script> in index.html,
         // so script/style must allow 'unsafe-inline' (unlike blocks-os runtime-config.js).
