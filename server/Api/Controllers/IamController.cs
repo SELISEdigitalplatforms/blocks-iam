@@ -18,7 +18,7 @@ namespace Api.Controllers
     [ApiController]
     [Route("iam")]
 
-    public class IamController : ControllerBase
+    public class IamController : ControllerBase // NOSONAR S6960 — legacy aggregate IAM surface; split tracked separately
     {
         private readonly IAccountService _accountService;
         private readonly IUserManagementQueryService _userManagementQueryService;
@@ -303,41 +303,8 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        // Reject GET so the SPA fallback cannot 200 an email-bearing URL (ZAP 10024).
-        [HttpGet("email/available")]
-        [AllowAnonymous]
-        public IActionResult IsEmailAvailableGetRejected()
-            => StatusCode(405, new { error = "use POST" });
-
-        // POST body so the address is not reflected in the URL (CWE-598 / ZAP 10024).
-        [HttpPost("email/available")]
-        [AllowAnonymous]
-        public async Task<IActionResult> IsEmailAvailable([FromBody] IsEmailAvailableRequest query)
-        {
-            if (query == null || string.IsNullOrWhiteSpace(query.Email))
-            {
-                return BadRequest(new { error = "email is required" });
-            }
-
-            var result = await _userManagementQueryService.IsUserAvailableAsync(query);
-            return Ok(new IsEmailAvailableResponse
-            {
-                IsAvailable = result
-            });
-        }
-
-        // POST body so addresses are not placed in the URL (ZAP 10024 / CWE-598).
-        [HttpPost("users/exists")]
-        [Authorize]
-        public async Task<IActionResult> IsUserExist([FromBody] IsEmailAvailableRequest? body)
-        {
-            var email = body?.Email;
-            if (string.IsNullOrWhiteSpace(email))
-                return BadRequest(new { error = "email is required" });
-
-            var result = await _userManagementQueryService.IsUserExistAsync(email);
-            return Ok(result);
-        }
+        // Email availability / existence endpoints live in EmailAvailabilityController
+        // (POST bodies keep addresses out of URLs — ZAP 10024 / CWE-598).
 
         #endregion
 

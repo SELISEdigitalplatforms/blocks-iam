@@ -18,7 +18,7 @@ public class GrantAuthorizationService : IGrantAuthorizationService
         var bc = BlocksContext.GetContext();
         var userRoles = bc?.Roles ?? [];
 
-        var (roles, count) = await _resourceRepository.GetRolesAsync(new GetRolesRequest
+        var (roles, _) = await _resourceRepository.GetRolesAsync(new GetRolesRequest
         {
             PageSize = 1000
         });
@@ -87,15 +87,9 @@ public class GrantAuthorizationService : IGrantAuthorizationService
             .Select(r => r.Slug)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var slug in roles)
-        {
-            if (string.IsNullOrWhiteSpace(slug) || !allowed.Contains(slug))
-            {
-                return slug ?? string.Empty;
-            }
-        }
-
-        return null;
+        return roles.Where(slug => string.IsNullOrWhiteSpace(slug) || !allowed.Contains(slug))
+            .Select(slug => slug ?? string.Empty)
+            .FirstOrDefault();
     }
 
     public string? FindUngrantablePermission(IEnumerable<string> permissions)
@@ -103,14 +97,8 @@ public class GrantAuthorizationService : IGrantAuthorizationService
         var bc = BlocksContext.GetContext();
         var held = (bc?.Permissions ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var permission in permissions)
-        {
-            if (string.IsNullOrWhiteSpace(permission) || !held.Contains(permission))
-            {
-                return permission ?? string.Empty;
-            }
-        }
-
-        return null;
+        return permissions.Where(permission => string.IsNullOrWhiteSpace(permission) || !held.Contains(permission))
+            .Select(permission => permission ?? string.Empty)
+            .FirstOrDefault();
     }
 }

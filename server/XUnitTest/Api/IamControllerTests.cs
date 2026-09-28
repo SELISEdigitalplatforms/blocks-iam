@@ -650,35 +650,6 @@ namespace XUnitTest.ApiTests
             result.Should().BeOfType<BadRequestObjectResult>();
         }
 
-        [Fact]
-        public async Task IsEmailAvailable_ReturnsOk()
-        {
-            _userQuery.Setup(s => s.IsUserAvailableAsync(It.IsAny<IsEmailAvailableRequest>())).ReturnsAsync(true);
-
-            var result = await CreateController().IsEmailAvailable(new IsEmailAvailableRequest { Email = "a@b.com" });
-
-            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-            ok.Value.Should().BeOfType<IsEmailAvailableResponse>().Which.IsAvailable.Should().BeTrue();
-        }
-
-        [Fact]
-        public async Task IsUserExist_MissingEmail_ReturnsBadRequest()
-        {
-            var result = await CreateController().IsUserExist(null);
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-            _userQuery.Verify(s => s.IsUserExistAsync(It.IsAny<string>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task IsUserExist_ValidEmail_ReturnsOk()
-        {
-            _userQuery.Setup(s => s.IsUserExistAsync("a@b.com")).ReturnsAsync(new IsUserExistResponse { UserId = "u-1" });
-
-            var result = await CreateController().IsUserExist(new IsEmailAvailableRequest { Email = "a@b.com" });
-
-            result.Should().BeOfType<OkObjectResult>();
-        }
 
         // ---------- Organizations ----------
 

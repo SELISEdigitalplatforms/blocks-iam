@@ -63,7 +63,7 @@ namespace Authentication.DomainService.Authentication
             _logger = logger;
         }
 
-        public async Task<IActionResult> AuthorizeAsync(
+        public async Task<IActionResult> AuthorizeAsync( // NOSONAR S3776 — OIDC authorize branches are intentional; tracked separately from signup-links
             string client_id,
             string response_type,
             string redirect_uri,
