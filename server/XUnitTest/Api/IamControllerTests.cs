@@ -655,7 +655,7 @@ namespace XUnitTest.ApiTests
         {
             _userQuery.Setup(s => s.IsUserAvailableAsync(It.IsAny<IsEmailAvailableRequest>())).ReturnsAsync(true);
 
-            var result = await CreateController().IsEmailAvailable(new IsEmailAvailableRequest());
+            var result = await CreateController().IsEmailAvailable(new IsEmailAvailableRequest { Email = "a@b.com" });
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             ok.Value.Should().BeOfType<IsEmailAvailableResponse>().Which.IsAvailable.Should().BeTrue();
@@ -675,7 +675,7 @@ namespace XUnitTest.ApiTests
         {
             _userQuery.Setup(s => s.IsUserExistAsync("a@b.com")).ReturnsAsync(new IsUserExistResponse { UserId = "u-1" });
 
-            var result = await CreateController().IsUserExist("a@b.com");
+            var result = await CreateController().IsUserExist(new IsEmailAvailableRequest { Email = "a@b.com" });
 
             result.Should().BeOfType<OkObjectResult>();
         }
