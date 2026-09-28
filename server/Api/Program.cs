@@ -57,6 +57,9 @@ var app = builder.Build();
 // Configure DomainResolver with IHttpContextAccessor instance
 DomainResolver.Configure(app.Services.GetRequiredService<IHttpContextAccessor>());
 
+// Browser-facing security headers first so even short-circuit 404s carry HSTS/CSP.
+app.UseMiddleware<SecurityHeadersMiddleware>();
+
 // Do not expose Swagger UI bundles on deployed hosts (Retire.js / ZAP Medium).
 app.Use(async (context, next) =>
 {
@@ -68,9 +71,6 @@ app.Use(async (context, next) =>
     }
     await next();
 });
-
-// Browser-facing security headers (see SecurityHeadersMiddleware).
-app.UseMiddleware<SecurityHeadersMiddleware>();
 
 // Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
 var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);
