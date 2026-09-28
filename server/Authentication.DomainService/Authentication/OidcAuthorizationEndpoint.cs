@@ -157,7 +157,7 @@ namespace Authentication.DomainService.Authentication
                     && !earlyClient.IsDeviceFlowClient
                     && !earlyClient.RedirectUris.Contains(redirect_uri))
                 {
-                    _logger.LogWarning("Invalid redirect_uri for {ClientId}: {RedirectUri}", client_id, redirect_uri);
+                    _logger.LogWarning("Invalid redirect_uri rejected for OIDC client registration check");
                     return BuildBrowserError("invalid_request", "Invalid redirect_uri");
                 }
 
@@ -241,7 +241,7 @@ namespace Authentication.DomainService.Authentication
 
                 if (!client.RedirectUris.Contains(redirect_uri))
                 {
-                    _logger.LogWarning("Invalid redirect_uri for {ClientId}: {RedirectUri}", client_id, redirect_uri);
+                    _logger.LogWarning("Invalid redirect_uri rejected for OIDC client registration check");
                     return BuildBrowserError("invalid_request", "Invalid redirect_uri");
                 }
 
