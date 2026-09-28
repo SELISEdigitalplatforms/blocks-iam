@@ -43,7 +43,7 @@ export function JoinPage() {
 
   const code = codeRef.current;
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
-  const template = oidcUiConfig?.template;
+  const template = oidcUiConfig?.template ?? null;
 
   const contextQuery = useSignupLinkContext(codeReady ? code : null, tenantId);
   const redeemMutation = useRedeemSignupLink(tenantId);
@@ -68,6 +68,14 @@ export function JoinPage() {
     });
   }, [contextQuery.data, code, redeemMutation]);
 
+  if (!template) {
+    return (
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
+
   if (!codeReady || contextQuery.isLoading || contextQuery.isFetching) {
     return <JoinLoading template={template} />;
   }
@@ -81,15 +89,17 @@ export function JoinPage() {
     return (
       <OidcAuthShell
         panelConfig={JOIN_PANEL}
-        theme={template?.theme}
-        logoUrlLight={template?.branding.logoUrlLight}
-        logoUrlDark={template?.branding.logoUrlDark}
-        brandName={template?.branding.brandName ?? "Blocks"}
+        theme={template.theme}
+        logoUrlLight={template.branding.logoUrlLight}
+        logoUrlDark={template.branding.logoUrlDark}
+        brandName={template.branding.brandName}
         heading={`Welcome, ${contextQuery.data.firstName}`}
         headingDimFirst={0}
         headingAlign="left"
+      successTitle="You're in"
+      successSubtitle=""
         showCorners={false}
-        footerNote={<OidcFooter footerText={template?.pages.shared.footerText ?? ""} />}
+        footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
       >
         <div className="flex flex-col gap-3 py-4">
           <p className="text-sm" style={{ color: "var(--fg)" }}>
@@ -104,15 +114,17 @@ export function JoinPage() {
   return (
     <OidcAuthShell
       panelConfig={JOIN_PANEL}
-      theme={template?.theme}
-      logoUrlLight={template?.branding.logoUrlLight}
-      logoUrlDark={template?.branding.logoUrlDark}
-      brandName={template?.branding.brandName ?? "Blocks"}
+      theme={template.theme}
+      logoUrlLight={template.branding.logoUrlLight}
+      logoUrlDark={template.branding.logoUrlDark}
+      brandName={template.branding.brandName}
       heading={`Welcome, ${contextQuery.data.firstName}`}
       headingDimFirst={0}
       headingAlign="left"
+      successTitle="You're in"
+      successSubtitle=""
       showCorners={false}
-      footerNote={<OidcFooter footerText={template?.pages.shared.footerText ?? ""} />}
+      footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
     >
       <div className="flex flex-col items-center gap-3 py-8">
         <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
