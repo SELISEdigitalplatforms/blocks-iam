@@ -419,19 +419,31 @@ public class MfaController : ControllerBase
 
     [HttpPost("backup-codes/use")]
     [AllowAnonymous]
-    public async Task<IActionResult> ConsumeBackupCode([FromBody] ConsumeBackupCodeRequest request)
+    public async Task<IActionResult> ConsumeBackupCode([FromBody] ConsumeBackupCodeRequest? request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.UserId) || string.IsNullOrWhiteSpace(request.Code))
         {
-            return BadRequest(new { error = "invalid_request" });
+            return BadRequest(new { error = "invalid_request", error_description = "userId and code are required" });
         }
 
-        var result = await _backupCodeService.ConsumeAsync(request.UserId, request.Code);
-        if (!result.IsValid)
+        try
         {
-            return BadRequest(new { error = "invalid_backup_code", errors = result.Errors });
+            var result = await _backupCodeService.ConsumeAsync(request.UserId, request.Code);
+            if (!result.IsValid)
+            {
+                return BadRequest(new { error = "invalid_backup_code", errors = result.Errors });
+            }
+            return Ok(new { valid = true });
         }
-        return Ok(new { valid = true });
+        catch (Exception)
+        {
+            // Unauthenticated scanners and malformed payloads must not surface raw 500s.
+            return BadRequest(new
+            {
+                error = "invalid_backup_code",
+                error_description = "Backup code could not be validated"
+            });
+        }
     }
 
     private string? GetCurrentUserId()

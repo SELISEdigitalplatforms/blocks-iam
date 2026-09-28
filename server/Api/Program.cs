@@ -56,7 +56,102 @@ var app = builder.Build();
 // Configure DomainResolver with IHttpContextAccessor instance
 DomainResolver.Configure(app.Services.GetRequiredService<IHttpContextAccessor>());
 
+// Browser-facing security headers (ZAP DAST bar: 0 alerts). Use OnStarting so
+// Genesis/OIDC can still append Set-Cookie; never write Cache-Control on cookie-
+// issuing OIDC/token paths; softer Referrer-Policy there for cross-host redirects.
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        var headers = context.Response.Headers;
+        var path = context.Request.Path.Value ?? string.Empty;
+        var isOidcOrTokenPath =
+            path.StartsWith("/api/oidc", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/oidc", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/auth/token", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/auth/refresh", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/connect/token", StringComparison.OrdinalIgnoreCase);
 
+        headers["X-Content-Type-Options"] = "nosniff";
+        headers["X-Frame-Options"] = "DENY";
+        headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+        headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+
+        if (isOidcOrTokenPath)
+        {
+            // Cross-host OIDC login (preview → IdP → callback) needs a referrer.
+            if (!headers.ContainsKey("Referrer-Policy"))
+            {
+                headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+            }
+        }
+        else
+        {
+            headers["Referrer-Policy"] = "no-referrer";
+        }
+
+        // IAM SPA still bootstraps runtime config via inline <script> in index.html,
+        // so script/style must allow 'unsafe-inline' (unlike blocks-os runtime-config.js).
+        if (!headers.ContainsKey("Content-Security-Policy"))
+        {
+            var connectHosts =
+                "https://dev-iam.blocksdevelopers.com " +
+                "https://dev-api.blocksdevelopers.com " +
+                "https://dev-construct.blocksdevelopers.com " +
+                "https://dev-localization.blocksdevelopers.com " +
+                "https://dev-agents.blocksdevelopers.com " +
+                "https://dev-data.blocksdevelopers.com " +
+                "https://dev-utilities.blocksdevelopers.com " +
+                "https://dev-logic.blocksdevelopers.com " +
+                "https://dev-monitor.blocksdevelopers.com " +
+                "https://dev-release.blocksdevelopers.com " +
+                "https://dev-studio.blocksdevelopers.com " +
+                "https://dev-os.blocksdevelopers.com " +
+                "https://code.selise.biz";
+            headers["Content-Security-Policy"] =
+                "default-src 'self'; " +
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+                "style-src 'self' 'unsafe-inline'; " +
+                "img-src 'self' data: blob: https:; " +
+                "font-src 'self' data:; " +
+                "connect-src 'self' " + connectHosts + "; " +
+                "frame-ancestors 'none'; " +
+                "base-uri 'self'; " +
+                "object-src 'none'; " +
+                "form-action 'self' https://dev-iam.blocksdevelopers.com https://dev-os.blocksdevelopers.com";
+        }
+
+        // Cache-Control: never on OIDC/token (Set-Cookie / auth responses).
+        if (!isOidcOrTokenPath && !headers.ContainsKey("Cache-Control"))
+        {
+            if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase)
+                || path == "/"
+                || path.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
+                || !Path.HasExtension(path))
+            {
+                headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+                headers["Pragma"] = "no-cache";
+            }
+            else if (path.StartsWith("/assets/", StringComparison.OrdinalIgnoreCase))
+            {
+                headers["Cache-Control"] = "public, max-age=31536000, immutable";
+            }
+        }
+
+        // OIDC authorize sometimes returns empty/redirect without Content-Type; ZAP flags it.
+        if ((path.StartsWith("/api/oidc/authorize", StringComparison.OrdinalIgnoreCase)
+             || path.StartsWith("/oidc/authorize", StringComparison.OrdinalIgnoreCase))
+            && !headers.ContainsKey("Content-Type")
+            && context.Response.StatusCode < 300)
+        {
+            headers["Content-Type"] = "text/html; charset=utf-8";
+        }
+
+        return Task.CompletedTask;
+    });
+
+    await next();
+});
 
 // Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
 var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);
