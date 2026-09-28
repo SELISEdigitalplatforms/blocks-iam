@@ -104,7 +104,7 @@ public sealed class SecurityHeadersMiddleware
         return
             "default-src 'self'; " +
             "script-src 'self'; " +
-            "style-src 'self'; " +
+            "style-src 'self' 'unsafe-inline'; " +
             "img-src 'self' data: blob: https://blocksdev.blob.core.windows.net https://az-cdn.selise.biz; " +
             "font-src 'self' data:; " +
             "connect-src 'self' " + connectHosts + "; " +
