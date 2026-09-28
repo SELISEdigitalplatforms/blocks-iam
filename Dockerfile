@@ -12,14 +12,13 @@ ARG DOTNET_PUBLISH_PLATFORM=linux/amd64
 FROM node:22-alpine AS client
 WORKDIR /src
 
-WORKDIR /src/client
-COPY client/package.json client/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+COPY client/package.json client/package-lock.json ./client/
+RUN cd client && npm ci --no-audit --no-fund
 
-COPY client ./
-WORKDIR /src
+COPY client ./client
 RUN mkdir -p server/Api/wwwroot \
-    && npm --prefix client run build
+    && cd client \
+    && npm run build
 
 # -----------------------------------------------------------------------------
 # Stage: publish: .NET SDK (glibc). Default platform linux/amd64 avoids Grpc.Tools
@@ -64,5 +63,4 @@ RUN chown -R app:app /app
 
 USER app
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD kill -0 1
+ENTRYPOINT ["dotnet", "Api.dll"]
