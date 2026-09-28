@@ -9,14 +9,10 @@ namespace Api.Controllers;
 public class SignupLinksController : ControllerBase
 {
     private readonly ISignupLinkGenerationService _generationService;
-    private readonly ISignupLinkSummaryService _summaryService;
 
-    public SignupLinksController(
-        ISignupLinkGenerationService generationService,
-        ISignupLinkSummaryService summaryService)
+    public SignupLinksController(ISignupLinkGenerationService generationService)
     {
         _generationService = generationService;
-        _summaryService = summaryService;
     }
 
     [HttpPost("signup-links")]
@@ -79,17 +75,4 @@ public class SignupLinksController : ControllerBase
         return Ok(result);
     }
 
-    [HttpPost("signup-links/summary")]
-    [ProtectedEndPoint("blocks-iam::iam::manage-signup-links")]
-    public async Task<IActionResult> Summary([FromBody] SignupLinkSummaryRequest request)
-    {
-        var (response, errors) = await _summaryService.SummarizeAsync(
-            request ?? new SignupLinkSummaryRequest());
-        if (errors != null)
-        {
-            return BadRequest(new { errors });
-        }
-
-        return Ok(response);
-    }
 }

@@ -72,8 +72,7 @@ public class SignupLinkConfigurationsControllerTests
 public class SignupLinksControllerTests
 {
     private readonly Mock<ISignupLinkGenerationService> _generation = new();
-    private readonly Mock<ISignupLinkSummaryService> _summary = new();
-    private SignupLinksController Sut() => new(_generation.Object, _summary.Object);
+    private SignupLinksController Sut() => new(_generation.Object);
 
     [Fact]
     public async Task Generate_Success_ReturnsOk()
@@ -135,6 +134,13 @@ public class SignupLinksControllerTests
         (await Sut().RevokeByConfiguration(new RevokeSignupLinksByConfigurationRequest { ConfigurationId = "cfg1" }))
             .Should().BeOfType<OkObjectResult>();
     }
+}
+
+public class SignupLinkSummaryControllerTests
+{
+    private readonly Mock<ISignupLinkSummaryService> _summary = new();
+    private SignupLinkSummaryController Sut() => new(_summary.Object);
+
     [Fact]
     public async Task Summary_Success_ReturnsOk()
     {
