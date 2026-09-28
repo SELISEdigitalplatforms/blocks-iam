@@ -22,10 +22,6 @@ export type RedeemSignupLinkResponse = {
   error?: string;
 };
 
-/**
- * Stateless signup-link API. The code is never placed in a URL path, query key,
- * localStorage, or log — only the X-Signup-Link-Code header or redeem body.
- */
 export const signupLinkService = {
   getContext(code: string, tenantId?: string): Promise<SignupLinkContext> {
     const headers: Record<string, string> = {
@@ -38,7 +34,7 @@ export const signupLinkService = {
       SIGNUP_LINK_ENDPOINTS.CONTEXT,
       headers,
       tenantId ? { skipBlocksKey: true } : undefined,
-    ) as Promise<SignupLinkContext>;
+    );
   },
 
   redeem(code: string, tenantId?: string): Promise<RedeemSignupLinkResponse> {
@@ -50,7 +46,7 @@ export const signupLinkService = {
       { code },
       headers,
       tenantId ? { skipBlocksKey: true } : undefined,
-    ) as Promise<RedeemSignupLinkResponse>;
+    );
   },
 
   completeMfa(
@@ -66,6 +62,6 @@ export const signupLinkService = {
       { mfaId, mfaCode },
       headers,
       tenantId ? { skipBlocksKey: true } : undefined,
-    ) as Promise<RedeemSignupLinkResponse>;
+    );
   },
 };

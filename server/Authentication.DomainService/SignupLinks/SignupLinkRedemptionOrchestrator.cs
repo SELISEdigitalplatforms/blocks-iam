@@ -32,6 +32,8 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     public const string SignupLinkValuePrefix = "signup-link:";
     public const string SignupLinkMailPurpose = "SignupLink";
     private const string MfaCachePrefix = "signup_link_mfa:";
+    private const string RejectionNotFound = "not_found";
+    private const string RejectionExhausted = "exhausted";
 
     private readonly ISignupLinkRepository _links;
     private readonly ISignupLinkRedemptionRepository _redemptions;
@@ -47,31 +49,21 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private readonly ILogger<SignupLinkRedemptionOrchestrator> _logger;
 
     public SignupLinkRedemptionOrchestrator(
-        ISignupLinkRepository links,
-        ISignupLinkRedemptionRepository redemptions,
-        ILinkSessionRepository linkSessions,
-        IOidcClientRegistrationLookup oidcLookup,
-        IUserRepository userRepository,
-        IUserManagementMutationService userMutation,
-        IIdentityAccessManagementRepository iamRepository,
-        ICacheClient cacheClient,
-        ITenants tenants,
-        IConfiguration configuration,
-        IMfaChallengeIssuer mfaChallengeIssuer,
-        ILogger<SignupLinkRedemptionOrchestrator> logger)
+        SignupLinkRedemptionStores stores,
+        SignupLinkRedemptionCollaborators collaborators)
     {
-        _links = links;
-        _redemptions = redemptions;
-        _linkSessions = linkSessions;
-        _oidcLookup = oidcLookup;
-        _userRepository = userRepository;
-        _userMutation = userMutation;
-        _iamRepository = iamRepository;
-        _cacheClient = cacheClient;
-        _tenants = tenants;
-        _configuration = configuration;
-        _mfaChallengeIssuer = mfaChallengeIssuer;
-        _logger = logger;
+        _links = stores.Links;
+        _redemptions = stores.Redemptions;
+        _linkSessions = stores.LinkSessions;
+        _userRepository = stores.Users;
+        _iamRepository = stores.Iam;
+        _oidcLookup = collaborators.Oidc;
+        _userMutation = collaborators.UserMutation;
+        _cacheClient = collaborators.Cache;
+        _tenants = collaborators.Tenants;
+        _configuration = collaborators.Configuration;
+        _mfaChallengeIssuer = collaborators.Mfa;
+        _logger = collaborators.Logger;
     }
 
     public async Task<IActionResult> RedeemAsync(
@@ -95,7 +87,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         if (!string.IsNullOrWhiteSpace(tenantIdHint)
             && !string.Equals(link.TenantId, tenantIdHint, StringComparison.OrdinalIgnoreCase))
         {
-            await RecordRejectionAsync(link, "not_found", request, ordinal: link.RedemptionCount + 1);
+            await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1);
             return InvalidLink();
         }
 
@@ -111,11 +103,10 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return InvalidLink();
         }
 
-        var clientOk = await _oidcLookup.GetByClientIdAsync(link.ClientId);
-        if (clientOk == null || !clientOk.IsActive
-            || !clientOk.RedirectUris.Any(u => string.Equals(u, link.RedirectUri, StringComparison.Ordinal)))
+        var (clientOk, clientRejection) = await ValidateClientAsync(link);
+        if (!clientOk)
         {
-            await RecordRejectionAsync(link, "client_invalid", request, ordinal: link.RedemptionCount + 1);
+            await RecordRejectionAsync(link, clientRejection!, request, ordinal: link.RedemptionCount + 1);
             return InvalidLink();
         }
 
@@ -128,7 +119,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         {
             if (IsUnusableAccount(existing, allowPendingVerification: true))
             {
-                await RecordRejectionAsync(link, "not_found", request, ordinal: link.RedemptionCount + 1, userId: existing.ItemId);
+                await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1, userId: existing.ItemId);
                 return InvalidLink();
             }
 
@@ -137,7 +128,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         if (IsUnusableAccount(existing, allowPendingVerification: false))
         {
-            await RecordRejectionAsync(link, "not_found", request, ordinal: link.RedemptionCount + 1, userId: existing?.ItemId);
+            await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1, userId: existing?.ItemId);
             return InvalidLink();
         }
 
@@ -150,12 +141,12 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         if (existing != null)
         {
-            return await HandlePreExistingAsync(link, existing, request, response);
+            return await HandlePreExistingAsync(link, existing, request);
         }
 
         if (link.CredentialMode == SignupLinkCredentialMode.PasswordRequired)
         {
-            return await HandlePasswordRequiredNewAsync(link, request, response);
+            return await HandlePasswordRequiredNewAsync(link, request);
         }
 
         return await HandlePasswordlessNewAsync(link, request, response);
@@ -277,6 +268,19 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         }
     }
 
+
+    private async Task<(bool Ok, string? Rejection)> ValidateClientAsync(SignupLink link)
+    {
+        var clientOk = await _oidcLookup.GetByClientIdAsync(link.ClientId);
+        if (clientOk == null || !clientOk.IsActive
+            || !clientOk.RedirectUris.Any(u => string.Equals(u, link.RedirectUri, StringComparison.Ordinal)))
+        {
+            return (false, "client_invalid");
+        }
+
+        return (true, null);
+    }
+
     private async Task<IActionResult> HandleLinkUserReturnedAsync(
         SignupLink link,
         User user,
@@ -298,7 +302,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         if (user.MfaEnabled)
         {
-            return await StartMfaChallengeAsync(link, user, request);
+            return await StartMfaChallengeAsync(link, user);
         }
 
         var authorizeUrl = await IssueLinkSessionAsync(link, user.ItemId, request, response, new List<string> { "link" });
@@ -309,8 +313,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private async Task<IActionResult> HandlePreExistingAsync(
         SignupLink link,
         User user,
-        HttpRequest request,
-        HttpResponse response)
+        HttpRequest request)
     {
         var orgId = link.OrganizationId ?? string.Empty;
         var alreadyMember = OrganizationAccessResolver.HasOrganizationAccess(user, orgId);
@@ -335,7 +338,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var consumed = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, createdUserId: string.Empty, DateTime.UtcNow);
         if (consumed == null)
         {
-            await RecordRejectionAsync(link, "exhausted", request, ordinal: link.RedemptionCount + 1, userId: user.ItemId);
+            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1, userId: user.ItemId);
             return InvalidLink();
         }
 
@@ -355,8 +358,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
     private async Task<IActionResult> HandlePasswordRequiredNewAsync(
         SignupLink link,
-        HttpRequest request,
-        HttpResponse response)
+        HttpRequest request)
     {
         var userId = await CreateSignupLinkUserAsync(link, passwordRequired: true);
         if (string.IsNullOrWhiteSpace(userId))
@@ -369,7 +371,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var updated = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, userId, now);
         if (updated == null)
         {
-            await RecordRejectionAsync(link, "exhausted", request, ordinal: link.RedemptionCount + 1);
+            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1);
             return InvalidLink();
         }
 
@@ -406,7 +408,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var updated = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, userId, now);
         if (updated == null)
         {
-            await RecordRejectionAsync(link, "exhausted", request, ordinal: link.RedemptionCount + 1);
+            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1);
             return InvalidLink();
         }
 
@@ -415,14 +417,14 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var user = await _userRepository.GetUserByIdAsync(userId);
         if (user != null && user.MfaEnabled)
         {
-            return await StartMfaChallengeAsync(link, user, request);
+            return await StartMfaChallengeAsync(link, user);
         }
 
         var authorizeUrl = await IssueLinkSessionAsync(link, userId, request, response, new List<string> { "link" });
         return new OkObjectResult(new RedeemSignupLinkResponse { AuthorizeUrl = authorizeUrl });
     }
 
-    private async Task<IActionResult> StartMfaChallengeAsync(SignupLink link, User user, HttpRequest request)
+    private async Task<IActionResult> StartMfaChallengeAsync(SignupLink link, User user)
     {
         var otpService = await _mfaChallengeIssuer.GetOtpServiceAsync(user);
         if (otpService == null)
@@ -572,12 +574,12 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         if (link.Status is SignupLinkStatus.Redeemed or SignupLinkStatus.Exhausted
             || link.RedemptionCount >= link.MaxRedemptions)
         {
-            return "exhausted";
+            return RejectionExhausted;
         }
 
         if (link.Status != SignupLinkStatus.Active)
         {
-            return "not_found";
+            return RejectionNotFound;
         }
 
         return null;

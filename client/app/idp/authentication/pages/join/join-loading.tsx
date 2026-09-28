@@ -3,7 +3,7 @@ import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
 import { JOIN_PANEL } from "../oidc/oidc-panel-config";
 import type { IOidcUiTemplate } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 
-type Props = { template: IOidcUiTemplate };
+type Props = Readonly<{ template: IOidcUiTemplate }>;
 
 /** Skeleton mirroring the OIDC card while /context is in flight. */
 export function JoinLoading({ template }: Props) {

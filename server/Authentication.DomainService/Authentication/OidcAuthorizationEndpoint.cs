@@ -323,11 +323,17 @@ namespace Authentication.DomainService.Authentication
                 await PersistLastUsedOrganizationAsync(user, effectiveOrganizationId);
 
                 var authCode = _pkceService.GenerateRandomCode(32);
-                var amr = matchedLinkSession != null
-                    ? (matchedLinkSession.Amr is { Count: > 0 }
+                List<string> amr;
+                if (matchedLinkSession != null)
+                {
+                    amr = matchedLinkSession.Amr is { Count: > 0 }
                         ? matchedLinkSession.Amr.ToList()
-                        : new List<string> { "link" })
-                    : BuildAmr(user, mfaCompleted);
+                        : new List<string> { "link" };
+                }
+                else
+                {
+                    amr = BuildAmr(user, mfaCompleted);
+                }
 
                 var codeModel = new AuthorizationCodeModel
                 {

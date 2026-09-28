@@ -5,7 +5,7 @@ import { JOIN_PANEL } from "../oidc/oidc-panel-config";
 import type { IOidcUiTemplate } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { Button } from "@/components/ui-kits/button/button";
 
-type Props = { template: IOidcUiTemplate };
+type Props = Readonly<{ template: IOidcUiTemplate }>;
 
 /** Single refusal card for every invalid/expired/revoked/exhausted link (C1). */
 export function JoinInvalid({ template }: Props) {

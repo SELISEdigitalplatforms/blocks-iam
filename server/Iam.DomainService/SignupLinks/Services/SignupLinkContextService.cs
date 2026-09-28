@@ -32,6 +32,7 @@ public sealed class SignupLinkContextService : ISignupLinkContextService
         var link = await _links.GetByCodeHashAsync(SignupLinkCodeHasher.Hash(code));
         if (link == null)
         {
+            _logger.LogDebug("Signup link context miss for supplied code hash");
             return SignupLinkContextResponse.Invalid();
         }
 

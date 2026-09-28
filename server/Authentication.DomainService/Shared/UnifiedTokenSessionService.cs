@@ -74,15 +74,7 @@ namespace Authentication.DomainService.Shared
             var isRotation = !string.IsNullOrWhiteSpace(oldRefreshToken);
             string refreshTokenSessionId = refreshTokenId;
 
-            // Preserve signup-link restrictions across refresh (H4).
-            if (isRotation && oldRefreshTokenCache is { IsLinkAuthentication: true })
-            {
-                tokenRequest.IsLinkAuthentication = true;
-                tokenRequest.RestrictedRoles = oldRefreshTokenCache.RestrictedRoles?.ToList() ?? [];
-                tokenRequest.RestrictedPermissions = oldRefreshTokenCache.RestrictedPermissions?.ToList() ?? [];
-                tokenRequest.Amr = oldRefreshTokenCache.Amr?.ToList() ?? ["link"];
-                tokenRequest.Audience = oldRefreshTokenCache.Audience ?? tokenRequest.ClientId;
-            }
+            PreserveLinkAuthenticationOnRotation(isRotation, oldRefreshTokenCache, tokenRequest);
 
             if (isRotation)
             {
@@ -426,6 +418,23 @@ namespace Authentication.DomainService.Shared
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
             await _refreshTokenRepository.DeleteAsync(refreshToken);
+        }
+
+        private static void PreserveLinkAuthenticationOnRotation(
+            bool isRotation,
+            RefreshTokenCache? oldRefreshTokenCache,
+            TokenRequest tokenRequest)
+        {
+            if (!isRotation || oldRefreshTokenCache is not { IsLinkAuthentication: true })
+            {
+                return;
+            }
+
+            tokenRequest.IsLinkAuthentication = true;
+            tokenRequest.RestrictedRoles = oldRefreshTokenCache.RestrictedRoles?.ToList() ?? [];
+            tokenRequest.RestrictedPermissions = oldRefreshTokenCache.RestrictedPermissions?.ToList() ?? [];
+            tokenRequest.Amr = oldRefreshTokenCache.Amr?.ToList() ?? ["link"];
+            tokenRequest.Audience = oldRefreshTokenCache.Audience ?? tokenRequest.ClientId;
         }
     }
 }

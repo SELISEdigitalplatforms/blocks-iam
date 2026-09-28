@@ -14,12 +14,41 @@ import { JoinInvalid } from "./join-invalid";
 import { JoinLoading } from "./join-loading";
 import type { RedeemSignupLinkResponse } from "@blocks-idp/authentication/services/signup-link.service";
 
-/**
- * Reads the signup code from location.hash exactly once, clears the hash via
- * replaceState before first paint completes (H5 / A1), then drives
- * loading → ready/auto-redeem → invalid. Phase 4 also handles PasswordRequired,
- * loginUrl redirects, and MFA-before-cookie.
- */
+function readAndClearLinkCode(): string | null {
+  if (typeof globalThis.window === "undefined") return null;
+  const { location, history } = globalThis.window;
+  const hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+  const params = new URLSearchParams(hash);
+  const raw = params.get("link") ?? (hash.startsWith("link=") ? hash.slice(5) : "");
+  if (location.hash) {
+    history.replaceState(null, "", `${location.pathname}${location.search}`);
+  }
+  return raw || null;
+}
+
+function applyRedeemNavigation(res: RedeemSignupLinkResponse | undefined): {
+  mfaId?: string;
+  userMfa?: string | null;
+  activationKey?: string;
+} {
+  if (!res) return {};
+  if (res.authorizeUrl) {
+    globalThis.window.location.assign(res.authorizeUrl);
+    return {};
+  }
+  if (res.loginUrl) {
+    globalThis.window.location.assign(res.loginUrl);
+    return {};
+  }
+  if (res.mfaId) {
+    return { mfaId: res.mfaId, userMfa: res.userMfa ?? null };
+  }
+  if (res.activationKey) {
+    return { activationKey: res.activationKey };
+  }
+  return {};
+}
+
 export function JoinPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const codeRef = useRef<string | null>(null);
@@ -30,17 +59,8 @@ export function JoinPage() {
   const [activationKey, setActivationKey] = useState<string | null>(null);
   const [userMfa, setUserMfa] = useState<string | null>(null);
 
-  if (codeRef.current === null && typeof window !== "undefined" && !codeReady) {
-    const hash = window.location.hash.startsWith("#")
-      ? window.location.hash.slice(1)
-      : window.location.hash;
-    const params = new URLSearchParams(hash);
-    const raw = params.get("link") ?? (hash.startsWith("link=") ? hash.slice(5) : "");
-    codeRef.current = raw || null;
-    if (window.location.hash) {
-      const url = `${window.location.pathname}${window.location.search}`;
-      window.history.replaceState(null, "", url);
-    }
+  if (codeRef.current === null && !codeReady) {
+    codeRef.current = readAndClearLinkCode();
   }
 
   useEffect(() => {
@@ -50,41 +70,25 @@ export function JoinPage() {
   const code = codeRef.current;
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
   const template = oidcUiConfig?.template ?? null;
-
   const contextQuery = useSignupLinkContext(codeReady ? code : null, tenantId);
   const redeemMutation = useRedeemSignupLink(tenantId);
   const mfaMutation = useCompleteSignupLinkMfa(tenantId);
 
-  const applyRedeemResult = (res: RedeemSignupLinkResponse | undefined) => {
-    if (!res) return;
-    if (res.authorizeUrl) {
-      window.location.assign(res.authorizeUrl);
-      return;
+  const onRedeemResult = (res: RedeemSignupLinkResponse | undefined) => {
+    const next = applyRedeemNavigation(res);
+    if (next.mfaId) {
+      setMfaId(next.mfaId);
+      setUserMfa(next.userMfa ?? null);
     }
-    if (res.loginUrl) {
-      window.location.assign(res.loginUrl);
-      return;
-    }
-    if (res.mfaId) {
-      setMfaId(res.mfaId);
-      setUserMfa(res.userMfa ?? null);
-      return;
-    }
-    if (res.activationKey) {
-      setActivationKey(res.activationKey);
-      return;
-    }
+    if (next.activationKey) setActivationKey(next.activationKey);
   };
 
   useEffect(() => {
-    if (!contextQuery.data || !contextQuery.data.valid) return;
-    if (!code || redeemedRef.current || redeemMutation.isPending || redeemMutation.isSuccess) {
-      return;
-    }
-    // Auto-redeem both modes; PasswordRequired returns activationKey instead of authorizeUrl.
+    if (!contextQuery.data?.valid || !code) return;
+    if (redeemedRef.current || redeemMutation.isPending || redeemMutation.isSuccess) return;
     redeemedRef.current = true;
     redeemMutation.mutate(code, {
-      onSuccess: applyRedeemResult,
+      onSuccess: onRedeemResult,
       onError: () => {
         showErrorToast({ errors: "Something went wrong. Please try again." });
         redeemedRef.current = false;
@@ -108,22 +112,23 @@ export function JoinPage() {
     return <JoinInvalid template={template} />;
   }
 
+  const shellProps = {
+    panelConfig: JOIN_PANEL,
+    theme: template.theme,
+    logoUrlLight: template.branding.logoUrlLight,
+    logoUrlDark: template.branding.logoUrlDark,
+    brandName: template.branding.brandName,
+    headingDimFirst: 0 as const,
+    headingAlign: "left" as const,
+    successTitle: "You're in",
+    successSubtitle: "",
+    showCorners: false,
+    footerNote: <OidcFooter footerText={template.pages.shared.footerText} />,
+  };
+
   if (mfaId) {
     return (
-      <OidcAuthShell
-        panelConfig={JOIN_PANEL}
-        theme={template.theme}
-        logoUrlLight={template.branding.logoUrlLight}
-        logoUrlDark={template.branding.logoUrlDark}
-        brandName={template.branding.brandName}
-        heading="Verify it's you"
-        headingDimFirst={0}
-        headingAlign="left"
-        successTitle="You're in"
-        successSubtitle=""
-        showCorners={false}
-        footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
-      >
+      <OidcAuthShell {...shellProps} heading="Verify it's you">
         <form
           className="flex flex-col gap-3 py-4"
           onSubmit={(e) => {
@@ -131,7 +136,7 @@ export function JoinPage() {
             mfaMutation.mutate(
               { mfaId, mfaCode },
               {
-                onSuccess: applyRedeemResult,
+                onSuccess: onRedeemResult,
                 onError: () =>
                   showErrorToast({ errors: "Invalid verification code. Please try again." }),
               },
@@ -164,20 +169,7 @@ export function JoinPage() {
 
   if (activationKey || contextQuery.data.credentialMode === "PasswordRequired") {
     return (
-      <OidcAuthShell
-        panelConfig={JOIN_PANEL}
-        theme={template.theme}
-        logoUrlLight={template.branding.logoUrlLight}
-        logoUrlDark={template.branding.logoUrlDark}
-        brandName={template.branding.brandName}
-        heading={`Welcome, ${contextQuery.data.firstName}`}
-        headingDimFirst={0}
-        headingAlign="left"
-        successTitle="You're in"
-        successSubtitle=""
-        showCorners={false}
-        footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
-      >
+      <OidcAuthShell {...shellProps} heading={`Welcome, ${contextQuery.data.firstName}`}>
         <div className="flex flex-col gap-3 py-4">
           <p className="text-sm" style={{ color: "var(--fg)" }}>
             Continue into {contextQuery.data.applicationName} as{" "}
@@ -201,20 +193,7 @@ export function JoinPage() {
   }
 
   return (
-    <OidcAuthShell
-      panelConfig={JOIN_PANEL}
-      theme={template.theme}
-      logoUrlLight={template.branding.logoUrlLight}
-      logoUrlDark={template.branding.logoUrlDark}
-      brandName={template.branding.brandName}
-      heading={`Welcome, ${contextQuery.data.firstName}`}
-      headingDimFirst={0}
-      headingAlign="left"
-      successTitle="You're in"
-      successSubtitle=""
-      showCorners={false}
-      footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
-    >
+    <OidcAuthShell {...shellProps} heading={`Welcome, ${contextQuery.data.firstName}`}>
       <div className="flex flex-col items-center gap-3 py-8">
         <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
         <p className="text-sm" style={{ color: "var(--muted)" }}>

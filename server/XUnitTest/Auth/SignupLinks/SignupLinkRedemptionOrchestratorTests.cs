@@ -82,19 +82,21 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
                 true,
                 "Construct"));
 
-        return new SignupLinkRedemptionOrchestrator(
+        var stores = new SignupLinkRedemptionStores(
             _links.Object,
             _redemptions.Object,
             _sessions.Object,
-            _oidc.Object,
             _users.Object,
+            _iam.Object);
+        var collaborators = new SignupLinkRedemptionCollaborators(
+            _oidc.Object,
             _mutation.Object,
-            _iam.Object,
             _cache.Object,
             _tenants.Object,
             config,
             _mfa.Object,
             NullLogger<SignupLinkRedemptionOrchestrator>.Instance);
+        return new SignupLinkRedemptionOrchestrator(stores, collaborators);
     }
 
     private static SignupLink ActivePasswordless(string email = "new@example.com") => new()
