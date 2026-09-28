@@ -192,11 +192,22 @@ jobs:
           set -euo pipefail
           # SonarQube ignores raw JUnit for JS/TS, so the client test count only
           # shows up after this conversion. Coverage (lcov) is read directly.
+          # Prefer defusedxml (scripts/requirements.txt); script also falls back
+          # to stdlib ElementTree if the wheel is unavailable.
+          if [ -f scripts/requirements.txt ]; then
+            python3 -m pip install --user -q -r scripts/requirements.txt
+          fi
           if [ -s "$COV_DIR/client-junit.xml" ]; then
             python3 scripts/junit-to-sonar.py \
               "$COV_DIR/client-junit.xml" "$COV_DIR/client-tests.xml" client
           else
             echo "::warning::no client junit report - client test count will be missing"
+            # begin always sets sonar.testExecutionReportPaths; emit a valid
+            # empty report so sonarscanner end does not fail on a missing file.
+            printf '%s\n' \
+              '<?xml version="1.0" encoding="UTF-8"?>' \
+              '<testExecutions version="1">' \
+              '</testExecutions>' > "$COV_DIR/client-tests.xml"
           fi
           [ -s "$LCOV" ] || echo "::warning::no client lcov - client coverage will be 0%"
 
