@@ -72,7 +72,8 @@ public class SignupLinkConfigurationsControllerTests
 public class SignupLinksControllerTests
 {
     private readonly Mock<ISignupLinkGenerationService> _generation = new();
-    private SignupLinksController Sut() => new(_generation.Object);
+    private readonly Mock<ISignupLinkSummaryService> _summary = new();
+    private SignupLinksController Sut() => new(_generation.Object, _summary.Object);
 
     [Fact]
     public async Task Generate_Success_ReturnsOk()
@@ -133,5 +134,34 @@ public class SignupLinksControllerTests
             .ReturnsAsync(new RevokeSignupLinksByConfigurationResponse { IsSuccess = true, RevokedCount = 3 });
         (await Sut().RevokeByConfiguration(new RevokeSignupLinksByConfigurationRequest { ConfigurationId = "cfg1" }))
             .Should().BeOfType<OkObjectResult>();
+    }
+    [Fact]
+    public async Task Summary_Success_ReturnsOk()
+    {
+        _summary.Setup(s => s.SummarizeAsync(It.IsAny<SignupLinkSummaryRequest>()))
+            .ReturnsAsync((new SignupLinkSummaryResponse
+            {
+                ConfigurationId = "cfg1",
+                ConfigurationName = "Partner",
+                TotalGenerated = 0,
+                Used = 0,
+                NeverUsed = 0,
+                NeverUsedBreakdown = new NeverUsedBreakdown(),
+                RejectedAttempts = 0
+            }, null));
+        (await Sut().Summary(new SignupLinkSummaryRequest { ConfigurationId = "cfg1" }))
+            .Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task Summary_ValidationError_ReturnsBadRequest()
+    {
+        _summary.Setup(s => s.SummarizeAsync(It.IsAny<SignupLinkSummaryRequest>()))
+            .ReturnsAsync((null, new Dictionary<string, string>
+            {
+                { "ConfigurationId", "ConfigurationId is required" }
+            }));
+        (await Sut().Summary(new SignupLinkSummaryRequest()))
+            .Should().BeOfType<BadRequestObjectResult>();
     }
 }

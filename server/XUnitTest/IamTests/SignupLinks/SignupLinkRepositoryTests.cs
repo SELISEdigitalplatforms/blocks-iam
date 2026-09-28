@@ -75,4 +75,16 @@ public class SignupLinkRepositoryTests
         var count = await Sut().RevokeActiveByConfigurationAsync("t1", "cfg1", "actor", DateTime.UtcNow);
         count.Should().Be(2);
     }
+
+    [Fact]
+    public async Task FindForSummaryAsync_ReturnsMatchingLinks()
+    {
+        MongoMock.SetupFind(_col, [
+            new SignupLink { ItemId = "1", TenantId = "t1", ConfigurationId = "cfg1", Email = "a@b.com", CodeHash = "h1" }
+        ]);
+        var items = await Sut().FindForSummaryAsync(
+            "t1", "cfg1", DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+        items.Should().HaveCount(1);
+        items[0].ItemId.Should().Be("1");
+    }
 }

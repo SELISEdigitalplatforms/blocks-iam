@@ -25,4 +25,12 @@ public interface ISignupLinkRepository
         string configurationId,
         string revokedBy,
         DateTime revokedAtUtc);
+    /// <summary>
+    /// Links for one configuration whose CreatedDate is in [fromUtc, toUtc).
+    /// </summary>
+    Task<List<SignupLink>> FindForSummaryAsync(
+        string tenantId,
+        string configurationId,
+        DateTime fromUtc,
+        DateTime toUtc);
 }

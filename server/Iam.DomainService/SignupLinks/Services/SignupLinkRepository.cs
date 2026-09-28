@@ -10,6 +10,7 @@ public class SignupLinkRepository : ISignupLinkRepository
     private const string CodeHashIndex = "ix_codehash_unique";
     private const string StatusExpiryIndex = "ix_tenant_status_expires";
     private const string ConfigurationIndex = "ix_tenant_configuration";
+    private const string ConfigurationCreatedIndex = "ix_tenant_configuration_created";
 
     private readonly IIdentityAccessManagementRepository _iamRepository;
     private readonly ILogger<SignupLinkRepository> _logger;
@@ -29,6 +30,17 @@ public class SignupLinkRepository : ISignupLinkRepository
     {
         try
         {
+            // Drop Phase 2 prefix index; replaced by TenantId+ConfigurationId+CreatedDate.
+            try
+            {
+                await Collection.Indexes.DropOneAsync(ConfigurationIndex, cancellationToken: ct);
+            }
+            catch (Exception dropEx)
+            {
+                _logger.LogDebug(dropEx,
+                    "SignupLinkRepository: {Index} already absent or drop skipped.", ConfigurationIndex);
+            }
+
             var keys = Builders<SignupLink>.IndexKeys;
             var models = new[]
             {
@@ -39,8 +51,8 @@ public class SignupLinkRepository : ISignupLinkRepository
                     keys.Ascending(x => x.TenantId).Ascending(x => x.Status).Ascending(x => x.ExpiresAtUtc),
                     new CreateIndexOptions { Name = StatusExpiryIndex }),
                 new CreateIndexModel<SignupLink>(
-                    keys.Ascending(x => x.TenantId).Ascending(x => x.ConfigurationId),
-                    new CreateIndexOptions { Name = ConfigurationIndex }),
+                    keys.Ascending(x => x.TenantId).Ascending(x => x.ConfigurationId).Descending(x => x.CreatedDate),
+                    new CreateIndexOptions { Name = ConfigurationCreatedIndex }),
             };
             await Collection.Indexes.CreateManyAsync(models, cancellationToken: ct);
         }
@@ -165,5 +177,19 @@ public class SignupLinkRepository : ISignupLinkRepository
 
         var result = await Collection.UpdateManyAsync(filter, update);
         return result.ModifiedCount;
+    }
+
+    public async Task<List<SignupLink>> FindForSummaryAsync(
+        string tenantId,
+        string configurationId,
+        DateTime fromUtc,
+        DateTime toUtc)
+    {
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId)
+            & Builders<SignupLink>.Filter.Eq(x => x.ConfigurationId, configurationId)
+            & Builders<SignupLink>.Filter.Gte(x => x.CreatedDate, fromUtc)
+            & Builders<SignupLink>.Filter.Lt(x => x.CreatedDate, toUtc);
+
+        return await Collection.Find(filter).ToListAsync();
     }
 }

@@ -39,6 +39,7 @@ namespace Iam.DomainService.Utilities
             services.AddSingleton<SignupLinkGenerationRepositories>();
             services.AddSingleton<SignupLinkGenerationValidators>();
             services.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
+            services.AddSingleton<ISignupLinkSummaryService, SignupLinkSummaryService>();
             services.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
             services.AddHttpContextAccessor();
 
@@ -63,6 +64,7 @@ namespace Iam.DomainService.Utilities
             services.AddTransient<IValidator<GenerateSignupLinkRequest>, GenerateSignupLinkValidator>();
             services.AddTransient<IValidator<QuerySignupLinksRequest>, QuerySignupLinksValidator>();
             services.AddTransient<IValidator<RevokeSignupLinksByConfigurationRequest>, RevokeSignupLinksByConfigurationValidator>();
+            services.AddTransient<IValidator<SignupLinkSummaryRequest>, SignupLinkSummaryValidator>();
             #endregion
 
         }

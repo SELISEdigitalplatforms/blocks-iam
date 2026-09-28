@@ -49,4 +49,26 @@ public class SignupLinkRedemptionRepository : ISignupLinkRedemptionRepository
 
     public Task InsertAsync(SignupLinkRedemption entity) =>
         Collection.InsertOneAsync(entity);
+
+    public async Task<long> CountRejectedForLinksAsync(
+        string tenantId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        IEnumerable<string> linkIds)
+    {
+        var ids = linkIds?.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList()
+            ?? new List<string>();
+        if (ids.Count == 0)
+        {
+            return 0;
+        }
+
+        var filter = Builders<SignupLinkRedemption>.Filter.Eq(x => x.TenantId, tenantId)
+            & Builders<SignupLinkRedemption>.Filter.Eq(x => x.Outcome, SignupLinkRedemptionOutcome.Rejected)
+            & Builders<SignupLinkRedemption>.Filter.Gte(x => x.RedeemedAtUtc, fromUtc)
+            & Builders<SignupLinkRedemption>.Filter.Lt(x => x.RedeemedAtUtc, toUtc)
+            & Builders<SignupLinkRedemption>.Filter.In(x => x.LinkId, ids);
+
+        return await Collection.CountDocumentsAsync(filter);
+    }
 }
