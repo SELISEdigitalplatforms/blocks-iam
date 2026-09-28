@@ -1,3 +1,4 @@
+using Api.Middleware;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
@@ -56,100 +57,20 @@ var app = builder.Build();
 // Configure DomainResolver with IHttpContextAccessor instance
 DomainResolver.Configure(app.Services.GetRequiredService<IHttpContextAccessor>());
 
-// Browser-facing security headers (ZAP DAST bar: 0 alerts). Use OnStarting so
-// Genesis/OIDC can still append Set-Cookie; never write Cache-Control on cookie-
-// issuing OIDC/token paths; softer Referrer-Policy there for cross-host redirects.
+// Do not expose Swagger UI bundles on deployed hosts (Retire.js / ZAP Medium).
 app.Use(async (context, next) =>
 {
-    context.Response.OnStarting(() =>
+    var path = context.Request.Path.Value ?? string.Empty;
+    if (path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
     {
-        var headers = context.Response.Headers;
-        var path = context.Request.Path.Value ?? string.Empty;
-        var isOidcOrTokenPath =
-            path.StartsWith("/api/oidc", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/oidc", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/idp", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/login", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/auth/token", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/auth/refresh", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/connect/token", StringComparison.OrdinalIgnoreCase);
-
-        headers["X-Content-Type-Options"] = "nosniff";
-        headers["X-Frame-Options"] = "DENY";
-        headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
-        headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
-
-        // IAM OIDC token exchange on PR previews fails when the SPA sends
-        // Referrer-Policy: no-referrer (fetch to /api/oidc/token loses Referer).
-        headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-
-        // External /runtime-config.js + /theme-init.js (no inline script). Explicit
-        // hosts avoid CSP wildcards that ZAP flags (blocks-os pattern).
-        if (!headers.ContainsKey("Content-Security-Policy"))
-        {
-            var connectHosts =
-                "https://dev-iam.blocksdevelopers.com " +
-                "https://dev-api.blocksdevelopers.com " +
-                "https://dev-construct.blocksdevelopers.com " +
-                "https://dev-localization.blocksdevelopers.com " +
-                "https://dev-agents.blocksdevelopers.com " +
-                "https://dev-data.blocksdevelopers.com " +
-                "https://dev-utilities.blocksdevelopers.com " +
-                "https://dev-logic.blocksdevelopers.com " +
-                "wss://dev-logic.blocksdevelopers.com " +
-                "https://dev-monitor.blocksdevelopers.com " +
-                "https://dev-release.blocksdevelopers.com " +
-                "https://dev-studio.blocksdevelopers.com " +
-                "https://dev-os.blocksdevelopers.com " +
-                "https://blocksdev.blob.core.windows.net " +
-                "https://api.rollbar.com " +
-                "https://code.selise.biz";
-            headers["Content-Security-Policy"] =
-                "default-src 'self'; " +
-                "script-src 'self'; " +
-                "style-src 'self'; " +
-                "img-src 'self' data: blob: https://blocksdev.blob.core.windows.net https://az-cdn.selise.biz; " +
-                "font-src 'self' data:; " +
-                "connect-src 'self' " + connectHosts + "; " +
-                "frame-ancestors 'none'; " +
-                "base-uri 'self'; " +
-                "object-src 'none'; " +
-                "form-action 'self' https://dev-iam.blocksdevelopers.com https://dev-os.blocksdevelopers.com";
-        }
-
-        // Cache-Control: never on OIDC/token (Set-Cookie / auth responses).
-        if (!isOidcOrTokenPath && !headers.ContainsKey("Cache-Control"))
-        {
-            if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase)
-                || path == "/"
-                || path.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith("runtime-config.js", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith("theme-init.js", StringComparison.OrdinalIgnoreCase)
-                || !Path.HasExtension(path))
-            {
-                headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
-                headers["Pragma"] = "no-cache";
-            }
-            else if (path.StartsWith("/assets/", StringComparison.OrdinalIgnoreCase))
-            {
-                headers["Cache-Control"] = "public, max-age=31536000, immutable";
-            }
-        }
-
-        // OIDC authorize sometimes returns empty/redirect without Content-Type; ZAP flags it.
-        if ((path.StartsWith("/api/oidc/authorize", StringComparison.OrdinalIgnoreCase)
-             || path.StartsWith("/oidc/authorize", StringComparison.OrdinalIgnoreCase))
-            && !headers.ContainsKey("Content-Type")
-            && context.Response.StatusCode < 300)
-        {
-            headers["Content-Type"] = "text/html; charset=utf-8";
-        }
-
-        return Task.CompletedTask;
-    });
-
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
     await next();
 });
+
+// Browser-facing security headers (see SecurityHeadersMiddleware).
+app.UseMiddleware<SecurityHeadersMiddleware>();
 
 // Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
 var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);

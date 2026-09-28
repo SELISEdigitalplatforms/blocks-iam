@@ -29,6 +29,8 @@ public class MfaController : ControllerBase
     private readonly TotpService _totpService;
     private readonly IUserActivityDispatcher _userActivityDispatcher;
 
+    private const string InvalidRequestError = "invalid_request";
+
     public MfaController(
         IMfaManagementService mfaManagementService,
         IMfaConfigurationService mfaConfigurationService,
@@ -119,7 +121,7 @@ public class MfaController : ControllerBase
         var userId = GetCurrentUserId();
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(request?.Code))
         {
-            return BadRequest(new { error = "invalid_request", error_description = "userId and code are required" });
+            return BadRequest(new { error = InvalidRequestError, error_description = "userId and code are required" });
         }
 
         var verification = await _totpService.VerifyForUserAsync(userId, request.Code);
@@ -194,7 +196,7 @@ public class MfaController : ControllerBase
     {
         if (request == null || string.IsNullOrWhiteSpace(request.MfaId))
         {
-            return BadRequest(new { error = "invalid_request", error_description = "mfaId is required" });
+            return BadRequest(new { error = InvalidRequestError, error_description = "mfaId is required" });
         }
 
         var result = await _mfaManagementService.ResendOtpAsync(request.MfaId, request.SendPhoneNumberAsEmailDomain ?? string.Empty);
@@ -222,7 +224,7 @@ public class MfaController : ControllerBase
             || string.IsNullOrWhiteSpace(request.MfaId)
             || string.IsNullOrWhiteSpace(request.VerificationCode))
         {
-            return BadRequest(new { error = "invalid_request", error_description = "mfaId and verificationCode are required" });
+            return BadRequest(new { error = InvalidRequestError, error_description = "mfaId and verificationCode are required" });
         }
 
         var result = await _mfaManagementService.VerifyOTPAsync(new VerifyOtpRequest
@@ -249,7 +251,7 @@ public class MfaController : ControllerBase
         var userId = GetCurrentUserId();
         if (string.IsNullOrWhiteSpace(userId) || request == null)
         {
-            return BadRequest(new { error = "invalid_request" });
+            return BadRequest(new { error = InvalidRequestError });
         }
 
         var user = await _authenticationRepository.GetUserByIdAsync(userId);
@@ -423,7 +425,7 @@ public class MfaController : ControllerBase
     {
         if (request == null || string.IsNullOrWhiteSpace(request.UserId) || string.IsNullOrWhiteSpace(request.Code))
         {
-            return BadRequest(new { error = "invalid_request", error_description = "userId and code are required" });
+            return BadRequest(new { error = InvalidRequestError, error_description = "userId and code are required" });
         }
 
         try
