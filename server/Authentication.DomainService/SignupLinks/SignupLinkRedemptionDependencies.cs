@@ -36,6 +36,14 @@ public sealed class SignupLinkRedemptionStores
 public sealed class SignupLinkRedemptionCollaborators
 {
     public IOidcClientRegistrationLookup Oidc { get; }
+
+    /// <summary>
+    /// Resolves the Blocks IdentityProvider mirroring a link's OIDC client. The redemption's
+    /// authorize URL is completed at <c>/idp/callback</c>, which looks the provider up by name,
+    /// so the name written into the flow context has to be the client's real one.
+    /// </summary>
+    public IAuthenticationRepository Authentication { get; }
+
     public IUserManagementMutationService UserMutation { get; }
     public ICacheClient Cache { get; }
     public ITenants Tenants { get; }
@@ -46,6 +54,7 @@ public sealed class SignupLinkRedemptionCollaborators
 
     public SignupLinkRedemptionCollaborators(
         IOidcClientRegistrationLookup oidc,
+        IAuthenticationRepository authentication,
         IUserManagementMutationService userMutation,
         ICacheClient cache,
         ITenants tenants,
@@ -55,6 +64,7 @@ public sealed class SignupLinkRedemptionCollaborators
         ILogger<SignupLinkRedemptionCollaborators> logger)
     {
         Oidc = oidc;
+        Authentication = authentication;
         UserMutation = userMutation;
         Cache = cache;
         Tenants = tenants;

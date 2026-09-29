@@ -39,6 +39,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private readonly ISignupLinkRedemptionRepository _redemptions;
     private readonly ILinkSessionRepository _linkSessions;
     private readonly IOidcClientRegistrationLookup _oidcLookup;
+    private readonly IAuthenticationRepository _authentication;
     private readonly IUserRepository _userRepository;
     private readonly IUserManagementMutationService _userMutation;
     private readonly IIdentityAccessManagementRepository _iamRepository;
@@ -59,6 +60,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         _userRepository = stores.Users;
         _iamRepository = stores.Iam;
         _oidcLookup = collaborators.Oidc;
+        _authentication = collaborators.Authentication;
         _userMutation = collaborators.UserMutation;
         _cacheClient = collaborators.Cache;
         _tenants = collaborators.Tenants;
@@ -299,6 +301,17 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             || !clientOk.RedirectUris.Any(u => string.Equals(u, link.RedirectUri, StringComparison.Ordinal)))
         {
             return (false, "client_invalid");
+        }
+
+        // The redemption ends at /idp/callback, which resolves the provider mirroring this
+        // client and exchanges the code with it. A client saved without
+        // RegisterAsIdentityProvider has no such mirror, so the flow would run all the way to
+        // a created account and a burned code before failing with invalid_provider. Reject it
+        // here instead, while nothing has been written.
+        var provider = await _authentication.GetIdentityProviderByClientIdAsync(link.ClientId);
+        if (provider == null || !provider.IsActive)
+        {
+            return (false, "provider_not_registered");
         }
 
         return (true, null);
@@ -760,17 +773,42 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         }
     }
 
+    /// <summary>
+    /// Pre-seeds the OIDC flow context this redemption's authorize request will be completed
+    /// against, then returns the authorize URL for the browser to follow.
+    /// <para>
+    /// The context is written under the same <c>idp_flow:{state}</c> key
+    /// <c>GET /idp/initiate</c> uses, because the construct finishes a signup-link redemption
+    /// at the same <c>GET /idp/callback</c> it finishes an ordinary login at. That endpoint
+    /// resolves <c>provider</c> by name against the IdentityProvider collection, so the name
+    /// stored here has to be the client's own — the value the RegisterAsIdentityProvider sync
+    /// derives from the client display name, not a provider <em>type</em> such as
+    /// <c>blocks-oidc</c>.
+    /// </para>
+    /// </summary>
     private async Task<string> BuildAuthorizeUrlAsync(SignupLink link)
     {
         var state = Base64Url(RandomNumberGenerator.GetBytes(16));
         var nonce = Base64Url(RandomNumberGenerator.GetBytes(16));
 
+        // Rejected in ValidateClientAsync before any account is touched, so by here a missing
+        // provider means the client was unregistered mid-redemption.
+        var provider = await _authentication.GetIdentityProviderByClientIdAsync(link.ClientId)
+            ?? throw new InvalidOperationException(
+                $"No identity provider is registered for signup-link client '{link.ClientId}'");
+
+        // PKCE binds the authorization code to this redemption. Driven by the provider's own
+        // flag so the pair matches what /idp/callback will present at the token endpoint:
+        // it sends the verifier only when the context carries one, and the exchange validates
+        // it only when the authorize request stored a challenge.
+        var codeVerifier = provider.RequirePkce ? Base64Url(RandomNumberGenerator.GetBytes(32)) : null;
+
         var flowContext = new
         {
             state,
             nonce,
-            codeVerifier = (string?)null,
-            provider = "blocks",
+            codeVerifier,
+            provider = provider.Provider,
             tenantId = link.TenantId,
             clientId = link.ClientId,
             redirectUri = link.RedirectUri,
@@ -795,11 +833,20 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             ["tenant_id"] = link.TenantId
         };
 
+        if (codeVerifier != null)
+        {
+            query["code_challenge"] = CodeChallenge(codeVerifier);
+            query["code_challenge_method"] = IdpConstants.PkceMethodS256;
+        }
+
         var qs = string.Join("&", query.Select(kvp =>
             $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
 
         return $"{baseUrl}/api/oidc/authorize?{qs}";
     }
+
+    private static string CodeChallenge(string codeVerifier) =>
+        Base64Url(SHA256.HashData(Encoding.UTF8.GetBytes(codeVerifier)));
 
     private async Task RecordSuccessAsync(
         SignupLink link,

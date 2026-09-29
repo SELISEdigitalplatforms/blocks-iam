@@ -29,6 +29,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
     private readonly Mock<ISignupLinkRedemptionRepository> _redemptions = new();
     private readonly Mock<ILinkSessionRepository> _sessions = new();
     private readonly Mock<IOidcClientRegistrationLookup> _oidc = new();
+    private readonly Mock<IAuthenticationRepository> _authentication = new();
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<IUserManagementMutationService> _mutation = new();
     private readonly Mock<IIdentityAccessManagementRepository> _iam = new();
@@ -83,6 +84,11 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
                 true,
                 "Construct"));
 
+        // The IdentityProvider mirroring the client, as RegisterAsIdentityProvider writes it:
+        // Provider is the slugged display name, never the provider *type*.
+        _authentication.Setup(a => a.GetIdentityProviderByClientIdAsync("construct-web"))
+            .ReturnsAsync(Provider());
+
         var stores = new SignupLinkRedemptionStores(
             _links.Object,
             _redemptions.Object,
@@ -91,6 +97,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
             _iam.Object);
         var collaborators = new SignupLinkRedemptionCollaborators(
             _oidc.Object,
+            _authentication.Object,
             _mutation.Object,
             _cache.Object,
             _tenants.Object,
@@ -100,6 +107,17 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
             NullLogger<SignupLinkRedemptionCollaborators>.Instance);
         return new SignupLinkRedemptionOrchestrator(stores, collaborators);
     }
+
+    private static Authentication.DomainService.Entities.IdentityProvider Provider(bool requirePkce = false) => new()
+    {
+        Provider = "construct",
+        ProviderType = Iam.DomainService.Utilities.IdpConstants.BlocksOidcProviderType,
+        ClientId = "construct-web",
+        ClientSecret = "shhh",
+        TokenEndpointAuthMethod = "client_secret_post",
+        IsActive = true,
+        RequirePkce = requirePkce
+    };
 
     private static SignupLink ActivePasswordless(string email = "new@example.com") => new()
     {
@@ -161,6 +179,154 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         http.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1");
         _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
             x.Outcome == SignupLinkRedemptionOutcome.UserCreated && x.UserId == "user-new")), Times.Once);
+    }
+
+    /// <summary>
+    /// Sets up a redeemable link and returns the cached flow context the redemption wrote,
+    /// which is what <c>GET /idp/callback</c> will later read back.
+    /// </summary>
+    private async Task<System.Text.Json.JsonElement> RedeemAndCaptureFlowContextAsync()
+    {
+        var link = ActivePasswordless();
+        _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
+        _users.Setup(u => u.GetUserByEmailAsync(link.Email)).ReturnsAsync((User)null!);
+        SetupNewUserCreate("user-new", link.Email);
+
+        var redeemed = ActivePasswordless();
+        redeemed.RedemptionCount = 1;
+        redeemed.Status = SignupLinkStatus.Redeemed;
+        redeemed.CreatedUserId = "user-new";
+        _links.Setup(l => l.TryIncrementRedemptionAsync("link-1", "t1", "user-new", It.IsAny<DateTime>()))
+            .ReturnsAsync(redeemed);
+
+        // After Sut(), which registers the catch-all AddStringValueAsync setup this one
+        // narrows -- in Moq the last matching setup wins.
+        var sut = Sut();
+        string? captured = null;
+        _cache.Setup(c => c.AddStringValueAsync(
+                It.Is<string>(k => k.StartsWith("idp_flow:", StringComparison.Ordinal)),
+                It.IsAny<string>(),
+                It.IsAny<long>()))
+            .Callback<string, string, long>((_, value, _) => captured = value)
+            .ReturnsAsync(true);
+
+        var http = Http();
+        var result = await sut.RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        var body = result.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeOfType<RedeemSignupLinkResponse>().Subject;
+        body.AuthorizeUrl.Should().NotBeNullOrEmpty();
+
+        captured.Should().NotBeNull();
+        return System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(captured!);
+    }
+
+    [Fact]
+    public async Task Redeem_CachesFlowContext_UnderTheClientsOwnProviderName()
+    {
+        var context = await RedeemAndCaptureFlowContextAsync();
+
+        // /idp/callback resolves this by Provider name against the IdentityProvider
+        // collection. Writing a provider *type* here -- "blocks", or even "blocks-oidc" --
+        // matches no document, and the construct's exchange fails with invalid_provider
+        // after the account has already been created and the code burned.
+        context.GetProperty("provider").GetString().Should().Be("construct");
+    }
+
+    [Fact]
+    public async Task Redeem_ProviderNotRegisteredForClient_IsRejectedBeforeAnyUserIsCreated()
+    {
+        var link = ActivePasswordless();
+        _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
+        _users.Setup(u => u.GetUserByEmailAsync(link.Email)).ReturnsAsync((User)null!);
+
+        var sut = Sut();
+        _authentication.Setup(a => a.GetIdentityProviderByClientIdAsync("construct-web"))
+            .ReturnsAsync((Authentication.DomainService.Entities.IdentityProvider)null!);
+
+        var http = Http();
+        var result = await sut.RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        _mutation.Verify(m => m.CreateUserAsync(It.IsAny<CreateUserRequest>()), Times.Never);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
+            x.Outcome == SignupLinkRedemptionOutcome.Rejected)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Redeem_InactiveProvider_IsRejected()
+    {
+        var link = ActivePasswordless();
+        _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
+        _users.Setup(u => u.GetUserByEmailAsync(link.Email)).ReturnsAsync((User)null!);
+
+        var inactive = Provider();
+        inactive.IsActive = false;
+        var sut = Sut();
+        _authentication.Setup(a => a.GetIdentityProviderByClientIdAsync("construct-web"))
+            .ReturnsAsync(inactive);
+
+        var http = Http();
+        var result = await sut.RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task Redeem_ProviderWithoutPkce_SendsNoChallengeAndCachesNoVerifier()
+    {
+        var context = await RedeemAndCaptureFlowContextAsync();
+
+        // The two halves have to agree: /idp/callback sends code_verifier only when the
+        // context holds one, and the token endpoint checks it only when the authorize request
+        // stored a challenge. Half a pair is an invalid_grant at the very last step.
+        context.GetProperty("codeVerifier").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Redeem_ProviderRequiringPkce_CachesVerifierAndSendsMatchingChallenge()
+    {
+        var link = ActivePasswordless();
+        _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
+        _users.Setup(u => u.GetUserByEmailAsync(link.Email)).ReturnsAsync((User)null!);
+        SetupNewUserCreate("user-new", link.Email);
+
+        var redeemed = ActivePasswordless();
+        redeemed.RedemptionCount = 1;
+        redeemed.Status = SignupLinkStatus.Redeemed;
+        redeemed.CreatedUserId = "user-new";
+        _links.Setup(l => l.TryIncrementRedemptionAsync("link-1", "t1", "user-new", It.IsAny<DateTime>()))
+            .ReturnsAsync(redeemed);
+
+        var sut = Sut();
+        _authentication.Setup(a => a.GetIdentityProviderByClientIdAsync("construct-web"))
+            .ReturnsAsync(Provider(requirePkce: true));
+
+        string? captured = null;
+        _cache.Setup(c => c.AddStringValueAsync(
+                It.Is<string>(k => k.StartsWith("idp_flow:", StringComparison.Ordinal)),
+                It.IsAny<string>(),
+                It.IsAny<long>()))
+            .Callback<string, string, long>((_, value, _) => captured = value)
+            .ReturnsAsync(true);
+
+        var http = Http();
+        var result = await sut.RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        var url = result.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeOfType<RedeemSignupLinkResponse>().Subject.AuthorizeUrl;
+
+        var verifier = System.Text.Json.JsonSerializer
+            .Deserialize<System.Text.Json.JsonElement>(captured!)
+            .GetProperty("codeVerifier").GetString();
+        verifier.Should().NotBeNullOrEmpty();
+
+        var expected = Convert.ToBase64String(
+                System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(verifier!)))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        url.Should().Contain($"code_challenge={Uri.EscapeDataString(expected)}");
+        url.Should().Contain("code_challenge_method=S256");
     }
 
     [Fact]
