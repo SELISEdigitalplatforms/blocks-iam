@@ -12,6 +12,12 @@ public class RedeemSignupLinkResponse
     public string? ActivationKey { get; set; }
     public DateTime? ActivationKeyExpiresAtUtc { get; set; }
     public string? CredentialMode { get; set; }
+    /// <summary>
+    /// No longer populated. An existing account now completes with a session like every other
+    /// redemption, rather than being handed a login page -- which for an embedded link was
+    /// built from a client and redirect it does not have. Kept so an existing caller reading
+    /// the field still compiles; it will always be null.
+    /// </summary>
     public string? LoginUrl { get; set; }
     public string? MfaId { get; set; }
     public string? UserMfa { get; set; }

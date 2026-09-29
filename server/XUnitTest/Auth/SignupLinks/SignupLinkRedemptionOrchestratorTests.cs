@@ -362,7 +362,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task H2_OrganizationJoined_GrantsOrgOnly_ReturnsLoginUrl_NoSession()
+    public async Task H2_OrganizationJoined_GrantsOrgOnly_AndLandsSignedIn()
     {
         var link = ActivePasswordless("existing@example.com");
         _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
@@ -389,11 +389,12 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         var http = Http();
         var result = await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
         var body = result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>().Subject;
-        body.LoginUrl.Should().Contain("/oidc/login?");
-        body.LoginUrl.Should().Contain("login_hint=");
-        body.LoginUrl.Should().Contain("organization_id=org-acme");
-        body.AuthorizeUrl.Should().BeNull();
-        http.Response.Headers.SetCookie.ToString().Should().NotContain("blocks-link-session");
+
+        // The link exists to put someone on a page. An existing account now finishes the same
+        // way a new one does -- it used to be handed a login URL and left to sign in.
+        body.AuthorizeUrl.Should().StartWith("https://iam.example.com/api/oidc/authorize?");
+        body.LoginUrl.Should().BeNull();
+        http.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1");
 
         user.OrganizationIds.Should().Contain("org-acme");
         user.Roles["org-acme"].Should().Equal("site-manager");
@@ -403,7 +404,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task C1_ExistingUserRedirected_WritesNothing()
+    public async Task C1_ExistingUserRedirected_GrantsNothing_ButStillLandsSignedIn()
     {
         var link = ActivePasswordless("member@example.com");
         link.Roles = ["tenant-admin"];
@@ -431,12 +432,121 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         var http = Http();
         var result = await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
         var body = result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>().Subject;
-        body.LoginUrl.Should().NotBeNullOrEmpty();
-        body.AuthorizeUrl.Should().BeNull();
+
+        // Already a member, so nothing is granted -- but they still reach the page, which is
+        // what the link was for.
+        body.AuthorizeUrl.Should().NotBeNullOrEmpty();
+        body.LoginUrl.Should().BeNull();
         user.Roles["org-acme"].Should().Equal(rolesBefore);
         _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
         _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
             x.Outcome == SignupLinkRedemptionOutcome.ExistingUserRedirected)), Times.Once);
+    }
+
+    private User ExistingMember(bool mfaEnabled = false) => new()
+    {
+        ItemId = "user-member",
+        Email = "member@example.com",
+        Active = true,
+        Status = UserLifecycleStatus.Active,
+        OrganizationIds = ["org-acme"],
+        Roles = new Dictionary<string, List<string>> { ["org-acme"] = ["site-manager"] },
+        Permissions = new Dictionary<string, List<string>>(),
+        MfaEnabled = mfaEnabled,
+        UserMfaType = UserMfaType.Email
+    };
+
+    private void SetupExistingRedemption(SignupLink link, User user)
+    {
+        _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
+        _users.Setup(u => u.GetUserByEmailAsync(link.Email)).ReturnsAsync(user);
+        _users.Setup(u => u.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
+
+        var consumed = ActivePasswordless(link.Email);
+        consumed.RedemptionCount = 1;
+        consumed.Status = SignupLinkStatus.Redeemed;
+        _links.Setup(l => l.TryIncrementRedemptionAsync("link-1", "t1", "", It.IsAny<DateTime>()))
+            .ReturnsAsync(consumed);
+    }
+
+    [Fact]
+    public async Task ExistingUser_WithMfa_IsChallenged_NotSignedInByTheLinkAlone()
+    {
+        var link = ActivePasswordless("member@example.com");
+        var user = ExistingMember(mfaEnabled: true);
+        SetupExistingRedemption(link, user);
+
+        var otp = new Mock<IOtpService>();
+        otp.Setup(o => o.GenerateAsync(It.IsAny<global::Mfa.DomainService.Entities.UserInfo>()))
+            .ReturnsAsync(new OtpGenerationResponse { IsSuccess = true, MfaId = "mfa-7" });
+        _mfa.Setup(m => m.GetOtpServiceAsync(user)).ReturnsAsync(otp.Object);
+
+        var http = Http();
+        var result = await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
+        var body = result.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeOfType<RedeemSignupLinkResponse>().Subject;
+
+        // This branch never issued a session before, so it never needed an MFA check. Wiring
+        // one in without this would let an emailed link walk past a second factor.
+        body.MfaId.Should().Be("mfa-7");
+        body.AuthorizeUrl.Should().BeNull();
+        http.Response.Headers.SetCookie.ToString().Should().NotContain("blocks-link-session");
+    }
+
+    [Fact]
+    public async Task ExistingUser_Embedded_IssuesTokensCarryingTheForwardedPath()
+    {
+        var link = ActivePasswordless("member@example.com");
+        link.Mode = SignupLinkMode.Embedded;
+        link.ClientId = string.Empty;
+        link.RedirectUri = string.Empty;
+        link.ForwardedTo = "/projects";
+        SetupExistingRedemption(link, ExistingMember());
+
+        _embeddedTokens
+            .Setup(t => t.IssueAsync(It.IsAny<SignupLink>(), It.IsAny<User>(), It.IsAny<List<string>>(), It.IsAny<HttpRequest>()))
+            .ReturnsAsync(new OkObjectResult(new Dictionary<string, object?> { ["token_type"] = "Bearer" }));
+
+        var http = Http();
+        var result = await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        // Embedded has no redirect to carry the path, so the token body has to.
+        var payload = result.Should().BeOfType<ObjectResult>().Subject
+            .Value.Should().BeOfType<Dictionary<string, object?>>().Subject;
+        payload["forwardedTo"].Should().Be("/projects");
+    }
+
+    [Fact]
+    public async Task NewUser_Embedded_AlsoCarriesTheForwardedPath()
+    {
+        var link = ActivePasswordless("brandnew@example.com");
+        link.Mode = SignupLinkMode.Embedded;
+        link.ClientId = string.Empty;
+        link.RedirectUri = string.Empty;
+        link.ForwardedTo = "/projects";
+        _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
+        _users.Setup(u => u.GetUserByEmailAsync(link.Email)).ReturnsAsync((User)null!);
+        SetupNewUserCreate("user-new", link.Email);
+
+        var redeemed = ActivePasswordless(link.Email);
+        redeemed.RedemptionCount = 1;
+        redeemed.Status = SignupLinkStatus.Redeemed;
+        redeemed.CreatedUserId = "user-new";
+        _links.Setup(l => l.TryIncrementRedemptionAsync("link-1", "t1", "user-new", It.IsAny<DateTime>()))
+            .ReturnsAsync(redeemed);
+
+        _embeddedTokens
+            .Setup(t => t.IssueAsync(It.IsAny<SignupLink>(), It.IsAny<User>(), It.IsAny<List<string>>(), It.IsAny<HttpRequest>()))
+            .ReturnsAsync(new OkObjectResult(new Dictionary<string, object?> { ["token_type"] = "Bearer" }));
+
+        var http = Http();
+        var result = await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        // The gap that shipped with embedded mode: a brand-new invitee signed in and landed
+        // wherever the app defaulted to, never on the page the link named.
+        var payload = result.Should().BeOfType<ObjectResult>().Subject
+            .Value.Should().BeOfType<Dictionary<string, object?>>().Subject;
+        payload["forwardedTo"].Should().Be("/projects");
     }
 
     [Fact]

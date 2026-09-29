@@ -125,7 +125,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         if (existing != null)
         {
-            return await HandlePreExistingAsync(link, existing, request);
+            return await HandlePreExistingAsync(link, existing, request, response);
         }
 
         if (link.CredentialMode == SignupLinkCredentialMode.PasswordRequired)
@@ -387,10 +387,20 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         return completion;
     }
 
+    /// <summary>
+    /// An account that already existed when the link was generated.
+    /// <para>
+    /// The grant is applied and the link consumed first, then the session is issued -- so an
+    /// invitee reaches the page the link names whether or not they had an account, which is
+    /// the whole point of the link. Previously both outcomes handed back a login URL and left
+    /// them to sign in, and for an embedded link that URL had no client to return them to.
+    /// </para>
+    /// </summary>
     private async Task<IActionResult> HandlePreExistingAsync(
         SignupLink link,
         User user,
-        HttpRequest request)
+        HttpRequest request,
+        HttpResponse response)
     {
         var orgId = link.OrganizationId ?? string.Empty;
         var alreadyMember = OrganizationAccessResolver.HasOrganizationAccess(user, orgId);
@@ -400,10 +410,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             var updated = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, createdUserId: string.Empty, DateTime.UtcNow);
             var ordinal = updated?.RedemptionCount ?? link.RedemptionCount + 1;
             await RecordSuccessAsync(link, user.ItemId, SignupLinkRedemptionOutcome.ExistingUserRedirected, request, ordinal, grant: false);
-            return new OkObjectResult(new RedeemSignupLinkResponse
-            {
-                LoginUrl = BuildLoginUrl(link)
-            });
+            return await CompleteForExistingUserAsync(link, user, request, response);
         }
 
         // OrganizationJoined — grant in link org only; leave other orgs untouched.
@@ -427,10 +434,31 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             consumed.RedemptionCount,
             grant: true);
 
-        return new OkObjectResult(new RedeemSignupLinkResponse
+        return await CompleteForExistingUserAsync(link, user, request, response);
+    }
+
+    /// <summary>
+    /// The terminal step for an existing account: an MFA challenge when the user has one,
+    /// otherwise the ordinary completion.
+    /// <para>
+    /// The MFA check is not optional here. This branch never issued a session before, so it
+    /// never needed one; issuing without it would let an emailed link walk past a second
+    /// factor. The grant and the link's consumption happen before this either way -- they are
+    /// not a session, and an abandoned challenge should not leave the invitation half applied.
+    /// </para>
+    /// </summary>
+    private async Task<IActionResult> CompleteForExistingUserAsync(
+        SignupLink link,
+        User user,
+        HttpRequest request,
+        HttpResponse response)
+    {
+        if (user.MfaEnabled)
         {
-            LoginUrl = BuildLoginUrl(link)
-        });
+            return await StartMfaChallengeAsync(link, user);
+        }
+
+        return await CompleteRedemptionAsync(link, user, request, response, ["link"]);
     }
 
     private async Task<IActionResult> HandlePasswordRequiredNewAsync(
@@ -599,7 +627,11 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     {
         if (link.Mode == SignupLinkMode.Embedded)
         {
-            return await _embeddedTokens.IssueAsync(link, user, amr, request);
+            // The link exists to put someone on a particular page. OIDC carries the path on
+            // the authorize redirect; embedded has no redirect, so without this the invitee
+            // signs in and lands wherever the app defaults to.
+            var issued = await _embeddedTokens.IssueAsync(link, user, amr, request);
+            return WithForwardedTo(issued, link.ForwardedTo);
         }
 
         var authorizeUrl = await IssueLinkSessionAsync(link, user.ItemId, request, response, amr);
@@ -658,26 +690,6 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         user.Permissions[organizationId] = permissions?.Count > 0
             ? permissions
             : user.Permissions.GetValueOrDefault(organizationId, []);
-    }
-
-    private string BuildLoginUrl(SignupLink link)
-    {
-        var baseUrl = IamHelper.GetConfiguredIamBaseUrl(_configuration).TrimEnd('/');
-        var query = new Dictionary<string, string>
-        {
-            ["client_id"] = link.ClientId,
-            ["redirect_uri"] = link.RedirectUri,
-            ["tenant_id"] = link.TenantId,
-            ["login_hint"] = link.Email,
-            ["organization_id"] = link.OrganizationId ?? string.Empty,
-            ["response_type"] = "code",
-            ["scope"] = IdpConstants.OpenIdProfileEmailScope + " offline_access"
-        };
-
-        var qs = string.Join("&", query
-            .Where(kvp => !string.IsNullOrEmpty(kvp.Value))
-            .Select(kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
-        return $"{baseUrl}/oidc/login?{qs}";
     }
 
     private static string? ClassifyExhaustion(SignupLink link)
