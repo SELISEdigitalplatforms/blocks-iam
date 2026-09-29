@@ -14,6 +14,9 @@ public class CreateSignupLinkConfigurationRequest
     /// <summary>Absent means Oidc, so callers predating embedded mode keep working.</summary>
     public SignupLinkMode? Mode { get; set; }
     public string? JoinUrl { get; set; }
+    /// <summary>PasswordRequired only. Absent means false.</summary>
+    public bool? SignInAfterActivation { get; set; }
+
     public int? DefaultLifetimeMinutes { get; set; }
     public int? DefaultMaxRedemptions { get; set; }
 }

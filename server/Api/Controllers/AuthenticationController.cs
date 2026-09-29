@@ -153,12 +153,31 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> Activate([FromBody] ActivateUserRequest command)
     {
         var result = await _accountService.ActivateAccountAsync(command);
-        if (result.IsSuccess)
+        if (!result.IsSuccess)
         {
-            // H3: signup-link activation keys bind the restricted link-session cookie.
-            await _signupLinkRedemption.TryBindLinkSessionAfterActivationAsync(command?.Code, Request, Response);
+            return BadRequest(result);
         }
-        return result.IsSuccess ? Ok(result) : BadRequest(result);
+
+        // H3: signup-link activation keys bind the restricted link-session cookie, and, when
+        // the configuration asks for it, come back signed in instead.
+        var signedIn = await _signupLinkRedemption.CompleteActivationAsync(command?.Code, Request, Response);
+        if (signedIn == null)
+        {
+            return Ok(result);
+        }
+
+        // Additive: the activation fields every existing caller reads stay exactly where they
+        // were, and the token fields are layered on top. A non-200 (an MFA challenge) is
+        // returned untouched, because it is not an activation response at all.
+        if (signedIn is ObjectResult { Value: Dictionary<string, object?> tokens } ok
+            && (ok.StatusCode ?? StatusCodes.Status200OK) == StatusCodes.Status200OK)
+        {
+            tokens["isSuccess"] = result.IsSuccess;
+            tokens["itemId"] = result.ItemId;
+            return Ok(tokens);
+        }
+
+        return signedIn;
     }
 
     /// <summary>

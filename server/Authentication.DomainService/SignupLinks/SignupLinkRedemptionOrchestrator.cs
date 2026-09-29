@@ -231,14 +231,14 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         return await CompleteRedemptionAsync(link, user, request, response, amr);
     }
 
-    public async Task TryBindLinkSessionAfterActivationAsync(
+    public async Task<IActionResult?> CompleteActivationAsync(
         string? activationCode,
         HttpRequest request,
         HttpResponse response)
     {
         if (string.IsNullOrWhiteSpace(activationCode))
         {
-            return;
+            return null;
         }
 
         try
@@ -247,19 +247,22 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             if (keyMap == null || string.IsNullOrWhiteSpace(keyMap.Value)
                 || !keyMap.Value.StartsWith(SignupLinkValuePrefix, StringComparison.Ordinal))
             {
-                return;
+                // An ordinary invite or recovery: Value is a URL, so it can never carry the
+                // prefix. This is the gate that keeps every non-signup-link activation on
+                // exactly the behaviour it has today.
+                return null;
             }
 
             var linkId = keyMap.Value[SignupLinkValuePrefix.Length..];
             if (string.IsNullOrWhiteSpace(linkId))
             {
-                return;
+                return null;
             }
 
             var user = await _userRepository.GetUserByIdAsync(keyMap.UserId);
             if (user == null)
             {
-                return;
+                return null;
             }
 
             // Link may be under the user's tenant; prefer keyMap-adjacent lookup via GetById with tenant from user context / link CreatedUserId.
@@ -275,15 +278,53 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             link ??= await _links.GetByItemIdAsync(linkId);
             if (link == null)
             {
-                return;
+                return null;
+            }
+
+            if (link.SignInAfterActivation)
+            {
+                // The invitee has just proven possession of a single-use activation key and
+                // set the password in the same request. Minting here spares them signing in
+                // with a password chosen seconds ago, and works for both modes -- unlike the
+                // link-session cookie, which only an OIDC authorize request can spend.
+                var result = await _embeddedTokens.IssueAsync(link, user, ["link"], request);
+                return WithForwardedTo(result, link.ForwardedTo);
+            }
+
+            if (link.Mode == SignupLinkMode.Embedded)
+            {
+                // No authorize request will ever be made for an embedded link, so the link
+                // session has nothing to spend it and the authorize URL has no client to
+                // build from. Skip both rather than mint a cookie nobody reads.
+                return null;
             }
 
             await IssueLinkSessionAsync(link, user.ItemId, request, response, new List<string> { "link" });
+            return null;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to bind signup-link session after activation");
+            _logger.LogWarning(ex, "Failed to complete signup-link activation");
+            return null;
         }
+    }
+
+    /// <summary>
+    /// Adds the link's forwarded path to a token response, so the client knows where to land
+    /// without a second call. Embedded redemption has no redirect to hang it on, which left
+    /// the configured value unreachable for that mode.
+    /// </summary>
+    private static IActionResult WithForwardedTo(IActionResult result, string? forwardedTo)
+    {
+        if (string.IsNullOrWhiteSpace(forwardedTo)
+            || result is not ObjectResult { Value: Dictionary<string, object?> payload } objectResult
+            || (objectResult.StatusCode ?? 200) != 200)
+        {
+            return result;
+        }
+
+        var merged = new Dictionary<string, object?>(payload) { ["forwardedTo"] = forwardedTo };
+        return new ObjectResult(merged) { StatusCode = objectResult.StatusCode };
     }
 
 

@@ -69,6 +69,13 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             return roleError;
         }
 
+        var signInError = ValidateSignInAfterActivation(
+            request.SignInAfterActivation, request.CredentialMode!.Value);
+        if (signInError != null)
+        {
+            return signInError;
+        }
+
         var ctx = BlocksContext.GetContext();
         var now = DateTime.UtcNow;
         var entity = new SignupLinkConfiguration
@@ -85,6 +92,7 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             CredentialMode = request.CredentialMode!.Value,
             Mode = mode,
             JoinUrl = mode == SignupLinkMode.Embedded ? request.JoinUrl : null,
+            SignInAfterActivation = request.SignInAfterActivation ?? false,
             DefaultLifetimeMinutes = request.DefaultLifetimeMinutes
                 ?? SignupLinkConfigurationValidation.DefaultLifetimeMinutes,
             DefaultMaxRedemptions = request.DefaultMaxRedemptions,
@@ -179,6 +187,21 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         if (request.CredentialMode.HasValue)
         {
             entity.CredentialMode = request.CredentialMode.Value;
+        }
+
+        // Checked against the credential mode the patch leaves behind, not the one it arrived
+        // with: switching to Passwordless and leaving the flag set would otherwise persist a
+        // combination that create refuses.
+        var signInError = ValidateSignInAfterActivation(
+            request.SignInAfterActivation ?? entity.SignInAfterActivation, entity.CredentialMode);
+        if (signInError != null)
+        {
+            return signInError;
+        }
+
+        if (request.SignInAfterActivation.HasValue)
+        {
+            entity.SignInAfterActivation = request.SignInAfterActivation.Value;
         }
 
         if (request.DefaultLifetimeMinutes.HasValue)
@@ -399,6 +422,26 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         return string.IsNullOrWhiteSpace(tenantId) ? null : tenantId;
     }
 
+    /// <summary>
+    /// SignInAfterActivation only means anything for PasswordRequired: Passwordless never
+    /// mints an activation key, so there is no activation for it to act on. Refused rather
+    /// than stored-and-ignored -- an inert flag in the portal is a promise the product does
+    /// not keep.
+    /// </summary>
+    private static BaseMutationResponse? ValidateSignInAfterActivation(
+        bool? signInAfterActivation,
+        SignupLinkCredentialMode credentialMode)
+    {
+        if (signInAfterActivation == true && credentialMode != SignupLinkCredentialMode.PasswordRequired)
+        {
+            return Failure(
+                "SignInAfterActivation",
+                "SignInAfterActivation applies only to PasswordRequired configurations");
+        }
+
+        return null;
+    }
+
     private static SignupLinkConfigurationResponse Map(SignupLinkConfiguration entity) => new()
     {
         ItemId = entity.ItemId,
@@ -412,6 +455,7 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         CredentialMode = entity.CredentialMode,
         Mode = entity.Mode,
         JoinUrl = entity.JoinUrl,
+        SignInAfterActivation = entity.SignInAfterActivation,
         DefaultLifetimeMinutes = entity.DefaultLifetimeMinutes,
         DefaultMaxRedemptions = entity.DefaultMaxRedemptions,
         IsActive = entity.IsActive,

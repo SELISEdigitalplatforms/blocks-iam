@@ -101,6 +101,49 @@ public class SignupLinkConfigurationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_SignInAfterActivation_PersistsOnPasswordRequired()
+    {
+        SignupLinkConfiguration? saved = null;
+        _repo.Setup(r => r.InsertAsync(It.IsAny<SignupLinkConfiguration>()))
+            .Callback<SignupLinkConfiguration>(e => saved = e)
+            .Returns(Task.CompletedTask);
+
+        var result = await Sut().CreateAsync(ValidCreate(r => r.SignInAfterActivation = true));
+
+        result.IsSuccess.Should().BeTrue();
+        saved!.SignInAfterActivation.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Create_SignInAfterActivation_IsRejectedOnPasswordless()
+    {
+        // Passwordless never mints an activation key, so there is no activation for the flag
+        // to act on. Refused rather than stored and silently ignored.
+        var result = await Sut().CreateAsync(ValidCreate(r =>
+        {
+            r.CredentialMode = SignupLinkCredentialMode.Passwordless;
+            r.SignInAfterActivation = true;
+        }));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Errors.Should().ContainKey("SignInAfterActivation");
+    }
+
+    [Fact]
+    public async Task Create_DefaultsSignInAfterActivationToFalse()
+    {
+        SignupLinkConfiguration? saved = null;
+        _repo.Setup(r => r.InsertAsync(It.IsAny<SignupLinkConfiguration>()))
+            .Callback<SignupLinkConfiguration>(e => saved = e)
+            .Returns(Task.CompletedTask);
+
+        await Sut().CreateAsync(ValidCreate());
+
+        // Day one is a no-op everywhere: an omitted flag means today's behaviour.
+        saved!.SignInAfterActivation.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task H2_Create_AppliesDefaultTtlAndNullMaxRedemptions()
     {
         SignupLinkConfiguration? saved = null;

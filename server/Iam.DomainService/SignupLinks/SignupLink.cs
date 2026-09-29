@@ -19,6 +19,12 @@ public class SignupLink : BaseEntity
 
     /// <summary>Frozen from the configuration at generation.</summary>
     public SignupLinkMode Mode { get; set; }
+
+    /// <summary>
+    /// Frozen at generation too, so editing the configuration cannot change what an
+    /// invitation already in someone's inbox does.
+    /// </summary>
+    public bool SignInAfterActivation { get; set; }
     public string Email { get; set; } = string.Empty;
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;

@@ -12,6 +12,7 @@ public class UpdateSignupLinkConfigurationRequest
     public SignupLinkCredentialMode? CredentialMode { get; set; }
     public SignupLinkMode? Mode { get; set; }
     public string? JoinUrl { get; set; }
+    public bool? SignInAfterActivation { get; set; }
     public int? DefaultLifetimeMinutes { get; set; }
     public int? DefaultMaxRedemptions { get; set; }
 }

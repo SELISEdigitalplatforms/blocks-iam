@@ -27,6 +27,17 @@ public class SignupLinkConfiguration : BaseEntity
     /// Location header would be an open redirect.
     /// </summary>
     public string? JoinUrl { get; set; }
+    /// <summary>
+    /// PasswordRequired only. When true, POST auth/activate answers a successful activation
+    /// of one of this configuration's links with a signed-in session, instead of leaving the
+    /// invitee to sign in with the password they just chose.
+    /// <para>
+    /// Absent on every document written before this field existed, which deserialises to
+    /// false -- today's behaviour.
+    /// </para>
+    /// </summary>
+    public bool SignInAfterActivation { get; set; }
+
     public int DefaultLifetimeMinutes { get; set; } = 1440;
     public int? DefaultMaxRedemptions { get; set; }
     public bool IsActive { get; set; } = true;

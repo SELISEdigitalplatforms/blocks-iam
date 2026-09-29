@@ -563,7 +563,11 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
             .ReturnsAsync(new UserKeyMap { Key = "invite-key", Value = "https://iam/activate?code=x", UserId = "u1" });
 
         var http = Http();
-        await Sut().TryBindLinkSessionAfterActivationAsync("invite-key", http.Request, http.Response);
+        var result = await Sut().CompleteActivationAsync("invite-key", http.Request, http.Response);
+
+        // An ordinary invite stores a URL in Value, so it can never match the signup-link
+        // prefix. Null means the controller returns the plain activation response, unchanged.
+        result.Should().BeNull();
         http.Response.Headers.SetCookie.ToString().Should().NotContain("blocks-link-session");
         _sessions.Verify(s => s.CreateAsync(It.IsAny<LinkSessionModel>()), Times.Never);
     }
@@ -588,10 +592,128 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         _links.Setup(l => l.GetByItemIdAsync("link-1")).ReturnsAsync(ActivePasswordless("new2@example.com"));
 
         var http = Http();
-        await Sut().TryBindLinkSessionAfterActivationAsync("act-key", http.Request, http.Response);
+        var result = await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
+
+        // SignInAfterActivation off: today's behaviour, the invitee signs in afterwards.
+        result.Should().BeNull();
         http.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1");
         _sessions.Verify(s => s.CreateAsync(It.Is<LinkSessionModel>(m =>
             m.UserId == "user-pending" && m.Amr.Contains("link"))), Times.Once);
+    }
+
+    /// <summary>Wires an activation key through to the given link.</summary>
+    private void SetupActivation(SignupLink link)
+    {
+        _iam.Setup(i => i.GetUserKeyMapByKeyAsync("act-key"))
+            .ReturnsAsync(new UserKeyMap { Key = "act-key", Value = "signup-link:link-1", UserId = "user-pending" });
+        _users.Setup(u => u.GetUserByIdAsync("user-pending")).ReturnsAsync(new User
+        {
+            ItemId = "user-pending",
+            Email = link.Email,
+            Active = true,
+            Status = UserLifecycleStatus.Active
+        });
+        _links.Setup(l => l.GetByItemIdAsync("link-1")).ReturnsAsync(link);
+    }
+
+    private static SignupLink SignInOnActivation(SignupLinkMode mode)
+    {
+        var link = ActivePasswordless("pwd@example.com");
+        link.CredentialMode = SignupLinkCredentialMode.PasswordRequired;
+        link.SignInAfterActivation = true;
+        link.Mode = mode;
+        link.ForwardedTo = "/projects";
+        if (mode == SignupLinkMode.Embedded)
+        {
+            link.ClientId = string.Empty;
+            link.RedirectUri = string.Empty;
+        }
+        return link;
+    }
+
+    [Theory]
+    [InlineData(SignupLinkMode.Oidc)]
+    [InlineData(SignupLinkMode.Embedded)]
+    public async Task Activation_SignInAfterActivation_IssuesTokens_ForBothModes(SignupLinkMode mode)
+    {
+        SetupActivation(SignInOnActivation(mode));
+        _embeddedTokens
+            .Setup(t => t.IssueAsync(It.IsAny<SignupLink>(), It.IsAny<User>(), It.IsAny<List<string>>(), It.IsAny<HttpRequest>()))
+            .ReturnsAsync(new OkObjectResult(new Dictionary<string, object?> { ["token_type"] = "Bearer" }));
+
+        var http = Http();
+        var result = await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
+
+        // Both modes take the same path: the issuer needs no client, which is exactly why the
+        // link-session cookie could never have served embedded.
+        result.Should().NotBeNull();
+        _embeddedTokens.Verify(t => t.IssueAsync(
+            It.Is<SignupLink>(l => l.ItemId == "link-1"),
+            It.Is<User>(u => u.ItemId == "user-pending"),
+            It.Is<List<string>>(a => a.Contains("link")),
+            It.IsAny<HttpRequest>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Activation_SignInAfterActivation_CarriesForwardedTo()
+    {
+        SetupActivation(SignInOnActivation(SignupLinkMode.Embedded));
+        _embeddedTokens
+            .Setup(t => t.IssueAsync(It.IsAny<SignupLink>(), It.IsAny<User>(), It.IsAny<List<string>>(), It.IsAny<HttpRequest>()))
+            .ReturnsAsync(new OkObjectResult(new Dictionary<string, object?> { ["token_type"] = "Bearer" }));
+
+        var http = Http();
+        var result = await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
+
+        // Embedded has no redirect to hang the forwarded path on, so without this the value
+        // configured in the portal is unreachable by any client.
+        var payload = result.Should().BeOfType<ObjectResult>().Subject
+            .Value.Should().BeOfType<Dictionary<string, object?>>().Subject;
+        payload["forwardedTo"].Should().Be("/projects");
+        payload["token_type"].Should().Be("Bearer");
+    }
+
+    [Fact]
+    public async Task Activation_SignInAfterActivation_MfaChallenge_IsReturnedUntouched()
+    {
+        SetupActivation(SignInOnActivation(SignupLinkMode.Embedded));
+        var challenge = new ObjectResult(new Dictionary<string, object?>
+        {
+            ["error"] = "mfa_enabled",
+            ["mfa_required"] = true,
+            ["mfa_id"] = "mfa-9"
+        })
+        { StatusCode = 400 };
+        _embeddedTokens
+            .Setup(t => t.IssueAsync(It.IsAny<SignupLink>(), It.IsAny<User>(), It.IsAny<List<string>>(), It.IsAny<HttpRequest>()))
+            .ReturnsAsync(challenge);
+
+        var http = Http();
+        var result = await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
+
+        // Not an activation response -- merging activation fields into a challenge would
+        // make it look like a completed sign-in.
+        result.Should().BeSameAs(challenge);
+    }
+
+    [Fact]
+    public async Task Activation_EmbeddedWithoutSignIn_MintsNoLinkSession()
+    {
+        var link = ActivePasswordless("emb@example.com");
+        link.Mode = SignupLinkMode.Embedded;
+        link.ClientId = string.Empty;
+        link.RedirectUri = string.Empty;
+        SetupActivation(link);
+
+        var http = Http();
+        var result = await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
+
+        // Only an OIDC authorize request can spend a link session, and an embedded link will
+        // never make one. Building the authorize URL would also have thrown on the empty
+        // client id and been swallowed.
+        result.Should().BeNull();
+        _sessions.Verify(s => s.CreateAsync(It.IsAny<LinkSessionModel>()), Times.Never);
+        http.Response.Headers.SetCookie.ToString().Should().NotContain("blocks-link-session");
     }
 
     [Fact]

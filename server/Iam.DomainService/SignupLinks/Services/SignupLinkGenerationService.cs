@@ -138,6 +138,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             ForwardedTo = forwardedTo,
             CredentialMode = config.CredentialMode,
             Mode = config.Mode,
+            SignInAfterActivation = config.SignInAfterActivation,
             Email = email,
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
