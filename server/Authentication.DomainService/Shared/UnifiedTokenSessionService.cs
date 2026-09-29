@@ -434,7 +434,11 @@ namespace Authentication.DomainService.Shared
             tokenRequest.RestrictedRoles = oldRefreshTokenCache.RestrictedRoles?.ToList() ?? [];
             tokenRequest.RestrictedPermissions = oldRefreshTokenCache.RestrictedPermissions?.ToList() ?? [];
             tokenRequest.Amr = oldRefreshTokenCache.Amr?.ToList() ?? ["link"];
-            tokenRequest.Audience = oldRefreshTokenCache.Audience ?? tokenRequest.ClientId;
+
+            // Audience is deliberately not restored. It now comes from the tenant on every
+            // mint, and a refresh token stored before that change still holds the old
+            // client-narrowed value -- carrying it forward would re-narrow the rotated token
+            // and break the session the rotation was meant to keep alive.
         }
     }
 }

@@ -107,9 +107,17 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            var audience = tokenRequest.IsLinkAuthentication
-                ? (tokenRequest.Audience ?? tokenRequest.ClientId ?? DomainResolver.GetAudience(tenant))
-                : DomainResolver.GetAudience(tenant);
+            // Every token carries the tenant audience, link-authenticated or not.
+            //
+            // A link token used to get aud = the link's client (SPEC23 H4), to make it weaker
+            // than a full session. In practice that made it unusable rather than weaker: the
+            // tenant audience is what every Blocks API validates against, so the token was
+            // rejected by all of them -- including the iam/me call a construct makes to
+            // establish its session, which is the whole point of redeeming the link.
+            //
+            // What actually bounds a link token is the role and permission intersection below
+            // and amr=link, and neither depends on the audience.
+            var audience = DomainResolver.GetAudience(tenant);
 
             var jwtAccessToken = new JwtAccessToken
             {

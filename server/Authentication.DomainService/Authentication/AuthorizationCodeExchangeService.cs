@@ -183,9 +183,11 @@ namespace Authentication.DomainService.Authentication
                 permissions = IntersectClaims(resolvedClaims.Permissions, authCode.RestrictedPermissions);
             }
 
-            // Link sessions mint aud = the link's client only (H4); ordinary codes keep the tenant audience.
+            // Link sessions carry the tenant audience like every other code. Narrowing to the
+            // link's client left the token rejected by every Blocks API, the construct's own
+            // iam/me included -- see JwtAccessTokenProvider.MapJwtAccessToken.
             var tenantAudience = DomainResolver.GetAudience(tenant);
-            var audience = authCode.IsLinkAuthentication ? clientId : tenantAudience;
+            var audience = tenantAudience;
 
             var fullName = string.Join(' ', new[] { user!.FirstName, user.LastName }
                 .Where(s => !string.IsNullOrWhiteSpace(s)));
