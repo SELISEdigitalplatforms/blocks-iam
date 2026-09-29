@@ -53,10 +53,14 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             return Failure("Name", "A configuration with this name already exists");
         }
 
-        var clientError = await ValidateClientAndRedirectAsync(request.ClientId, request.RedirectUri);
-        if (clientError != null)
+        var mode = SignupLinkConfigurationValidation.Resolve(request.Mode);
+        if (mode == SignupLinkMode.Oidc)
         {
-            return clientError;
+            var clientError = await ValidateClientAndRedirectAsync(request.ClientId, request.RedirectUri);
+            if (clientError != null)
+            {
+                return clientError;
+            }
         }
 
         var roleError = await ValidateRolesAsync(request.DefaultRoles);
@@ -75,10 +79,12 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             Description = request.Description,
             DefaultRoles = request.DefaultRoles?.ToList() ?? [],
             DefaultPermissions = request.DefaultPermissions?.ToList() ?? [],
-            ClientId = request.ClientId,
-            RedirectUri = request.RedirectUri,
+            ClientId = mode == SignupLinkMode.Oidc ? request.ClientId : string.Empty,
+            RedirectUri = mode == SignupLinkMode.Oidc ? request.RedirectUri : string.Empty,
             DefaultForwardedTo = request.DefaultForwardedTo,
             CredentialMode = request.CredentialMode!.Value,
+            Mode = mode,
+            JoinUrl = mode == SignupLinkMode.Embedded ? request.JoinUrl : null,
             DefaultLifetimeMinutes = request.DefaultLifetimeMinutes
                 ?? SignupLinkConfigurationValidation.DefaultLifetimeMinutes,
             DefaultMaxRedemptions = request.DefaultMaxRedemptions,
@@ -210,32 +216,75 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         return null;
     }
 
+    /// <summary>
+    /// Mode, client, redirect and join URL are one consistent set, and which of them are legal
+    /// depends on the mode the document ends up in -- known only after merging the request
+    /// with the stored entity, which is why this rule is here and not in the validator.
+    /// </summary>
     private async Task<BaseMutationResponse?> ApplyClientRedirectAsync(
         SignupLinkConfiguration entity,
         UpdateSignupLinkConfigurationRequest request)
     {
-        if (request.ClientId == null && request.RedirectUri == null)
+        var mode = request.Mode ?? entity.Mode;
+
+        if (mode == SignupLinkMode.Embedded)
         {
+            if (!string.IsNullOrWhiteSpace(request.ClientId))
+            {
+                return Failure("ClientId", "ClientId must be empty in embedded mode");
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.RedirectUri))
+            {
+                return Failure("RedirectUri", "RedirectUri must be empty in embedded mode");
+            }
+
+            entity.Mode = mode;
+            entity.ClientId = string.Empty;
+            entity.RedirectUri = string.Empty;
+            if (request.JoinUrl != null)
+            {
+                entity.JoinUrl = request.JoinUrl;
+            }
+
             return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.JoinUrl))
+        {
+            return Failure("JoinUrl", "JoinUrl applies only to embedded configurations");
         }
 
         var clientId = request.ClientId ?? entity.ClientId;
         var redirectUri = request.RedirectUri ?? entity.RedirectUri;
+
+        // Switching an embedded configuration to OIDC needs a client and a redirect, which
+        // it has never carried, so they must arrive in the same request.
+        if (string.IsNullOrWhiteSpace(clientId))
+        {
+            return Failure("ClientId", "ClientId is required in OIDC mode");
+        }
+
+        if (string.IsNullOrWhiteSpace(redirectUri))
+        {
+            return Failure("RedirectUri", "RedirectUri is required in OIDC mode");
+        }
+
+        if (request.ClientId == null && request.RedirectUri == null && request.Mode == null)
+        {
+            return null;
+        }
+
         var clientError = await ValidateClientAndRedirectAsync(clientId, redirectUri);
         if (clientError != null)
         {
             return clientError;
         }
 
-        if (request.ClientId != null)
-        {
-            entity.ClientId = request.ClientId;
-        }
-
-        if (request.RedirectUri != null)
-        {
-            entity.RedirectUri = request.RedirectUri;
-        }
+        entity.Mode = mode;
+        entity.ClientId = clientId;
+        entity.RedirectUri = redirectUri;
+        entity.JoinUrl = null;
 
         return null;
     }
@@ -361,6 +410,8 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         RedirectUri = entity.RedirectUri,
         DefaultForwardedTo = entity.DefaultForwardedTo,
         CredentialMode = entity.CredentialMode,
+        Mode = entity.Mode,
+        JoinUrl = entity.JoinUrl,
         DefaultLifetimeMinutes = entity.DefaultLifetimeMinutes,
         DefaultMaxRedemptions = entity.DefaultMaxRedemptions,
         IsActive = entity.IsActive,

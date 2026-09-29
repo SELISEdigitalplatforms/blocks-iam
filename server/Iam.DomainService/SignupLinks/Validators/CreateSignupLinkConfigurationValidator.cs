@@ -16,11 +16,36 @@ public class CreateSignupLinkConfigurationValidator : AbstractValidator<CreateSi
             .When(x => x.Description != null)
             .WithMessage("Description must be at most 500 characters");
 
+        // Client and redirect belong to OIDC mode only. Embedded mode has no client
+        // registration to validate a redirect against, which is exactly why its redemption
+        // never redirects (SPEC26 A2).
         RuleFor(x => x.ClientId)
-            .NotEmpty().WithMessage("ClientId is required");
+            .NotEmpty().WithMessage("ClientId is required in OIDC mode")
+            .When(x => SignupLinkConfigurationValidation.IsOidc(x.Mode));
 
         RuleFor(x => x.RedirectUri)
-            .NotEmpty().WithMessage("RedirectUri is required");
+            .NotEmpty().WithMessage("RedirectUri is required in OIDC mode")
+            .When(x => SignupLinkConfigurationValidation.IsOidc(x.Mode));
+
+        RuleFor(x => x.ClientId)
+            .Empty().WithMessage("ClientId must be empty in embedded mode")
+            .When(x => !SignupLinkConfigurationValidation.IsOidc(x.Mode));
+
+        RuleFor(x => x.RedirectUri)
+            .Empty().WithMessage("RedirectUri must be empty in embedded mode")
+            .When(x => !SignupLinkConfigurationValidation.IsOidc(x.Mode));
+
+        RuleFor(x => x.Mode)
+            .IsInEnum().WithMessage("Mode is required")
+            .When(x => x.Mode.HasValue);
+
+        RuleFor(x => x.JoinUrl)
+            .Must(SignupLinkConfigurationValidation.IsValidJoinUrl)
+            .WithMessage("JoinUrl must be an absolute https URL with no query or fragment");
+
+        RuleFor(x => x.JoinUrl)
+            .Empty().WithMessage("JoinUrl applies only to embedded configurations")
+            .When(x => SignupLinkConfigurationValidation.IsOidc(x.Mode));
 
         RuleFor(x => x.CredentialMode)
             .NotNull().WithMessage("CredentialMode is required")

@@ -10,6 +10,10 @@ public class CreateSignupLinkConfigurationRequest
     public string RedirectUri { get; set; } = string.Empty;
     public string? DefaultForwardedTo { get; set; }
     public SignupLinkCredentialMode? CredentialMode { get; set; }
+
+    /// <summary>Absent means Oidc, so callers predating embedded mode keep working.</summary>
+    public SignupLinkMode? Mode { get; set; }
+    public string? JoinUrl { get; set; }
     public int? DefaultLifetimeMinutes { get; set; }
     public int? DefaultMaxRedemptions { get; set; }
 }

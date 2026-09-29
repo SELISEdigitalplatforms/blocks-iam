@@ -16,6 +16,9 @@ public class SignupLink : BaseEntity
     public string RedirectUri { get; set; } = string.Empty;
     public string? ForwardedTo { get; set; }
     public SignupLinkCredentialMode CredentialMode { get; set; }
+
+    /// <summary>Frozen from the configuration at generation.</summary>
+    public SignupLinkMode Mode { get; set; }
     public string Email { get; set; } = string.Empty;
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;

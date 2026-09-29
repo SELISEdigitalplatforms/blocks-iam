@@ -194,6 +194,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ILinkSessionRepository, LinkSessionRepository>();
             serviceCollection.AddSingleton<SignupLinkRedemptionStores>();
             serviceCollection.AddSingleton<SignupLinkRedemptionCollaborators>();
+            serviceCollection.AddSingleton<ISignupLinkEmbeddedTokenIssuer, SignupLinkEmbeddedTokenIssuer>();
             serviceCollection.AddSingleton<ISignupLinkRedemptionOrchestrator, SignupLinkRedemptionOrchestrator>();
             serviceCollection.AddSingleton<SignupLinkGenerationRepositories>();
             serviceCollection.AddSingleton<SignupLinkGenerationValidators>();
