@@ -10,6 +10,13 @@ public class GenerateSignupLinkRequest
     public string? OrganizationId { get; set; }
     public List<string>? Roles { get; set; }
     public List<string>? Permissions { get; set; }
+    /// <summary>
+    /// Oidc mode only, and only as a pair with <see cref="RedirectUri"/>: a redirect URI is
+    /// meaningful only against a client, so the two never resolve independently.
+    /// Both null or empty means "use the configuration's pair".
+    /// </summary>
+    public string? ClientId { get; set; }
+    public string? RedirectUri { get; set; }
     public string? ForwardedTo { get; set; }
     public int? ExpiresInMinutes { get; set; }
 }

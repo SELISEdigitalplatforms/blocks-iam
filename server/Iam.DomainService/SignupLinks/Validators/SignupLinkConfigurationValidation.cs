@@ -31,4 +31,31 @@ internal static class SignupLinkConfigurationValidation
     }
 
     public static bool IsAllowedMaxRedemptions(int? value) => value is null or 1;
+
+    /// <summary>
+    /// A join URL is absolute https with no query and no fragment. The fragment is excluded
+    /// because the code is appended as one; a query is excluded so the composed link cannot
+    /// smuggle parameters into the construct's join screen.
+    /// </summary>
+    public static bool IsValidJoinUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        if (!Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return uri.Scheme == Uri.UriSchemeHttps
+            && string.IsNullOrEmpty(uri.Query)
+            && string.IsNullOrEmpty(uri.Fragment);
+    }
+
+    /// <summary>Absent mode means Oidc, so callers predating embedded mode keep working.</summary>
+    public static SignupLinkMode Resolve(SignupLinkMode? mode) => mode ?? SignupLinkMode.Oidc;
+
+    public static bool IsOidc(SignupLinkMode? mode) => Resolve(mode) == SignupLinkMode.Oidc;
 }

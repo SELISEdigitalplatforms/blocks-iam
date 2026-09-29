@@ -73,10 +73,19 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             return GenerateSignupLinkResult.Fail(400, "ConfigurationId", "Not found or inactive");
         }
 
-        var clientError = await ValidateClientAndRedirectAsync(config.ClientId, config.RedirectUri);
-        if (clientError != null)
+        var (clientId, redirectUri, targetError) = ResolveTarget(config, request);
+        if (targetError != null)
         {
-            return clientError;
+            return targetError;
+        }
+
+        if (config.Mode == SignupLinkMode.Oidc)
+        {
+            var clientError = await ValidateClientAndRedirectAsync(clientId, redirectUri);
+            if (clientError != null)
+            {
+                return clientError;
+            }
         }
 
         var roles = UsePayloadOrDefault(request.Roles, config.DefaultRoles);
@@ -124,10 +133,11 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             OrganizationId = orgResolution.OrganizationId!,
             Roles = roles.ToList(),
             Permissions = permissions.ToList(),
-            ClientId = config.ClientId,
-            RedirectUri = config.RedirectUri,
+            ClientId = clientId,
+            RedirectUri = redirectUri,
             ForwardedTo = forwardedTo,
             CredentialMode = config.CredentialMode,
+            Mode = config.Mode,
             Email = email,
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
@@ -150,13 +160,11 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         // Never log the code, URL, or email (C5 / CodeQL exposure + log-forging).
         _logger.LogInformation("Signup link generated");
 
-        var baseUrl = IamHelper.GetConfiguredIamBaseUrl(_configuration).TrimEnd('/');
-        var url = $"{baseUrl}/oidc/join/{tenantId}#link={code}";
-
         return GenerateSignupLinkResult.Ok(new GenerateSignupLinkResponse
         {
             LinkId = linkId,
-            Url = url,
+            Url = BuildLinkUrl(config, tenantId, code),
+            Code = code,
             ExpiresAtUtc = expiresAt,
             EmailAlreadyExists = emailAlreadyExists
         });
@@ -268,6 +276,65 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             IsSuccess = true,
             RevokedCount = count
         };
+    }
+
+    /// <summary>
+    /// Client and redirect resolve as a pair: a redirect URI means nothing without the client
+    /// it is registered on, so allowing them to resolve independently would let a payload
+    /// redirect be checked against a configuration client it was never meant for.
+    /// </summary>
+    private static (string ClientId, string RedirectUri, GenerateSignupLinkResult? Error) ResolveTarget(
+        SignupLinkConfiguration config,
+        GenerateSignupLinkRequest request)
+    {
+        var suppliedClient = !string.IsNullOrWhiteSpace(request.ClientId);
+        var suppliedRedirect = !string.IsNullOrWhiteSpace(request.RedirectUri);
+
+        if (config.Mode == SignupLinkMode.Embedded)
+        {
+            if (suppliedClient)
+            {
+                return (string.Empty, string.Empty,
+                    GenerateSignupLinkResult.Fail(400, "ClientId", "Not applicable in embedded mode"));
+            }
+
+            if (suppliedRedirect)
+            {
+                return (string.Empty, string.Empty,
+                    GenerateSignupLinkResult.Fail(400, "RedirectUri", "Not applicable in embedded mode"));
+            }
+
+            return (string.Empty, string.Empty, null);
+        }
+
+        if (suppliedClient != suppliedRedirect)
+        {
+            return (string.Empty, string.Empty, GenerateSignupLinkResult.Fail(
+                400, "RedirectUri", "Supply clientId and redirectUri together, or neither"));
+        }
+
+        return suppliedClient
+            ? (request.ClientId!.Trim(), request.RedirectUri!.Trim(), null)
+            : (config.ClientId, config.RedirectUri, null);
+    }
+
+    /// <summary>
+    /// Embedded links compose from the configuration's JoinUrl when it has one, and return
+    /// null otherwise so the caller builds its own link from the code. The server never
+    /// navigates to JoinUrl -- returning it to the party that already holds the code grants
+    /// nothing, while using it as a Location header would be an open redirect.
+    /// </summary>
+    private string? BuildLinkUrl(SignupLinkConfiguration config, string tenantId, string code)
+    {
+        if (config.Mode == SignupLinkMode.Embedded)
+        {
+            return string.IsNullOrWhiteSpace(config.JoinUrl)
+                ? null
+                : $"{config.JoinUrl!.TrimEnd('/')}#link={code}";
+        }
+
+        var baseUrl = IamHelper.GetConfiguredIamBaseUrl(_configuration).TrimEnd('/');
+        return $"{baseUrl}/oidc/join/{tenantId}#link={code}";
     }
 
     private async Task<GenerateSignupLinkResult?> ValidateClientAndRedirectAsync(string clientId, string redirectUri)

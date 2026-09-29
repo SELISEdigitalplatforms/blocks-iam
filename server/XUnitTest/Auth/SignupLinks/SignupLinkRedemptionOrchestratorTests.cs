@@ -35,6 +35,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
     private readonly Mock<ICacheClient> _cache = new();
     private readonly Mock<ITenants> _tenants = new();
     private readonly Mock<IMfaChallengeIssuer> _mfa = new();
+    private readonly Mock<ISignupLinkEmbeddedTokenIssuer> _embeddedTokens = new();
 
     public SignupLinkRedemptionOrchestratorTests()
     {
@@ -95,6 +96,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
             _tenants.Object,
             config,
             _mfa.Object,
+            _embeddedTokens.Object,
             NullLogger<SignupLinkRedemptionCollaborators>.Instance);
         return new SignupLinkRedemptionOrchestrator(stores, collaborators);
     }

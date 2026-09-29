@@ -29,6 +29,18 @@ public class UpdateSignupLinkConfigurationValidator : AbstractValidator<UpdateSi
             .IsInEnum().WithMessage("CredentialMode is required")
             .When(x => x.CredentialMode.HasValue);
 
+        RuleFor(x => x.Mode)
+            .IsInEnum().WithMessage("Mode is required")
+            .When(x => x.Mode.HasValue);
+
+        // Shape only. Whether client/redirect/joinUrl are legal depends on the mode the
+        // document ends up in, which is known only after merging with the stored entity, so
+        // that rule lives in SignupLinkConfigurationService.
+        RuleFor(x => x.JoinUrl)
+            .Must(SignupLinkConfigurationValidation.IsValidJoinUrl)
+            .When(x => x.JoinUrl != null)
+            .WithMessage("JoinUrl must be an absolute https URL with no query or fragment");
+
         RuleFor(x => x.DefaultForwardedTo)
             .Must(SignupLinkConfigurationValidation.IsRelativeForwardedTo)
             .When(x => x.DefaultForwardedTo != null)

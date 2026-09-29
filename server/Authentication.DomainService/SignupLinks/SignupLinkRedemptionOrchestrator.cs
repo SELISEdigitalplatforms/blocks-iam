@@ -46,6 +46,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private readonly ITenants _tenants;
     private readonly IConfiguration _configuration;
     private readonly IMfaChallengeIssuer _mfaChallengeIssuer;
+    private readonly ISignupLinkEmbeddedTokenIssuer _embeddedTokens;
     private readonly ILogger<SignupLinkRedemptionCollaborators> _logger;
 
     public SignupLinkRedemptionOrchestrator(
@@ -63,6 +64,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         _tenants = collaborators.Tenants;
         _configuration = collaborators.Configuration;
         _mfaChallengeIssuer = collaborators.Mfa;
+        _embeddedTokens = collaborators.EmbeddedTokens;
         _logger = collaborators.Logger;
     }
 
@@ -224,8 +226,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         var method = user.UserMfaType == UserMfaType.TOTP ? "totp" : "otp";
         var amr = new List<string> { "link", method };
-        var authorizeUrl = await IssueLinkSessionAsync(link, user.ItemId, request, response, amr);
-        return new OkObjectResult(new RedeemSignupLinkResponse { AuthorizeUrl = authorizeUrl });
+        return await CompleteRedemptionAsync(link, user, request, response, amr);
     }
 
     public async Task TryBindLinkSessionAfterActivationAsync(
@@ -286,6 +287,13 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
     private async Task<(bool Ok, string? Rejection)> ValidateClientAsync(SignupLink link)
     {
+        // An embedded link has no client registration by construction, and never redirects,
+        // so there is nothing here to check (SPEC26 C8).
+        if (link.Mode == SignupLinkMode.Embedded)
+        {
+            return (true, null);
+        }
+
         var clientOk = await _oidcLookup.GetByClientIdAsync(link.ClientId);
         if (clientOk == null || !clientOk.IsActive
             || !clientOk.RedirectUris.Any(u => string.Equals(u, link.RedirectUri, StringComparison.Ordinal)))
@@ -320,9 +328,9 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return await StartMfaChallengeAsync(link, user);
         }
 
-        var authorizeUrl = await IssueLinkSessionAsync(link, user.ItemId, request, response, new List<string> { "link" });
+        var completion = await CompleteRedemptionAsync(link, user, request, response, new List<string> { "link" });
         await RecordSuccessAsync(link, user.ItemId, SignupLinkRedemptionOutcome.LinkUserReturned, request, link.RedemptionCount, grant: false);
-        return new OkObjectResult(new RedeemSignupLinkResponse { AuthorizeUrl = authorizeUrl });
+        return completion;
     }
 
     private async Task<IActionResult> HandlePreExistingAsync(
@@ -435,8 +443,13 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return await StartMfaChallengeAsync(link, user);
         }
 
-        var authorizeUrl = await IssueLinkSessionAsync(link, userId, request, response, new List<string> { "link" });
-        return new OkObjectResult(new RedeemSignupLinkResponse { AuthorizeUrl = authorizeUrl });
+        var completionUser = await _userRepository.GetUserByIdAsync(userId);
+        if (completionUser == null)
+        {
+            return InvalidLink();
+        }
+
+        return await CompleteRedemptionAsync(link, completionUser, request, response, new List<string> { "link" });
     }
 
     private async Task<IActionResult> StartMfaChallengeAsync(SignupLink link, User user)
@@ -512,6 +525,35 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         });
 
         return (key, expires);
+    }
+
+    /// <summary>
+    /// The one place a redemption turns into a session, so both modes stay in step on
+    /// everything that precedes it.
+    /// <para>
+    /// OIDC mints the restricted link session and hands back an authorize URL for the browser
+    /// to follow. Embedded issues tokens directly and redirects nowhere, because it has no
+    /// registered redirect URI to validate a destination against.
+    /// </para>
+    /// </summary>
+    private async Task<IActionResult> CompleteRedemptionAsync(
+        SignupLink link,
+        User user,
+        HttpRequest request,
+        HttpResponse response,
+        List<string> amr)
+    {
+        if (link.Mode == SignupLinkMode.Embedded)
+        {
+            return await _embeddedTokens.IssueAsync(link, user, amr, request);
+        }
+
+        var authorizeUrl = await IssueLinkSessionAsync(link, user.ItemId, request, response, amr);
+        return new OkObjectResult(new RedeemSignupLinkResponse
+        {
+            Mode = nameof(SignupLinkMode.Oidc),
+            AuthorizeUrl = authorizeUrl
+        });
     }
 
     private async Task<string> IssueLinkSessionAsync(

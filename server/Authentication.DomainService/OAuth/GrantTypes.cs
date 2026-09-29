@@ -6,6 +6,13 @@ namespace Authentication.DomainService.OAuth
         public const string Password = "password";
         public const string MfaCode = "mfa_code";
         public const string Social = "social";
+
+        /// <summary>
+        /// Internal label for an embedded signup-link redemption. It is never accepted by the
+        /// public token endpoint -- nothing dispatches on it -- and exists so the token and
+        /// its refresh record say how the session was actually established.
+        /// </summary>
+        public const string SignupLink = "signup_link";
         public const string AuthCode = "authorization_code";
         public const string BiometricAuthorization = "biometric_authorization";
         public const string ClientCredential = "client_credentials";

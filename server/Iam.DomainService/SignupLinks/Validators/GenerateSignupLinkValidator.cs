@@ -24,6 +24,13 @@ public class GenerateSignupLinkValidator : AbstractValidator<GenerateSignupLinkR
             .NotEmpty().WithMessage("LastName is required")
             .Length(1, 100).WithMessage("LastName must be between 1 and 100 characters");
 
+        // A redirect URI is meaningful only against a client, so the override moves as a
+        // pair -- resolving them independently would let a payload redirect be checked
+        // against a configuration client it was never meant for.
+        RuleFor(x => x.RedirectUri)
+            .Must((req, _) => string.IsNullOrWhiteSpace(req.ClientId) == string.IsNullOrWhiteSpace(req.RedirectUri))
+            .WithMessage("Supply clientId and redirectUri together, or neither");
+
         RuleFor(x => x.ForwardedTo)
             .Must(SignupLinkConfigurationValidation.IsRelativeForwardedTo)
             .WithMessage("ForwardedTo must be a relative path");

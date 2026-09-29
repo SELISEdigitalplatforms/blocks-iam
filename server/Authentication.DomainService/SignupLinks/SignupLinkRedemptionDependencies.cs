@@ -41,6 +41,7 @@ public sealed class SignupLinkRedemptionCollaborators
     public ITenants Tenants { get; }
     public IConfiguration Configuration { get; }
     public IMfaChallengeIssuer Mfa { get; }
+    public ISignupLinkEmbeddedTokenIssuer EmbeddedTokens { get; }
     public ILogger<SignupLinkRedemptionCollaborators> Logger { get; }
 
     public SignupLinkRedemptionCollaborators(
@@ -50,6 +51,7 @@ public sealed class SignupLinkRedemptionCollaborators
         ITenants tenants,
         IConfiguration configuration,
         IMfaChallengeIssuer mfa,
+        ISignupLinkEmbeddedTokenIssuer embeddedTokens,
         ILogger<SignupLinkRedemptionCollaborators> logger)
     {
         Oidc = oidc;
@@ -58,6 +60,7 @@ public sealed class SignupLinkRedemptionCollaborators
         Tenants = tenants;
         Configuration = configuration;
         Mfa = mfa;
+        EmbeddedTokens = embeddedTokens;
         Logger = logger;
     }
 }

@@ -11,6 +11,8 @@ public class SignupLinkConfigurationResponse
     public string RedirectUri { get; set; } = string.Empty;
     public string? DefaultForwardedTo { get; set; }
     public SignupLinkCredentialMode CredentialMode { get; set; }
+    public SignupLinkMode Mode { get; set; }
+    public string? JoinUrl { get; set; }
     public int DefaultLifetimeMinutes { get; set; }
     public int? DefaultMaxRedemptions { get; set; }
     public bool IsActive { get; set; }

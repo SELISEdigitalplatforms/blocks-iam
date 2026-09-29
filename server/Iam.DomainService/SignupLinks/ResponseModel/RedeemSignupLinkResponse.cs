@@ -6,6 +6,8 @@ namespace Iam.DomainService.SignupLinks;
 /// </summary>
 public class RedeemSignupLinkResponse
 {
+    /// <summary>"Oidc" or "Embedded". Discriminates the rest of this body.</summary>
+    public string? Mode { get; set; }
     public string? AuthorizeUrl { get; set; }
     public string? ActivationKey { get; set; }
     public DateTime? ActivationKeyExpiresAtUtc { get; set; }

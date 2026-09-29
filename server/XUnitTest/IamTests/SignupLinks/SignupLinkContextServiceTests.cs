@@ -9,10 +9,11 @@ namespace XUnitTest.IamTests.SignupLinks;
 public class SignupLinkContextServiceTests
 {
     private readonly Mock<ISignupLinkRepository> _links = new();
+    private readonly Mock<ISignupLinkConfigurationRepository> _configurations = new();
     private readonly Mock<IOidcClientRegistrationLookup> _oidc = new();
 
     private SignupLinkContextService Sut() =>
-        new(_links.Object, _oidc.Object, NullLogger<SignupLinkContextService>.Instance);
+        new(_links.Object, _configurations.Object, _oidc.Object, NullLogger<SignupLinkContextService>.Instance);
 
     private static SignupLink ActiveLink() => new()
     {
