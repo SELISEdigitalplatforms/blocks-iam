@@ -68,7 +68,7 @@ namespace Api.Controllers
 
         [HttpDelete("permissions/{id}")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-permissions")]
-        public async Task<IActionResult> ArchivePermission([FromRoute] string id, [FromQuery(Name = "confirmRevoke")] bool confirmRevokeFromUsers = false)
+        public async Task<IActionResult> ArchivePermission([FromRoute] string id, [FromQuery] bool confirmRevokeFromUsers = false)
         {
             var result = await _resourceMutationService.ArchivePermissionAsync(id, confirmRevokeFromUsers);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
@@ -92,7 +92,7 @@ namespace Api.Controllers
 
         [HttpDelete("roles/{id}")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-roles")]
-        public async Task<IActionResult> ArchiveRole([FromRoute] string id, [FromQuery(Name = "confirmRevoke")] bool confirmRevokeFromUsers = false)
+        public async Task<IActionResult> ArchiveRole([FromRoute] string id, [FromQuery] bool confirmRevokeFromUsers = false)
         {
             var result = await _resourceMutationService.ArchiveRoleAsync(id, confirmRevokeFromUsers);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
