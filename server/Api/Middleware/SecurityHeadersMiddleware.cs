@@ -8,20 +8,27 @@ public sealed class SecurityHeadersMiddleware
 {
     private readonly RequestDelegate _next;
 
-    public SecurityHeadersMiddleware(RequestDelegate next) => _next = next;
+    // Built once from configuration at startup -- the policy does not vary per request.
+    private readonly string _contentSecurityPolicy;
+
+    public SecurityHeadersMiddleware(RequestDelegate next, string contentSecurityPolicy)
+    {
+        _next = next;
+        _contentSecurityPolicy = contentSecurityPolicy;
+    }
 
     public Task InvokeAsync(HttpContext context)
     {
-        context.Response.OnStarting(static state =>
+        context.Response.OnStarting(() =>
         {
-            Apply((HttpContext)state!);
+            Apply(context);
             return Task.CompletedTask;
-        }, context);
+        });
 
         return _next(context);
     }
 
-    private static void Apply(HttpContext context)
+    private void Apply(HttpContext context)
     {
         var headers = context.Response.Headers;
         var path = context.Request.Path.Value ?? string.Empty;
@@ -40,7 +47,7 @@ public sealed class SecurityHeadersMiddleware
 
         if (!headers.ContainsKey("Content-Security-Policy"))
         {
-            headers["Content-Security-Policy"] = BuildCsp();
+            headers["Content-Security-Policy"] = _contentSecurityPolicy;
         }
 
         if (!isOidcOrTokenPath && !headers.ContainsKey("Cache-Control"))
@@ -82,38 +89,5 @@ public sealed class SecurityHeadersMiddleware
         {
             headers["Cache-Control"] = "public, max-age=31536000, immutable";
         }
-    }
-
-    private static string BuildCsp()
-    {
-        const string connectHosts =
-            "https://dev-iam.blocksdevelopers.com " +
-            "https://dev-api.blocksdevelopers.com " +
-            "https://dev-construct.blocksdevelopers.com " +
-            "https://dev-localization.blocksdevelopers.com " +
-            "https://dev-agents.blocksdevelopers.com " +
-            "https://dev-data.blocksdevelopers.com " +
-            "https://dev-utilities.blocksdevelopers.com " +
-            "https://dev-logic.blocksdevelopers.com " +
-            "wss://dev-logic.blocksdevelopers.com " +
-            "https://dev-monitor.blocksdevelopers.com " +
-            "https://dev-release.blocksdevelopers.com " +
-            "https://dev-studio.blocksdevelopers.com " +
-            "https://dev-os.blocksdevelopers.com " +
-            "https://blocksdev.blob.core.windows.net " +
-            "https://api.rollbar.com " +
-            "https://code.selise.biz";
-
-        return
-            "default-src 'self'; " +
-            "script-src 'self'; " +
-            "style-src 'self'; " +
-            "img-src 'self' data: blob: https://blocksdev.blob.core.windows.net https://az-cdn.selise.biz; " +
-            "font-src 'self' data:; " +
-            "connect-src 'self' " + connectHosts + "; " +
-            "frame-ancestors 'none'; " +
-            "base-uri 'self'; " +
-            "object-src 'none'; " +
-            "form-action 'self' https://dev-iam.blocksdevelopers.com https://dev-os.blocksdevelopers.com";
     }
 }

@@ -31,4 +31,22 @@ public static class LinkSessionCookie
             sessionId,
             options);
     }
+
+    /// <summary>
+    /// Expires the restricted link session cookie, under the same scope
+    /// <see cref="Append"/> wrote it with.
+    /// </summary>
+    public static void Clear(
+        HttpRequest request,
+        HttpResponse response,
+        Tenant? tenant,
+        string? tenantId)
+    {
+        var domain = IdpSessionCookie.ResolveCookieDomain(tenant, request);
+        var expired = DateTime.UtcNow.AddDays(-1);
+
+        response.Cookies.Delete(
+            IdpConstants.BuildLinkSessionCookieKey(tenantId),
+            DomainResolver.CreateCookieOptions(domain, expired));
+    }
 }

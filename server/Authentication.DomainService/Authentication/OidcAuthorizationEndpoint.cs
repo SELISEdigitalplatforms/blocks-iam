@@ -159,33 +159,50 @@ namespace Authentication.DomainService.Authentication
 
                 var effectiveSessionId = request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant_id)];
 
-                string? resolvedUserId = blocksUserId;
-                LinkSessionModel? matchedLinkSession = null;
-                var linkCookieId = request.Cookies[IdpConstants.BuildLinkSessionCookieKey(tenant_id)];
-                if (!string.IsNullOrWhiteSpace(linkCookieId))
-                {
-                    var linkSession = await _linkSessionRepo.GetBySessionIdAsync(linkCookieId);
-                    if (linkSession != null
-                        && !linkSession.IsExpired()
-                        && string.Equals(linkSession.ClientId, client_id, StringComparison.Ordinal)
-                        && (string.IsNullOrWhiteSpace(tenant_id)
-                            || string.Equals(linkSession.TenantId, tenant_id, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        matchedLinkSession = linkSession;
-                        if (string.IsNullOrWhiteSpace(resolvedUserId))
-                        {
-                            resolvedUserId = linkSession.UserId;
-                        }
-                    }
-                    // Wrong client or expired: ignore entirely (C4) — fall through to IdP / login.
-                }
-
                 // Set only when the login orchestrator has just verified a username and password.
                 // That verdict is authoritative: /oidc/login carries no way to ask for a second
                 // account -- that is /oidc/session/account/add, a separate endpoint with its own
                 // request model -- so a credentialed login can only ever mean "sign in as this
                 // user", whatever the browser is still carrying.
                 var credentialsJustVerified = !string.IsNullOrWhiteSpace(blocksUserId);
+
+                string? resolvedUserId = blocksUserId;
+                LinkSessionModel? matchedLinkSession = null;
+                var linkCookieId = request.Cookies[IdpConstants.BuildLinkSessionCookieKey(tenant_id)];
+                if (!string.IsNullOrWhiteSpace(linkCookieId))
+                {
+                    // A freshly verified username and password supersedes the restricted link
+                    // session for exactly the reason it supersedes the IdP session cookie below:
+                    // the token that follows has to describe the password login, not a signup
+                    // link redeemed in this browser earlier. Without this, signing in normally
+                    // inside the link session's lifetime still minted amr=["link"], the link's
+                    // organization, roles intersected against the link's frozen grant, and an
+                    // audience narrowed to the link's client -- on an ordinary login, for the
+                    // redeeming user and for anyone else who signed in on the same browser.
+                    // The cookie is cleared rather than only ignored, so the next silent
+                    // authorize does not pick it up again for the rest of its lifetime.
+                    if (credentialsJustVerified)
+                    {
+                        ClearLinkSessionCookie(request, response, tenant_id);
+                    }
+                    else
+                    {
+                        var linkSession = await _linkSessionRepo.GetBySessionIdAsync(linkCookieId);
+                        if (linkSession != null
+                            && !linkSession.IsExpired()
+                            && string.Equals(linkSession.ClientId, client_id, StringComparison.Ordinal)
+                            && (string.IsNullOrWhiteSpace(tenant_id)
+                                || string.Equals(linkSession.TenantId, tenant_id, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            matchedLinkSession = linkSession;
+                            if (string.IsNullOrWhiteSpace(resolvedUserId))
+                            {
+                                resolvedUserId = linkSession.UserId;
+                            }
+                        }
+                        // Wrong client or expired: ignore entirely (C4) — fall through to IdP / login.
+                    }
+                }
 
                 // prompt=login demands fresh authentication, so an existing session must not sign
                 // the user in silently. The credentialed path is exempt because it has already
@@ -560,6 +577,15 @@ namespace Authentication.DomainService.Authentication
             !string.IsNullOrWhiteSpace(prompt)
             && prompt.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Any(p => string.Equals(p, value, StringComparison.OrdinalIgnoreCase));
+
+        private void ClearLinkSessionCookie(
+            HttpRequest httpRequest,
+            HttpResponse response,
+            string? tenantId)
+        {
+            var tenant = string.IsNullOrWhiteSpace(tenantId) ? null : _tenants.GetTenantByID(tenantId);
+            LinkSessionCookie.Clear(httpRequest, response, tenant, tenantId);
+        }
 
         private void SetIdpSessionCookie(
             HttpRequest httpRequest,

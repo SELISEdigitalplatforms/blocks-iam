@@ -1,4 +1,5 @@
 using Api.Middleware;
+using Api.Security;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
@@ -58,19 +59,10 @@ var app = builder.Build();
 DomainResolver.Configure(app.Services.GetRequiredService<IHttpContextAccessor>());
 
 // Browser-facing security headers first so even short-circuit 404s carry HSTS/CSP.
-app.UseMiddleware<SecurityHeadersMiddleware>();
-
-// Do not expose Swagger UI bundles on deployed hosts (Retire.js / ZAP Medium).
-app.Use(async (context, next) =>
-{
-    var path = context.Request.Path.Value ?? string.Empty;
-    if (path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
-    {
-        context.Response.StatusCode = StatusCodes.Status404NotFound;
-        return;
-    }
-    await next();
-});
+// The CSP origins come from configuration (FrontendRuntime + Csp:Extra*), not from a
+// compiled-in host list -- see Api.Security.ContentSecurityPolicy.
+var contentSecurityPolicy = ContentSecurityPolicy.Build(app.Configuration);
+app.UseMiddleware<SecurityHeadersMiddleware>(contentSecurityPolicy);
 
 // Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
 var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);

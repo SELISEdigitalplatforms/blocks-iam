@@ -478,6 +478,72 @@
             still works on PR previews. Skips Cache-Control on cookie-issuing auth paths.
             </summary>
         </member>
+        <member name="T:Api.Security.ContentSecurityPolicy">
+            <summary>
+            Builds the SPA's Content-Security-Policy from configuration.
+            <para>
+            The origins come from the same <c>FrontendRuntime</c> section that fills the SPA's
+            runtime config, so the policy describes whatever environment the host is actually
+            running in. They used to be a hardcoded list of <c>dev-*</c> hosts compiled into the
+            middleware, which was correct on dev and would have blocked the SPA from reaching its
+            own API and every sibling service everywhere else. This mirrors the same fix already
+            made in blocks-os (<c>server/Api/Security/ContentSecurityPolicy.cs</c>).
+            </para>
+            </summary>
+        </member>
+        <member name="F:Api.Security.ContentSecurityPolicy.ConnectOriginKeys">
+            <summary>
+            <c>FrontendRuntime</c> keys holding an origin the SPA makes requests to. Anything
+            not derivable from these (a CDN, a third-party service) goes in
+            <c>Csp:ExtraConnectSrc</c> / <c>Csp:ExtraImgSrc</c> rather than back into code.
+            </summary>
+        </member>
+        <member name="F:Api.Security.ContentSecurityPolicy.WebSocketOriginKeys">
+            <summary>
+            Origins the SPA opens a WebSocket to. A CSP source is scheme-sensitive, so
+            <c>https://host</c> does not permit <c>wss://host</c> and the ws form has to be
+            emitted separately -- the hardcoded policy listed <c>wss://dev-logic...</c> for
+            exactly this reason.
+            </summary>
+        </member>
+        <member name="F:Api.Security.ContentSecurityPolicy.FormActionOriginKeys">
+            <summary>Where a login POST may be sent: the identity host and the portal.</summary>
+        </member>
+        <member name="F:Api.Security.ContentSecurityPolicy.CaptchaScriptOrigins">
+            <summary>
+            reCAPTCHA is loaded by <c>client/app/components/captcha/reCaptcha.tsx</c>, which
+            injects <c>https://www.google.com/recaptcha/api.js</c> and renders the widget in an
+            iframe. These are fixed Google origins, identical in every environment, so they stay
+            in code rather than in per-environment configuration. Without them the previous
+            policy blocked captcha on login and signup in every environment.
+            </summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.BuildPolicy(System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String})">
+            <summary>
+            The policy itself, separated from configuration so it can be asserted directly.
+            Public rather than internal because the test project has no InternalsVisibleTo.
+            </summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.Normalize(System.Collections.Generic.IEnumerable{System.String})">
+            <summary>Reduce configured values to distinct, sorted origins.</summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.WebSocketOrigins(Microsoft.Extensions.Configuration.IConfiguration,System.Collections.Generic.IEnumerable{System.String})">
+            <summary>Same origins as <see cref="M:Api.Security.ContentSecurityPolicy.Origins(Microsoft.Extensions.Configuration.IConfiguration,System.Collections.Generic.IEnumerable{System.String})"/>, re-scheme'd to ws/wss.</summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.ToOrigin(System.String)">
+            <summary>
+            A CSP source is an origin, so any path, query or trailing slash is dropped. A value
+            that is not an absolute http(s)/ws(s) URL is ignored rather than emitted verbatim, so
+            a malformed secret cannot inject a directive. ws/wss are accepted because
+            <see cref="M:Api.Security.ContentSecurityPolicy.ToWebSocketOrigin(System.String)"/> feeds its output back through here.
+            </summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.ToWebSocketOrigin(System.String)">
+            <summary>The ws:// or wss:// form of an http(s) origin, or null if it is not one.</summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.Split(System.String)">
+            <summary>Space- or comma-separated list, for origins no runtime key describes.</summary>
+        </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">
             <summary>
             OIDC Login Endpoint — authenticates credentials, sets IDP session, then issues authorization code.
