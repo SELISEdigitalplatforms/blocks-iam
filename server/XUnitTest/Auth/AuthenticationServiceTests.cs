@@ -1047,5 +1047,127 @@ namespace XUnitTest.Auth
 
             result.Should().BeNull();
         }
+
+        // ---------- GetPrincipalFromTokenIgnoringLifetimeAsync ----------
+        // Used by the anonymous config reads to find an impersonation token's tenant. Only the
+        // lifetime check may be relaxed: a token the tenant did not sign must still be rejected.
+
+        private const string SigningCertPassword = "test-pass";
+        private const string TokenIssuer = "https://issuer.test";
+        private const string TokenAudience = "https://audience.test";
+
+        private static byte[] GenerateSigningCertificate()
+        {
+            using var rsa = System.Security.Cryptography.RSA.Create(2048);
+            var request = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+                "CN=blocks-test", rsa, System.Security.Cryptography.HashAlgorithmName.SHA256,
+                System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+            using var cert = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+            return cert.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Pkcs12, SigningCertPassword);
+        }
+
+        private static string SignToken(byte[] pfx, DateTime notBefore, DateTime expires, string issuer = TokenIssuer)
+        {
+            var cert = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12(pfx, SigningCertPassword);
+            var token = new JwtSecurityToken(
+                issuer: issuer,
+                audience: TokenAudience,
+                claims:
+                [
+                    new Claim("impersonated", "true"),
+                    new Claim("tenant_id", "project-tenant"),
+                    new Claim("user_id", "impersonator-1"),
+                ],
+                notBefore: notBefore,
+                expires: expires,
+                signingCredentials: new Microsoft.IdentityModel.Tokens.X509SigningCredentials(cert));
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        private HttpRequest BearerRequest(string token)
+        {
+            var ctx = new DefaultHttpContext();
+            ctx.Request.Headers["Authorization"] = $"Bearer {token}";
+            return ctx.Request;
+        }
+
+        private void SetupSigningTenant(byte[] validationPfx)
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(new Tenant
+            {
+                TenantId = TenantId,
+                DbConnectionString = string.Empty,
+                JwtTokenParameters = new JwtTokenParameters
+                {
+                    Issuer = TokenIssuer,
+                    Audiences = [TokenAudience],
+                    PublicCertificatePassword = SigningCertPassword,
+                    PrivateCertificatePassword = SigningCertPassword,
+                    IssueDate = DateTime.UtcNow,
+                },
+            });
+            var cacheDb = new Mock<StackExchange.Redis.IDatabase>();
+            cacheDb.Setup(d => d.StringGetAsync(It.IsAny<StackExchange.Redis.RedisKey>(), It.IsAny<StackExchange.Redis.CommandFlags>()))
+                .ReturnsAsync((StackExchange.Redis.RedisValue)validationPfx);
+            _cache.Setup(c => c.CacheDatabase()).Returns(cacheDb.Object);
+        }
+
+        [Fact]
+        public async Task GetPrincipalFromTokenIgnoringLifetime_ExpiredButSignedToken_ReturnsItsClaims()
+        {
+            var pfx = GenerateSigningCertificate();
+            SetupSigningTenant(pfx);
+            var expired = SignToken(pfx, DateTime.UtcNow.AddMinutes(-20), DateTime.UtcNow.AddMinutes(-10));
+
+            var result = await Create().GetPrincipalFromTokenIgnoringLifetimeAsync(BearerRequest(expired), TenantId);
+
+            result.Should().NotBeNull();
+            result!.FindFirst("tenant_id")!.Value.Should().Be("project-tenant");
+        }
+
+        [Fact]
+        public async Task GetPrincipalFromToken_ExpiredToken_IsStillRejectedByTheStrictLookup()
+        {
+            var pfx = GenerateSigningCertificate();
+            SetupSigningTenant(pfx);
+            var expired = SignToken(pfx, DateTime.UtcNow.AddMinutes(-20), DateTime.UtcNow.AddMinutes(-10));
+
+            var result = await Create().GetPrincipalFromTokenAsync(BearerRequest(expired), TenantId);
+
+            result.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetPrincipalFromTokenIgnoringLifetime_TokenSignedByAnotherKey_ReturnsNull()
+        {
+            SetupSigningTenant(GenerateSigningCertificate());
+            var forged = SignToken(GenerateSigningCertificate(), DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow.AddMinutes(10));
+
+            var result = await Create().GetPrincipalFromTokenIgnoringLifetimeAsync(BearerRequest(forged), TenantId);
+
+            result.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetPrincipalFromTokenIgnoringLifetime_WrongIssuer_ReturnsNull()
+        {
+            var pfx = GenerateSigningCertificate();
+            SetupSigningTenant(pfx);
+            var foreign = SignToken(pfx, DateTime.UtcNow.AddMinutes(-20), DateTime.UtcNow.AddMinutes(-10), issuer: "https://someone-else");
+
+            var result = await Create().GetPrincipalFromTokenIgnoringLifetimeAsync(BearerRequest(foreign), TenantId);
+
+            result.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetPrincipalFromTokenIgnoringLifetime_NoToken_ReturnsNull()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(TenantWithApps());
+
+            var result = await Create().GetPrincipalFromTokenIgnoringLifetimeAsync(new DefaultHttpContext().Request, TenantId);
+
+            result.Should().BeNull();
+        }
     }
 }

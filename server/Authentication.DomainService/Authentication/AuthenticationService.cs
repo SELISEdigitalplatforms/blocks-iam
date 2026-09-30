@@ -919,7 +919,25 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
-        public async Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false)
+        public Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false) =>
+            ValidateRequestTokenAsync(request, tenantId, IsUserInfoGetRequest, validateLifetime: true);
+
+        /// <summary>
+        /// Same checks as <see cref="GetPrincipalFromTokenAsync"/> -- signature, issuer and
+        /// audience -- except that an expired token is still accepted.
+        /// <para>
+        /// Only for anonymous, read-only endpoints that use the token to decide <i>which tenant</i>
+        /// to read, never to authorize anything. An impersonation token names the tenant being
+        /// worked on while X-Blocks-Key names the root tenant, so rejecting it on expiry silently
+        /// answers for the root tenant with a 200 -- the caller never sees a 401 and caches the
+        /// wrong tenant's data. The claims stay trustworthy after expiry because the signature is
+        /// still verified; a forged or foreign token is rejected exactly as before.
+        /// </para>
+        /// </summary>
+        public Task<ClaimsPrincipal?> GetPrincipalFromTokenIgnoringLifetimeAsync(HttpRequest request, string tenantId) =>
+            ValidateRequestTokenAsync(request, tenantId, IsUserInfoGetRequest: false, validateLifetime: false);
+
+        private async Task<ClaimsPrincipal?> ValidateRequestTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest, bool validateLifetime)
         {
             try
             {
@@ -937,8 +955,8 @@ namespace Authentication.DomainService.Authentication
                     var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
                     var validationParams = tenant.JwtTokenParameters;
                     var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);
-                    var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = DomainResolver.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
-                                                                          new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = false, ValidateAudience = false, SaveSigninToken = true };
+                    var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = validateLifetime, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = DomainResolver.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
+                                                                          new TokenValidationParameters { ValidateLifetime = validateLifetime, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = false, ValidateAudience = false, SaveSigninToken = true };
                     return tokenHandler.ValidateToken(token, tokenValidationParameters, out _);
                 }
             }
