@@ -446,21 +446,21 @@ namespace Authentication.DomainService.Services
             return new BaseResponse { IsSuccess = true, };
         }
 
-        public async Task<BaseResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request)
+        public async Task<SaveClientCredentialResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Name))
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "Name is required." } } };
+                return ClientCredentialSaveFailure("invalid_request", "Name is required.");
 
             var roles = (request.Roles ?? new List<string>()).Where(r => !string.IsNullOrWhiteSpace(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var permissions = (request.Permissions ?? new List<string>()).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
             if (roles.Count == 0 && permissions.Count == 0)
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "At least one role or permission is required." } } };
+                return ClientCredentialSaveFailure("invalid_request", "At least one role or permission is required.");
 
             var blocksContext = BlocksContext.GetContext();
             var scope = OrganizationAccessScopeResolver.Resolve(blocksContext?.OrganizationId);
             if (scope.Kind == OrganizationAccessScopeKind.Denied)
-                return ClientCredentialForbidden();
+                return ClientCredentialSaveFailure("forbidden", "Your token names no organization, so client credentials cannot be managed.");
 
             var isUpdate = !string.IsNullOrWhiteSpace(request.ItemId);
             if (isUpdate)
@@ -470,7 +470,7 @@ namespace Authentication.DomainService.Services
                 // Out of scope is reported as "not found", decided before anything is written, so a
                 // caller learns nothing about credentials belonging to another organization.
                 if (existing == null || !scope.Allows(existing.OrganizationId))
-                    return ClientCredentialNotFound(request.ItemId);
+                    return ClientCredentialSaveFailure("not_found", $"Client credential '{request.ItemId}' not found.");
 
                 existing.Name = request.Name;
                 existing.IsActive = request.IsActive;
@@ -483,12 +483,22 @@ namespace Authentication.DomainService.Services
                 // OrganizationId is deliberately not updated. Re-scoping a live credential would
                 // change the reach of tokens that running services already hold, without those
                 // services ever asking for it.
-                return await _authenticationRepository.SaveClientCredentialAsync(existing);
+                var saveResult = await _authenticationRepository.SaveClientCredentialAsync(existing);
+                return new SaveClientCredentialResponse
+                {
+                    IsSuccess = saveResult.IsSuccess,
+                    Errors = saveResult.Errors,
+                    ItemId = existing.ItemId
+                };
             }
 
             var (organizationId, organizationError) = ResolveNewCredentialOrganization(scope, request.OrganizationId);
             if (organizationError != null)
-                return organizationError;
+                return new SaveClientCredentialResponse
+                {
+                    IsSuccess = organizationError.IsSuccess,
+                    Errors = organizationError.Errors
+                };
 
             var clientCredential = new ClientCredential
             {
@@ -506,7 +516,40 @@ namespace Authentication.DomainService.Services
                 IsActive = request.IsActive
             };
 
-            return await _authenticationRepository.SaveClientCredentialAsync(clientCredential);
+            var createResult = await _authenticationRepository.SaveClientCredentialAsync(clientCredential);
+            return new SaveClientCredentialResponse
+            {
+                IsSuccess = createResult.IsSuccess,
+                Errors = createResult.Errors,
+                ItemId = clientCredential.ItemId,
+                ClientSecret = createResult.IsSuccess ? clientCredential.ClientSecret : null
+            };
+        }
+
+        public async Task<RotateClientCredentialSecretResponse> RotateClientCredentialSecretAsync(string itemId)
+        {
+            if (string.IsNullOrWhiteSpace(itemId))
+                return new RotateClientCredentialSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "ItemId is required." } } };
+
+            var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
+            if (scope.Kind == OrganizationAccessScopeKind.Denied)
+                return new RotateClientCredentialSecretResponse { IsSuccess = false, Errors = ClientCredentialForbidden().Errors };
+
+            var credential = await _authenticationRepository.GetClientCredentialByIdAsync(itemId);
+            if (credential == null || !scope.Allows(credential.OrganizationId))
+                return new RotateClientCredentialSecretResponse { IsSuccess = false, Errors = ClientCredentialNotFound(itemId).Errors };
+
+            credential.ClientSecret = ClientSecretGenerator.Generate();
+            credential.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
+            credential.LastUpdatedDate = DateTime.UtcNow;
+
+            var saveResult = await _authenticationRepository.SaveClientCredentialAsync(credential);
+            return new RotateClientCredentialSecretResponse
+            {
+                IsSuccess = saveResult.IsSuccess,
+                Errors = saveResult.Errors,
+                ClientSecret = saveResult.IsSuccess ? credential.ClientSecret : null
+            };
         }
 
         /// <summary>
@@ -560,6 +603,13 @@ namespace Authentication.DomainService.Services
             {
                 IsSuccess = false,
                 Errors = new Dictionary<string, string> { { "forbidden", "Your token names no organization, so client credentials cannot be managed." } }
+            };
+
+        private static SaveClientCredentialResponse ClientCredentialSaveFailure(string key, string message) =>
+            new()
+            {
+                IsSuccess = false,
+                Errors = new Dictionary<string, string> { { key, message } }
             };
 
         private static string GenerateClientSecret()

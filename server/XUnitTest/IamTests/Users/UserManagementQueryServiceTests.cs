@@ -597,7 +597,8 @@ namespace XUnitTest.IamTests.Users
                 ["createdDate"] = account.CreatedDate,
                 ["roles"] = account.Roles,
                 ["lockoutUntilUtc"] = null,
-                ["isLockedOut"] = false
+                ["isLockedOut"] = false,
+                ["accountState"] = "Active"
             });
         }
 
@@ -651,6 +652,7 @@ namespace XUnitTest.IamTests.Users
                 ["organizationIds"] = account.OrganizationIds,
                 ["lockoutUntilUtc"] = account.LockoutUntilUtc,
                 ["isLockedOut"] = true,
+                ["accountState"] = "Active",
                 ["OrganizationsRoles"] = account.Roles,
                 ["OrganizationsPermissions"] = account.Permissions
             });
@@ -726,6 +728,41 @@ namespace XUnitTest.IamTests.Users
                 new Dictionary<string, object?> { ["lockoutUntilUtc"] = null }, options);
             neverJson.Should().Contain("\"lockoutUntilUtc\":null",
                 "a dropped null key would silently break the Phase 2 contract");
+        }
+
+        [Fact]
+        public async Task GetUsers_ReportsEachItemsAccountState()
+        {
+            InstallContext();
+            var accounts = new List<GetAccounts>
+            {
+                new() { ItemId = "active", Email = "a@e.com", Active = true, Status = UserLifecycleStatus.Active, IsVerified = true },
+                new() { ItemId = "invited", Email = "i@e.com", Active = false, Status = UserLifecycleStatus.Active, IsVerified = false },
+                new() { ItemId = "deactivated", Email = "d@e.com", Active = false, Status = UserLifecycleStatus.Disabled, IsVerified = true },
+            }.AsQueryable();
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ReturnsAsync((accounts, 3L));
+
+            var items = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.ToList();
+
+            items.Select(item => item["accountState"]).Should().Equal("Active", "PendingVerification", "Deactivated");
+        }
+
+        [Fact]
+        public async Task GetUser_ReportsTheAccountState()
+        {
+            InstallContext();
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(new GetAccounts
+            {
+                ItemId = "u1",
+                Email = "u1@e.com",
+                OrganizationIds = ["default"],
+                Status = UserLifecycleStatus.Suspended,
+            });
+
+            var result = await CreateAt(Now).GetUserAsync("u1", "default");
+
+            result.Data!["accountState"].Should().Be("Suspended");
         }
     }
 }

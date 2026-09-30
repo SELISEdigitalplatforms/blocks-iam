@@ -388,6 +388,8 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>())).ReturnsAsync(new BaseResponse { IsSuccess = true });
             var result = await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest { Name = "svc", Roles = new() { "r" }, Permissions = new() { "p" } });
             result.IsSuccess.Should().BeTrue();
+            result.ItemId.Should().NotBeNullOrEmpty();
+            result.ClientSecret.Should().StartWith("blxk_");
             _repo.Verify(r => r.SaveClientCredentialAsync(It.Is<ClientCredential>(c => c.Name == "svc")), Times.Once);
         }
 
@@ -398,7 +400,37 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>())).ReturnsAsync(new BaseResponse { IsSuccess = true });
             var result = await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest { ItemId = "cc-1", Name = "new", Roles = new() { "r" } });
             result.IsSuccess.Should().BeTrue();
+            result.ItemId.Should().Be("cc-1");
+            result.ClientSecret.Should().BeNull();
             _repo.Verify(r => r.SaveClientCredentialAsync(It.Is<ClientCredential>(c => c.Name == "new")), Times.Once);
+        }
+
+        [Fact]
+        public async Task RotateClientCredentialSecret_ReplacesAndReturnsTheSecret()
+        {
+            var credential = new ClientCredential { ItemId = "cc-1", ClientSecret = "old", OrganizationId = "default" };
+            _repo.Setup(r => r.GetClientCredentialByIdAsync("cc-1")).ReturnsAsync(credential);
+            _repo.Setup(r => r.SaveClientCredentialAsync(credential)).ReturnsAsync(new BaseResponse { IsSuccess = true });
+
+            var result = await Create().RotateClientCredentialSecretAsync("cc-1");
+
+            result.IsSuccess.Should().BeTrue();
+            result.ClientSecret.Should().StartWith("blxk_").And.NotBe("old");
+            credential.ClientSecret.Should().Be(result.ClientSecret);
+        }
+
+        [Fact]
+        public async Task RotateClientCredentialSecret_OtherOrganization_ReportsNotFound()
+        {
+            SetOrganization("org-a");
+            _repo.Setup(r => r.GetClientCredentialByIdAsync("cc-1"))
+                .ReturnsAsync(new ClientCredential { ItemId = "cc-1", OrganizationId = "org-b" });
+
+            var result = await Create().RotateClientCredentialSecretAsync("cc-1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("not_found");
+            _repo.Verify(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()), Times.Never);
         }
 
         // ---------- DeleteClientCredentialAsync ----------

@@ -188,7 +188,8 @@ namespace Iam.DomainService.Users
                 ["createdDate"] = user.CreatedDate,
                 ["roles"] = user.Roles,
                 ["lockoutUntilUtc"] = user.LockoutUntilUtc,
-                ["isLockedOut"] = IsLockedOut(user.LockoutUntilUtc, asOfUtc)
+                ["isLockedOut"] = IsLockedOut(user.LockoutUntilUtc, asOfUtc),
+                ["accountState"] = UserAccountStates.Resolve(user.Active, user.Status, user.IsVerified).ToString()
             };
         }
 
@@ -264,7 +265,8 @@ namespace Iam.DomainService.Users
                 // Added AFTER the cross-org early return above, so an out-of-org caller still gets
                 // an empty dictionary and no lockout state leaks across organizations.
                 ["lockoutUntilUtc"] = user.LockoutUntilUtc,
-                ["isLockedOut"] = IsLockedOut(user.LockoutUntilUtc, asOfUtc)
+                ["isLockedOut"] = IsLockedOut(user.LockoutUntilUtc, asOfUtc),
+                ["accountState"] = UserAccountStates.Resolve(user.Active, user.Status, user.IsVerified).ToString()
             };
         }
 

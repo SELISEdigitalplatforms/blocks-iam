@@ -220,6 +220,10 @@ namespace Iam.DomainService.Users
             if (filter.Status?.Inactive == true)
                 filters.Add(builder.Eq(u => u.Active, false));
 
+            var accountStates = UserAccountStates.BuildFilter(filter.AccountStates, DateTime.UtcNow);
+            if (accountStates is not null)
+                filters.Add(accountStates);
+
             if (filter.Mfa?.Enabled == true)
                 filters.Add(builder.Eq(u => u.MfaEnabled, true));
 

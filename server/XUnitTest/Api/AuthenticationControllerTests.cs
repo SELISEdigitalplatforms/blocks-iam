@@ -739,11 +739,22 @@ namespace XUnitTest.ApiTests
         [Fact]
         public async Task SaveClientCredential_DelegatesAndReturnsResponse()
         {
-            var response = new BaseResponse { IsSuccess = true };
+            var response = new SaveClientCredentialResponse { IsSuccess = true };
             _domainService.Setup(d => d.SaveClientCredentialAsync(It.IsAny<SaveClientCredentialRequest>()))
                 .ReturnsAsync(response);
 
             var result = await CreateController().SaveClientCredential(new SaveClientCredentialRequest());
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task RotateClientCredentialSecret_DelegatesWithItemId()
+        {
+            var response = new RotateClientCredentialSecretResponse { IsSuccess = true, ClientSecret = "blxk_new" };
+            _domainService.Setup(d => d.RotateClientCredentialSecretAsync("cc-1")).ReturnsAsync(response);
+
+            var result = await CreateController().RotateClientCredentialSecret("cc-1");
 
             result.Should().BeSameAs(response);
         }

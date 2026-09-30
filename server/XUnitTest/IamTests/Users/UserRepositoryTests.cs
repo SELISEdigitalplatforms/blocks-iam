@@ -690,6 +690,32 @@ namespace XUnitTest.IamTests.Users
             Clause(rendered, "OrganizationIds").Should().NotBeNull();
             AllStrings(rendered).Should().Contain("org-a");
         }
+
+        // ---------- Account-state filter ----------
+        // The rule itself is covered in UserAccountStatesTests; these only prove the repository
+        // hands it to the driver alongside the other filters, and adds nothing when it should not.
+
+        [Fact]
+        public async Task GetUsersAsync_AccountStates_AddsTheClauseAlongsideTheOtherFilters()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter
+            {
+                Name = "john",
+                AccountStates = [UserAccountStates.LockedOut],
+            });
+
+            Clause(rendered, "LockoutUntilUtc").Should().NotBeNull("a LockedOut filter constrains the lockout instant");
+            Regex(rendered, "FirstName").Pattern.Should().Be("john");
+        }
+
+        [Fact]
+        public async Task GetUsersAsync_NoRecognisedAccountStates_AddsNoClause()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter { AccountStates = ["Verified"] });
+
+            Clause(rendered, "LockoutUntilUtc").Should().BeNull();
+            Clause(rendered, "Status").Should().BeNull();
+        }
     }
 }
 
