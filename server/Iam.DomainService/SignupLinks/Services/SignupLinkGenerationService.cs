@@ -335,7 +335,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         }
 
         var baseUrl = IamHelper.GetConfiguredIamBaseUrl(_configuration).TrimEnd('/');
-        return $"{baseUrl}/oidc/join/{tenantId}#link={code}";
+        return $"{baseUrl}/oidc/invitation/{tenantId}#link={code}";
     }
 
     private async Task<GenerateSignupLinkResult?> ValidateClientAndRedirectAsync(string clientId, string redirectUri)

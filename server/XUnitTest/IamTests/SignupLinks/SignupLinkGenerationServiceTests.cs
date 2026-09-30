@@ -166,7 +166,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
 
         result.IsSuccess.Should().BeTrue();
         result.Data.Should().NotBeNull();
-        result.Data!.Url.Should().StartWith("https://iam.example.com/oidc/join/tenant-1#link=");
+        result.Data!.Url.Should().StartWith("https://iam.example.com/oidc/invitation/tenant-1#link=");
         var code = result.Data.Url.Split("#link=")[1];
         code.Length.Should().Be(43);
         saved.Should().NotBeNull();

@@ -26,23 +26,23 @@ vi.mock("../oidc/oidc-auth-shell", () => ({
 
 vi.mock("@/hooks/use-toast", () => ({ showErrorToast: vi.fn() }));
 
-import JoinPage from "./join";
+import InvitationPage from "./invitation";
 
 function renderJoin(hash = "#link=abc123") {
-  window.history.replaceState(null, "", `/oidc/join/t1${hash}`);
+  window.history.replaceState(null, "", `/oidc/invitation/t1${hash}`);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/oidc/join/t1${hash}`]}>
+      <MemoryRouter initialEntries={[`/oidc/invitation/t1${hash}`]}>
         <Routes>
-          <Route path="/oidc/join/:tenantId" element={<JoinPage />} />
+          <Route path="/oidc/invitation/:tenantId" element={<InvitationPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-describe("JoinPage", () => {
+describe("InvitationPage", () => {
   beforeEach(() => {
     getContext.mockReset();
     redeem.mockReset();
@@ -66,7 +66,7 @@ describe("JoinPage", () => {
     });
     redeem.mockResolvedValue({ authorizeUrl: "https://iam.example/api/oidc/authorize?x=1" });
     const assign = vi.fn();
-    vi.stubGlobal("location", { ...window.location, assign, hash: "#link=abc", pathname: "/oidc/join/t1", search: "" });
+    vi.stubGlobal("location", { ...window.location, assign, hash: "#link=abc", pathname: "/oidc/invitation/t1", search: "" });
 
     // Use real location for hash clear; spy assign via window.location.assign
     const original = window.location;
@@ -75,10 +75,10 @@ describe("JoinPage", () => {
       value: {
         ...original,
         hash: "#link=abc",
-        pathname: "/oidc/join/t1",
+        pathname: "/oidc/invitation/t1",
         search: "",
         assign,
-        href: "http://localhost/oidc/join/t1#link=abc",
+        href: "http://localhost/oidc/invitation/t1#link=abc",
       },
     });
 

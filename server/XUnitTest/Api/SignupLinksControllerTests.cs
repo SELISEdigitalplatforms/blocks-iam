@@ -81,7 +81,7 @@ public class SignupLinksControllerTests
             .ReturnsAsync(GenerateSignupLinkResult.Ok(new GenerateSignupLinkResponse
             {
                 LinkId = "l1",
-                Url = "https://iam.example/oidc/join/t1#link=abc",
+                Url = "https://iam.example/oidc/invitation/t1#link=abc",
                 ExpiresAtUtc = DateTime.UtcNow.AddHours(1),
                 EmailAlreadyExists = false
             }));

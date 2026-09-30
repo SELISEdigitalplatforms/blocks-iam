@@ -8,7 +8,7 @@ import { Button } from "@/components/ui-kits/button/button";
 type Props = Readonly<{ template: IOidcUiTemplate }>;
 
 /** Single refusal card for every invalid/expired/revoked/exhausted link (C1). */
-export function JoinInvalid({ template }: Props) {
+export function InvitationInvalid({ template }: Props) {
   return (
     <OidcAuthShell
       panelConfig={JOIN_PANEL}

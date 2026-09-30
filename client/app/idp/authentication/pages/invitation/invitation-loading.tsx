@@ -6,7 +6,7 @@ import type { IOidcUiTemplate } from "@blocks-idp/authentication/hooks/use-oidc-
 type Props = Readonly<{ template: IOidcUiTemplate }>;
 
 /** Skeleton mirroring the OIDC card while /context is in flight. */
-export function JoinLoading({ template }: Props) {
+export function InvitationLoading({ template }: Props) {
   return (
     <OidcAuthShell
       panelConfig={JOIN_PANEL}

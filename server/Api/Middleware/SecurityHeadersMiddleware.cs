@@ -40,8 +40,8 @@ public sealed class SecurityHeadersMiddleware
         headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
 
         // Soft referrer: no-referrer on the SPA breaks /api/oidc/token on previews.
-        // Join page (A1): no-referrer so the code fragment cannot leak via Referer.
-        headers["Referrer-Policy"] = path.StartsWith("/oidc/join", StringComparison.OrdinalIgnoreCase)
+        // Invitation page (A1): no-referrer so the code fragment cannot leak via Referer.
+        headers["Referrer-Policy"] = path.StartsWith("/oidc/invitation", StringComparison.OrdinalIgnoreCase)
             ? "no-referrer"
             : "strict-origin-when-cross-origin";
 

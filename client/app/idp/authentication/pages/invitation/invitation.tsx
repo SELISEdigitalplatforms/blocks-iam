@@ -10,8 +10,8 @@ import {
 } from "@blocks-idp/authentication/hooks/use-signup-link";
 import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
 import { JOIN_PANEL } from "../oidc/oidc-panel-config";
-import { JoinInvalid } from "./join-invalid";
-import { JoinLoading } from "./join-loading";
+import { InvitationInvalid } from "./invitation-invalid";
+import { InvitationLoading } from "./invitation-loading";
 import type { RedeemSignupLinkResponse } from "@blocks-idp/authentication/services/signup-link.service";
 
 function readAndClearLinkCode(): string | null {
@@ -49,7 +49,7 @@ function applyRedeemNavigation(res: RedeemSignupLinkResponse | undefined): {
   return {};
 }
 
-export function JoinPage() {
+export function InvitationPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const codeRef = useRef<string | null>(null);
   const [codeReady, setCodeReady] = useState(false);
@@ -105,11 +105,11 @@ export function JoinPage() {
   }
 
   if (!codeReady || contextQuery.isLoading || contextQuery.isFetching) {
-    return <JoinLoading template={template} />;
+    return <InvitationLoading template={template} />;
   }
 
   if (!code || contextQuery.isError || !contextQuery.data?.valid) {
-    return <JoinInvalid template={template} />;
+    return <InvitationInvalid template={template} />;
   }
 
   const shellProps = {
@@ -204,4 +204,4 @@ export function JoinPage() {
   );
 }
 
-export default JoinPage;
+export default InvitationPage;
