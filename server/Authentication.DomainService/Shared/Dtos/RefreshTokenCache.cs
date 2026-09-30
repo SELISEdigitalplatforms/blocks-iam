@@ -25,5 +25,11 @@ namespace Authentication.DomainService.Dtos
         public string? Scope { get; set; }
         public bool Impersonated { get; set; }
         public string? ImpersonationId { get; set; }
+        public bool IsLinkAuthentication { get; set; }
+        public List<string> RestrictedRoles { get; set; } = [];
+        public List<string> RestrictedPermissions { get; set; } = [];
+        public List<string> Amr { get; set; } = [];
+        public string? Audience { get; set; }
     }
 }
+

@@ -69,7 +69,7 @@ namespace XUnitTest.ApiTests
 
             var controller = CreateController();
             var result = await controller.OidcUiConfig();
-            controller.Response.Headers.CacheControl.ToString().Should().Be("public, max-age=60");
+            controller.Response.Headers.CacheControl.ToString().Should().Be("no-store");
 
             result.Should().BeSameAs(sentinel);
         }

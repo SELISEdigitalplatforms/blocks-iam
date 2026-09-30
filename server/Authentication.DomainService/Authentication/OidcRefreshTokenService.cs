@@ -132,7 +132,12 @@ namespace Authentication.DomainService.Authentication
                 IsImpersonation = impersonationSession != null,
                 OriginalTenantId = impersonationSession == null ? null : tokenCache.TenantId,
                 TargetTenantId = impersonationSession?.TargetTenantId,
-                ImpersonationSessionId = impersonationSession == null ? null : tokenCache.ImpersonationId
+                ImpersonationSessionId = impersonationSession == null ? null : tokenCache.ImpersonationId,
+                IsLinkAuthentication = tokenCache.IsLinkAuthentication,
+                RestrictedRoles = tokenCache.RestrictedRoles?.ToList() ?? [],
+                RestrictedPermissions = tokenCache.RestrictedPermissions?.ToList() ?? [],
+                Amr = tokenCache.Amr?.ToList() ?? [],
+                Audience = tokenCache.Audience
             };
 
             var response = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration!, user!);

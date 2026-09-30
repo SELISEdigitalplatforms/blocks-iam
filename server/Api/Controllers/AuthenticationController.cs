@@ -9,6 +9,7 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
+using Authentication.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -34,13 +35,15 @@ public class AuthenticationController : ControllerBase
     private readonly IAuthenticationConfigurationService _configurationService;
     private readonly IAuthenticationRepository _authenticationRepository;
     private readonly IAuthenticationDomainService _authenticationDomainService;
+    private readonly ISignupLinkRedemptionOrchestrator _signupLinkRedemption;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
         IAccountService accountService,
         IAuthenticationFlowService authenticationFlowService,
         IAuthenticationConfigurationService configurationService, IAuthenticationRepository authenticationRepository,
-        IAuthenticationDomainService authenticationDomainService
+        IAuthenticationDomainService authenticationDomainService,
+        ISignupLinkRedemptionOrchestrator signupLinkRedemption
     )
     {
         _authenticationService = authenticationService;
@@ -49,6 +52,7 @@ public class AuthenticationController : ControllerBase
         _configurationService= configurationService;
         _authenticationRepository = authenticationRepository;
         _authenticationDomainService = authenticationDomainService;
+        _signupLinkRedemption = signupLinkRedemption;
     }
 
     /// <summary>
@@ -149,7 +153,31 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> Activate([FromBody] ActivateUserRequest command)
     {
         var result = await _accountService.ActivateAccountAsync(command);
-        return result.IsSuccess ? Ok(result) : BadRequest(result);
+        if (!result.IsSuccess)
+        {
+            return BadRequest(result);
+        }
+
+        // H3: signup-link activation keys bind the restricted link-session cookie, and, when
+        // the configuration asks for it, come back signed in instead.
+        var signedIn = await _signupLinkRedemption.CompleteActivationAsync(command?.Code, Request, Response);
+        if (signedIn == null)
+        {
+            return Ok(result);
+        }
+
+        // Additive: the activation fields every existing caller reads stay exactly where they
+        // were, and the token fields are layered on top. A non-200 (an MFA challenge) is
+        // returned untouched, because it is not an activation response at all.
+        if (signedIn is ObjectResult { Value: Dictionary<string, object?> tokens } ok
+            && (ok.StatusCode ?? StatusCodes.Status200OK) == StatusCodes.Status200OK)
+        {
+            tokens["isSuccess"] = result.IsSuccess;
+            tokens["itemId"] = result.ItemId;
+            return Ok(tokens);
+        }
+
+        return signedIn;
     }
 
     /// <summary>

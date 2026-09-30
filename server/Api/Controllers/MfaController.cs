@@ -29,6 +29,8 @@ public class MfaController : ControllerBase
     private readonly TotpService _totpService;
     private readonly IUserActivityDispatcher _userActivityDispatcher;
 
+    private const string InvalidRequestError = "invalid_request";
+
     public MfaController(
         IMfaManagementService mfaManagementService,
         IMfaConfigurationService mfaConfigurationService,
@@ -119,7 +121,7 @@ public class MfaController : ControllerBase
         var userId = GetCurrentUserId();
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(request?.Code))
         {
-            return BadRequest(new { error = "invalid_request", error_description = "userId and code are required" });
+            return BadRequest(new { error = InvalidRequestError, error_description = "userId and code are required" });
         }
 
         var verification = await _totpService.VerifyForUserAsync(userId, request.Code);
@@ -194,7 +196,7 @@ public class MfaController : ControllerBase
     {
         if (request == null || string.IsNullOrWhiteSpace(request.MfaId))
         {
-            return BadRequest(new { error = "invalid_request", error_description = "mfaId is required" });
+            return BadRequest(new { error = InvalidRequestError, error_description = "mfaId is required" });
         }
 
         var result = await _mfaManagementService.ResendOtpAsync(request.MfaId, request.SendPhoneNumberAsEmailDomain ?? string.Empty);
@@ -222,7 +224,7 @@ public class MfaController : ControllerBase
             || string.IsNullOrWhiteSpace(request.MfaId)
             || string.IsNullOrWhiteSpace(request.VerificationCode))
         {
-            return BadRequest(new { error = "invalid_request", error_description = "mfaId and verificationCode are required" });
+            return BadRequest(new { error = InvalidRequestError, error_description = "mfaId and verificationCode are required" });
         }
 
         var result = await _mfaManagementService.VerifyOTPAsync(new VerifyOtpRequest
@@ -249,7 +251,7 @@ public class MfaController : ControllerBase
         var userId = GetCurrentUserId();
         if (string.IsNullOrWhiteSpace(userId) || request == null)
         {
-            return BadRequest(new { error = "invalid_request" });
+            return BadRequest(new { error = InvalidRequestError });
         }
 
         var user = await _authenticationRepository.GetUserByIdAsync(userId);
@@ -419,19 +421,31 @@ public class MfaController : ControllerBase
 
     [HttpPost("backup-codes/use")]
     [AllowAnonymous]
-    public async Task<IActionResult> ConsumeBackupCode([FromBody] ConsumeBackupCodeRequest request)
+    public async Task<IActionResult> ConsumeBackupCode([FromBody] ConsumeBackupCodeRequest? request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.UserId) || string.IsNullOrWhiteSpace(request.Code))
         {
-            return BadRequest(new { error = "invalid_request" });
+            return BadRequest(new { error = InvalidRequestError, error_description = "userId and code are required" });
         }
 
-        var result = await _backupCodeService.ConsumeAsync(request.UserId, request.Code);
-        if (!result.IsValid)
+        try
         {
-            return BadRequest(new { error = "invalid_backup_code", errors = result.Errors });
+            var result = await _backupCodeService.ConsumeAsync(request.UserId, request.Code);
+            if (!result.IsValid)
+            {
+                return BadRequest(new { error = "invalid_backup_code", errors = result.Errors });
+            }
+            return Ok(new { valid = true });
         }
-        return Ok(new { valid = true });
+        catch (Exception)
+        {
+            // Unauthenticated scanners and malformed payloads must not surface raw 500s.
+            return BadRequest(new
+            {
+                error = "invalid_backup_code",
+                error_description = "Backup code could not be validated"
+            });
+        }
     }
 
     private string? GetCurrentUserId()

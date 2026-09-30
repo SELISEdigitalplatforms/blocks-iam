@@ -5,6 +5,7 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources;
+using Iam.DomainService.SignupLinks;
 using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,7 +18,7 @@ namespace XUnitTest.IamTests.Resources
         private readonly Mock<IResourceRepository> _repo = new();
 
         private ResourceQueryService Create() =>
-            new(NullLogger<ResourceQueryService>.Instance, _repo.Object);
+            new(NullLogger<ResourceQueryService>.Instance, _repo.Object, new GrantAuthorizationService(_repo.Object));
 
         private static void SetContext(
             string orgId = "default",

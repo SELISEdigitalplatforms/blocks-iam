@@ -182,6 +182,18 @@ namespace Iam.DomainService.Services
             return await collection.Find(u => u.UserId == userId && !u.Activated).ToListAsync();
         }
 
+
+        public async Task<UserKeyMap?> GetUserKeyMapByKeyAsync(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return null;
+            }
+
+            var collection = GetCollection<UserKeyMap>();
+            return await collection.Find(u => u.Key == key).FirstOrDefaultAsync();
+        }
+
         public async Task<string> GetUserIdFromKeyMapByKeyAsync(string key)
         {
             var collection = GetCollection<UserKeyMap>();

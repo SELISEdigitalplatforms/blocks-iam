@@ -164,6 +164,69 @@ namespace XUnitTest.Auth.OAuth
             token.SigningCredentials.Should().NotBeNull();
         }
 
+        private static Tenant TenantWithAudience()
+        {
+            var tenant = MakeTenant();
+            tenant.JwtTokenParameters.Audiences = ["app.example.com"];
+            return tenant;
+        }
+
+        [Fact]
+        public void MapJwtAccessToken_LinkAuthentication_UsesTheTenantAudience()
+        {
+            // A link token used to get aud = the link's client, which every Blocks API then
+            // rejected -- including the iam/me call a construct makes to establish its session.
+            // The audience is the tenant's, exactly as for a password login.
+            var token = Sut().MapJwtAccessToken(
+                Config(), TenantWithAudience(), MakeUser(), GenerateCertificate(),
+                new ResolvedAuthorizationClaims { Roles = { "admin", "manager" } },
+                new TokenRequest
+                {
+                    OrganizationId = "org1",
+                    IsLinkAuthentication = true,
+                    ClientId = "partner-web",
+                    RestrictedRoles = ["manager"]
+                },
+                Scope("org1"));
+
+            token.Audience.Should().Be("app.example.com");
+            token.Audience.Should().NotBe("partner-web");
+        }
+
+        [Fact]
+        public void MapJwtAccessToken_LinkAuthentication_StillIntersectsRoles()
+        {
+            // The restriction that actually bounds a link token, and the reason dropping the
+            // audience narrowing costs nothing: authority comes from here, not from aud.
+            var token = Sut().MapJwtAccessToken(
+                Config(), TenantWithAudience(), MakeUser(), GenerateCertificate(),
+                new ResolvedAuthorizationClaims { Roles = { "admin", "manager" } },
+                new TokenRequest
+                {
+                    OrganizationId = "org1",
+                    IsLinkAuthentication = true,
+                    ClientId = "partner-web",
+                    RestrictedRoles = ["manager"]
+                },
+                Scope("org1"));
+
+            token.Claims.Should().Contain(c => c.Type == BlocksContext.ROLES_CLAIM && c.Value == "manager");
+            token.Claims.Should().NotContain(c => c.Type == BlocksContext.ROLES_CLAIM && c.Value == "admin");
+            token.Claims.Should().Contain(c => c.Type == "amr" && c.Value == "link");
+        }
+
+        [Fact]
+        public void MapJwtAccessToken_OrdinaryLogin_UsesTheTenantAudience()
+        {
+            var token = Sut().MapJwtAccessToken(
+                Config(), TenantWithAudience(), MakeUser(), GenerateCertificate(),
+                new ResolvedAuthorizationClaims { Roles = { "admin" } },
+                new TokenRequest { OrganizationId = "org1", ClientId = "partner-web" },
+                Scope("org1"));
+
+            token.Audience.Should().Be("app.example.com");
+        }
+
         [Fact]
         public async Task GetOrRetrieveCertAsync_CacheMiss_FetchesFromProviderAndCaches()
         {
