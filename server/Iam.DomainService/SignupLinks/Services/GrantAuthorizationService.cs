@@ -1,104 +1,66 @@
-using Blocks.Genesis;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.ResponseModel;
+using Iam.DomainService.Services;
+using Iam.DomainService.Utilities;
 
 namespace Iam.DomainService.SignupLinks;
 
+/// <summary>
+/// The signup-link and assignable-roles face of <see cref="IAccessPolicyService"/>. It holds no rule
+/// of its own, so a link can never grant what the user endpoints would refuse.
+/// </summary>
 public class GrantAuthorizationService : IGrantAuthorizationService
 {
-    private readonly IResourceRepository _resourceRepository;
+    private readonly IAccessPolicyService _accessPolicy;
 
-    public GrantAuthorizationService(IResourceRepository resourceRepository)
+    public GrantAuthorizationService(IResourceRepository resourceRepository, IAccessPolicyService? accessPolicy = null)
     {
-        _resourceRepository = resourceRepository;
+        _accessPolicy = accessPolicy ?? new AccessPolicyService(resourceRepository);
     }
 
     public async Task<GetAssignableRolesResponse> GetAssignableRolesAsync()
     {
-        var bc = BlocksContext.GetContext();
-        var userRoles = bc?.Roles ?? [];
+        var caller = await _accessPolicy.ResolveCallerAsync();
+        var grantable = await _accessPolicy.GetGrantableRolesAsync(caller);
 
-        var (roles, _) = await _resourceRepository.GetRolesAsync(new GetRolesRequest
+        var response = new GetAssignableRolesResponse();
+
+        foreach (var role in grantable)
         {
-            PageSize = 1000
-        });
-
-        var referencedAncestorSlugs = roles
-            .SelectMany(x => x.AncestorRoleSlugs ?? new List<string>())
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        // User roles that can create descendants
-        var creatableRoles = roles
-            .Where(x =>
-                userRoles.Contains(x.Slug, StringComparer.OrdinalIgnoreCase)
-                && x.CanCreateOwn)
-            .Select(x => x.Slug)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var hierarchy = new List<AssignableRole>();
-        var standalone = new List<AssignableRole>();
-
-        foreach (var role in roles)
-        {
-            var isStandalone =
-                !role.CanCreateOwn &&
-                string.IsNullOrWhiteSpace(role.ParentRoleSlug) &&
-                !role.AncestorRoleSlugs.Any() &&
-                !referencedAncestorSlugs.Contains(role.Slug);
-
-            if (isStandalone)
+            var item = new AssignableRole
             {
-                standalone.Add(new AssignableRole
-                {
-                    Slug = role.Slug,
-                    Name = role.Name
-                });
+                Slug = role.Slug,
+                Name = role.Name,
+                ParentRoleSlug = role.ParentRoleSlug,
+                CanCreateOwn = role.CanCreateOwn,
+                IsTopRole = UserAccessPolicy.IsTopRole(role)
+            };
 
-                continue;
+            if (UserAccessPolicy.IsStandalone(role, caller.OrganizationRoles))
+            {
+                response.Standalone.Add(item);
             }
-
-            var isDescendantOrSelf =
-                creatableRoles.Contains(role.Slug) ||
-                role.AncestorRoleSlugs.Any(a =>
-                    creatableRoles.Contains(a));
-
-            if (isDescendantOrSelf)
+            else
             {
-                hierarchy.Add(new AssignableRole
-                {
-                    Slug = role.Slug,
-                    Name = role.Name
-                });
+                response.Hierarchy.Add(item);
             }
         }
 
-        return new GetAssignableRolesResponse
-        {
-            Hierarchy = hierarchy,
-            Standalone = standalone
-        };
+        return response;
     }
 
-    public async Task<string?> FindUngrantableRoleAsync(IEnumerable<string> roles)
+    public async Task<string?> FindUngrantableRoleAsync(IEnumerable<string> roles, string? organizationId = null)
     {
-        var assignable = await GetAssignableRolesAsync();
-        var allowed = assignable.Hierarchy
-            .Concat(assignable.Standalone)
-            .Select(r => r.Slug)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        return roles.Where(slug => string.IsNullOrWhiteSpace(slug) || !allowed.Contains(slug))
-            .Select(slug => slug ?? string.Empty)
-            .FirstOrDefault();
+        var caller = await _accessPolicy.ResolveCallerAsync(organizationId);
+        return await _accessPolicy.FindUngrantableRoleAsync(caller, roles);
     }
 
-    public string? FindUngrantablePermission(IEnumerable<string> permissions)
-    {
-        var bc = BlocksContext.GetContext();
-        var held = (bc?.Permissions ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    public Task<CallerAccess> ResolveCallerAsync(string? organizationId = null) =>
+        _accessPolicy.ResolveCallerAsync(organizationId);
 
-        return permissions.Where(permission => string.IsNullOrWhiteSpace(permission) || !held.Contains(permission))
-            .Select(permission => permission ?? string.Empty)
-            .FirstOrDefault();
+    public async Task<string?> FindUngrantablePermissionAsync(IEnumerable<string> permissions, string? organizationId = null)
+    {
+        var caller = await _accessPolicy.ResolveCallerAsync(organizationId);
+        return await _accessPolicy.FindUngrantablePermissionAsync(caller, permissions);
     }
 }

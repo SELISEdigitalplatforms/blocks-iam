@@ -675,6 +675,7 @@ namespace Iam.DomainService.Resources
                 return Failure("archived", "Role_Already_Archived");
             }
 
+
             if (await _resourceRepository.HasChildRolesAsync(role.Slug, role.OrganizationId))
             {
                 _logger.LogInformation("Role archive end -- Has Child Roles");
@@ -818,6 +819,22 @@ namespace Iam.DomainService.Resources
                 };
             }
 
+            // The role is loaded by id alone, so the caller's organization is compared explicitly --
+            // the same guard the archive path already has. Without it an administrator of one
+            // organization could rename, or re-parent, another organization's role by id.
+            var (writeOrganizationId, scopeFailure) = await ResolveWriteOrganizationAsync(role.OrganizationId);
+            if (scopeFailure != null)
+            {
+                _logger.LogInformation("Role update end -- Organization Scope Rejected");
+                return scopeFailure;
+            }
+
+            if (!string.Equals(role.OrganizationId, writeOrganizationId, StringComparison.Ordinal))
+            {
+                _logger.LogInformation("Role update end -- Role Belongs To Another Organization");
+                return Failure("forbidden", "Not_Allowed_To_Update_Role_From_Another_Organization");
+            }
+
             if (role.CreatedFromDefault && !IsDefaultOrgScope(role.OrganizationId))
             {
                 return new BaseMutationResponse
@@ -863,29 +880,66 @@ namespace Iam.DomainService.Resources
             }
 
             var blocksContext = BlocksContext.GetContext();
-            var normalizedParentRoleSlug = string.IsNullOrWhiteSpace(command.ParentRoleSlug)
-                ? null
-                : command.ParentRoleSlug.ToLower();
 
+            // Omitted means unchanged; an empty string detaches. See UpdateRoleRequest.
+            var parentChanges = command.ParentRoleSlug is not null;
+            var nextParentSlug = parentChanges
+                ? (string.IsNullOrWhiteSpace(command.ParentRoleSlug) ? null : command.ParentRoleSlug.Trim().ToLower())
+                : role.ParentRoleSlug;
+            var nextCanCreateOwn = command.CanCreateOwn ?? role.CanCreateOwn;
+            var nextAncestors = role.AncestorRoleSlugs ?? [];
+
+            if (parentChanges && !string.Equals(nextParentSlug, role.ParentRoleSlug, StringComparison.OrdinalIgnoreCase))
+            {
+                if (nextParentSlug is null)
+                {
+                    // Detached: nothing above it any more. The old chain used to be left in place,
+                    // so a detached role went on counting as below its former parent.
+                    nextAncestors = [];
+                }
+                else
+                {
+                    if (string.Equals(nextParentSlug, role.Slug, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Failure("ParentRoleSlug", "Role_Hierarchy_Cycle_Detected");
+                    }
+
+                    // Same lookup the create path uses; an unknown parent is reported by the chain
+                    // resolution below.
+                    var parent = await _resourceRepository.GetRoleBySlugAsync(nextParentSlug);
+                    if (parent?.IsArchived == true)
+                    {
+                        return Failure("ParentRoleSlug", "Parent_Role_Is_Archived");
+                    }
+
+                    var (ancestorRoleSlugs, ancestorError) = await ResolveAncestorRoleSlugsAsync(nextParentSlug);
+                    if (ancestorError != null)
+                    {
+                        _logger.LogInformation("Role update end -- Parent Chain Unresolvable");
+                        return Failure("ParentRoleSlug", ancestorError);
+                    }
+
+                    // Hanging a role under one of its own descendants closes a loop the resolver
+                    // cannot see from the parent's side: the parent's chain simply passes through
+                    // this role and ends where this role used to.
+                    if (ancestorRoleSlugs!.Contains(role.Slug, StringComparer.OrdinalIgnoreCase))
+                    {
+                        return Failure("ParentRoleSlug", "Role_Hierarchy_Cycle_Detected");
+                    }
+
+                    nextAncestors = ancestorRoleSlugs!;
+                }
+            }
+
+            var ancestorsChanged = !nextAncestors.SequenceEqual(role.AncestorRoleSlugs ?? [], StringComparer.OrdinalIgnoreCase);
 
             role.Name = command.Name;
             role.Description = command.Description;
-            role.ParentRoleSlug = normalizedParentRoleSlug;
+            role.ParentRoleSlug = nextParentSlug;
+            role.AncestorRoleSlugs = nextAncestors.ToList();
             role.LastUpdatedDate = DateTime.Now;
             role.LastUpdatedBy = blocksContext?.UserId;
-            role.CanCreateOwn = command.CanCreateOwn;
-
-            if (!string.IsNullOrWhiteSpace(command.ParentRoleSlug))
-            {
-                var (ancestorRoleSlugs, ancestorError) = await ResolveAncestorRoleSlugsAsync(command.ParentRoleSlug);
-                if (ancestorError != null)
-                {
-                    _logger.LogInformation("Role update end -- Parent Chain Unresolvable");
-                    return Failure("ParentRoleSlug", ancestorError);
-                }
-
-                role.AncestorRoleSlugs = ancestorRoleSlugs!;
-            }
+            role.CanCreateOwn = nextCanCreateOwn;
 
             var result = await _resourceRepository.UpdateRoleAsync(role);
 
@@ -893,6 +947,11 @@ namespace Iam.DomainService.Resources
             {
                 _logger.LogInformation("Role update end -- Error");
                 return new BaseMutationResponse();
+            }
+
+            if (ancestorsChanged)
+            {
+                await RecomputeDescendantAncestorsAsync(role.Slug, role.OrganizationId, role.AncestorRoleSlugs);
             }
 
             await SendResourceMutationEventAsync(
@@ -923,6 +982,49 @@ namespace Iam.DomainService.Resources
                 IsSuccess = true,
                 ItemId = role.ItemId
             };
+        }
+
+        /// <summary>
+        /// Re-derives <c>AncestorRoleSlugs</c> for every role below <paramref name="slug"/> after that
+        /// role moved. The chain is innermost first, so each descendant keeps the part up to
+        /// <paramref name="slug"/> and takes <paramref name="newAncestorsOfSlug"/> for the rest.
+        /// Without this a moved role left its whole subtree pointing at the old ancestors, and the
+        /// hierarchy the grant rules read disagreed with the one the admin sees.
+        /// </summary>
+        private async Task RecomputeDescendantAncestorsAsync(string slug, string organizationId, List<string>? newAncestorsOfSlug)
+        {
+            if (string.IsNullOrWhiteSpace(slug) || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return;
+            }
+
+            var roles = await _resourceRepository.GetRolesByOrgAsync(organizationId) ?? [];
+            var changed = new List<Role>();
+
+            foreach (var descendant in roles)
+            {
+                var chain = descendant.AncestorRoleSlugs ?? [];
+                var index = chain.FindIndex(a => string.Equals(a, slug, StringComparison.OrdinalIgnoreCase));
+                if (index < 0)
+                {
+                    continue;
+                }
+
+                var next = chain.Take(index + 1).Concat(newAncestorsOfSlug ?? []).ToList();
+                if (next.SequenceEqual(chain, StringComparer.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                descendant.AncestorRoleSlugs = next;
+                descendant.LastUpdatedDate = DateTime.UtcNow;
+                changed.Add(descendant);
+            }
+
+            if (changed.Count > 0)
+            {
+                await _resourceRepository.UpdateRolesAsync(changed);
+            }
         }
 
         public async Task SendResourceMutationEventAsync(ResourceMutationEvent resourceMutation)
@@ -1310,6 +1412,12 @@ namespace Iam.DomainService.Resources
             }
 
             await _resourceRepository.UpdateRolesAsync(rolesToUpdate); // org agnostic
+
+            // Each copy's own descendants carry a chain through it, so they move with it.
+            foreach (var orgRole in rolesToUpdate)
+            {
+                await RecomputeDescendantAncestorsAsync(orgRole.Slug, orgRole.OrganizationId, orgRole.AncestorRoleSlugs);
+            }
 
             _logger.LogInformation(
                 "Updated role '{Slug}' for {Count} organizations",
@@ -2640,6 +2748,7 @@ namespace Iam.DomainService.Resources
             {
                 tenantConfig.IsOrgNameUniquenessEnabled = request.IsOrgNameUniquenessEnabled.Value;
             }
+
 
             tenantConfig.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             tenantConfig.LastUpdatedDate = DateTime.UtcNow;

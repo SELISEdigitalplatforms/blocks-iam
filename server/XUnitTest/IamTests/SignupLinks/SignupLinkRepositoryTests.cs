@@ -56,7 +56,7 @@ public class SignupLinkRepositoryTests
             new SignupLink { ItemId = "2", TenantId = "t1", Email = "b@b.com", CodeHash = "h2" }
         ]);
         MongoMock.SetupCount(_col, 2);
-        var (items, total) = await Sut().QueryAsync("t1", new QuerySignupLinksRequest { Page = 0, PageSize = 20 });
+        var (items, total) = await Sut().QueryAsync("t1", new QuerySignupLinksRequest { Page = 0, PageSize = 20 }, null);
         total.Should().Be(2);
         items.Should().HaveCount(2);
     }
@@ -72,7 +72,7 @@ public class SignupLinkRepositoryTests
     [Fact]
     public async Task RevokeActiveByConfigurationAsync_UpdatesActive()
     {
-        var count = await Sut().RevokeActiveByConfigurationAsync("t1", "cfg1", "actor", DateTime.UtcNow);
+        var count = await Sut().RevokeActiveByConfigurationAsync("t1", "cfg1", "actor", DateTime.UtcNow, null);
         count.Should().Be(2);
     }
 

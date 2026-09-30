@@ -71,6 +71,8 @@ namespace Iam.DomainService.Accounts
         private readonly IOrganizationNameResolver? _organizationNameResolver;
         private readonly IConfiguration? _configuration;
 
+        private readonly IAccessPolicyService? _accessPolicy;
+
         public AccountService(
             ILogger<AccountService> logger,
             IIdentityAccessManagementRepository repository,
@@ -92,8 +94,10 @@ namespace Iam.DomainService.Accounts
             // test fixtures that construct this service keep compiling. DI supplies both.
             IValidator<SignupOrganizationInfo>? signupOrganizationValidator = null,
             IOrganizationNameResolver? organizationNameResolver = null,
-            IConfiguration? configuration = null)
+            IConfiguration? configuration = null,
+            IAccessPolicyService? accessPolicy = null)
         {
+            _accessPolicy = accessPolicy;
             _logger = logger;
             _repository = repository;
             _identityAccessManagementService = identityAccessManagementService;
@@ -1109,6 +1113,21 @@ namespace Iam.DomainService.Accounts
             {
                 _logger.LogError("User not found for user id: {RuserId}", resendActivationRequest.UserId);
                 return new BaseAccountResponse();
+            }
+
+            // An activation mail is sent on the administrator's say-so, so it needs the same reach as
+            // any other change to the user: a member of the caller's organization it may manage.
+            if (_accessPolicy is not null)
+            {
+                var caller = await _accessPolicy.ResolveCallerAsync();
+                if (UserAccessPolicy.Evaluate(caller, AccessSubject.From(user)) != UserAccessLevel.Manage)
+                {
+                    _logger.LogInformation("Resend activation refused: user {UserId} is outside the caller's reach", user.ItemId);
+                    return new BaseAccountResponse
+                    {
+                        Errors = new Dictionary<string, string> { { "UserId", "Not found" } }
+                    };
+                }
             }
 
             var result = await SendReActivationAsync(user);

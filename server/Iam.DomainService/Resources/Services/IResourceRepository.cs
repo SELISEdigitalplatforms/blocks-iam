@@ -73,6 +73,15 @@ namespace Iam.DomainService.Resources
         /// <summary>DISTINCT users holding this role slug in any of the given organizations.</summary>
         Task<long> CountUsersWithRoleAsync(string slug, IEnumerable<string> organizationIds, bool activeOnly);
 
+        /// <summary>Non-archived permissions of the organization granted to any of these role slugs.</summary>
+        Task<List<Permission>> GetActivePermissionsForRolesAsync(IEnumerable<string> roleSlugs, string organizationId);
+
+        /// <summary>Non-archived permissions of the organization with any of these resources.</summary>
+        Task<List<Permission>> GetActivePermissionsByResourcesAsync(IEnumerable<string> resources, string organizationId);
+
+        /// <summary>Removes the user id from every access list of the organization.</summary>
+        Task<bool> RemoveUserFromAllAccessListsAsync(string userId, string organizationId);
+
         /// <summary>DISTINCT users holding this permission resource directly (User.Permissions).</summary>
         Task<long> CountUsersWithPermissionAsync(string resource, IEnumerable<string> organizationIds);
 

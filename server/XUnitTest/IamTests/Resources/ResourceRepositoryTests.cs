@@ -786,7 +786,8 @@ namespace XUnitTest.IamTests.Resources
             var col = Register<User>();
             col.Setup(c => c.UpdateManyAsync(It.IsAny<FilterDefinition<User>>(), It.IsAny<UpdateDefinition<User>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
                 .Callback<FilterDefinition<User>, UpdateDefinition<User>, UpdateOptions, CancellationToken>(
-                    (f, u, _, _) => { capturedFilter = f; capturedUpdate = u; })
+                    // The first write is the role bucket; the ones after it clean the access lists.
+                    (f, u, _, _) => { capturedFilter ??= f; capturedUpdate ??= u; })
                 .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
 
             (await Sut().RemoveRoleFromAllUsersAsync("manager", "acme")).Should().BeTrue();
@@ -802,6 +803,23 @@ namespace XUnitTest.IamTests.Resources
             filter.ToString().Should().Contain("Roles.acme").And.Contain("manager").And.NotContain("Roles.globex");
             update["$pull"].AsBsonDocument["Roles.acme"].AsString.Should().Be("manager");
             update.ToString().Should().NotContain("Roles.globex");
+        }
+
+        [Fact]
+        public async Task RemoveRoleFromAllUsersAsync_AlsoPullsTheSlugFromBothAccessListsOfThatOrganization()
+        {
+            var filters = new List<string>();
+            var col = Register<User>();
+            col.Setup(c => c.UpdateManyAsync(It.IsAny<FilterDefinition<User>>(), It.IsAny<UpdateDefinition<User>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<User>, UpdateDefinition<User>, UpdateOptions, CancellationToken>(
+                    (f, _, _, _) => filters.Add(RenderFilter(f).ToString()))
+                .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
+
+            (await Sut().RemoveRoleFromAllUsersAsync("manager", "acme")).Should().BeTrue();
+
+            filters.Should().Contain(f => f.Contains("AllowedToView.acme.Roles") && f.Contains("manager"));
+            filters.Should().Contain(f => f.Contains("AllowedToManage.acme.Roles") && f.Contains("manager"));
+            filters.Should().NotContain(f => f.Contains("globex"));
         }
 
         [Fact]
@@ -852,8 +870,9 @@ namespace XUnitTest.IamTests.Resources
             col.Setup(c => c.UpdateManyAsync(It.IsAny<FilterDefinition<User>>(), It.IsAny<UpdateDefinition<User>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
                 .Callback<FilterDefinition<User>, UpdateDefinition<User>, UpdateOptions, CancellationToken>((f, u, _, _) =>
                 {
-                    capturedFilter = f;
-                    capturedUpdate = u;
+                    // The first write is the permission bucket; the ones after it clean the access lists.
+                    capturedFilter ??= f;
+                    capturedUpdate ??= u;
                 })
                 .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
 

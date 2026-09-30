@@ -61,6 +61,19 @@ namespace Iam.DomainService.Entities
         public string? ExternalUserId { get; set; }
         public List<ExternalIdentity> ExternalIdentities { get; set; } = new List<ExternalIdentity>();
         public List<string> OrganizationIds { get; set; } = [];
+
+        /// <summary>
+        /// Who may see this user, per organization. Keyed by organization id, the same shape as
+        /// <see cref="Roles"/>, and only ever read for the organization in the caller's token.
+        /// </summary>
+        public Dictionary<string, UserAccessList> AllowedToView { get; set; } = new();
+
+        /// <summary>
+        /// Who may manage this user, per organization. Managing implies viewing, so an entry here
+        /// is never repeated in <see cref="AllowedToView"/>.
+        /// </summary>
+        public Dictionary<string, UserAccessList> AllowedToManage { get; set; } = new();
+
         [BsonSerializer(typeof(AttributeBagSerializer))]
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>(); // For any additional info that doesn't fit into existing properties
 
@@ -76,6 +89,18 @@ namespace Iam.DomainService.Entities
         public List<string> Tags { get; set; } = new List<string>();
 
         #endregion
+    }
+
+    /// <summary>
+    /// The principals granted access to one user in one organization. Groups of people belong in
+    /// <see cref="Roles"/>; <see cref="Users"/> is for the handful of individuals added one by one.
+    /// </summary>
+    [BsonIgnoreExtraElements]
+    public class UserAccessList
+    {
+        public List<string> Users { get; set; } = [];
+        public List<string> Roles { get; set; } = [];
+        public List<string> Permissions { get; set; } = [];
     }
 
     public class UserMfaEnrollment

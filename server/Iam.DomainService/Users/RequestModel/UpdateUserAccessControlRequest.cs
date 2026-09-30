@@ -1,4 +1,4 @@
-﻿namespace Iam.DomainService.Users
+namespace Iam.DomainService.Users
 {
     public class UpdateUserAccessControlRequest
     {

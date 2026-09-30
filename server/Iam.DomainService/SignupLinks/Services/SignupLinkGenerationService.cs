@@ -97,7 +97,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             return GenerateSignupLinkResult.Fail(403, "Roles", $"You cannot grant the role: {deniedRole}");
         }
 
-        var deniedPermission = _grantAuthorization.FindUngrantablePermission(permissions);
+        var deniedPermission = await _grantAuthorization.FindUngrantablePermissionAsync(permissions);
         if (deniedPermission != null)
         {
             return GenerateSignupLinkResult.Fail(403, "Permissions", $"You cannot grant the permission: {deniedPermission}");
@@ -186,7 +186,13 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             return (null, new Dictionary<string, string> { { TenantIdKey, TenantIdRequiredMessage } });
         }
 
-        var (items, total) = await _linkRepository.QueryAsync(tenantId, request);
+        var (scope, denied) = await ResolveLinkScopeAsync();
+        if (denied)
+        {
+            return (null, new Dictionary<string, string> { { "OrganizationId", "Organization_Not_Resolved" } });
+        }
+
+        var (items, total) = await _linkRepository.QueryAsync(tenantId, request, scope);
         return (new SignupLinkListResponse
         {
             Items = items.Select(MapListItem).ToList(),
@@ -207,7 +213,11 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         }
 
         var entity = await _linkRepository.GetByIdAsync(linkId, tenantId);
-        if (entity == null)
+        var (scope, denied) = await ResolveLinkScopeAsync();
+
+        // Another organization's link is answered exactly like a missing one, so its existence is
+        // not disclosed.
+        if (entity == null || denied || (scope is not null && !scope.Allows(entity)))
         {
             return new RevokeSignupLinkResponse
             {
@@ -262,13 +272,24 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             };
         }
 
+        var (scope, denied) = await ResolveLinkScopeAsync();
+        if (denied)
+        {
+            return new RevokeSignupLinksByConfigurationResponse
+            {
+                IsSuccess = false,
+                Errors = new Dictionary<string, string> { { "OrganizationId", "Organization_Not_Resolved" } }
+            };
+        }
+
         var ctx = BlocksContext.GetContext();
         var now = DateTime.UtcNow;
         var count = await _linkRepository.RevokeActiveByConfigurationAsync(
             tenantId,
             request.ConfigurationId,
             ctx?.UserId ?? string.Empty,
-            now);
+            now,
+            scope);
 
         _logger.LogInformation("Signup links revoked by configuration. RevokedCount={RevokedCount}", count);
 
@@ -276,6 +297,27 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         {
             IsSuccess = true,
             RevokedCount = count
+        };
+    }
+
+    /// <summary>
+    /// Which links the caller reaches. A caller above every organization reaches all of them (null
+    /// scope); anyone else only their own organization's -- the list and revoke paths used to be
+    /// tenant-wide, so one organization could read and cancel another's invitations.
+    /// </summary>
+    private async Task<(SignupLinkScope? Scope, bool Denied)> ResolveLinkScopeAsync()
+    {
+        var caller = await _grantAuthorization.ResolveCallerAsync();
+        if (caller is null)
+        {
+            return (null, false);
+        }
+
+        return caller.Kind switch
+        {
+            CallerKind.Denied => (null, true),
+            CallerKind.Supreme or CallerKind.System => (null, false),
+            _ => (new SignupLinkScope(caller.OrganizationId), false)
         };
     }
 

@@ -178,6 +178,11 @@ namespace Iam.DomainService.Users
                 filters.Add(builder.AnyIn(x => x.OrganizationIds, scope.OrganizationIds));
             }
 
+            if (scope.Access is not null)
+            {
+                filters.Add(BuildAccessFilter(builder, scope.Access));
+            }
+
             if (filter == null)
             {
                 // The organization clause is no longer guaranteed, so this early return needs the
@@ -258,6 +263,60 @@ namespace Iam.DomainService.Users
             return roleFilters.Count == 0
                 ? builder.Exists("_id", false)
                 : builder.Or(roleFilters);
+        }
+
+        /// <summary>
+        /// Users whose access lists name the caller: its id, any of its roles, or any of its effective
+        /// permissions, in the organization's manage list -- and, unless the path writes, the view list.
+        /// </summary>
+        /// <remarks>
+        /// An organization id that cannot be a field segment matches nothing rather than everything:
+        /// narrowing that fails must fail closed.
+        /// </remarks>
+        internal static FilterDefinition<User> BuildAccessFilter(FilterDefinitionBuilder<User> builder, UserAccessFilter access)
+        {
+            if (!IsSafeOrganizationFieldSegment(access.OrganizationId))
+            {
+                return builder.Exists("_id", false);
+            }
+
+            var lists = access.ManageOnly
+                ? new[] { nameof(User.AllowedToManage) }
+                : new[] { nameof(User.AllowedToManage), nameof(User.AllowedToView) };
+
+            var matches = new List<FilterDefinition<User>>();
+
+            foreach (var list in lists)
+            {
+                var prefix = $"{list}.{access.OrganizationId}";
+
+                if (!string.IsNullOrWhiteSpace(access.UserId))
+                {
+                    matches.Add(builder.AnyEq($"{prefix}.Users", access.UserId));
+                }
+
+                if (access.Roles.Count > 0)
+                {
+                    matches.Add(builder.AnyIn($"{prefix}.Roles", access.Roles));
+                }
+
+                if (access.Permissions.Count > 0)
+                {
+                    matches.Add(builder.AnyIn($"{prefix}.Permissions", access.Permissions));
+                }
+            }
+
+            // The same fallback UserAccessPolicy.ManageListFor applies: no stored manage list for the
+            // organization means the account's creator manages it.
+            if (!string.IsNullOrWhiteSpace(access.UserId))
+            {
+                matches.Add(builder.And(
+                    builder.Exists($"{nameof(User.AllowedToManage)}.{access.OrganizationId}", false),
+                    builder.Eq(u => u.CreatedBy, access.UserId),
+                    builder.Ne(u => u.ItemId, access.UserId)));
+            }
+
+            return matches.Count == 0 ? builder.Exists("_id", false) : builder.Or(matches);
         }
 
         private static bool IsSafeOrganizationFieldSegment(string organizationId) =>

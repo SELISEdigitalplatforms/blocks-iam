@@ -42,5 +42,8 @@ namespace Iam.DomainService.Users
         /// </summary>
         Task ApplyBulkRoleChangeAsync(BulkUserRoleChangeEvent command);
         Task<TenantConfiguration> GetTenantConfigurationAsync();
+
+        /// <summary>Seeds a joining member's manage list from whoever added them.</summary>
+        Task StampInitialAccessAsync(User user, string organizationId, string? adderUserId);
     }
 }

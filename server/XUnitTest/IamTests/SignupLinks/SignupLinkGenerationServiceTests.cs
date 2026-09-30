@@ -347,7 +347,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
     [Fact]
     public async Task H5_RevokeByConfiguration_Delegates()
     {
-        _links.Setup(l => l.RevokeActiveByConfigurationAsync(TenantId, CfgId, ActorId, It.IsAny<DateTime>()))
+        _links.Setup(l => l.RevokeActiveByConfigurationAsync(TenantId, CfgId, ActorId, It.IsAny<DateTime>(), It.IsAny<SignupLinkScope?>()))
             .ReturnsAsync(2);
 
         var result = await Sut().RevokeByConfigurationAsync(new RevokeSignupLinksByConfigurationRequest { ConfigurationId = CfgId });
@@ -358,7 +358,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
     [Fact]
     public async Task Query_NeverIncludesCodeOrHash()
     {
-        _links.Setup(l => l.QueryAsync(TenantId, It.IsAny<QuerySignupLinksRequest>()))
+        _links.Setup(l => l.QueryAsync(TenantId, It.IsAny<QuerySignupLinksRequest>(), It.IsAny<SignupLinkScope?>()))
             .ReturnsAsync(([
                 new SignupLink
                 {

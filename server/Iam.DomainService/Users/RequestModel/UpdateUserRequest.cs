@@ -1,3 +1,4 @@
+using Iam.DomainService.Entities;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -39,6 +40,12 @@ namespace Iam.DomainService.Users
         /// client sends the complete bag it wants persisted.
         /// </summary>
         public Dictionary<string, object>? Attributes { get; set; }
+
+        /// <summary>Who may see this user in the organization. Replaces the stored list; omit to leave it.</summary>
+        public UserAccessList? AllowedToView { get; set; }
+
+        /// <summary>Who may manage this user in the organization. Replaces the stored list; omit to leave it.</summary>
+        public UserAccessList? AllowedToManage { get; set; }
 
         /// <summary>
         /// Everything the body carried that this model does not define. Roles, permissions and MFA

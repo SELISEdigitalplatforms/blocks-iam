@@ -481,22 +481,15 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
-        public async Task GetUser_MissingUser_DefaultOrg_ThrowsToday_KnownPreExistingDefect()
+        public async Task GetUser_MissingUser_DefaultOrg_ReturnsNullDataInsteadOfThrowing()
         {
-            // Pins ACTUAL behaviour, not desired. C4 says a non-existent id returns "the existing
-            // not-found error" - there is none. On the default-org path GetUserAsync builds a null
-            // `data` and then dereferences it to add OrganizationsRoles, so the caller gets a 500.
-            //
-            // #427 deliberately does not fix this: introducing a 404 changes the endpoint's status
-            // code and controller response type, which contradicts C6 and the ticket's out-of-scope
-            // list. Asserted so a future fix has to flip this test deliberately rather than silently,
-            // and so the C4 discrepancy is visible in the suite and not only in the PR.
+            // Used to dereference a null user on the default-organization path and return a 500.
             InstallContext();
             _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("nope")).ReturnsAsync((GetAccounts)null!);
 
-            var act = async () => await CreateAt(Now).GetUserAsync("nope", "default");
+            var result = await CreateAt(Now).GetUserAsync("nope", "default");
 
-            await act.Should().ThrowAsync<NullReferenceException>();
+            result.Data.Should().BeNull();
         }
 
         [Fact]
@@ -597,7 +590,8 @@ namespace XUnitTest.IamTests.Users
                 ["createdDate"] = account.CreatedDate,
                 ["roles"] = account.Roles,
                 ["lockoutUntilUtc"] = null,
-                ["isLockedOut"] = false
+                ["isLockedOut"] = false,
+                ["canManage"] = true
             });
         }
 
@@ -652,7 +646,10 @@ namespace XUnitTest.IamTests.Users
                 ["lockoutUntilUtc"] = account.LockoutUntilUtc,
                 ["isLockedOut"] = true,
                 ["OrganizationsRoles"] = account.Roles,
-                ["OrganizationsPermissions"] = account.Permissions
+                ["OrganizationsPermissions"] = account.Permissions,
+                ["canManage"] = true,
+                ["allowedToView"] = new UserAccessList(),
+                ["allowedToManage"] = new UserAccessList()
             });
         }
 

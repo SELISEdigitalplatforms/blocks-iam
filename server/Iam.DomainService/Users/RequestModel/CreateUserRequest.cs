@@ -33,6 +33,12 @@ namespace Iam.DomainService.Users
         // event so the activation email can link back to it. Not persisted on the user.
         public string? ClientId { get; set; }
         public string? RedirectUri { get; set; }
+
+        /// <summary>Who may see the new user in the organization. The creator is always added as a manager.</summary>
+        public UserAccessList? AllowedToView { get; set; }
+
+        /// <summary>Who may manage the new user in the organization.</summary>
+        public UserAccessList? AllowedToManage { get; set; }
     }
 
 }

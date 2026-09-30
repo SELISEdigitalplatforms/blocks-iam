@@ -13,6 +13,7 @@ using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using XUnitTest.TestSupport;
 
 namespace XUnitTest.IamTests.Users
 {
@@ -35,6 +36,7 @@ namespace XUnitTest.IamTests.Users
         {
             BlocksContext.IsTestMode = true;
             InstallContext();
+            AccessPolicyMocks.SeedOrganization(_resourceRepo);
             _createValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateUserRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             _updateValidator.Setup(v => v.Validate(It.IsAny<UpdateUserRequest>()))
@@ -57,7 +59,7 @@ namespace XUnitTest.IamTests.Users
             BlocksContext.SetContext(BlocksContext.Create(
                 tenantId: "tenant-1", roles: null, userId: userId, impersonated: false,
                 isAuthenticated: true, requestUri: "https://test", organizationId: orgId,
-                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
+                permissions: AccessPolicyMocks.CommonPermissions, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
                 userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
                 originalTenantId: "tenant-1", impersonationSessionId: null, applicationDomain: "test"));
         }

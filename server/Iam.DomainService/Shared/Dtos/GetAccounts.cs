@@ -10,6 +10,7 @@ namespace Iam.DomainService.Dtos
         [BsonId]
         public string ItemId { get; set; }
         public DateTime CreatedDate { get; set; }
+        public string? CreatedBy { get; set; }
         public DateTime LastUpdatedDate { get; set; }
         public string? Language { get; set; }
         public string? Salutation { get; set; }
@@ -42,6 +43,13 @@ namespace Iam.DomainService.Dtos
         /// </summary>
         public DateTime? LockoutUntilUtc { get; set; }
         public string LastLoggedInDeviceInfo { get; set; } = string.Empty;
+
+        /// <summary>Projected so the access decision needs no second read. Never returned to callers.</summary>
+        public Dictionary<string, UserAccessList> AllowedToView { get; set; } = new();
+
+        /// <summary>Projected so the access decision needs no second read. Never returned to callers.</summary>
+        public Dictionary<string, UserAccessList> AllowedToManage { get; set; } = new();
+
         [BsonSerializer(typeof(AttributeBagSerializer))]
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>();
     }

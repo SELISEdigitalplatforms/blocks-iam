@@ -10,6 +10,7 @@ using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using XUnitTest.TestSupport;
 
 namespace XUnitTest.IamTests.Users
 {
@@ -35,6 +36,12 @@ namespace XUnitTest.IamTests.Users
         {
             BlocksContext.IsTestMode = true;
             InstallContext();
+            AccessPolicyMocks.SeedOrganization(_resourceRepo);
+
+            // The fixture revokes from named organizations with a "default" token, which is only
+            // meaningful when the tenant has organizations.
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
             _message.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<UserMutationEvent>>())).Returns(Task.CompletedTask);
             _userRepo.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
@@ -45,7 +52,7 @@ namespace XUnitTest.IamTests.Users
             BlocksContext.SetContext(BlocksContext.Create(
                 tenantId: "tenant-1", roles: null, userId: userId, impersonated: false,
                 isAuthenticated: true, requestUri: "https://test", organizationId: orgId,
-                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
+                permissions: AccessPolicyMocks.CommonPermissions, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
                 userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
                 originalTenantId: "tenant-1", impersonationSessionId: null, applicationDomain: "test"));
         }

@@ -11,6 +11,7 @@ using Iam.DomainService.Users.RequestModel;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using XUnitTest.TestSupport;
 
 namespace XUnitTest.IamTests.Users
 {
@@ -46,6 +47,12 @@ namespace XUnitTest.IamTests.Users
         {
             BlocksContext.IsTestMode = true;
             InstallContext();
+            AccessPolicyMocks.SeedOrganization(_resourceRepo);
+
+            // These fixtures address organizations by name from a "default" token, which is only
+            // meaningful when the tenant has organizations.
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
 
             _resourceRepo.Setup(r => r.GetOrganizationById(It.IsAny<string>()))
                 .ReturnsAsync(new Organization { ItemId = Org, Name = "Acme" });
@@ -62,7 +69,7 @@ namespace XUnitTest.IamTests.Users
             BlocksContext.SetContext(BlocksContext.Create(
                 tenantId: "tenant-1", roles: null, userId: "actor-1", impersonated: false,
                 isAuthenticated: true, requestUri: "https://test", organizationId: orgId,
-                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
+                permissions: AccessPolicyMocks.CommonPermissions, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
                 userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
                 originalTenantId: "tenant-1", impersonationSessionId: null, applicationDomain: "test"));
         }

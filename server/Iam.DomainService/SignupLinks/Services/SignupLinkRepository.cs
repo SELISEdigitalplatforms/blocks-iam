@@ -141,9 +141,10 @@ public class SignupLinkRepository : ISignupLinkRepository
 
     public async Task<(List<SignupLink> Items, long TotalCount)> QueryAsync(
         string tenantId,
-        QuerySignupLinksRequest request)
+        QuerySignupLinksRequest request,
+        SignupLinkScope? scope)
     {
-        var filter = Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId);
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId) & ScopeFilter(scope);
         if (!string.IsNullOrWhiteSpace(request.ConfigurationId))
         {
             filter &= Builders<SignupLink>.Filter.Eq(x => x.ConfigurationId, request.ConfigurationId);
@@ -162,11 +163,13 @@ public class SignupLinkRepository : ISignupLinkRepository
         string tenantId,
         string configurationId,
         string revokedBy,
-        DateTime revokedAtUtc)
+        DateTime revokedAtUtc,
+        SignupLinkScope? scope)
     {
         var filter = Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId)
             & Builders<SignupLink>.Filter.Eq(x => x.ConfigurationId, configurationId)
-            & Builders<SignupLink>.Filter.Eq(x => x.Status, SignupLinkStatus.Active);
+            & Builders<SignupLink>.Filter.Eq(x => x.Status, SignupLinkStatus.Active)
+            & ScopeFilter(scope);
 
         var update = Builders<SignupLink>.Update
             .Set(x => x.Status, SignupLinkStatus.Revoked)
@@ -177,6 +180,16 @@ public class SignupLinkRepository : ISignupLinkRepository
 
         var result = await Collection.UpdateManyAsync(filter, update);
         return result.ModifiedCount;
+    }
+
+    private static FilterDefinition<SignupLink> ScopeFilter(SignupLinkScope? scope)
+    {
+        if (scope is null)
+        {
+            return Builders<SignupLink>.Filter.Empty;
+        }
+
+        return Builders<SignupLink>.Filter.Eq(x => x.OrganizationId, scope.OrganizationId);
     }
 
     public async Task<List<SignupLink>> FindForSummaryAsync(

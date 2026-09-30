@@ -358,7 +358,85 @@ namespace Iam.DomainService.Resources
             var update = Builders<User>.Update.Pull(orgBucket, slug);
             var result = await collection.UpdateManyAsync(filter, update);
 
-            return result?.IsAcknowledged ?? false;
+            // An archived role is also taken out of every access list of the organization, or the
+            // lists would go on naming a role nobody can hold any more.
+            var listsCleaned = await PullFromAccessListsAsync(collection, organizationId, "Roles", slug);
+
+            return (result?.IsAcknowledged ?? false) && listsCleaned;
+        }
+
+        /// <summary>
+        /// Pulls <paramref name="value"/> from the <paramref name="field"/> of both access lists of the
+        /// organization, in every user that names it. Two writes rather than one because each list
+        /// is matched on its own path.
+        /// </summary>
+        private static async Task<bool> PullFromAccessListsAsync(IMongoCollection<User> collection, string organizationId, string field, string value)
+        {
+            if (!IsSafeFieldSegment(organizationId))
+            {
+                return true;
+            }
+
+            foreach (var list in new[] { nameof(User.AllowedToView), nameof(User.AllowedToManage) })
+            {
+                var path = $"{list}.{organizationId}.{field}";
+                var result = await collection.UpdateManyAsync(
+                    Builders<User>.Filter.AnyEq(path, value),
+                    Builders<User>.Update.Pull(path, value));
+
+                if (!(result?.IsAcknowledged ?? false))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsSafeFieldSegment(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && value.IndexOfAny(['.', '$', '\0']) < 0;
+
+        public async Task<List<Permission>> GetActivePermissionsForRolesAsync(IEnumerable<string> roleSlugs, string organizationId)
+        {
+            var slugs = roleSlugs?.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? [];
+            if (slugs.Count == 0 || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return [];
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
+            var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId)
+                & Builders<Permission>.Filter.Ne(x => x.IsArchived, true)
+                & Builders<Permission>.Filter.AnyIn(x => x.Roles, slugs);
+
+            return await collection.Find(filter).ToListAsync();
+        }
+
+        public async Task<List<Permission>> GetActivePermissionsByResourcesAsync(IEnumerable<string> resources, string organizationId)
+        {
+            var keys = resources?.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.Ordinal).ToList() ?? [];
+            if (keys.Count == 0 || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return [];
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
+            var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId)
+                & Builders<Permission>.Filter.Ne(x => x.IsArchived, true)
+                & Builders<Permission>.Filter.In(x => x.Resource, keys);
+
+            return await collection.Find(filter).ToListAsync();
+        }
+
+        public async Task<bool> RemoveUserFromAllAccessListsAsync(string userId, string organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return true;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<User>();
+            return await PullFromAccessListsAsync(collection, organizationId, "Users", userId);
         }
 
         /// <summary>
@@ -389,9 +467,11 @@ namespace Iam.DomainService.Resources
             var update = Builders<User>.Update.Pull(orgBucket, resource);
             var result = await collection.UpdateManyAsync(filter, update);
 
+            var listsCleaned = await PullFromAccessListsAsync(collection, organizationId, "Permissions", resource);
+
             // IsAcknowledged, not ModifiedCount > 0: a permission nobody holds directly matches
             // nothing, which is an acknowledged write of zero documents and a normal archive.
-            return result?.IsAcknowledged ?? false;
+            return (result?.IsAcknowledged ?? false) && listsCleaned;
         }
 
         /// <summary>

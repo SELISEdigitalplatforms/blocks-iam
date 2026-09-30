@@ -1,5 +1,6 @@
 using Blocks.Genesis;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
@@ -12,6 +13,7 @@ namespace Iam.DomainService.Users
         private readonly IUserRepository _userRepository;
         private readonly TimeProvider _timeProvider;
         private readonly IIdentityAccessManagementRepository? _identityAccessManagementRepository;
+        private readonly IAccessPolicyService? _accessPolicy;
 
         public UserManagementQueryService(
             ILogger<UserManagementQueryService> logger,
@@ -21,13 +23,63 @@ namespace Iam.DomainService.Users
             // actually calls), so a required dependency registered elsewhere would be unresolvable
             // at runtime while every unit test still passed.
             TimeProvider? timeProvider = null,
-            IIdentityAccessManagementRepository? identityAccessManagementRepository = null
+            IIdentityAccessManagementRepository? identityAccessManagementRepository = null,
+            IAccessPolicyService? accessPolicy = null
         )
         {
             _logger = logger;
             _userRepository = userRepository;
             _timeProvider = timeProvider ?? TimeProvider.System;
             _identityAccessManagementRepository = identityAccessManagementRepository;
+            _accessPolicy = accessPolicy;
+        }
+
+        /// <summary>
+        /// The caller for <paramref name="organizationId"/>. Without the policy service (a composition
+        /// that predates it) the organization scope is still enforced from the token, but no access
+        /// list or role data is available, so the answer is the pre-policy one: every member of the
+        /// caller's organization, all fields.
+        /// </summary>
+        private async Task<(CallerAccess Caller, bool Legacy)> ResolveCallerAsync(string? organizationId)
+        {
+            if (_accessPolicy is not null)
+            {
+                return (await _accessPolicy.ResolveCallerAsync(organizationId), false);
+            }
+
+            var context = BlocksContext.GetContext();
+            var target = string.IsNullOrWhiteSpace(organizationId) ? null : organizationId.Trim();
+
+            if (context is null || !context.IsAuthenticated)
+            {
+                return (new CallerAccess { Kind = CallerKind.System, OrganizationId = target ?? IdpConstants.DefaultOrganizationId }, true);
+            }
+
+            var isMultiOrg = _identityAccessManagementRepository is not null
+                && MultiOrgMode.IsEnabled(await _identityAccessManagementRepository.GetTenantConfigurationAsync(), _logger);
+            var tokenOrg = context.OrganizationId?.Trim();
+
+            if (context.Impersonated)
+            {
+                return (new CallerAccess { Kind = CallerKind.Supreme, OrganizationId = target ?? tokenOrg ?? IdpConstants.DefaultOrganizationId }, true);
+            }
+
+            if (string.IsNullOrWhiteSpace(tokenOrg) || tokenOrg == IdpConstants.NoOrganizationId)
+            {
+                return (CallerAccess.Denied, true);
+            }
+
+            if (isMultiOrg && tokenOrg == IdpConstants.DefaultOrganizationId)
+            {
+                return (new CallerAccess { Kind = CallerKind.Supreme, OrganizationId = target ?? tokenOrg, IsMultiOrgEnabled = true }, true);
+            }
+
+            if (target is not null && target != tokenOrg)
+            {
+                return (CallerAccess.Denied, true);
+            }
+
+            return (new CallerAccess { Kind = CallerKind.User, OrganizationId = tokenOrg, UserId = context.UserId ?? string.Empty, IsMultiOrgEnabled = isMultiOrg }, true);
         }
 
         public async Task<bool> IsUserAvailableAsync(IsEmailAvailableRequest query)
@@ -102,6 +154,33 @@ namespace Iam.DomainService.Users
                 scope = new UserListScope(UserListScopeKind.Organizations, [IdpConstants.DefaultOrganizationId]);
             }
 
+            // A caller bound to one organization is resolved for it; one reaching several (the
+            // tenant-wide scope) is resolved for none in particular and is supreme over all of them.
+            // Without the policy service a tenant-wide scope needs no further resolution, and must not
+            // cost a configuration read.
+            var (caller, legacy) = _accessPolicy is null && scope.Kind == UserListScopeKind.AllOrganizations
+                ? (new CallerAccess { Kind = CallerKind.Supreme, OrganizationId = IdpConstants.DefaultOrganizationId }, true)
+                : await ResolveCallerAsync(
+                    scope.Kind == UserListScopeKind.Organizations && scope.OrganizationIds.Count == 1
+                        ? scope.OrganizationIds[0]
+                        : null);
+
+            if (caller.Kind == CallerKind.Denied)
+            {
+                _logger.LogInformation("User get end -- denied, the organization is outside the token's scope");
+
+                return new GetUsersResponse
+                {
+                    Data = Enumerable.Empty<Dictionary<string, object>>().AsQueryable(),
+                    TotalCount = 0
+                };
+            }
+
+            if (UserAccessPolicy.RequiresAccessListFilter(caller))
+            {
+                scope = scope with { Access = UserAccessFilter.For(caller, manageOnly: false) };
+            }
+
             var (data, count) = await _userRepository.GetUsersAsync<GetAccounts, GetUsersRequest>(query, scope);
 
             // One instant for the whole response, per the data contract's "server UTC time at
@@ -110,7 +189,17 @@ namespace Iam.DomainService.Users
             // attempted when nothing matches, and a test with a throwing clock proves it.
             var asOfUtc = new Lazy<DateTime>(() => _timeProvider.GetUtcNow().UtcDateTime);
 
-            var selectedUsers = data?.Select(user => MapToListAccountFields(user, asOfUtc.Value))
+            // Only the organizations this response is about. The whole dictionary used to be
+            // returned, telling one organization which others its members belong to and with what.
+            IReadOnlyCollection<string>? visibleOrganizations = scope.Kind == UserListScopeKind.Organizations
+                ? scope.OrganizationIds
+                : null;
+
+            var selectedUsers = data?.AsEnumerable().Select(user =>
+            {
+                var canManage = legacy || UserAccessPolicy.CanManage(caller, AccessSubject.From(user));
+                return MapToListAccountFields(user, asOfUtc.Value, visibleOrganizations, canManage, includeSensitive: canManage || !caller.UsesHierarchy);
+            })
             .Where(user => user.Count > 0).AsQueryable() ?? Enumerable.Empty<Dictionary<string, object>>().AsQueryable();
 
             _logger.LogInformation("User get end");
@@ -147,18 +236,51 @@ namespace Iam.DomainService.Users
             var bc = BlocksContext.GetContext();
             var userId = string.IsNullOrWhiteSpace(id) ? (bc?.UserId ?? string.Empty) : id;
             var user = await _userRepository.GetUserByIdAsync<GetAccounts>(userId);
-            var contextOrgId = string.IsNullOrWhiteSpace(organizationId) ? (bc?.OrganizationId ?? "default") : organizationId;
+
+            // The organization comes from the token. The query value is honoured only for a caller
+            // above every organization; for anyone else naming another organization -- "default"
+            // included, which used to unlock every membership of the user -- resolves to Denied.
+            var (caller, legacy) = await ResolveCallerAsync(organizationId);
 
             // Read only when there is a user to map - a missing user must not trigger any lockout
             // computation (C4), and a throwing clock in the tests proves it does not.
-            var data = user == null
-                ? null
-                : MapToSingleUserFields(user, contextOrgId, _timeProvider.GetUtcNow().UtcDateTime);
-
-            if(contextOrgId == "default")
+            Dictionary<string, object>? data = null;
+            if (user != null)
             {
-                data.Add("OrganizationsRoles", user.Roles);
-                data.Add("OrganizationsPermissions", user.Permissions);
+                var subject = AccessSubject.From(user);
+                var level = UserAccessPolicy.Evaluate(caller, subject);
+
+                data = level == UserAccessLevel.None
+                    ? new Dictionary<string, object>()
+                    : MapToSingleUserFields(
+                        user,
+                        caller.OrganizationId,
+                        _timeProvider.GetUtcNow().UtcDateTime,
+                        includeSensitive: legacy || !caller.UsesHierarchy || UserAccessPolicy.CanManage(caller, subject),
+                        isSupreme: caller.Kind is CallerKind.Supreme or CallerKind.System,
+                        skipMembershipCheck: caller.Kind is CallerKind.Supreme or CallerKind.System || !caller.IsMultiOrgEnabled);
+
+                if (data.Count > 0)
+                {
+                    var canManage = legacy || UserAccessPolicy.CanManage(caller, subject);
+                    data["canManage"] = canManage;
+
+                    // Who else reaches this user is shown only to those who may change it.
+                    if (canManage)
+                    {
+                        data["allowedToView"] = user.AllowedToView.GetValueOrDefault(caller.OrganizationId) ?? new UserAccessList();
+                        data["allowedToManage"] = user.AllowedToManage.GetValueOrDefault(caller.OrganizationId) ?? new UserAccessList();
+                    }
+
+                    // As before for the "default" organization: above every organization, or the one
+                    // organization of a single-organization tenant.
+                    if (caller.Kind is CallerKind.Supreme or CallerKind.System
+                        || (!caller.IsMultiOrgEnabled && caller.OrganizationId == IdpConstants.DefaultOrganizationId))
+                    {
+                        data["OrganizationsRoles"] = user.Roles;
+                        data["OrganizationsPermissions"] = user.Permissions;
+                    }
+                }
             }
 
             _logger.LogInformation("User get end");
@@ -169,9 +291,26 @@ namespace Iam.DomainService.Users
             };
         }
 
-        private static Dictionary<string, object> MapToListAccountFields(GetAccounts user, DateTime asOfUtc)
+        /// <param name="visibleOrganizations">The organizations whose roles may be shown; null for every organization.</param>
+        /// <param name="canManage">
+        /// Security posture and activity (MFA, lockout, sign-in history) are shown only to a caller who
+        /// can manage the user: to anyone else they are a map of the weakest accounts and a record of
+        /// someone's habits.
+        /// </param>
+        private static Dictionary<string, object> MapToListAccountFields(
+            GetAccounts user,
+            DateTime asOfUtc,
+            IReadOnlyCollection<string>? visibleOrganizations = null,
+            bool canManage = true,
+            bool includeSensitive = true)
         {
-            return new Dictionary<string, object>
+            var roles = visibleOrganizations is null
+                ? user.Roles
+                : user.Roles
+                    .Where(kv => visibleOrganizations.Contains(kv.Key, StringComparer.Ordinal))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+            var fields = new Dictionary<string, object>
             {
                 ["itemId"] = user.ItemId,
                 ["firstName"] = user.FirstName ?? string.Empty,
@@ -182,14 +321,21 @@ namespace Iam.DomainService.Users
                 ["status"] = user.Status,
                 ["isVerified"] = user.IsVerified,
                 ["profileImageUrl"] = user.ProfileImageUrl ?? string.Empty,
-                ["mfaEnabled"] = user.MfaEnabled,
-                ["lastLoggedInTime"] = user.LastLoggedInTime,
-                ["loginCount"] = user.LogInCount,
                 ["createdDate"] = user.CreatedDate,
-                ["roles"] = user.Roles,
-                ["lockoutUntilUtc"] = user.LockoutUntilUtc,
-                ["isLockedOut"] = IsLockedOut(user.LockoutUntilUtc, asOfUtc)
+                ["roles"] = roles,
+                ["canManage"] = canManage
             };
+
+            if (includeSensitive)
+            {
+                fields["mfaEnabled"] = user.MfaEnabled;
+                fields["lastLoggedInTime"] = user.LastLoggedInTime;
+                fields["loginCount"] = user.LogInCount;
+                fields["lockoutUntilUtc"] = user.LockoutUntilUtc;
+                fields["isLockedOut"] = IsLockedOut(user.LockoutUntilUtc, asOfUtc);
+            }
+
+            return fields;
         }
 
         private static Dictionary<string, object> MapToSingleAccountFields(GetAccounts user, string contextOrgId)
@@ -228,14 +374,26 @@ namespace Iam.DomainService.Users
             };
         }
 
-        private static Dictionary<string, object> MapToSingleUserFields(GetAccounts user, string contextOrgId, DateTime asOfUtc)
+        /// <remarks>
+        /// The caller is expected to have decided visibility already (see <see cref="UserAccessPolicy.Evaluate"/>);
+        /// the membership test here is a second guard, so a mistake upstream still cannot map a
+        /// non-member. <paramref name="includeSensitive"/> gates security posture, sign-in history,
+        /// linked identities and the free-form attributes.
+        /// </remarks>
+        private static Dictionary<string, object> MapToSingleUserFields(
+            GetAccounts user,
+            string contextOrgId,
+            DateTime asOfUtc,
+            bool includeSensitive = true,
+            bool isSupreme = false,
+            bool skipMembershipCheck = false)
         {
-            if (!user.OrganizationIds.Contains(contextOrgId) && contextOrgId != "default")
+            if (!skipMembershipCheck && !UserAccessPolicy.IsMember(AccessSubject.From(user), contextOrgId))
             {
                 return new Dictionary<string, object>();
             }
 
-            return new Dictionary<string, object>
+            var fields = new Dictionary<string, object>
             {
                 ["itemId"] = user.ItemId,
                 ["createdDate"] = user.CreatedDate,
@@ -252,20 +410,30 @@ namespace Iam.DomainService.Users
                 ["status"] = user.Status,
                 ["isVerified"] = user.IsVerified,
                 ["profileImageUrl"] = user.ProfileImageUrl ?? string.Empty,
-                ["mfaEnabled"] = user.MfaEnabled,
-                ["isMfaVerified"] = user.IsMfaVerified,
-                ["userMfaType"] = user.UserMfaType,
-                ["externalIdentities"] = user.ExternalIdentities,
-                ["attributes"] = user.Attributes,
-                ["logInCount"] = user.LogInCount,
-                ["lastLoggedInTime"] = user.LastLoggedInTime,
-                ["lastLoggedInDeviceInfo"] = user.LastLoggedInDeviceInfo ?? string.Empty,
-                ["organizationIds"] = user.OrganizationIds,
+                // Every membership only for a caller above all organizations; anyone else learns
+                // about their own and nothing more.
+                ["organizationIds"] = isSupreme
+                    ? user.OrganizationIds
+                    : user.OrganizationIds.Where(org => string.Equals(org, contextOrgId, StringComparison.Ordinal)).ToList()
+            };
+
+            if (includeSensitive)
+            {
+                fields["mfaEnabled"] = user.MfaEnabled;
+                fields["isMfaVerified"] = user.IsMfaVerified;
+                fields["userMfaType"] = user.UserMfaType;
+                fields["externalIdentities"] = user.ExternalIdentities;
+                fields["attributes"] = user.Attributes;
+                fields["logInCount"] = user.LogInCount;
+                fields["lastLoggedInTime"] = user.LastLoggedInTime;
+                fields["lastLoggedInDeviceInfo"] = user.LastLoggedInDeviceInfo ?? string.Empty;
                 // Added AFTER the cross-org early return above, so an out-of-org caller still gets
                 // an empty dictionary and no lockout state leaks across organizations.
-                ["lockoutUntilUtc"] = user.LockoutUntilUtc,
-                ["isLockedOut"] = IsLockedOut(user.LockoutUntilUtc, asOfUtc)
-            };
+                fields["lockoutUntilUtc"] = user.LockoutUntilUtc;
+                fields["isLockedOut"] = IsLockedOut(user.LockoutUntilUtc, asOfUtc);
+            }
+
+            return fields;
         }
 
         /// <summary>

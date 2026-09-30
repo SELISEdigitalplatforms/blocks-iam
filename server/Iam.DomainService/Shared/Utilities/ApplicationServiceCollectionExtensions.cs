@@ -40,6 +40,7 @@ namespace Iam.DomainService.Utilities
             services.AddSingleton<SignupLinkGenerationValidators>();
             services.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
             services.AddSingleton<ISignupLinkSummaryService, SignupLinkSummaryService>();
+            services.AddSingleton<IAccessPolicyService, AccessPolicyService>();
             services.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
             services.AddHttpContextAccessor();
 

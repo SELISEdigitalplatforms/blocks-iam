@@ -20,7 +20,34 @@ namespace Iam.DomainService.Utilities
     /// The organizations to match, non-empty exactly when <paramref name="Kind"/> is
     /// <see cref="UserListScopeKind.Organizations"/>.
     /// </param>
-    public sealed record UserListScope(UserListScopeKind Kind, IReadOnlyList<string> OrganizationIds);
+    public sealed record UserListScope(UserListScopeKind Kind, IReadOnlyList<string> OrganizationIds)
+    {
+        /// <summary>
+        /// When set, the list is further narrowed to users whose access lists name the caller. Null
+        /// means the organization scope alone decides -- no enforcement, or a caller who reaches
+        /// everyone in it.
+        /// </summary>
+        public UserAccessFilter? Access { get; init; }
+    }
+
+    /// <summary>
+    /// The principals a caller is matched on in <c>User.AllowedToView</c> / <c>User.AllowedToManage</c>.
+    /// </summary>
+    /// <param name="ManageOnly">Match the manage list only, for paths that change users rather than show them.</param>
+    public sealed record UserAccessFilter(
+        string OrganizationId,
+        string UserId,
+        IReadOnlyCollection<string> Roles,
+        IReadOnlyCollection<string> Permissions,
+        bool ManageOnly)
+    {
+        public static UserAccessFilter For(CallerAccess caller, bool manageOnly) => new(
+            caller.OrganizationId,
+            caller.UserId,
+            caller.Roles.ToList(),
+            caller.EffectivePermissions.ToList(),
+            manageOnly);
+    }
 
     /// <summary>
     /// The one place that decides which organizations a user-list query may read.

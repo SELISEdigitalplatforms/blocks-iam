@@ -415,6 +415,9 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         // OrganizationJoined — grant in link org only; leave other orgs untouched.
         GrantOrganization(user, orgId, link.Roles, link.Permissions);
+
+        // The link's creator is who added them, exactly as if they had invited by hand.
+        await _userMutation.StampInitialAccessAsync(user, orgId, link.CreatedBy);
         user.LastUpdatedDate = DateTime.UtcNow;
         user.LastUpdatedBy = user.ItemId;
         await _userRepository.UpdateUserAsync(user);
@@ -796,6 +799,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             };
 
             var user = _userMutation.MapUser(request);
+            await _userMutation.StampInitialAccessAsync(user, request.OrganizationId ?? IdpConstants.DefaultOrganizationId, link.CreatedBy);
             if (passwordRequired)
             {
                 user.Active = false;

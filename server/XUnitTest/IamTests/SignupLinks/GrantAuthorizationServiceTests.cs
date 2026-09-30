@@ -74,10 +74,13 @@ public class GrantAuthorizationServiceTests : IDisposable
     }
 
     [Fact]
-    public void FindUngrantablePermission_RequiresHeldPermission()
+    public async Task FindUngrantablePermission_RequiresHeldPermission()
     {
-        SetContext(permissions: new List<string> { "read:project" });
-        Sut().FindUngrantablePermission(["read:project"]).Should().BeNull();
-        Sut().FindUngrantablePermission(["write:project"]).Should().Be("write:project");
+        SetContext(orgId: "org-a", permissions: new List<string> { "read:project" });
+        _repo.Setup(r => r.GetActivePermissionsByResourcesAsync(It.IsAny<IEnumerable<string>>(), "org-a"))
+            .ReturnsAsync((IEnumerable<string> keys, string _) => keys.Select(k => new Permission { Resource = k }).ToList());
+
+        (await Sut().FindUngrantablePermissionAsync(["read:project"])).Should().BeNull();
+        (await Sut().FindUngrantablePermissionAsync(["write:project"])).Should().Be("write:project");
     }
 }

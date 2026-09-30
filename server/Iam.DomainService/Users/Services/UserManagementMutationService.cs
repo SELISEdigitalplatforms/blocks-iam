@@ -17,7 +17,7 @@ using System.Text.Json;
 
 namespace Iam.DomainService.Users
 {
-    public class UserManagementMutationService : IUserManagementMutationService
+    public partial class UserManagementMutationService : IUserManagementMutationService
     {
         private const string DefaultOrganizationId = "default";
         private const int MaxPermissionsPerUser = 5;
@@ -36,6 +36,7 @@ namespace Iam.DomainService.Users
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
         private readonly IConfiguration? _configuration;
+        private readonly IAccessPolicyService? _accessPolicy;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -51,9 +52,13 @@ namespace Iam.DomainService.Users
             IResourceRepository? resourceRepository = null,
             IHttpContextAccessor? httpContextAccessor = null,
             IDefaultOidcClientResolver? defaultOidcClientResolver = null,
-            IConfiguration? configuration = null
+            IConfiguration? configuration = null,
+            IAccessPolicyService? accessPolicy = null
         )
         {
+            // Falls back to a policy over the same repository, so a composition root that predates
+            // the policy service still enforces it rather than silently skipping every rule.
+            _accessPolicy = accessPolicy ?? (resourceRepository is null ? null : new AccessPolicyService(resourceRepository));
             _logger = logger;
             _createValidator = createValidator;
             _updateValidator = updateValidator;
@@ -85,6 +90,12 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            // Captured before the organization defaults are merged in: the defaults are the
+            // administrator's own configuration, so only what the caller asked for is theirs to be
+            // allowed to grant.
+            var requestedRoles = command.Roles?.ToList() ?? [];
+            var requestedPermissions = command.Permissions?.ToList() ?? [];
+
             // Resolved before the existence check because both the caller guard and the merge below
             // need the normalized organization and its member defaults.
             await ApplyOrganizationDefaultsAsync(command);
@@ -104,14 +115,50 @@ namespace Iam.DomainService.Users
                 return permissionCountFailure;
             }
 
-            var existingUser = await TryGrantOrganizationToExistingUserAsync(
+            var caller = await ResolveCallerAsync(organizationId);
+            if (caller?.Kind == CallerKind.Denied)
+            {
+                _logger.LogInformation("User creation end -- Organization Guard Error");
+                return Failure(nameof(CreateUserRequest.OrganizationId), "Other org user can not add/update");
+            }
+
+            var grantFailure = await ValidateGrantsAsync(caller, requestedRoles, requestedPermissions);
+            if (grantFailure != null)
+            {
+                _logger.LogInformation("User creation end -- Grant Refused");
+                return grantFailure;
+            }
+
+            // The lists the caller sent, checked on a draft so a refusal happens before anything is
+            // written. The person creating the user is added to the manage list on top of them.
+            var draft = new User { ItemId = command.UserId ?? string.Empty };
+            var listFailure = ApplyAccessLists(caller, draft, organizationId, command.AllowedToView, command.AllowedToManage);
+            if (listFailure != null)
+            {
+                _logger.LogInformation("User creation end -- Access List Refused");
+                return listFailure;
+            }
+
+            var adder = caller?.Kind == CallerKind.User ? caller.UserId : null;
+
+            var (existingUser, alreadyMember) = await TryGrantOrganizationToExistingUserAsync(
                 command.Email,
                 organizationId,
                 command.Roles,
-                command.Permissions);
+                command.Permissions,
+                adder,
+                draft);
 
             if (existingUser != null)
             {
+                // An existing member is not re-invited: the invite used to overwrite the roles they
+                // already held in this organization. Changing a member's roles is the access endpoint.
+                if (alreadyMember)
+                {
+                    _logger.LogInformation("User creation end -- email is already a member of organization {OrganizationId}", organizationId);
+                    return Failure(nameof(CreateUserRequest.Email), "User_Already_Member_Of_Organization");
+                }
+
                 _logger.LogInformation(
                     "User creation end -- email already has an account; granted organization {OrganizationId} instead of creating a duplicate",
                     organizationId);
@@ -126,7 +173,7 @@ namespace Iam.DomainService.Users
             string itemId;
             try
             {
-                itemId = await ProcessCreateUserAsync(command);
+                itemId = await ProcessCreateUserAsync(command, adder, draft);
             }
             catch (ValidationException ex)
             {
@@ -224,26 +271,41 @@ namespace Iam.DomainService.Users
         /// than refuse -- so the decision belongs with that feature, not with this lookup.
         /// </para>
         /// </summary>
-        private async Task<User?> TryGrantOrganizationToExistingUserAsync(
+        /// <returns>
+        /// The account and whether it already belonged to the organization. An existing member is
+        /// returned untouched: re-granting used to replace the roles they held there -- on every SSO
+        /// sign-in with the organization's defaults, and on a repeated invite with whatever the
+        /// inviter sent.
+        /// </returns>
+        private async Task<(User? User, bool AlreadyMember)> TryGrantOrganizationToExistingUserAsync(
             string email,
             string organizationId,
             List<string>? roles,
-            List<string>? permissions)
+            List<string>? permissions,
+            string? adderUserId = null,
+            User? accessDraft = null)
         {
             var existingUser = await _userRepository.GetUserByEmailAsync(email);
             if (existingUser == null)
             {
-                return null;
+                return (null, false);
+            }
+
+            if (IsMemberOf(existingUser, organizationId))
+            {
+                return (existingUser, true);
             }
 
             GrantOrganization(existingUser, organizationId, roles, permissions);
+            CopyAccessLists(accessDraft, existingUser, organizationId);
+            await StampInitialAccessAsync(existingUser, organizationId, adderUserId);
 
             existingUser.LastUpdatedDate = DateTime.UtcNow;
             existingUser.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? existingUser.ItemId;
 
             await _userRepository.UpdateUserAsync(existingUser);
 
-            return existingUser;
+            return (existingUser, false);
         }
 
         /// <summary>
@@ -338,7 +400,10 @@ namespace Iam.DomainService.Users
             };
         }
 
-        public async Task<string> ProcessCreateUserAsync(CreateUserRequest command)
+        public async Task<string> ProcessCreateUserAsync(
+            CreateUserRequest command,
+            string? adderUserId = null,
+            User? accessDraft = null)
         {
             await ApplyOrganizationDefaultsAsync(command);
 
@@ -353,6 +418,8 @@ namespace Iam.DomainService.Users
             }
 
             var user = MapUser(command);
+            CopyAccessLists(accessDraft, user, command.OrganizationId ?? DefaultOrganizationId);
+            await StampInitialAccessAsync(user, command.OrganizationId ?? DefaultOrganizationId, adderUserId);
             await _userRepository.CreateUserAsync(user);
 
             return user.ItemId;
@@ -468,6 +535,29 @@ namespace Iam.DomainService.Users
                         { "OrganizationId", "User does not belong to the organization in context" }
                     }
                 };
+            }
+
+            // The target is loaded by id alone, so without this an administrator of one organization
+            // could edit the profile of a member of another just by knowing the id.
+            var caller = await ResolveCallerAsync(organizationId);
+            if (caller?.Kind == CallerKind.Denied)
+            {
+                _logger.LogInformation("User update end -- Organization Scope Rejected");
+                return Failure("OrganizationId", "User does not belong to the organization in context");
+            }
+
+            var manageFailure = ValidateManage(caller, user, "ItemId");
+            if (manageFailure != null)
+            {
+                _logger.LogInformation("User update end -- Access Refused");
+                return manageFailure;
+            }
+
+            var listFailure = ApplyAccessLists(caller, user, caller?.OrganizationId ?? organizationId, command.AllowedToView, command.AllowedToManage);
+            if (listFailure != null)
+            {
+                _logger.LogInformation("User update end -- Access List Refused");
+                return listFailure;
             }
 
             WarnOnRetiredFields(command.UnmappedFields, command.ItemId);
@@ -637,6 +727,12 @@ namespace Iam.DomainService.Users
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "user_not_found", $"No user found with id {request.UserId}" } } };
             }
 
+            var accountFailure = await ValidateAccountWideChangeAsync(user, "user_not_found");
+            if (accountFailure != null)
+            {
+                return new BaseResponse { IsSuccess = false, Errors = accountFailure.Errors };
+            }
+
             user.Active = false;
             user.Status = UserLifecycleStatus.Disabled;
             user.StatusReason = "deactivated";
@@ -693,6 +789,12 @@ namespace Iam.DomainService.Users
                         { nameof(request.UserId), $"No user found with id {request.UserId}" }
                     }
                 };
+            }
+
+            var accountFailure = await ValidateAccountWideChangeAsync(user, nameof(request.UserId));
+            if (accountFailure != null)
+            {
+                return accountFailure;
             }
 
             if (user.Active && user.Status == UserLifecycleStatus.Active)
@@ -1066,7 +1168,61 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            var caller = await ResolveCallerAsync(organizationId);
+            if (caller?.Kind == CallerKind.Denied)
+            {
+                _logger.LogInformation("Update User Access Control end -- Validation Error");
+                return Failure(nameof(command.OrganizationId), "Other org user can not add/update");
+            }
+
+            if (caller?.UsesHierarchy == true
+                && !string.IsNullOrWhiteSpace(blocksContext?.UserId)
+                && string.Equals(blocksContext.UserId, command.UserId, StringComparison.Ordinal))
+            {
+                _logger.LogInformation("Update User Access Control end -- Validation Error");
+                return Failure(nameof(command.UserId), "You cannot change your own access");
+            }
+
+            var isJoining = !IsMemberOf(user, organizationId);
+
+            // Joining is an invite (the endpoint's mutate-users gate is the whole requirement);
+            // changing an existing member needs that member to be the caller's to manage.
+            if (!isJoining)
+            {
+                var manageFailure = ValidateManage(caller, user);
+                if (manageFailure != null)
+                {
+                    _logger.LogInformation("Update User Access Control end -- Access Refused");
+                    return manageFailure;
+                }
+            }
+
+            // Mirrors GrantOrganization: an empty list keeps what is stored, so only a non-empty one
+            // is a change -- and every role added or taken away must be one the caller may grant.
+            var currentRoles = user.Roles.GetValueOrDefault(organizationId) ?? [];
+            var nextRoles = command.Roles?.Count > 0 ? command.Roles : currentRoles;
+            var currentPermissions = user.Permissions.GetValueOrDefault(organizationId) ?? [];
+            var nextPermissions = command.Permissions?.Count > 0 ? command.Permissions : currentPermissions;
+
+            var addedRoles = nextRoles.Except(currentRoles, StringComparer.OrdinalIgnoreCase).ToList();
+            var removedRoles = currentRoles.Except(nextRoles, StringComparer.OrdinalIgnoreCase).ToList();
+            var addedPermissions = nextPermissions.Except(currentPermissions, StringComparer.OrdinalIgnoreCase).ToList();
+            var removedPermissions = currentPermissions.Except(nextPermissions, StringComparer.OrdinalIgnoreCase).ToList();
+
+            var grantFailure = await ValidateGrantsAsync(caller, addedRoles, addedPermissions)
+                ?? await ValidateGrantsAsync(caller, removedRoles, removedPermissions, removal: true);
+            if (grantFailure != null)
+            {
+                _logger.LogInformation("Update User Access Control end -- Grant Refused");
+                return grantFailure;
+            }
+
             GrantOrganization(user, organizationId, command.Roles, command.Permissions);
+
+            if (isJoining)
+            {
+                await StampInitialAccessAsync(user, organizationId, caller?.Kind == CallerKind.User ? caller.UserId : null);
+            }
 
             user.LastUpdatedDate = DateTime.UtcNow;
             user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
@@ -1197,9 +1353,37 @@ namespace Iam.DomainService.Users
                 }
             }
 
+            if (IsMemberOf(user, organizationId))
+            {
+                var caller = await ResolveCallerAsync(organizationId);
+                if (caller?.Kind == CallerKind.Denied)
+                {
+                    _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                    return Failure(nameof(command.OrganizationId), "Other org user can not revoke");
+                }
+
+                var manageFailure = ValidateManage(caller, user);
+                if (manageFailure != null)
+                {
+                    _logger.LogInformation("Revoke User Access Control end -- Access Refused");
+                    return manageFailure;
+                }
+
+                // Removing someone from the organization takes every role they hold in it, so the
+                // caller needs the authority to take each one away.
+                var heldRoles = user.Roles.GetValueOrDefault(organizationId) ?? [];
+                var grantFailure = await ValidateGrantsAsync(caller, heldRoles, user.Permissions.GetValueOrDefault(organizationId) ?? [], removal: true);
+                if (grantFailure != null)
+                {
+                    _logger.LogInformation("Revoke User Access Control end -- Grant Refused");
+                    return grantFailure;
+                }
+            }
+
             user.OrganizationIds.Remove(organizationId);
             user.Roles.Remove(organizationId);
             user.Permissions.Remove(organizationId);
+            ClearOwnAccessLists(user, organizationId);
 
             user.LastUpdatedDate = DateTime.UtcNow;
             user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
@@ -1216,6 +1400,21 @@ namespace Iam.DomainService.Users
                         { "Repository", "Failed to update user" }
                     }
                 };
+            }
+
+            // Someone who has left the organization must stop appearing in its members' lists.
+            // After the revoke commits: failing here leaves a harmless dangling id (a non-member never
+            // matches), whereas failing first would block the revoke.
+            if (_resourceRepository is not null)
+            {
+                try
+                {
+                    await _resourceRepository.RemoveUserFromAllAccessListsAsync(user.ItemId, organizationId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Revoke User Access Control -- access-list cleanup failed for {UserId} in {OrganizationId}", user.ItemId, organizationId);
+                }
             }
 
             await SendEvent(user.ItemId, MutationEventType.Update);
@@ -1265,7 +1464,7 @@ namespace Iam.DomainService.Users
             // Inviting an email that already has an account is a join, not a signup: the invited
             // organization is granted on that account rather than opening a second one for the
             // same person.
-            var existingUser = await TryGrantOrganizationToExistingUserAsync(email, organizationId, roles, permissions);
+            var (existingUser, _) = await TryGrantOrganizationToExistingUserAsync(email, organizationId, roles, permissions);
 
             if (existingUser != null)
             {
@@ -1400,7 +1599,7 @@ namespace Iam.DomainService.Users
             // SSO consent reaches this method on every exchange, not only for unknown emails, so
             // without a lookup here each sign-in minted another account. An email that already has
             // one is signing in, not signing up: grant the organization and skip the welcome mail.
-            var existingUser = await TryGrantOrganizationToExistingUserAsync(
+            var (existingUser, _) = await TryGrantOrganizationToExistingUserAsync(
                 command.Email,
                 command.OrganizationId,
                 command.Roles,
@@ -1836,7 +2035,11 @@ namespace Iam.DomainService.Users
             string OrganizationId,
             List<string> AddRoles,
             List<string> RemoveRoles,
-            BulkRoleTarget Target);
+            BulkRoleTarget Target)
+        {
+            /// <summary>Resolved once in validation and reused, so both endpoints scope identically.</summary>
+            public CallerAccess? Caller { get; init; }
+        }
 
         private static Dictionary<string, string> OverMatchedCapError() =>
             new()
@@ -1927,11 +2130,29 @@ namespace Iam.DomainService.Users
                 }
             }
 
+            var caller = await ResolveCallerAsync(organizationId);
+            if (caller?.Kind == CallerKind.Denied)
+            {
+                return (Error(nameof(command.OrganizationId), "Other org user can not add/update"), null);
+            }
+
+            // Every role added or taken away must be one the caller may grant. Checked before any
+            // user is read, so a refused request costs no scan.
+            var grantFailure = await ValidateGrantsAsync(caller, addRoles, [])
+                ?? await ValidateGrantsAsync(caller, removeRoles, [], removal: true);
+            if (grantFailure is not null)
+            {
+                return (grantFailure.Errors, null);
+            }
+
             var plan = new BulkRoleChangePlan(
                 organizationId,
                 addRoles,
                 removeRoles,
-                new BulkRoleTarget { UserIds = hasUserIds ? userIds : null, Filter = target!.Filter });
+                new BulkRoleTarget { UserIds = hasUserIds ? userIds : null, Filter = target!.Filter })
+            {
+                Caller = caller
+            };
 
             return (null, plan);
 
@@ -1971,6 +2192,13 @@ namespace Iam.DomainService.Users
                 return (new List<User>(), false);
             }
 
+            // A bulk change is a write, so it reaches only the users the caller may manage -- never
+            // the wider set it may merely see.
+            if (plan.Caller is not null && UserAccessPolicy.RequiresAccessListFilter(plan.Caller))
+            {
+                scope = scope with { Access = UserAccessFilter.For(plan.Caller, manageOnly: true) };
+            }
+
             var filter = plan.Target.Filter ?? new GetUsersFilter { UserIds = plan.Target.UserIds! };
 
             var users = new List<User>();
@@ -2005,10 +2233,36 @@ namespace Iam.DomainService.Users
                 }
             }
 
+            // Nobody changes their own roles, in bulk any more than one at a time.
+            var callerId = plan.Caller?.UsesHierarchy == true ? plan.Caller.UserId : null;
+            if (!string.IsNullOrWhiteSpace(callerId))
+            {
+                users.RemoveAll(u => string.Equals(u.ItemId, callerId, StringComparison.Ordinal));
+            }
+
             return (users, false);
         }
 
         #endregion
+
+        /// <summary>Moves the lists checked on a draft onto the real user for the organization.</summary>
+        private static void CopyAccessLists(User? draft, User user, string organizationId)
+        {
+            if (draft is null)
+            {
+                return;
+            }
+
+            if (draft.AllowedToView.TryGetValue(organizationId, out var view))
+            {
+                user.AllowedToView[organizationId] = view;
+            }
+
+            if (draft.AllowedToManage.TryGetValue(organizationId, out var manage))
+            {
+                user.AllowedToManage[organizationId] = manage;
+            }
+        }
 
         private async Task<bool> SendPostEventAsync(User user, string mailPurpose)
         {
