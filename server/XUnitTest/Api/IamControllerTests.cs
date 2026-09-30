@@ -916,6 +916,72 @@ namespace XUnitTest.ApiTests
             tenantSeenByService.Should().Be("tenant-1");
         }
 
+        // ---------------------------------------------------------------------------------
+        // Portal reads are split from the anonymous ones: without a valid token the anonymous
+        // routes answer for the X-Blocks-Key (root) tenant, so the portal reads through routes
+        // that 401 instead. The anonymous routes stay exactly as they are for OIDC login/signup.
+        // ---------------------------------------------------------------------------------
+
+        [Fact]
+        public void GetAdminOrganizationConfig_RequiresSignInButNoExtraPermission()
+        {
+            var method = typeof(IamController).GetMethod(nameof(IamController.GetAdminOrganizationConfig))!;
+
+            method.GetCustomAttribute<HttpGetAttribute>()!.Template.Should().Be("organizations/config/admin");
+            method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().Should().NotBeNull();
+            method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().BeNull();
+            // Read by the users, roles, invite and credential screens, not only settings, so a
+            // settings permission here would lock those screens out.
+            method.GetCustomAttribute<ProtectedEndPointAttribute>().Should().BeNull();
+        }
+
+        [Fact]
+        public void GetAdminSignUpSetting_ReusesTheSavePermission()
+        {
+            var method = typeof(IamController).GetMethod(nameof(IamController.GetAdminSignUpSetting))!;
+
+            method.GetCustomAttribute<HttpGetAttribute>()!.Template.Should().Be("signup-settings/admin");
+            method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().BeNull();
+            method.GetCustomAttribute<ProtectedEndPointAttribute>()!.ResourceName
+                .Should().Be("blocks-iam::iam::mutate-tenant-configs");
+        }
+
+        [Theory]
+        [InlineData(nameof(IamController.GetOrganizationConfig), "organizations/config")]
+        [InlineData(nameof(IamController.GetSignUpSetting), "signup-settings")]
+        public void AnonymousConfigReads_StayAnonymousForOidcLoginAndSignup(string action, string template)
+        {
+            var method = typeof(IamController).GetMethod(action)!;
+
+            method.GetCustomAttribute<HttpGetAttribute>()!.Template.Should().Be(template);
+            method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().NotBeNull();
+        }
+
+        [Fact]
+        public async Task GetAdminOrganizationConfig_DelegatesWithoutReResolvingTheTenant()
+        {
+            var response = new Dictionary<string, object> { { "isMultiOrgEnabled", true } };
+            _resourceMutation.Setup(s => s.GetOrganizationConfigAsync()).ReturnsAsync(response);
+
+            var result = await CreateController().GetAdminOrganizationConfig();
+
+            result.Should().BeSameAs(response);
+            // The middleware already scoped the request to the token's tenant; nothing to re-resolve.
+            _authService.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task GetAdminSignUpSetting_DelegatesToAccountService()
+        {
+            var response = new Dictionary<string, object> { { "isSignUpEnable", true } };
+            _accountService.Setup(s => s.GetSignUpSettingAsync()).ReturnsAsync(response);
+
+            var result = await CreateController().GetAdminSignUpSetting();
+
+            result.Should().BeSameAs(response);
+            _authService.VerifyNoOtherCalls();
+        }
+
         [Fact]
         public async Task GetSignUpSetting_ImpersonationToken_ReadsTheImpersonatedTenant()
         {
