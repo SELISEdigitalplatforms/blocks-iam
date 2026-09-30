@@ -468,6 +468,24 @@ namespace Api.Controllers
             return await _resourceMutationService.GetOrganizationConfigAsync();
         }
 
+        /// <summary>
+        /// Authenticated read of the organization config, for portals such as Blocks OS.
+        /// <para>
+        /// The anonymous <c>GET organizations/config</c> above resolves its tenant from
+        /// X-Blocks-Key, which in a portal names the root tenant. With no or an expired token it
+        /// therefore answers 200 with the root tenant's config instead of the project's. Here the
+        /// tenant comes from the token, and a missing or expired one is a 401 the client refreshes
+        /// on. Any signed-in caller may read it -- the portal's users, roles, invite and
+        /// credential screens all branch on it -- so it takes no permission beyond sign-in.
+        /// </para>
+        /// </summary>
+        [HttpGet("organizations/config/admin")]
+        [Authorize]
+        public async Task<Dictionary<string, object>> GetAdminOrganizationConfig()
+        {
+            return await _resourceMutationService.GetOrganizationConfigAsync();
+        }
+
         [HttpPost("signup-settings")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-tenant-configs")]
         public async Task<SaveSignUpSettingResponse> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
@@ -492,6 +510,22 @@ namespace Api.Controllers
                     BlocksContext.SetContext(BlocksContext.Create(claimTenantId, [], claimUserId, true, string.Empty, string.Empty, DateTime.MinValue, string.Empty, [], string.Empty, string.Empty, string.Empty, string.Empty, string.Empty));
                 }
             }
+            return await _accountService.GetSignUpSettingAsync();
+        }
+
+        /// <summary>
+        /// Authenticated read of the signup settings, for the portal's settings editor.
+        /// <para>
+        /// Same reason as <see cref="GetAdminOrganizationConfig"/>: the anonymous read falls
+        /// back to the X-Blocks-Key (root) tenant without a valid token, and the editor would then
+        /// load -- and on save write -- the root tenant's settings into the project. Guarded by the
+        /// permission that already guards saving them, so no new permission has to be seeded.
+        /// </para>
+        /// </summary>
+        [HttpGet("signup-settings/admin")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-tenant-configs")]
+        public async Task<Dictionary<string, object>> GetAdminSignUpSetting()
+        {
             return await _accountService.GetSignUpSettingAsync();
         }
 

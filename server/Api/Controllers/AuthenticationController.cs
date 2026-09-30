@@ -558,9 +558,16 @@ public class AuthenticationController : ControllerBase
 
     [HttpPost("client-credentials")]
     [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
-    public async Task<BaseResponse> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
+    public async Task<SaveClientCredentialResponse> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
     {
         return await _authenticationDomainService.SaveClientCredentialAsync(request);
+    }
+
+    [HttpPost("client-credentials/{id}/rotate-secret")]
+    [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
+    public async Task<RotateClientCredentialSecretResponse> RotateClientCredentialSecret([FromRoute] string id)
+    {
+        return await _authenticationDomainService.RotateClientCredentialSecretAsync(id);
     }
 
     [HttpDelete("client-credentials/{id}")]
