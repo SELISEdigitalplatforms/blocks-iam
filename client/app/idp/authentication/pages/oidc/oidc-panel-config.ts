@@ -294,3 +294,63 @@ export const ACTIVATE_PANEL_WITHOUT_PASSWORD: OidcPanelConfig = {
 /** Picks the activation panel copy that matches the tenant's password setting. */
 export const getActivatePanel = (collectPassword: boolean): OidcPanelConfig =>
   collectPassword ? ACTIVATE_PANEL : ACTIVATE_PANEL_WITHOUT_PASSWORD;
+
+
+/* ──────────────────────────────────────────────────────────────
+   JOIN (signup link) — context → redeem → authorize redirect
+   ────────────────────────────────────────────────────────────── */
+export const JOIN_PANEL: OidcPanelConfig = {
+  heading: "One-Click Signup Pipeline",
+  subtext:
+    "A signup link is validated, a restricted session is minted, and your browser is redirected into the application.",
+
+  idleBadge: "Awaiting Link",
+  submittingBadge: "Redeeming",
+  successBadge: "Joined",
+  failedBadge: "Invalid",
+
+  idleNode: {
+    icon: "cursor",
+    title: "Awaiting Signup Link",
+    description: "Open a one-click signup link to begin.",
+  },
+
+  validatingNode: {
+    icon: "key",
+    service: "IAM Service",
+    title: "Validating Signup Link",
+    activeLabel: "GET /api/iam/signup-links/context …",
+    successLabel: "Link validated",
+    failLabel: "Link is no longer valid",
+  },
+
+  successNodes: [
+    {
+      icon: "ticket",
+      service: "IAM Service",
+      title: "Redeeming Link",
+      activeLabel: "POST /api/iam/signup-links/redeem …",
+      successLabel: "Restricted session issued",
+    },
+    {
+      icon: "external",
+      service: "Browser",
+      title: "Continuing to Application",
+      activeLabel: "Following authorizeUrl…",
+      successLabel: "Handed off to application",
+    },
+  ],
+
+  terminalMessages: [
+    { text: "$ GET /api/iam/signup-links/context", color: "var(--accent2)" },
+    { text: "  > X-Signup-Link-Code: (header)", color: "var(--muted)" },
+    { text: "200 OK — link valid", color: "var(--success)" },
+    { text: "$ POST /api/iam/signup-links/redeem", color: "var(--fg)" },
+    { text: "  > restricted session cookie set", color: "var(--muted)" },
+    { text: "window.location → authorizeUrl", color: "var(--success)" },
+  ],
+
+  errorTerminalPrefix: [
+    { text: "$ GET /api/iam/signup-links/context", color: "var(--accent2)" },
+  ],
+};

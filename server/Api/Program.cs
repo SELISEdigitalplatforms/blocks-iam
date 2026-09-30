@@ -1,3 +1,5 @@
+using Api.Middleware;
+using Api.Security;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
@@ -55,6 +57,12 @@ var app = builder.Build();
 
 // Configure DomainResolver with IHttpContextAccessor instance
 DomainResolver.Configure(app.Services.GetRequiredService<IHttpContextAccessor>());
+
+// Browser-facing security headers first so even short-circuit 404s carry HSTS/CSP.
+// The CSP origins come from configuration (FrontendRuntime + Csp:Extra*), not from a
+// compiled-in host list -- see Api.Security.ContentSecurityPolicy.
+var contentSecurityPolicy = ContentSecurityPolicy.Build(app.Configuration);
+app.UseMiddleware<SecurityHeadersMiddleware>(contentSecurityPolicy);
 
 // Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
 var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);

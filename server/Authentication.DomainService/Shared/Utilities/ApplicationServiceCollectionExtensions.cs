@@ -22,6 +22,8 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
+using Iam.DomainService.SignupLinks;
+using Authentication.DomainService.SignupLinks;
 using Idp.DomainService.Oidc.Services;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.OTP.Services;
@@ -52,6 +54,7 @@ namespace Authentication.DomainService.Utilities
             // Satisfies Iam.DomainService's account-action email builders, which need the
             // tenant's default OIDC client but cannot reference this assembly.
             serviceCollection.AddSingleton<IDefaultOidcClientResolver, DefaultOidcClientResolver>();
+            serviceCollection.AddSingleton<IOidcClientRegistrationLookup, OidcClientRegistrationLookup>();
 
             serviceCollection.AddSingleton<IOAuthJwtAccessTokenManager, OAuthJwtAccessTokenManager>();
             serviceCollection.AddSingleton<IJwtAccessTokenProvider, JwtAccessTokenProvider>();
@@ -101,6 +104,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<OidcLoginAuditWriter>();
             serviceCollection.AddSingleton<OidcCaptchaEvaluator>();
             serviceCollection.AddSingleton<OidcLoginOrchestrator>();
+            serviceCollection.AddSingleton<OidcAuthorizationSessionStores>();
+            serviceCollection.AddSingleton<OidcAuthorizationIdentityStores>();
             serviceCollection.AddSingleton<OidcAuthorizationEndpoint>();
             serviceCollection.AddSingleton<AuthorizationCodeExchangeService>();
             serviceCollection.AddSingleton<OidcRefreshTokenService>();
@@ -181,6 +186,21 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IResourceQueryService, ResourceQueryService>();
 
             serviceCollection.AddSingleton<IAccountService, AccountService>();
+            serviceCollection.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();
+            serviceCollection.AddSingleton<ISignupLinkConfigurationService, SignupLinkConfigurationService>();
+            serviceCollection.AddSingleton<ISignupLinkRepository, SignupLinkRepository>();
+            serviceCollection.AddSingleton<ISignupLinkRedemptionRepository, SignupLinkRedemptionRepository>();
+            serviceCollection.AddSingleton<ISignupLinkContextService, SignupLinkContextService>();
+            serviceCollection.AddSingleton<ILinkSessionRepository, LinkSessionRepository>();
+            serviceCollection.AddSingleton<SignupLinkRedemptionStores>();
+            serviceCollection.AddSingleton<SignupLinkRedemptionCollaborators>();
+            serviceCollection.AddSingleton<ISignupLinkEmbeddedTokenIssuer, SignupLinkEmbeddedTokenIssuer>();
+            serviceCollection.AddSingleton<ISignupLinkRedemptionOrchestrator, SignupLinkRedemptionOrchestrator>();
+            serviceCollection.AddSingleton<SignupLinkGenerationRepositories>();
+            serviceCollection.AddSingleton<SignupLinkGenerationValidators>();
+            serviceCollection.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
+            serviceCollection.AddSingleton<ISignupLinkSummaryService, SignupLinkSummaryService>();
+            serviceCollection.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
 
             serviceCollection.AddSingleton<IUserActivityRepository, UserActivityRepository>();
@@ -195,6 +215,13 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IValidator<CreateUserRequest>, CreateUserValidator>();
             serviceCollection.AddSingleton<IValidator<UpdateUserRequest>, UpdateUserValidator>();
             serviceCollection.AddSingleton<IValidator<UpdateMyAccountRequest>, UpdateMyAccountValidator>();
+            serviceCollection.AddSingleton<IValidator<CreateSignupLinkConfigurationRequest>, CreateSignupLinkConfigurationValidator>();
+            serviceCollection.AddSingleton<IValidator<UpdateSignupLinkConfigurationRequest>, UpdateSignupLinkConfigurationValidator>();
+            serviceCollection.AddSingleton<IValidator<QuerySignupLinkConfigurationsRequest>, QuerySignupLinkConfigurationsValidator>();
+            serviceCollection.AddSingleton<IValidator<GenerateSignupLinkRequest>, GenerateSignupLinkValidator>();
+            serviceCollection.AddSingleton<IValidator<QuerySignupLinksRequest>, QuerySignupLinksValidator>();
+            serviceCollection.AddSingleton<IValidator<RevokeSignupLinksByConfigurationRequest>, RevokeSignupLinksByConfigurationValidator>();
+            serviceCollection.AddSingleton<IValidator<SignupLinkSummaryRequest>, SignupLinkSummaryValidator>();
             serviceCollection.AddSingleton<IValidator<CreatePermissionRequest>, CreatePermissionValidator>();
             serviceCollection.AddSingleton<IValidator<CreateRoleRequest>, RoleValidator>();
             serviceCollection.AddSingleton<IValidator<UpdatePermissionRequest>, UpdatePermissionValidator>();

@@ -9,6 +9,7 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
+using Authentication.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
@@ -30,6 +31,7 @@ namespace XUnitTest.ApiTests
         private readonly Mock<IAuthenticationConfigurationService> _configService = new();
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
         private readonly Mock<IAuthenticationDomainService> _domainService = new();
+        private readonly Mock<ISignupLinkRedemptionOrchestrator> _signupLinkRedemption = new();
 
         public AuthenticationControllerTests()
         {
@@ -61,7 +63,8 @@ namespace XUnitTest.ApiTests
                 _flowService.Object,
                 _configService.Object,
                 _authRepo.Object,
-                _domainService.Object);
+                _domainService.Object,
+                _signupLinkRedemption.Object);
             controller.ControllerContext = new ControllerContext
             {
                 HttpContext = new DefaultHttpContext()

@@ -9,6 +9,7 @@ namespace Iam.DomainService.Users
     public interface IUserManagementMutationService
     {
         Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command);
+        User MapUser(CreateUserRequest command);
         Task<BaseMutationResponse> UpdateUserAsync(UpdateUserRequest command);
 
         Task<BaseMutationResponse> UpdateMyAccountAsync(UpdateMyAccountRequest command);

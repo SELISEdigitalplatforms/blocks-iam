@@ -97,14 +97,14 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           submodules: ${{ inputs.HAS_SUBMODULES && 'recursive' || 'false' }}
           token: ${{ secrets.SELISE_GITHUB_PAT || github.token }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ inputs.NODE_VERSION }}
           cache: npm
@@ -116,23 +116,30 @@ jobs:
 
       - name: Generate SBOM with cdxgen
         working-directory: ${{ inputs.WORKING_DIRECTORY }}
+        env:
+          INPUTS_CDXGEN_VERSION: ${{ inputs.CDXGEN_VERSION }}
+          INPUTS_INCLUDE_FORMULATION: ${{ inputs.INCLUDE_FORMULATION }}
+          INPUTS_SBOM_FILENAME: ${{ inputs.SBOM_FILENAME }}
+          INPUTS_SPEC_VERSION: ${{ inputs.SPEC_VERSION }}
         run: |
-          npm install -g @cyclonedx/cdxgen@${{ inputs.CDXGEN_VERSION }}
+          npm install -g @cyclonedx/cdxgen@${INPUTS_CDXGEN_VERSION}
 
           FORMULATION_FLAG=""
-          [ "${{ inputs.INCLUDE_FORMULATION }}" = "true" ] && FORMULATION_FLAG="--include-formulation"
+          [ "${INPUTS_INCLUDE_FORMULATION}" = "true" ] && FORMULATION_FLAG="--include-formulation"
 
           cdxgen \
             -t js \
-            -o ${{ inputs.SBOM_FILENAME }} \
-            --spec-version ${{ inputs.SPEC_VERSION }} \
+            -o ${INPUTS_SBOM_FILENAME} \
+            --spec-version ${INPUTS_SPEC_VERSION} \
             $FORMULATION_FLAG \
             .
 
       - name: Validate SBOM
         working-directory: ${{ inputs.WORKING_DIRECTORY }}
+        env:
+          INPUTS_SBOM_FILENAME: ${{ inputs.SBOM_FILENAME }}
         run: |
-          BOM="${{ inputs.SBOM_FILENAME }}"
+          BOM="${INPUTS_SBOM_FILENAME}"
           [ ! -s "$BOM" ] && echo "❌ SBOM missing or empty" && exit 1
           jq empty "$BOM" || { echo "❌ SBOM is not valid JSON"; exit 1; }
 
@@ -148,7 +155,7 @@ jobs:
           } >> $GITHUB_STEP_SUMMARY
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom-client
           path: ${{ inputs.WORKING_DIRECTORY }}/${{ inputs.SBOM_FILENAME }}
@@ -159,18 +166,24 @@ jobs:
         working-directory: ${{ inputs.WORKING_DIRECTORY }}
         env:
           DT_API_KEY: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
+          INPUTS_PROJECT_VERSION: ${{ inputs.PROJECT_VERSION }}
+          INPUTS_DEPENDENCY_TRACK_HOST: ${{ inputs.DEPENDENCY_TRACK_HOST }}
+          INPUTS_AUTO_CREATE_PROJECT: ${{ inputs.AUTO_CREATE_PROJECT }}
+          INPUTS_PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
+          INPUTS_SBOM_FILENAME: ${{ inputs.SBOM_FILENAME }}
+          INPUTS_DEPENDENCY_TRACK_FRONTEND_URL: ${{ inputs.DEPENDENCY_TRACK_FRONTEND_URL }}
         run: |
-          VERSION="${{ inputs.PROJECT_VERSION }}"
+          VERSION="${INPUTS_PROJECT_VERSION}"
           [ -z "$VERSION" ] && VERSION="${GITHUB_REF_NAME}"
 
           BODY=$(mktemp)
           CODE=$(curl -sS -o "$BODY" -w '%{http_code}' \
-            -X POST "https://${{ inputs.DEPENDENCY_TRACK_HOST }}/api/v1/bom" \
+            -X POST "https://${INPUTS_DEPENDENCY_TRACK_HOST}/api/v1/bom" \
             -H "X-Api-Key: $DT_API_KEY" \
-            -F "autoCreate=${{ inputs.AUTO_CREATE_PROJECT }}" \
-            -F "projectName=${{ inputs.PROJECT_NAME }}" \
+            -F "autoCreate=${INPUTS_AUTO_CREATE_PROJECT}" \
+            -F "projectName=${INPUTS_PROJECT_NAME}" \
             -F "projectVersion=$VERSION" \
-            -F "bom=@${{ inputs.SBOM_FILENAME }}")
+            -F "bom=@${INPUTS_SBOM_FILENAME}")
 
           echo "HTTP $CODE"
           cat "$BODY"
@@ -189,6 +202,6 @@ jobs:
           {
             echo "### ✅ Uploaded to Dependency-Track"
             echo ""
-            echo "- Project: \`${{ inputs.PROJECT_NAME }}\` @ \`$VERSION\`"
-            echo "- Dashboard: https://${{ inputs.DEPENDENCY_TRACK_FRONTEND_URL }}/projects"
+            echo "- Project: \`${INPUTS_PROJECT_NAME}\` @ \`$VERSION\`"
+            echo "- Dashboard: https://${INPUTS_DEPENDENCY_TRACK_FRONTEND_URL}/projects"
           } >> $GITHUB_STEP_SUMMARY

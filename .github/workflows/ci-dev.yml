@@ -72,26 +72,35 @@ jobs:
       dotnet_version: ${{ steps.config.outputs.dotnet_version }}
       has_submodules: ${{ steps.config.outputs.has_submodules }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # Load shared variables first (if enabled)
       - name: Load Shared Configuration
         if: env.LOAD_CUSTOM_VARS == 'true'
-        uses: SELISEdigitalplatforms/blocks-inventory/.github/actions/setvars@main
+        uses: SELISEdigitalplatforms/blocks-inventory/.github/actions/setvars@a9c7946993ffc683744ade542039bcf90242d52c # main
         with:
           varFilePath: ./.github/variables/
 
       - name: Set Configuration Outputs
         id: config
+        env:
+          ENV_RUN_TESTS: ${{ env.RUN_TESTS }}
+          ENV_RUN_SONARQUBE: ${{ env.RUN_SONARQUBE }}
+          ENV_ENVIRONMENT: ${{ env.ENVIRONMENT }}
+          ENV_CLUSTER_NAME: ${{ env.CLUSTER_NAME }}
+          ENV_LOAD_CUSTOM_VARS: ${{ env.LOAD_CUSTOM_VARS }}
+          ENV_TAG_STRATEGY: ${{ env.TAG_STRATEGY }}
+          ENV_RUN_SCA_SCAN: ${{ env.RUN_SCA_SCAN }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
           # From workflow env (environment-specific)
-          echo "run_tests=${{ env.RUN_TESTS }}" >> $GITHUB_OUTPUT
-          echo "run_sonarqube=${{ env.RUN_SONARQUBE }}" >> $GITHUB_OUTPUT
-          echo "environment=${{ env.ENVIRONMENT }}" >> $GITHUB_OUTPUT
-          echo "cluster_name=${{ env.CLUSTER_NAME }}" >> $GITHUB_OUTPUT
-          echo "load_custom_vars=${{ env.LOAD_CUSTOM_VARS }}" >> $GITHUB_OUTPUT
-          echo "tag_strategy=${{ env.TAG_STRATEGY }}" >> $GITHUB_OUTPUT
-          echo "run_sca_scan=${{ env.RUN_SCA_SCAN }}" >> $GITHUB_OUTPUT
+          echo "run_tests=${ENV_RUN_TESTS}" >> $GITHUB_OUTPUT
+          echo "run_sonarqube=${ENV_RUN_SONARQUBE}" >> $GITHUB_OUTPUT
+          echo "environment=${ENV_ENVIRONMENT}" >> $GITHUB_OUTPUT
+          echo "cluster_name=${ENV_CLUSTER_NAME}" >> $GITHUB_OUTPUT
+          echo "load_custom_vars=${ENV_LOAD_CUSTOM_VARS}" >> $GITHUB_OUTPUT
+          echo "tag_strategy=${ENV_TAG_STRATEGY}" >> $GITHUB_OUTPUT
+          echo "run_sca_scan=${ENV_RUN_SCA_SCAN}" >> $GITHUB_OUTPUT
 
           # From vars.env (if loaded) or fallback to defaults
           echo "client_dockerfile_path=${DOCKERFILE_CLIENT:-./Dockerfile}" >> $GITHUB_OUTPUT
@@ -106,7 +115,7 @@ jobs:
           # SCA Scan Configuration
           echo "sca_project_server=${SCA_PROJECT_SERVER:-blocks-iam-server}" >> $GITHUB_OUTPUT
           echo "sca_project_client=${SCA_PROJECT_CLIENT:-blocks-iam-client}" >> $GITHUB_OUTPUT
-          echo "project_version=${PROJECT_VERSION:-${{ github.ref_name }}}" >> $GITHUB_OUTPUT
+          echo "project_version=${PROJECT_VERSION:-${GITHUB_REF_NAME}}" >> $GITHUB_OUTPUT
           echo "dependency_track_host=${DEPENDENCY_TRACK_HOST:-api-dt.seliseblocks.com}" >> $GITHUB_OUTPUT
           echo "dependency_track_frontend_url=${DEPENDENCY_TRACK_FRONTEND_URL:-sca.seliseblocks.com}" >> $GITHUB_OUTPUT
 
@@ -118,7 +127,7 @@ jobs:
           echo "working_directory=${WORKING_DIRECTORY:-./server}" >> $GITHUB_OUTPUT
 
           # Version based on environment (from versions.env)
-          ENVIRONMENT="${{ env.ENVIRONMENT }}"
+          ENVIRONMENT="${ENV_ENVIRONMENT}"
           case "$ENVIRONMENT" in
             "dev")
               VERSION="${DEV_VERSION:-}"
@@ -142,18 +151,18 @@ jobs:
           echo "- **Service**: ${SERVICE_NAME:-'Not set'}" >> $GITHUB_STEP_SUMMARY
           echo "- **Version Suffix**: ${VERSION:-'None'}" >> $GITHUB_STEP_SUMMARY
           echo "- **Type**: ${SERVICE_TYPE:-'Not set'}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image Tag Strategy**: ${{ env.TAG_STRATEGY }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Cluster**: ${{ env.CLUSTER_NAME }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tests Enabled**: ${{ env.RUN_TESTS }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **SonarQube Enabled**: ${{ env.RUN_SONARQUBE }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **SCA Scan Enabled**: ${{ env.RUN_SCA_SCAN }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${ENV_ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image Tag Strategy**: ${ENV_TAG_STRATEGY}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster**: ${ENV_CLUSTER_NAME}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests Enabled**: ${ENV_RUN_TESTS}" >> $GITHUB_STEP_SUMMARY
+          echo "- **SonarQube Enabled**: ${ENV_RUN_SONARQUBE}" >> $GITHUB_STEP_SUMMARY
+          echo "- **SCA Scan Enabled**: ${ENV_RUN_SCA_SCAN}" >> $GITHUB_STEP_SUMMARY
 
   # # Run tests and checks on PRs only (optional)
   # pr-checks:
   #     if: github.event_name == 'pull_request' && needs.initialization.outputs.run_tests == 'true'
   #     needs: [initialization]
-  #     uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/test-dotnet.yml@main
+  #     uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/test-dotnet.yml@a9c7946993ffc683744ade542039bcf90242d52c # main
   #     with:
   #         SERVICE_NAME: ${{ needs.initialization.outputs.service_name }}
   #         LOAD_CUSTOM_VARS: ${{ needs.initialization.outputs.load_custom_vars == 'true' }}
@@ -165,7 +174,7 @@ jobs:
     # if: github.event_name == 'pull_request' && needs.initialization.outputs.run_sonarqube == 'true'
     if: needs.initialization.outputs.run_sonarqube == 'true'
     needs: [ initialization ]
-    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/sonarqube-dotnet.yml@main
+    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/sonarqube-dotnet.yml@a9c7946993ffc683744ade542039bcf90242d52c # main
     with:
       SOLUTION_NAME: ${{ needs.initialization.outputs.solution_name }}
       SONARQUBE_HOST: ${{ needs.initialization.outputs.sonarqube_host }}
@@ -195,7 +204,7 @@ jobs:
   sca_server:
     if: needs.initialization.outputs.run_sca_scan == 'true'
     needs: [ initialization ]
-    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/sca-scan-dotnet.yml@main
+    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/sca-scan-dotnet.yml@a9c7946993ffc683744ade542039bcf90242d52c # main
     with:
       # Project Configuration
       PROJECT_NAME: ${{ needs.initialization.outputs.sca_project_server }}
@@ -279,7 +288,7 @@ jobs:
       needs.initialization.result == 'success' &&
       (needs.sonarqube_server.result == 'success' || needs.sonarqube_server.result == 'skipped') &&
       (needs.sonarqube_client.result == 'success' || needs.sonarqube_client.result == 'skipped')
-    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/build-push.yml@main
+    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/build-push.yml@a9c7946993ffc683744ade542039bcf90242d52c # main
     with:
       SERVICE_NAME: ${{ needs.initialization.outputs.service_name }}
       # SERVICE_TYPE: ${{ needs.initialization.outputs.service_type }}
@@ -304,7 +313,7 @@ jobs:
       always() &&
       needs.initialization.result == 'success' &&
       needs.build-client.result == 'success'
-    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/update-gitops-central.yml@main
+    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/update-gitops-central.yml@a9c7946993ffc683744ade542039bcf90242d52c # main
     with:
       SERVICE_NAME: ${{ needs.initialization.outputs.service_name }}
       SERVICE_TYPE: "webservice" # Match the service type from build job
@@ -331,7 +340,7 @@ jobs:
       needs.initialization.result == 'success' &&
       (needs.sonarqube_server.result == 'success' || needs.sonarqube_server.result == 'skipped') &&
       (needs.sonarqube_client.result == 'success' || needs.sonarqube_client.result == 'skipped')
-    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/build-push.yml@main
+    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/build-push.yml@a9c7946993ffc683744ade542039bcf90242d52c # main
     with:
       SERVICE_NAME: ${{ needs.initialization.outputs.service_name }}
       # SERVICE_TYPE: ${{ needs.initialization.outputs.service_type }}
@@ -356,7 +365,7 @@ jobs:
       always() &&
       needs.initialization.result == 'success' &&
       needs.build-worker.result == 'success'
-    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/update-gitops-central.yml@main
+    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/update-gitops-central.yml@a9c7946993ffc683744ade542039bcf90242d52c # main
     with:
       SERVICE_NAME: ${{ needs.initialization.outputs.service_name }}
       SERVICE_TYPE: "worker" # Match the service type from build job

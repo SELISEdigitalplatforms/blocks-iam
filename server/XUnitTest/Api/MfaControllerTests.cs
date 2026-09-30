@@ -569,5 +569,25 @@ namespace XUnitTest.ApiTests
             result.Should().BeOfType<OkObjectResult>();
             _backupCodes.Verify(b => b.ConsumeAsync("u-1", "code-1", It.IsAny<CancellationToken>()), Times.Once);
         }
+
+        [Fact]
+        public async Task ConsumeBackupCode_ServiceThrows_ReturnsBadRequestNot500()
+        {
+            _backupCodes.Setup(b => b.ConsumeAsync("u-1", "code-1", It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("db unavailable"));
+
+            var result = await CreateController().ConsumeBackupCode(new ConsumeBackupCodeRequest { UserId = "u-1", Code = "code-1" });
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            bad.StatusCode.Should().Be(400);
+        }
+
+        [Fact]
+        public async Task ConsumeBackupCode_NullBody_ReturnsBadRequest()
+        {
+            var result = await CreateController().ConsumeBackupCode(null);
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
     }
 }

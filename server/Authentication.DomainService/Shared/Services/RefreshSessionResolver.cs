@@ -276,7 +276,12 @@ namespace Authentication.DomainService.Shared.Services
                 IpAddresses = persisted.IpAddress,
                 Scope = persisted.Scope,
                 Impersonated = persisted.Impersonated,
-                ImpersonationId = persisted.ImpersonationId
+                ImpersonationId = persisted.ImpersonationId,
+                IsLinkAuthentication = persisted.IsLinkAuthentication,
+                RestrictedRoles = persisted.RestrictedRoles?.ToList() ?? [],
+                RestrictedPermissions = persisted.RestrictedPermissions?.ToList() ?? [],
+                Amr = persisted.Amr?.ToList() ?? [],
+                Audience = persisted.Audience
             };
 
             var (slidingMinutes, _) = RefreshTokenLifetimeResolver.Resolve(configuration, _logger);

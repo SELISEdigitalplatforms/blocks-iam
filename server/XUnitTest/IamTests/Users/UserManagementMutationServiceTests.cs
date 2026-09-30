@@ -860,5 +860,23 @@ namespace XUnitTest.IamTests.Users
             _iam.Verify(i => i.SendActivationToEmailAsync(user, It.Is<string>(s => s.StartsWith("https://app.test")), It.IsAny<string>()), Times.Once);
             _userRepo.Verify(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()), Times.Once);
         }
+
+        [Theory]
+        [InlineData(MutationEventType.Update)]
+        [InlineData(MutationEventType.Delete)]
+        public async Task ExecuteUserMutationCommand_NonCreate_RecordsActivityWithoutActivationMail(MutationEventType action)
+        {
+            // Revoke-access and the activate paths raise Update for existing users; they must
+            // not be sent a new activation link.
+            var user = new User { ItemId = "u1", Language = "en-US", MailPurpose = "AccountActivation", Active = true };
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            await Create().ExecuteUserMutationCommandAsync(new UserMutationEvent { ItemId = "u1", Action = action });
+
+            _iam.Verify(i => i.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+            _userRepo.Verify(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()), Times.Never);
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
+        }
     }
 }

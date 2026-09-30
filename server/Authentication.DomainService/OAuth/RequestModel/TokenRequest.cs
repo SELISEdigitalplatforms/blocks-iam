@@ -42,6 +42,12 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? TargetTenantId { get; set; }
         public string? OriginalTenantId { get; set; }
         public string? ImpersonationSessionId { get; set; }
+
+        public bool IsLinkAuthentication { get; set; }
+        public List<string> RestrictedRoles { get; set; } = [];
+        public List<string> RestrictedPermissions { get; set; } = [];
+        public List<string> Amr { get; set; } = [];
+        public string? Audience { get; set; }
         public string? IdpSessionId { get; set; }
 
         /// <summary>

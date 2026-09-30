@@ -11,6 +11,7 @@ import SSOCallbackPage from "./routes/auth/sso-callback";
 
 // Public routes
 import ActivatePage from "./routes/auth/activate";
+import InvitationPage from "./routes/auth/invitation";
 import ActivateSuccessPage from "./routes/auth/activate-success";
 import ForgotEmailSentPage from "./routes/auth/forgot-email-sent";
 import ForgotPasswordPage from "./routes/auth/forgot-password";
@@ -97,6 +98,7 @@ export const router = createBrowserRouter([
           },
           { path: "recover/:tenantId", element: <ResetPasswordPage /> },
           { path: "activate/:tenantId", element: <ActivatePage /> },
+          { path: "invitation/:tenantId", element: <InvitationPage /> },
           { path: "signup/:tenantId", element: <SignupPage /> },
           {
             path: "signup-email-sent",

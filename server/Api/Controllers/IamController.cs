@@ -18,7 +18,7 @@ namespace Api.Controllers
     [ApiController]
     [Route("iam")]
 
-    public class IamController : ControllerBase
+    public class IamController : ControllerBase // NOSONAR S6960 — legacy aggregate IAM surface; split tracked separately
     {
         private readonly IAccountService _accountService;
         private readonly IUserManagementQueryService _userManagementQueryService;
@@ -303,27 +303,8 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpGet("email/available")]
-        [AllowAnonymous]
-        public async Task<IActionResult> IsEmailAvailable([FromQuery] IsEmailAvailableRequest query)
-        {
-            var result = await _userManagementQueryService.IsUserAvailableAsync(query);
-            return Ok(new IsEmailAvailableResponse
-            {
-                IsAvailable = result
-            });
-        }
-
-        [HttpGet("users/exists")]
-        [Authorize]
-        public async Task<IActionResult> IsUserExist([FromQuery] string? email)
-        {
-            if (string.IsNullOrWhiteSpace(email))
-                return BadRequest(new { error = "email is required" });
-
-            var result = await _userManagementQueryService.IsUserExistAsync(email);
-            return Ok(result);
-        }
+        // Email availability / existence endpoints live in EmailAvailabilityController
+        // (POST bodies keep addresses out of URLs — ZAP 10024 / CWE-598).
 
         #endregion
 

@@ -113,7 +113,12 @@ public sealed class OidcSigningKeyMaterial
                 Scope = claims.Scope,
                 GrantType = "authorization_code",
                 Request = _httpContextAccessor.HttpContext?.Request,
-                IdpSessionId = idpSessionId
+                IdpSessionId = idpSessionId,
+                IsLinkAuthentication = claims.IsLinkAuthentication,
+                RestrictedRoles = claims.RestrictedRoles?.ToList() ?? [],
+                RestrictedPermissions = claims.RestrictedPermissions?.ToList() ?? [],
+                Amr = claims.Amr?.ToList() ?? [],
+                Audience = claims.Audience
             };
             var visitorsIpAddresses = new List<string> { _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
             var userAgent = _httpContextAccessor.HttpContext?.Request?.Headers?["User-Agent"].ToString() ?? string.Empty;
