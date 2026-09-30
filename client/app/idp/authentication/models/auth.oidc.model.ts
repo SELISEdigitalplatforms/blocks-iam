@@ -111,9 +111,10 @@ export interface ISaveClientCredentialPayload {
 }
 
 export interface ISaveClientCredentialResponse {
-  name: string;
-  roles: [];
-  projectKey: string;
+  /** Present for both creates and updates. */
+  itemId?: string;
+  /** Present only when the credential was newly created. */
+  clientSecret?: string;
 }
 
 export interface TabValue {
