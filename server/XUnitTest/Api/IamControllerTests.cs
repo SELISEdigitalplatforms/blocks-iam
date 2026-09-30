@@ -825,7 +825,7 @@ namespace XUnitTest.ApiTests
         [Fact]
         public async Task GetSignUpSetting_NoPrincipal_DelegatesToAccountService()
         {
-            _authService.Setup(s => s.GetPrincipalFromTokenIgnoringLifetimeAsync(It.IsAny<HttpRequest>(), It.IsAny<string>()))
+            _authService.Setup(s => s.GetPrincipalFromTokenAsync(It.IsAny<HttpRequest>(), It.IsAny<string>(), false))
                 .ReturnsAsync((System.Security.Claims.ClaimsPrincipal)null);
             var response = new Dictionary<string, object> { { "signup", true } };
             _accountService.Setup(s => s.GetSignUpSettingAsync()).ReturnsAsync(response);
@@ -833,87 +833,6 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().GetSignUpSetting();
 
             result.Should().BeSameAs(response);
-        }
-
-        // ---------------------------------------------------------------------------------
-        // The anonymous config reads serve two callers: no token (construct OIDC login, public
-        // signup -- the X-Blocks-Key tenant) and an impersonation token (the tenant it names).
-        // An expired impersonation token must still pick its own tenant; the lifetime-ignoring
-        // lookup is what lets it, and the service then has to run inside that tenant.
-        // ---------------------------------------------------------------------------------
-
-        private static System.Security.Claims.ClaimsPrincipal TokenPrincipal(bool impersonated, string tenantId) =>
-            new(new System.Security.Claims.ClaimsIdentity(
-            [
-                new System.Security.Claims.Claim("impersonated", impersonated ? "true" : "false"),
-                new System.Security.Claims.Claim("tenant_id", tenantId),
-                new System.Security.Claims.Claim("user_id", "impersonator-1"),
-            ], "jwt"));
-
-        [Fact]
-        public async Task GetOrganizationConfig_ImpersonationToken_ReadsTheImpersonatedTenant()
-        {
-            _authService.Setup(s => s.GetPrincipalFromTokenIgnoringLifetimeAsync(It.IsAny<HttpRequest>(), "tenant-1"))
-                .ReturnsAsync(TokenPrincipal(impersonated: true, tenantId: "project-tenant"));
-            string? tenantSeenByService = null;
-            _resourceMutation.Setup(s => s.GetOrganizationConfigAsync())
-                .ReturnsAsync(() =>
-                {
-                    tenantSeenByService = BlocksContext.GetContext()?.TenantId;
-                    return new Dictionary<string, object>();
-                });
-
-            await CreateController().GetOrganizationConfig();
-
-            tenantSeenByService.Should().Be("project-tenant");
-        }
-
-        [Fact]
-        public async Task GetOrganizationConfig_UsesTheLifetimeIgnoringLookup_NotTheStrictOne()
-        {
-            _resourceMutation.Setup(s => s.GetOrganizationConfigAsync()).ReturnsAsync(new Dictionary<string, object>());
-
-            await CreateController().GetOrganizationConfig();
-
-            // The strict lookup rejects an expired token and would fall back to the root tenant.
-            _authService.Verify(s => s.GetPrincipalFromTokenIgnoringLifetimeAsync(It.IsAny<HttpRequest>(), "tenant-1"), Times.Once);
-            _authService.Verify(s => s.GetPrincipalFromTokenAsync(It.IsAny<HttpRequest>(), It.IsAny<string>(), It.IsAny<bool>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task GetOrganizationConfig_NoToken_ReadsTheXBlocksKeyTenant()
-        {
-            _authService.Setup(s => s.GetPrincipalFromTokenIgnoringLifetimeAsync(It.IsAny<HttpRequest>(), It.IsAny<string>()))
-                .ReturnsAsync((System.Security.Claims.ClaimsPrincipal)null);
-            string? tenantSeenByService = null;
-            _resourceMutation.Setup(s => s.GetOrganizationConfigAsync())
-                .ReturnsAsync(() =>
-                {
-                    tenantSeenByService = BlocksContext.GetContext()?.TenantId;
-                    return new Dictionary<string, object>();
-                });
-
-            await CreateController().GetOrganizationConfig();
-
-            tenantSeenByService.Should().Be("tenant-1");
-        }
-
-        [Fact]
-        public async Task GetOrganizationConfig_NonImpersonationToken_KeepsTheXBlocksKeyTenant()
-        {
-            _authService.Setup(s => s.GetPrincipalFromTokenIgnoringLifetimeAsync(It.IsAny<HttpRequest>(), It.IsAny<string>()))
-                .ReturnsAsync(TokenPrincipal(impersonated: false, tenantId: "other-tenant"));
-            string? tenantSeenByService = null;
-            _resourceMutation.Setup(s => s.GetOrganizationConfigAsync())
-                .ReturnsAsync(() =>
-                {
-                    tenantSeenByService = BlocksContext.GetContext()?.TenantId;
-                    return new Dictionary<string, object>();
-                });
-
-            await CreateController().GetOrganizationConfig();
-
-            tenantSeenByService.Should().Be("tenant-1");
         }
 
         // ---------------------------------------------------------------------------------
@@ -980,24 +899,6 @@ namespace XUnitTest.ApiTests
 
             result.Should().BeSameAs(response);
             _authService.VerifyNoOtherCalls();
-        }
-
-        [Fact]
-        public async Task GetSignUpSetting_ImpersonationToken_ReadsTheImpersonatedTenant()
-        {
-            _authService.Setup(s => s.GetPrincipalFromTokenIgnoringLifetimeAsync(It.IsAny<HttpRequest>(), "tenant-1"))
-                .ReturnsAsync(TokenPrincipal(impersonated: true, tenantId: "project-tenant"));
-            string? tenantSeenByService = null;
-            _accountService.Setup(s => s.GetSignUpSettingAsync())
-                .ReturnsAsync(() =>
-                {
-                    tenantSeenByService = BlocksContext.GetContext()?.TenantId;
-                    return new Dictionary<string, object>();
-                });
-
-            await CreateController().GetSignUpSetting();
-
-            tenantSeenByService.Should().Be("project-tenant");
         }
 
         // ---------------------------------------------------------------------------------

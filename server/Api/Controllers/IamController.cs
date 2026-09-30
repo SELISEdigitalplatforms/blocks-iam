@@ -452,10 +452,18 @@ namespace Api.Controllers
         [AllowAnonymous]
         public async Task<Dictionary<string, object>> GetOrganizationConfig()
         {
-            var impersonatedContext = await ResolveImpersonatedTenantContextAsync();
-            if (impersonatedContext != null)
+            var userPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(Request, BlocksContext.GetContext()?.TenantId ?? "", IsUserInfoGetRequest: false);
+
+            if (userPrincipal != null)
             {
-                BlocksContext.SetContext(impersonatedContext);
+                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
+
+                if(impersonated)
+                {
+                    var claimUserId = userPrincipal?.FindFirst("user_id")?.Value;
+                    var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
+                    BlocksContext.SetContext(BlocksContext.Create(claimTenantId, [], claimUserId, true, string.Empty, string.Empty, DateTime.MinValue, string.Empty, [], string.Empty, string.Empty, string.Empty, string.Empty, string.Empty));
+                }
             }
             return await _resourceMutationService.GetOrganizationConfigAsync();
         }
@@ -489,10 +497,18 @@ namespace Api.Controllers
         [AllowAnonymous]
         public async Task<Dictionary<string, object>> GetSignUpSetting()
         {
-            var impersonatedContext = await ResolveImpersonatedTenantContextAsync();
-            if (impersonatedContext != null)
+            var userPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(Request, BlocksContext.GetContext()?.TenantId ?? "", IsUserInfoGetRequest: false);
+
+            if (userPrincipal != null)
             {
-                BlocksContext.SetContext(impersonatedContext);
+                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
+
+                if(impersonated)
+                {
+                    var claimUserId = userPrincipal?.FindFirst("user_id")?.Value;
+                    var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
+                    BlocksContext.SetContext(BlocksContext.Create(claimTenantId, [], claimUserId, true, string.Empty, string.Empty, DateTime.MinValue, string.Empty, [], string.Empty, string.Empty, string.Empty, string.Empty, string.Empty));
+                }
             }
             return await _accountService.GetSignUpSettingAsync();
         }
@@ -511,39 +527,6 @@ namespace Api.Controllers
         public async Task<Dictionary<string, object>> GetAdminSignUpSetting()
         {
             return await _accountService.GetSignUpSettingAsync();
-        }
-
-        /// <summary>
-        /// For the anonymous read endpoints above: when the caller sends an impersonation token,
-        /// read the tenant it names rather than the root tenant X-Blocks-Key resolves to.
-        /// <para>
-        /// The token only picks the tenant here -- it authorizes nothing, and without one the
-        /// X-Blocks-Key tenant is used as before (construct OIDC login, public signup). So an
-        /// expired token is accepted as long as its signature holds: rejecting it would quietly
-        /// return the root tenant's settings with a 200 instead of the impersonated tenant's.
-        /// </para>
-        /// <para>
-        /// Returns the context rather than setting it: BlocksContext lives in an AsyncLocal, so a
-        /// SetContext made inside this awaited method would be discarded when it returns.
-        /// </para>
-        /// </summary>
-        private async Task<BlocksContext?> ResolveImpersonatedTenantContextAsync()
-        {
-            var userPrincipal = await _authenticationService.GetPrincipalFromTokenIgnoringLifetimeAsync(Request, BlocksContext.GetContext()?.TenantId ?? "");
-            if (userPrincipal == null)
-            {
-                return null;
-            }
-
-            bool.TryParse(userPrincipal.FindFirst("impersonated")?.Value, out bool impersonated);
-            var claimTenantId = userPrincipal.FindFirst("tenant_id")?.Value;
-            if (!impersonated || string.IsNullOrWhiteSpace(claimTenantId))
-            {
-                return null;
-            }
-
-            var claimUserId = userPrincipal.FindFirst("user_id")?.Value;
-            return BlocksContext.Create(claimTenantId, [], claimUserId, true, string.Empty, string.Empty, DateTime.MinValue, string.Empty, [], string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
         }
 
         #endregion
