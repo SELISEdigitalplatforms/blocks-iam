@@ -23,8 +23,9 @@ namespace Authentication.DomainService.Services
         Task<BaseResponse> GenerateUserCodeByClientAsync(GenerateUserCodeRequest request);
         Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId);
         Task<GetOIDCClientsResponse> GetOidcClientsAsync();
-        Task<BaseResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request);
+        Task<SaveClientCredentialResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request);
         Task<BaseResponse> DeleteClientCredentialAsync(DeleteClientCredentialRequest request);
+        Task<RotateClientCredentialSecretResponse> RotateClientCredentialSecretAsync(string itemId);
         Task<List<ClientCredential>> GetClientCredentialsAsync(GetAllClientCredentialsRequest request);
         Task<BaseResponse> CreateIdentityProviderAsync(SaveIdentityProviderRequest request);
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
