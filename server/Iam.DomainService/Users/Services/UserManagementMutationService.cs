@@ -920,7 +920,15 @@ namespace Iam.DomainService.Users
 
             var user = await _userRepository.GetUserByIdAsync(command.ItemId);
 
-            await SendActivationAsync(user, command.ClientId, command.RedirectUri);
+            // The activation mail belongs to account creation only. Update is also raised by
+            // revoke-access and the activate paths, for users who already exist (and are
+            // usually active), and mailing them a fresh activation link there reads as a
+            // re-invitation.
+            if (command.Action == MutationEventType.Create)
+            {
+                await SendActivationAsync(user, command.ClientId, command.RedirectUri);
+            }
+
             await PublishUserActivityAsync(user, command.Action);
         }
 
