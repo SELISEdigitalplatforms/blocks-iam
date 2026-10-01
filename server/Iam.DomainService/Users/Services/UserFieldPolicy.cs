@@ -23,7 +23,7 @@
         public static readonly string[] DefaultListFields =
         [
             "itemId", "firstName", "lastName", "email", "userName", "active", "isVerified",
-            "profileImageUrl", "lastLoggedInTime", "loginCount", "createdDate"
+            "profileImageUrl", "lastLoggedInTime", "loginCount", "createdDate", "accountState"
         ];
 
         /// <summary>
@@ -38,7 +38,7 @@
             "isVerified", "profileImageUrl", "mfaEnabled", "isMfaVerified", "userMfaType",
             "externalIdentities", "attributes", "logInCount", "lastLoggedInTime",
             "lastLoggedInDeviceInfo", "organizationId", "organizationIds", "lockoutUntilUtc",
-            "isLockedOut", "OrganizationsRoles", "OrganizationsPermissions"
+            "isLockedOut", "accountState", "OrganizationsRoles", "OrganizationsPermissions"
         ];
 
         /// <summary>
