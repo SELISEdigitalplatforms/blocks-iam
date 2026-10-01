@@ -378,28 +378,23 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
-        public async Task GetUsers_EachItemComputedIndependently()
+        public async Task GetUsers_CarriesNoLockoutState_WhateverTheStoredValue()
         {
             InstallContext();
-            // H4. Three states in ONE response: a mapper that computes once and reuses the answer,
-            // or that reads the first item's value, fails here and nowhere else.
-            var future = Now.AddHours(1);
-            var past = Now.AddHours(-1);
+            // The list no longer reports lockout. Three stored states - future, never, expired - so
+            // a mapper that reinstated the keys for only one of them still fails here.
             var accounts = new List<GetAccounts>
             {
-                Account("locked", future), Account("never", null), Account("expired", past)
+                Account("locked", Now.AddHours(1)), Account("never", null), Account("expired", Now.AddHours(-1))
             }.AsQueryable();
             _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((accounts, 3L));
 
             var items = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.ToList();
 
-            items[0]["lockoutUntilUtc"].Should().Be(future);
-            items[0]["isLockedOut"].Should().Be(true);
-            items[1]["lockoutUntilUtc"].Should().BeNull();
-            items[1]["isLockedOut"].Should().Be(false);
-            items[2]["lockoutUntilUtc"].Should().Be(past);
-            items[2]["isLockedOut"].Should().Be(false);
+            items.Should().HaveCount(3);
+            items.Should().OnlyContain(item =>
+                !item.ContainsKey("lockoutUntilUtc") && !item.ContainsKey("isLockedOut"));
         }
 
         [Fact]
@@ -481,22 +476,42 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
-        public async Task GetUser_MissingUser_DefaultOrg_ThrowsToday_KnownPreExistingDefect()
+        public async Task GetUser_MissingUser_DefaultOrg_ReturnsNullWithoutThrowing()
         {
-            // Pins ACTUAL behaviour, not desired. C4 says a non-existent id returns "the existing
-            // not-found error" - there is none. On the default-org path GetUserAsync builds a null
-            // `data` and then dereferences it to add OrganizationsRoles, so the caller gets a 500.
+            // Deliberately flipped from the earlier assertion that this threw. The default-org path
+            // used to build a null `data` and then dereference it to add OrganizationsRoles, so the
+            // caller got a 500; the guard added with the field configuration skips that block unless
+            // there is a populated dictionary to add to.
             //
-            // #427 deliberately does not fix this: introducing a 404 changes the endpoint's status
-            // code and controller response type, which contradicts C6 and the ticket's out-of-scope
-            // list. Asserted so a future fix has to flip this test deliberately rather than silently,
-            // and so the C4 discrepancy is visible in the suite and not only in the PR.
+            // Still not a 404: introducing one changes the endpoint's status code and controller
+            // response type, which is a separate decision.
             InstallContext();
             _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("nope")).ReturnsAsync((GetAccounts)null!);
 
-            var act = async () => await CreateAt(Now).GetUserAsync("nope", "default");
+            var result = await CreateAt(Now).GetUserAsync("nope", "default");
 
-            await act.Should().ThrowAsync<NullReferenceException>();
+            result.Data.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetUser_OutOfOrg_DefaultOrg_GainsNoOrganizationWideRolesOrPermissions()
+        {
+            // The same guard from the other side: an empty dictionary means the caller is outside
+            // the user's organizations, and must not be handed the unscoped roles and permissions
+            // dictionaries for every organization the user belongs to.
+            InstallContext();
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u12"))
+                .ReturnsAsync(new GetAccounts
+                {
+                    ItemId = "u12",
+                    Email = "u12@e.com",
+                    OrganizationIds = new List<string> { "org-1" },
+                    Roles = new Dictionary<string, List<string>> { { "org-1", new List<string> { "admin" } } }
+                });
+
+            var result = await CreateAt(Now).GetUserAsync("u12", "org-42");
+
+            result.Data.Should().BeEmpty();
         }
 
         [Fact]
@@ -548,8 +563,9 @@ namespace XUnitTest.IamTests.Users
 
             var result = await CreateAt(Now).GetAccountAsync();
 
-            // The COMPLETE key set, not merely the absence of the two new ones: this endpoint is out
-            // of scope, so any drift in its shape - a gained field or a lost one - should fail here.
+            // The COMPLETE key set, not merely the absence of the lockout pair: with no
+            // configuration stored this endpoint's shape is unchanged, so any drift - a gained
+            // field or a lost one - should fail here.
             result.Data!.Keys.Should().BeEquivalentTo(new[]
             {
                 "itemId", "createdDate", "lastUpdatedDate", "language", "salutation", "firstName",
@@ -561,18 +577,21 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
-        public async Task GetUsers_ListShape_IsExactlyTheExistingKeysPlusTwo()
+        public async Task GetUsers_ListShape_IsTheDefaultFieldSet()
         {
             InstallContext();
-            // H6 + C6 for the list. Asserts the COMPLETE dictionary with distinctive values, not
-            // just the key names: a key-set comparison alone would pass if `active` silently became
-            // the string "true".
+            // The COMPLETE dictionary with distinctive values, not just the key names: a key-set
+            // comparison alone would pass if `active` silently became the string "true". The
+            // account below sets Status, MfaEnabled and Roles to non-default values on purpose, so
+            // reinstating any of those five removed keys fails here rather than silently widening
+            // the payload again.
             var account = new GetAccounts
             {
                 ItemId = "u8", FirstName = "Ada", LastName = "Lovelace", Email = "ada@e.com",
                 UserName = "ada", Active = true, IsVerified = true, ProfileImageUrl = "http://img",
                 MfaEnabled = true, LogInCount = 7, LastLoggedInTime = Now.AddDays(-1),
-                CreatedDate = Now.AddDays(-30), LockoutUntilUtc = null,
+                CreatedDate = Now.AddDays(-30), LockoutUntilUtc = Now.AddHours(1),
+                Status = UserLifecycleStatus.Suspended,
                 Roles = new Dictionary<string, List<string>> { { "default", new List<string> { "admin" } } }
             };
             _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
@@ -580,6 +599,9 @@ namespace XUnitTest.IamTests.Users
 
             var item = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.Single();
 
+            // No configuration stored, so DefaultListFields applies. The account sets Status,
+            // MfaEnabled, Roles and LockoutUntilUtc to non-default values on purpose: the mapper
+            // builds those keys so they can be configured, and the default must still drop them.
             item.Should().BeEquivalentTo(new Dictionary<string, object?>
             {
                 ["itemId"] = "u8",
@@ -588,23 +610,130 @@ namespace XUnitTest.IamTests.Users
                 ["email"] = "ada@e.com",
                 ["userName"] = "ada",
                 ["active"] = true,
-                ["status"] = account.Status,
                 ["isVerified"] = true,
                 ["profileImageUrl"] = "http://img",
-                ["mfaEnabled"] = true,
                 ["lastLoggedInTime"] = account.LastLoggedInTime,
                 ["loginCount"] = 7,
-                ["createdDate"] = account.CreatedDate,
-                ["roles"] = account.Roles,
-                ["lockoutUntilUtc"] = null,
-                ["isLockedOut"] = false
+                ["createdDate"] = account.CreatedDate
             });
         }
 
         [Fact]
-        public async Task GetUser_DetailShape_IsExactlyTheExistingKeysPlusTwo()
+        public async Task GetUsers_ConfiguredFields_CanAddBeyondTheDefault()
         {
-            // H6 + C6 for the detail endpoint, including the default-org extras.
+            InstallContext();
+            // The other direction: a tenant that wants the role and lockout columns names them, and
+            // gets keys the default omits. Proves the default is a starting point, not a ceiling.
+            var account = new GetAccounts
+            {
+                ItemId = "u13", Email = "e@e.com", LockoutUntilUtc = Now.AddHours(1),
+                Roles = new Dictionary<string, List<string>> { { "default", new List<string> { "admin" } } }
+            };
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ReturnsAsync((new[] { account }.AsQueryable(), 1L));
+            _repo.Setup(r => r.GetIamConfigurationAsync())
+                .ReturnsAsync(new IamConfiguration { UserListFields = ["email", "roles", "isLockedOut"] });
+
+            var item = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.Single();
+
+            item.Should().BeEquivalentTo(new Dictionary<string, object?>
+            {
+                ["itemId"] = "u13",
+                ["email"] = "e@e.com",
+                ["roles"] = account.Roles,
+                ["isLockedOut"] = true
+            });
+        }
+
+        [Fact]
+        public async Task GetUsers_ConfiguredFields_NarrowTheResponse()
+        {
+            InstallContext();
+            var account = new GetAccounts
+            {
+                ItemId = "u10", FirstName = "Ada", Email = "ada@e.com", Active = true,
+                CreatedDate = Now.AddDays(-3)
+            };
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ReturnsAsync((new[] { account }.AsQueryable(), 1L));
+            _repo.Setup(r => r.GetIamConfigurationAsync())
+                .ReturnsAsync(new IamConfiguration { UserListFields = ["email", "active"] });
+
+            var item = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.Single();
+
+            // itemId always survives - it is the row key - and createdDate, a default field, is
+            // dropped because an explicit configuration replaces the default rather than adding to it.
+            item.Should().BeEquivalentTo(new Dictionary<string, object?>
+            {
+                ["itemId"] = "u10",
+                ["email"] = "ada@e.com",
+                ["active"] = true
+            });
+        }
+
+        [Fact]
+        public async Task GetUsers_ConfiguredBlankEntries_FallBackToTheDefault()
+        {
+            InstallContext();
+            // The configuration is a hand-editable Mongo document. A list of blanks is a mistake,
+            // not an instruction to return almost nothing, so it is treated as absent.
+            var account = new GetAccounts
+            {
+                ItemId = "u15", FirstName = "Ada", Email = "ada@e.com", Active = true,
+                CreatedDate = Now.AddDays(-1)
+            };
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ReturnsAsync((new[] { account }.AsQueryable(), 1L));
+            _repo.Setup(r => r.GetIamConfigurationAsync())
+                .ReturnsAsync(new IamConfiguration { UserListFields = ["", "   ", null!] });
+
+            var item = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.Single();
+
+            item.Keys.Should().BeEquivalentTo(UserFieldPolicy.DefaultListFields);
+        }
+
+        [Fact]
+        public async Task GetUsers_ConfiguredNames_AreTrimmedAndCaseInsensitive()
+        {
+            InstallContext();
+            // Same reason: a name typed with stray whitespace or the wrong casing should still work.
+            var account = new GetAccounts { ItemId = "u16", Email = "ada@e.com", Active = true };
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ReturnsAsync((new[] { account }.AsQueryable(), 1L));
+            _repo.Setup(r => r.GetIamConfigurationAsync())
+                .ReturnsAsync(new IamConfiguration { UserListFields = ["  Email  ", "ACTIVE"] });
+
+            var item = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.Single();
+
+            item.Keys.Should().BeEquivalentTo(["itemId", "email", "active"]);
+        }
+
+        [Fact]
+        public async Task GetUsers_ConfiguredUnknownField_CannotWidenTheResponse()
+        {
+            InstallContext();
+            // The mapper is the ceiling. "password" is never built, and never projected into
+            // GetAccounts either, so naming it changes nothing - configuration narrows only.
+            var account = new GetAccounts { ItemId = "u11", Email = "e@e.com", Active = true };
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ReturnsAsync((new[] { account }.AsQueryable(), 1L));
+            _repo.Setup(r => r.GetIamConfigurationAsync())
+                .ReturnsAsync(new IamConfiguration { UserListFields = ["password", "securityStamp", "active"] });
+
+            var item = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.Single();
+
+            item.Should().BeEquivalentTo(new Dictionary<string, object?>
+            {
+                ["itemId"] = "u11",
+                ["active"] = true
+            });
+        }
+
+        [Fact]
+        public async Task GetUser_DetailShape_IsUnchangedByDefault()
+        {
+            // The detail endpoint's complete shape, including the default-org extras. Nothing was
+            // asked of this endpoint, so with no configuration stored it answers exactly as before.
             InstallContext();
             var account = new GetAccounts
             {
@@ -654,6 +783,26 @@ namespace XUnitTest.IamTests.Users
                 ["OrganizationsRoles"] = account.Roles,
                 ["OrganizationsPermissions"] = account.Permissions
             });
+        }
+
+        [Fact]
+        public async Task GetUser_ConfiguredFields_NarrowTheDetailResponse()
+        {
+            InstallContext();
+            // The detail endpoint honours UserDetailFields the same way the list honours
+            // UserListFields. Queried in the user's own organization, so the cross-org guard is not
+            // what empties the response - the configuration is.
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u14")).ReturnsAsync(new GetAccounts
+            {
+                ItemId = "u14", Email = "e@e.com", PhoneNumber = "123", FirstName = "Grace",
+                OrganizationIds = new List<string> { "org-1" }
+            });
+            _repo.Setup(r => r.GetIamConfigurationAsync())
+                .ReturnsAsync(new IamConfiguration { UserDetailFields = ["firstName"] });
+
+            var data = (await CreateAt(Now).GetUserAsync("u14", "org-1")).Data;
+
+            data!.Keys.Should().BeEquivalentTo(["itemId", "firstName"]);
         }
 
         [Fact]

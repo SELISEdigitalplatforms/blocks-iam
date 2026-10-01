@@ -43,5 +43,17 @@ namespace Iam.DomainService.Dtos
         /// the same configuration document, so the flag is kept readable from this side too.
         /// </summary>
         public bool CollectPasswordOnActivation { get; set; } = true;
+
+        /// <summary>
+        /// Field names the user LIST may return, and the DETAIL endpoints may return.
+        /// <para>
+        /// Empty (the default, and what every existing document deserialises to) means "use the
+        /// built-in default", which is the non-PII subset. These lists can only NARROW what the
+        /// mappers already build -- a name that no mapper emits is ignored, so no setting here can
+        /// widen a response or reach a field the projection never loaded.
+        /// </para>
+        /// </summary>
+        public List<string> UserListFields { get; set; } = [];
+        public List<string> UserDetailFields { get; set; } = [];
     }
 }

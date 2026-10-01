@@ -104,13 +104,21 @@ namespace Iam.DomainService.Users
 
             var (data, count) = await _userRepository.GetUsersAsync<GetAccounts, GetUsersRequest>(query, scope);
 
-            // One instant for the whole response, per the data contract's "server UTC time at
-            // response construction" - so every item in a page is judged against the same moment.
-            // Lazy so an empty page never reads the clock at all: C2 says no lockout computation is
-            // attempted when nothing matches, and a test with a throwing clock proves it.
+            // Skipped when nothing matched: an empty page has no dictionary to filter, so it costs
+            // the same one query it always did.
+            var listFields = count == 0
+                ? null
+                : (await _userRepository.GetIamConfigurationAsync())?.UserListFields;
+
+            // Built once for the whole page rather than per row.
+            var keep = UserFieldPolicy.BuildKeepSet(listFields, UserFieldPolicy.DefaultListFields);
+
+            // One instant for the whole response, so every item in a page is judged against the same
+            // moment. Lazy so an empty page never reads the clock at all.
             var asOfUtc = new Lazy<DateTime>(() => _timeProvider.GetUtcNow().UtcDateTime);
 
-            var selectedUsers = data?.Select(user => MapToListAccountFields(user, asOfUtc.Value))
+            var selectedUsers = data?
+                .Select(user => UserFieldPolicy.Apply(MapToListAccountFields(user, asOfUtc.Value), keep))
             .Where(user => user.Count > 0).AsQueryable() ?? Enumerable.Empty<Dictionary<string, object>>().AsQueryable();
 
             _logger.LogInformation("User get end");
@@ -130,7 +138,14 @@ namespace Iam.DomainService.Users
             var user = await _userRepository.GetUserByIdAsync<GetAccounts>(bc?.UserId);
             var contextOrgId = string.IsNullOrWhiteSpace(bc?.OrganizationId) ? "default" : bc.OrganizationId;
 
-            var data = user == null ? null : MapToSingleAccountFields(user, contextOrgId);
+            // Config is read only when there is something to filter, so a miss costs one query
+            // rather than two.
+            var data = user == null
+                ? null
+                : UserFieldPolicy.Apply(
+                    MapToSingleAccountFields(user, contextOrgId),
+                    (await _userRepository.GetIamConfigurationAsync())?.UserDetailFields,
+                    UserFieldPolicy.DefaultDetailFields);
 
             _logger.LogInformation("User get end");
 
@@ -149,16 +164,27 @@ namespace Iam.DomainService.Users
             var user = await _userRepository.GetUserByIdAsync<GetAccounts>(userId);
             var contextOrgId = string.IsNullOrWhiteSpace(organizationId) ? (bc?.OrganizationId ?? "default") : organizationId;
 
-            // Read only when there is a user to map - a missing user must not trigger any lockout
-            // computation (C4), and a throwing clock in the tests proves it does not.
-            var data = user == null
-                ? null
-                : MapToSingleUserFields(user, contextOrgId, _timeProvider.GetUtcNow().UtcDateTime);
+            Dictionary<string, object>? data = null;
 
-            if(contextOrgId == "default")
+            // Mapped only when there is a user - a missing user must not trigger any lockout
+            // computation (C4), and a throwing clock in the tests proves it does not.
+            if (user != null)
             {
-                data.Add("OrganizationsRoles", user.Roles);
-                data.Add("OrganizationsPermissions", user.Permissions);
+                var fields = MapToSingleUserFields(user, contextOrgId, _timeProvider.GetUtcNow().UtcDateTime);
+
+                // Added BEFORE the filter so these two are configurable like every other key, and
+                // guarded on Count because a caller outside the user's organizations gets an empty
+                // dictionary from the mapper and must not gain keys here.
+                if (contextOrgId == "default" && fields.Count > 0)
+                {
+                    fields["OrganizationsRoles"] = user.Roles;
+                    fields["OrganizationsPermissions"] = user.Permissions;
+                }
+
+                data = UserFieldPolicy.Apply(
+                    fields,
+                    (await _userRepository.GetIamConfigurationAsync())?.UserDetailFields,
+                    UserFieldPolicy.DefaultDetailFields);
             }
 
             _logger.LogInformation("User get end");
@@ -169,6 +195,12 @@ namespace Iam.DomainService.Users
             };
         }
 
+        /// <summary>
+        /// Everything the list CAN return. What it actually returns is this narrowed by
+        /// <see cref="UserFieldPolicy"/> -- by default to <see cref="UserFieldPolicy.DefaultListFields"/>,
+        /// or to whatever the tenant configured. Keys are built here so they are available to
+        /// configure; a tenant that wants none of the extras pays only for building the dictionary.
+        /// </summary>
         private static Dictionary<string, object> MapToListAccountFields(GetAccounts user, DateTime asOfUtc)
         {
             return new Dictionary<string, object>
