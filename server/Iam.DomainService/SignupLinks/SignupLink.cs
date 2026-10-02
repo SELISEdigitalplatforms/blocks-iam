@@ -30,7 +30,38 @@ public class SignupLink : BaseEntity
     public string LastName { get; set; } = string.Empty;
     // Language inherited from BaseEntity
     public DateTime ExpiresAtUtc { get; set; }
+    /// <summary>
+    /// How many redemptions this link allows. <see cref="UnlimitedMaxRedemptions"/> means no
+    /// cap, in which case only <see cref="ExpiresAtUtc"/> ends it.
+    /// </summary>
     public int MaxRedemptions { get; set; } = 1;
+
+    /// <summary>
+    /// "No cap." Zero rather than null because null already means "not specified, inherit",
+    /// and every configuration written before this feature has null -- were null to mean
+    /// unlimited, all of them would silently become unlimited.
+    /// </summary>
+    public const int UnlimitedMaxRedemptions = 0;
+
+    /// <summary>Default when neither the generate payload nor the configuration says otherwise.</summary>
+    public const int DefaultMaxRedemptions = 1;
+
+    /// <summary>
+    /// Whether this link may be redeemed again. The one place the unlimited sentinel is
+    /// interpreted: a bare <c>RedemptionCount &gt;= MaxRedemptions</c> reads zero as
+    /// "exhausted on sight", which is the opposite of what it means.
+    /// </summary>
+    public static bool HasRedemptionBudget(int redemptionCount, int maxRedemptions) =>
+        maxRedemptions == UnlimitedMaxRedemptions || redemptionCount < maxRedemptions;
+
+    /// <summary>
+    /// Payload wins, then the configuration's default, then single use. Absent at both levels
+    /// has to stay single use: every caller and configuration predating this feature is in
+    /// exactly that state, and reading it as unlimited would make all of their links reusable
+    /// without anyone asking.
+    /// </summary>
+    public static int ResolveMaxRedemptions(int? fromRequest, int? fromConfiguration) =>
+        fromRequest ?? fromConfiguration ?? DefaultMaxRedemptions;
     public int RedemptionCount { get; set; }
     public SignupLinkStatus Status { get; set; } = SignupLinkStatus.Active;
     public string? CreatedUserId { get; set; }

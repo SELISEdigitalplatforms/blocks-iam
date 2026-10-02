@@ -56,7 +56,7 @@ public class UpdateSignupLinkConfigurationValidator : AbstractValidator<UpdateSi
         RuleFor(x => x.DefaultMaxRedemptions)
             .Must(SignupLinkConfigurationValidation.IsAllowedMaxRedemptions)
             .When(x => x.DefaultMaxRedemptions.HasValue)
-            .WithMessage("DefaultMaxRedemptions must be null or 1");
+            .WithMessage("DefaultMaxRedemptions must be 0 (unlimited) or a positive count");
 
         RuleFor(x => x.DefaultPermissions)
             .Must(p => p == null || p.Count <= SignupLinkConfigurationValidation.MaxPermissions)

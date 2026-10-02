@@ -19,4 +19,11 @@ public class GenerateSignupLinkRequest
     public string? RedirectUri { get; set; }
     public string? ForwardedTo { get; set; }
     public int? ExpiresInMinutes { get; set; }
+
+    /// <summary>
+    /// How many times this link may be redeemed. Omit to inherit the configuration's
+    /// <c>DefaultMaxRedemptions</c>, which itself falls back to single use. 0 means no cap --
+    /// redeemable until <see cref="ExpiresInMinutes"/> runs out.
+    /// </summary>
+    public int? MaxRedemptions { get; set; }
 }

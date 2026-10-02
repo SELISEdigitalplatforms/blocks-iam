@@ -35,12 +35,20 @@ public class SignupLinkConfigurationValidatorTests
     }
 
     [Theory]
-    [InlineData(0)]
+    [InlineData(0)]   // unlimited -- redeemable until the link expires
+    [InlineData(1)]
     [InlineData(2)]
     [InlineData(10)]
-    public async Task Create_MaxRedemptionsOtherThanNullOrOne_Fails(int value)
+    public async Task Create_MaxRedemptions_AcceptsZeroAndAnyPositiveCount(int value)
     {
         var result = await _create.ValidateAsync(Valid(r => r.DefaultMaxRedemptions = value));
+        result.Errors.Should().NotContain(e => e.PropertyName == "DefaultMaxRedemptions");
+    }
+
+    [Fact]
+    public async Task Create_NegativeMaxRedemptions_Fails()
+    {
+        var result = await _create.ValidateAsync(Valid(r => r.DefaultMaxRedemptions = -1));
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.PropertyName == "DefaultMaxRedemptions");
     }

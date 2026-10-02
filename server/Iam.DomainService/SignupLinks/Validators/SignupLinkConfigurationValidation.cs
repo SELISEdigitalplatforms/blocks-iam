@@ -30,7 +30,9 @@ internal static class SignupLinkConfigurationValidation
         return true;
     }
 
-    public static bool IsAllowedMaxRedemptions(int? value) => value is null or 1;
+    /// <summary>null = not specified, 0 = unlimited, otherwise a positive cap.</summary>
+    public static bool IsAllowedMaxRedemptions(int? value) => value is null or >= 0;
+
 
     /// <summary>
     /// A join URL is absolute https with no query and no fragment. The fragment is excluded

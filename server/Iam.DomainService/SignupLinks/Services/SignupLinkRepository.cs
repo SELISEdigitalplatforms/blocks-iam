@@ -115,11 +115,14 @@ public class SignupLinkRepository : ISignupLinkRepository
             & Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId)
             & Builders<SignupLink>.Filter.Eq(x => x.Status, SignupLinkStatus.Active)
             & Builders<SignupLink>.Filter.Gt(x => x.ExpiresAtUtc, nowUtc)
-            & Builders<SignupLink>.Filter.Where(x => x.RedemptionCount < x.MaxRedemptions);
+            // MaxRedemptions 0 means no cap. The comparison alone would read that as
+            // "already exhausted", which is the opposite of what it means.
+            & Builders<SignupLink>.Filter.Where(x =>
+                x.MaxRedemptions == SignupLink.UnlimitedMaxRedemptions
+                || x.RedemptionCount < x.MaxRedemptions);
 
         var update = Builders<SignupLink>.Update
             .Inc(x => x.RedemptionCount, 1)
-            .Set(x => x.Status, SignupLinkStatus.Redeemed)
             .Set(x => x.LastUpdatedDate, nowUtc)
             .Set(x => x.LastUpdatedBy, string.IsNullOrWhiteSpace(createdUserId) ? "signup-link" : createdUserId);
 
@@ -130,13 +133,33 @@ public class SignupLinkRepository : ISignupLinkRepository
             update = update.Set(x => x.CreatedUserId, createdUserId);
         }
 
-        return await Collection.FindOneAndUpdateAsync(
+        var redeemed = await Collection.FindOneAndUpdateAsync(
             filter,
             update,
             new FindOneAndUpdateOptions<SignupLink>
             {
                 ReturnDocument = ReturnDocument.After
             });
+
+        // Status is flipped afterwards rather than inside the guarded update, because a
+        // multi-use link has to stay Active while budget remains and Mongo cannot express
+        // that conditionally in a plain $set. It is bookkeeping, not a control: the count
+        // guard above is what prevents over-redemption, so a failure here cannot let an
+        // exhausted link through.
+        if (redeemed != null
+            && !SignupLink.HasRedemptionBudget(
+                redeemed.RedemptionCount, redeemed.MaxRedemptions))
+        {
+            await Collection.UpdateOneAsync(
+                Builders<SignupLink>.Filter.Eq(x => x.ItemId, redeemed.ItemId)
+                    & Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId)
+                    & Builders<SignupLink>.Filter.Eq(x => x.Status, SignupLinkStatus.Active),
+                Builders<SignupLink>.Update.Set(x => x.Status, SignupLinkStatus.Redeemed));
+
+            redeemed.Status = SignupLinkStatus.Redeemed;
+        }
+
+        return redeemed;
     }
 
     public async Task<(List<SignupLink> Items, long TotalCount)> QueryAsync(
