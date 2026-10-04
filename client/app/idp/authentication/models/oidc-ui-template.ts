@@ -37,8 +37,10 @@ export const DEFAULT_OIDC_UI_TEMPLATE: IOidcUiTemplate = {
   },
 };
 
+// A stored template saved before a field existed comes back with that field as null (the
+// server serializes unset string? properties), so null falls back to the default like undefined.
 const mergeDefaults = (defaults: unknown, value: unknown): unknown => {
-  if (value === undefined) return structuredClone(defaults);
+  if (value === undefined || value === null) return structuredClone(defaults);
   if (defaults !== null && value !== null && typeof defaults === "object" && typeof value === "object" && !Array.isArray(defaults) && !Array.isArray(value)) {
     return Object.fromEntries(Object.entries(defaults).map(([key, defaultValue]) => [key, mergeDefaults(defaultValue, (value as Record<string, unknown>)[key])]));
   }
