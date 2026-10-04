@@ -35,6 +35,10 @@ public class GenerateSignupLinkValidator : AbstractValidator<GenerateSignupLinkR
             .Must(SignupLinkConfigurationValidation.IsRelativeForwardedTo)
             .WithMessage("ForwardedTo must be a relative path");
 
+        RuleFor(x => x.MaxRedemptions)
+            .Must(SignupLinkConfigurationValidation.IsAllowedMaxRedemptions)
+            .WithMessage("MaxRedemptions must be 0 (unlimited) or a positive count");
+
         RuleFor(x => x.ExpiresInMinutes)
             .InclusiveBetween(
                 SignupLinkConfigurationValidation.MinLifetimeMinutes,

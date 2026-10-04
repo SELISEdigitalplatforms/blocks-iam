@@ -694,8 +694,11 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
     private static string? ClassifyExhaustion(SignupLink link)
     {
+        // Status is still consulted: a link redeemed before multi-use existed carries
+        // Redeemed with a count that already meets its cap, and both say the same thing.
         if (link.Status is SignupLinkStatus.Redeemed or SignupLinkStatus.Exhausted
-            || link.RedemptionCount >= link.MaxRedemptions)
+            || !SignupLink.HasRedemptionBudget(
+                link.RedemptionCount, link.MaxRedemptions))
         {
             return RejectionExhausted;
         }
