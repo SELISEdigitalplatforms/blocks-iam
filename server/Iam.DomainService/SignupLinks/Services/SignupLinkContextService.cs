@@ -91,7 +91,8 @@ public sealed class SignupLinkContextService : ISignupLinkContextService
             return false;
         }
 
-        if (link.RedemptionCount >= link.MaxRedemptions)
+        if (!SignupLink.HasRedemptionBudget(
+                link.RedemptionCount, link.MaxRedemptions))
         {
             return false;
         }

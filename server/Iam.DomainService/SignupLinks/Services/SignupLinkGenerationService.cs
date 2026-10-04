@@ -144,7 +144,8 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             LastName = request.LastName.Trim(),
             Language = string.IsNullOrWhiteSpace(request.Language) ? "en-US" : request.Language!,
             ExpiresAtUtc = expiresAt,
-            MaxRedemptions = 1,
+            MaxRedemptions = SignupLink.ResolveMaxRedemptions(
+                request.MaxRedemptions, config.DefaultMaxRedemptions),
             RedemptionCount = 0,
             Status = SignupLinkStatus.Active,
             CreatedUserId = null,
