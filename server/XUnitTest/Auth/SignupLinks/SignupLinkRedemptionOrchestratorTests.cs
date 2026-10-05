@@ -37,6 +37,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
     private readonly Mock<ITenants> _tenants = new();
     private readonly Mock<IMfaChallengeIssuer> _mfa = new();
     private readonly Mock<ISignupLinkEmbeddedTokenIssuer> _embeddedTokens = new();
+    private readonly Mock<IUserActivityDispatcher> _activity = new();
 
     public SignupLinkRedemptionOrchestratorTests()
     {
@@ -104,6 +105,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
             config,
             _mfa.Object,
             _embeddedTokens.Object,
+            _activity.Object,
             NullLogger<SignupLinkRedemptionCollaborators>.Instance);
         return new SignupLinkRedemptionOrchestrator(stores, collaborators);
     }
@@ -629,6 +631,168 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         result.Should().BeOfType<BadRequestObjectResult>()
             .Which.Value.Should().BeOfType<RedeemSignupLinkErrorResponse>()
             .Which.Error.Should().Be("invalid_link");
+    }
+
+    /// <summary>
+    /// An invitee who never clicked the invite email: pending, inactive, unverified, and holding
+    /// an outstanding activation key from that email.
+    /// </summary>
+    private User PendingInvitee(params string[] organizationIds)
+    {
+        var user = new User
+        {
+            ItemId = "user-invited",
+            Email = "invited@example.com",
+            Active = false,
+            IsVerified = false,
+            Status = UserLifecycleStatus.PendingVerification,
+            OrganizationIds = organizationIds.ToList(),
+            Roles = organizationIds.ToDictionary(o => o, _ => new List<string> { "member" }),
+            Permissions = organizationIds.ToDictionary(o => o, _ => new List<string>())
+        };
+        _iam.Setup(i => i.GetActiveUserKeyMapAsync(user.ItemId))
+            .ReturnsAsync([new UserKeyMap { Key = "invite-key", UserId = user.ItemId }]);
+        _iam.Setup(i => i.UpdateUserKeyMapActivationAsync(user.ItemId)).ReturnsAsync(true);
+        _cache.Setup(c => c.RemoveKeyAsync("invite-key")).ReturnsAsync(true);
+        return user;
+    }
+
+    [Fact]
+    public async Task PendingInvitee_PasswordlessLink_IsActivated_JoinsOrg_AndLandsSignedIn()
+    {
+        var link = ActivePasswordless("invited@example.com");
+        var user = PendingInvitee("org-other");
+        SetupExistingRedemption(link, user);
+
+        var http = Http();
+        var result = await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
+        var body = result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>().Subject;
+
+        // This used to be invalid_link: the link was refused because the invite was never
+        // accepted, leaving the activation email as the only way in.
+        body.AuthorizeUrl.Should().StartWith("https://iam.example.com/api/oidc/authorize?");
+        user.Active.Should().BeTrue();
+        user.IsVerified.Should().BeTrue();
+        user.Status.Should().Be(UserLifecycleStatus.Active);
+        user.EmailVerifiedAtUtc.Should().NotBeNull();
+        user.OrganizationIds.Should().Contain(["org-other", "org-acme"]);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
+            x.Outcome == SignupLinkRedemptionOutcome.OrganizationJoined)), Times.Once);
+    }
+
+    [Fact]
+    public async Task PendingInvitee_Activation_RetiresTheInviteKey_AndRecordsTheActivation()
+    {
+        var link = ActivePasswordless("invited@example.com");
+        var user = PendingInvitee("org-other");
+        SetupExistingRedemption(link, user);
+
+        await Sut().RedeemAsync("good-code", "t1", Http().Request, Http().Response);
+
+        // Otherwise the invite email would still set a password on an account that is active.
+        _cache.Verify(c => c.RemoveKeyAsync("invite-key"), Times.Once);
+        _iam.Verify(i => i.UpdateUserKeyMapActivationAsync("user-invited"), Times.Once);
+        _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e =>
+            e.UserId == "user-invited" && e.Event == "Activate_Account" && e.Source == "signup-link")), Times.Once);
+    }
+
+    [Fact]
+    public async Task PendingInvitee_AlreadyInTheLinksOrg_IsActivated_WithoutAGrant()
+    {
+        var link = ActivePasswordless("invited@example.com");
+        var user = PendingInvitee("org-acme");
+        SetupExistingRedemption(link, user);
+
+        var result = await Sut().RedeemAsync("good-code", "t1", Http().Request, Http().Response);
+
+        result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>()
+            .Which.AuthorizeUrl.Should().NotBeNullOrEmpty();
+        user.Status.Should().Be(UserLifecycleStatus.Active);
+        user.Roles["org-acme"].Should().Equal("member");
+        _users.Verify(u => u.UpdateUserAsync(user), Times.Once);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
+            x.Outcome == SignupLinkRedemptionOutcome.ExistingUserRedirected)), Times.Once);
+    }
+
+    [Fact]
+    public async Task PendingInvitee_PasswordRequiredLink_ReturnsActivationKey_AndStaysPending()
+    {
+        var link = ActivePasswordless("invited@example.com");
+        link.CredentialMode = SignupLinkCredentialMode.PasswordRequired;
+        var user = PendingInvitee("org-other");
+        SetupExistingRedemption(link, user);
+
+        var result = await Sut().RedeemAsync("good-code", "t1", Http().Request, Http().Response);
+        var body = result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>().Subject;
+
+        // The account turns active when the password is set, through the activation endpoint,
+        // which retires every key itself -- nothing is activated or retired here.
+        body.ActivationKey.Should().NotBeNullOrEmpty();
+        body.CredentialMode.Should().Be("PasswordRequired");
+        body.AuthorizeUrl.Should().BeNull();
+        user.Status.Should().Be(UserLifecycleStatus.PendingVerification);
+        user.OrganizationIds.Should().Contain("org-acme");
+        _users.Verify(u => u.InsertUserKeyMapAsync(It.Is<UserKeyMap>(k =>
+            k.UserId == "user-invited" && k.Value == "signup-link:link-1")), Times.Once);
+        _links.Verify(l => l.TryIncrementRedemptionAsync("link-1", "t1", "", It.IsAny<DateTime>()), Times.Once);
+        _iam.Verify(i => i.UpdateUserKeyMapActivationAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PendingInvitee_WithAnAuthenticatorNeverEnrolled_IsNotChallenged()
+    {
+        var link = ActivePasswordless("invited@example.com");
+        var user = PendingInvitee("org-other");
+        user.MfaEnabled = true;
+        user.UserMfaType = UserMfaType.TOTP;
+        user.IsMfaVerified = false;
+        SetupExistingRedemption(link, user);
+
+        var result = await Sut().RedeemAsync("good-code", "t1", Http().Request, Http().Response);
+
+        // A challenge against an authenticator that was never set up could only fail.
+        result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>()
+            .Which.AuthorizeUrl.Should().NotBeNullOrEmpty();
+        _mfa.Verify(m => m.GetOtpServiceAsync(It.IsAny<User>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PendingInvitee_WithEmailMfa_IsStillChallenged()
+    {
+        var link = ActivePasswordless("invited@example.com");
+        var user = PendingInvitee("org-other");
+        user.MfaEnabled = true;
+        user.UserMfaType = UserMfaType.Email;
+        SetupExistingRedemption(link, user);
+
+        var otp = new Mock<IOtpService>();
+        otp.Setup(o => o.GenerateAsync(It.IsAny<global::Mfa.DomainService.Entities.UserInfo>()))
+            .ReturnsAsync(new OtpGenerationResponse { IsSuccess = true, MfaId = "mfa-9" });
+        _mfa.Setup(m => m.GetOtpServiceAsync(user)).ReturnsAsync(otp.Object);
+
+        var http = Http();
+        var result = await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>()
+            .Which.MfaId.Should().Be("mfa-9");
+        http.Response.Headers.SetCookie.ToString().Should().NotContain("blocks-link-session");
+    }
+
+    [Fact]
+    public async Task PendingInvitee_LockedOut_IsStillRejected()
+    {
+        var link = ActivePasswordless("invited@example.com");
+        var user = PendingInvitee("org-other");
+        user.LockoutUntilUtc = DateTime.UtcNow.AddHours(1);
+        SetupExistingRedemption(link, user);
+
+        var result = await Sut().RedeemAsync("good-code", "t1", Http().Request, Http().Response);
+
+        result.Should().BeOfType<BadRequestObjectResult>()
+            .Which.Value.Should().BeOfType<RedeemSignupLinkErrorResponse>()
+            .Which.Error.Should().Be("invalid_link");
+        user.Status.Should().Be(UserLifecycleStatus.PendingVerification);
+        _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
     }
 
     [Fact]

@@ -796,13 +796,7 @@ namespace Iam.DomainService.Accounts
             {
                 await _cacheClient.RemoveKeyAsync(activateUserRequest.Code);
                 await InvalidateActivationCacheAsync(userId, activateUserRequest.Code);
-                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
-                {
-                    UserId = userId,
-                    Category = UserActivityCategory.Account,
-                    Event = AccountEvents.ActivateAccount,
-                    Source = "iam-account"
-                });
+                await _userActivityDispatcher.SendUserActivityAsync(AccountActivation.ActivatedEvent(userId, "iam-account"));
 
                 if (!activateUserRequest.PreventPostEvent)
                 {
@@ -821,11 +815,7 @@ namespace Iam.DomainService.Accounts
                 return;
             }
 
-            var keys = (await _repository.GetActiveUserKeyMapAsync(userId))?.Select(x => x.Key) ?? new List<string>();
-            var cacheTask = keys.Select(async x => await _cacheClient.RemoveKeyAsync(x));
-            await Task.WhenAll(cacheTask);
-
-            await _repository.UpdateUserKeyMapActivationAsync(userId);
+            await AccountActivation.RetireActivationKeysAsync(_repository, _cacheClient, userId);
         }
 
         /// <summary>
