@@ -840,5 +840,269 @@ namespace XUnitTest.Auth.OAuth
                 result.RefreshToken.Should().BeNull();
             }
         }
-    }
+    
+        // ------------------------------------------------------------------ 30. impersonated grants
+
+        private const string RootTenantId = "tenant-root";
+        private const string SessionId = "session-1";
+
+        /// <summary>
+        /// The grant as Genesis writes it while impersonating. Built as raw JSON rather than
+        /// through <see cref="DelegationGrantRecord"/> because this is a wire contract between two
+        /// independently released packages: the test must fail if IAM stops reading these names,
+        /// even while the referenced Genesis package still predates them.
+        /// </summary>
+        private void StoreImpersonatedGrant(
+            string sessionId = SessionId,
+            string? originalTenantId = RootTenantId,
+            string tenantId = TenantId,
+            string userId = UserId)
+        {
+            var json = JsonSerializer.Serialize(new Dictionary<string, string?>
+            {
+                ["TenantId"] = tenantId,
+                ["UserId"] = userId,
+                ["OrganizationId"] = OrganizationId,
+                ["TokenVersion"] = "3",
+                ["SecurityStamp"] = "stamp-3",
+                ["ImpersonationSessionId"] = sessionId,
+                ["OriginalTenantId"] = originalTenantId
+            });
+
+            _cache
+                .Setup(c => c.GetStringValueAsync(DelegationPolicy.GrantKey(GrantId)))
+                .ReturnsAsync(json);
+        }
+
+        private void RootTenantExists() =>
+            _tenants.Setup(t => t.GetTenantByID(RootTenantId)).Returns(new Tenant
+            {
+                TenantId = RootTenantId,
+                ItemId = "tenant-item-root",
+                TenantSalt = TenantSalt,
+                DbConnectionString = "mongodb://localhost",
+                JwtTokenParameters = new JwtTokenParameters
+                {
+                    Issuer = "https://issuer",
+                    PrivateCertificatePassword = CertPassword,
+                    IssueDate = DateTime.UtcNow
+                }
+            });
+
+        private void SessionIs(
+            string status = "active",
+            string userId = UserId,
+            string targetTenantId = TenantId,
+            string rootTenantId = RootTenantId) =>
+            _authenticationRepository
+                .Setup(r => r.GetImpersonationSessionByIdAsync(SessionId))
+                .ReturnsAsync(new ImpersonationSession
+                {
+                    Id = SessionId,
+                    UserId = userId,
+                    TargetTenantId = targetTenantId,
+                    RootTenantId = rootTenantId,
+                    ClientId = "client-1",
+                    OrganizationId = OrganizationId,
+                    Status = status
+                });
+
+        [Fact]
+        public async Task ImpersonatedGrant_ShouldMintATokenThatIsStillMarkedImpersonated()
+        {
+            StoreImpersonatedGrant();
+            RootTenantExists();
+            SessionIs();
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().BeNullOrWhiteSpace();
+            var claims = ClaimsOf(result.AccessToken!);
+
+            // The whole point: not a plain token for the user, and not nothing.
+            claims[BlocksContext.IMPERSONATED_CLAIM].Should().ContainSingle().Which.Should().Be("true");
+            claims[BlocksContext.ORIGINAL_TENANT_ID_CLAIM].Should().ContainSingle().Which.Should().Be(RootTenantId);
+            claims[BlocksContext.IMPERSONATION_SESSION_ID_CLAIM].Should().ContainSingle().Which.Should().Be(SessionId);
+
+            // The function works in the project, not in the console's own tenant.
+            claims["tenant_id"].Should().ContainSingle().Which.Should().Be(TenantId);
+            claims["user_id"].Should().ContainSingle().Which.Should().Be(UserId);
+        }
+
+        [Fact]
+        public async Task ImpersonatedGrant_ShouldResolveTheUserInTheRootTenant()
+        {
+            StoreImpersonatedGrant();
+            RootTenantExists();
+            SessionIs();
+
+            string? tenantDuringLookup = null;
+            _userRepository
+                .Setup(r => r.GetUserByIdAsync(UserId))
+                .ReturnsAsync(() =>
+                {
+                    // Repositories pick their database from the ambient context. If this is the
+                    // project tenant the console user is simply not there, which is the bug.
+                    tenantDuringLookup = BlocksContext.GetContext()?.TenantId;
+                    return DelegatedUser();
+                });
+
+            await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            tenantDuringLookup.Should().Be(RootTenantId);
+        }
+
+        [Fact]
+        public async Task ImpersonatedGrant_ShouldPutTheCallersContextBack()
+        {
+            StoreImpersonatedGrant();
+            RootTenantExists();
+            SessionIs();
+
+            await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            BlocksContext.GetContext()?.TenantId.Should().Be(TenantId);
+        }
+
+        [Fact]
+        public async Task ImpersonatedGrant_ShouldPutTheCallersContextBack_EvenWhenTheSessionIsRejected()
+        {
+            StoreImpersonatedGrant();
+            RootTenantExists();
+            SessionIs(status: "ended_by_logout");
+
+            await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            BlocksContext.GetContext()?.TenantId.Should().Be(TenantId);
+        }
+
+        [Fact]
+        public async Task ImpersonatedGrant_ShouldLeaveNoContextBehind_WhenThereWasNoneToRestore()
+        {
+            // Nothing to put back must mean nothing left behind: the next read of the ambient
+            // context on this request would otherwise resolve to the root tenant's database.
+            StoreImpersonatedGrant();
+            RootTenantExists();
+            SessionIs();
+
+            var request = Request();
+            SetTenantContext(null);
+
+            await Create().AuthenticateAsync(request, new IdentityConfiguration());
+
+            BlocksContext.GetContext().Should().BeNull();
+        }
+
+        [Fact]
+        public async Task ImpersonatedGrant_ShouldBeRefused_WhenTheSessionHasEnded()
+        {
+            StoreImpersonatedGrant();
+            RootTenantExists();
+            SessionIs(status: "ended_by_admin_stop");
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            // Stopping the impersonation must end every grant made under it.
+            result.Error.Should().Be("invalid_grant");
+            result.AccessToken.Should().BeNullOrWhiteSpace();
+        }
+
+        [Fact]
+        public async Task ImpersonatedGrant_ShouldBeRefused_WhenTheSessionIsGone()
+        {
+            StoreImpersonatedGrant();
+            RootTenantExists();
+            _authenticationRepository
+                .Setup(r => r.GetImpersonationSessionByIdAsync(SessionId))
+                .ReturnsAsync((ImpersonationSession?)null);
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("invalid_grant");
+        }
+
+        [Theory]
+        [InlineData("someone-else", TenantId, RootTenantId)]
+        [InlineData(UserId, "another-tenant", RootTenantId)]
+        [InlineData(UserId, TenantId, "another-root")]
+        public async Task ImpersonatedGrant_ShouldBeRefused_WhenTheSessionDisagreesWithTheGrant(
+            string sessionUserId, string sessionTargetTenantId, string sessionRootTenantId)
+        {
+            // The grant only points at a session; the session has to agree about all three before
+            // anything is minted, so pointing it somewhere else buys nothing.
+            StoreImpersonatedGrant();
+            RootTenantExists();
+            SessionIs(userId: sessionUserId, targetTenantId: sessionTargetTenantId, rootTenantId: sessionRootTenantId);
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("invalid_grant");
+            result.AccessToken.Should().BeNullOrWhiteSpace();
+        }
+
+        [Fact]
+        public async Task ImpersonatedGrant_ShouldBeRefused_WhenItNamesNoOriginalTenant()
+        {
+            StoreImpersonatedGrant(originalTenantId: null);
+            RootTenantExists();
+            SessionIs();
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("invalid_grant");
+        }
+
+        [Fact]
+        public async Task ImpersonatedGrant_ShouldBeRefused_WhenTheOriginalTenantIsUnknown()
+        {
+            StoreImpersonatedGrant(originalTenantId: "no-such-tenant");
+            SessionIs();
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("invalid_grant");
+        }
+
+        [Fact]
+        public async Task ImpersonatedGrant_ShouldStillCheckTheUsersCurrentState()
+        {
+            StoreImpersonatedGrant();
+            RootTenantExists();
+            SessionIs();
+            _userRepository.Setup(r => r.GetUserByIdAsync(UserId)).ReturnsAsync(DelegatedUser(active: false));
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            // A live session must not keep a deactivated user working.
+            result.Error.Should().Be("invalid_grant");
+        }
+
+        [Fact]
+        public async Task ImpersonatedGrant_ShouldStillCheckTheTokenVersion()
+        {
+            StoreImpersonatedGrant();
+            RootTenantExists();
+            SessionIs();
+            _userRepository.Setup(r => r.GetUserByIdAsync(UserId)).ReturnsAsync(DelegatedUser(tokenVersion: 9));
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("invalid_grant");
+        }
+
+        [Fact]
+        public async Task AGrantWrittenBeforeImpersonationWasCarried_ShouldRedeemExactlyAsBefore()
+        {
+            // Every grant already in Redis when this ships has neither field.
+            StoreGrant(Record());
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().BeNullOrWhiteSpace();
+            var claims = ClaimsOf(result.AccessToken!);
+            claims.Should().NotContainKey(BlocksContext.IMPERSONATED_CLAIM);
+            claims["tenant_id"].Should().ContainSingle().Which.Should().Be(TenantId);
+        }
+
+}
 }

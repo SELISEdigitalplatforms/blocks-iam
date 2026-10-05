@@ -50,6 +50,13 @@ public sealed class SignupLinkRedemptionCollaborators
     public IConfiguration Configuration { get; }
     public IMfaChallengeIssuer Mfa { get; }
     public ISignupLinkEmbeddedTokenIssuer EmbeddedTokens { get; }
+
+    /// <summary>
+    /// Records the activation when a link activates a pending account, as the activation
+    /// email does.
+    /// </summary>
+    public IUserActivityDispatcher UserActivity { get; }
+
     public ILogger<SignupLinkRedemptionCollaborators> Logger { get; }
 
     public SignupLinkRedemptionCollaborators(
@@ -61,6 +68,7 @@ public sealed class SignupLinkRedemptionCollaborators
         IConfiguration configuration,
         IMfaChallengeIssuer mfa,
         ISignupLinkEmbeddedTokenIssuer embeddedTokens,
+        IUserActivityDispatcher userActivity,
         ILogger<SignupLinkRedemptionCollaborators> logger)
     {
         Oidc = oidc;
@@ -71,6 +79,7 @@ public sealed class SignupLinkRedemptionCollaborators
         Configuration = configuration;
         Mfa = mfa;
         EmbeddedTokens = embeddedTokens;
+        UserActivity = userActivity;
         Logger = logger;
     }
 }

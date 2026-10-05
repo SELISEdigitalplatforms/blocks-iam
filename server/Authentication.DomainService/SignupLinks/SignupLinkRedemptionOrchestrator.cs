@@ -7,6 +7,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
+using Iam.DomainService.Accounts;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Iam.DomainService.SignupLinks;
@@ -48,6 +49,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private readonly IConfiguration _configuration;
     private readonly IMfaChallengeIssuer _mfaChallengeIssuer;
     private readonly ISignupLinkEmbeddedTokenIssuer _embeddedTokens;
+    private readonly IUserActivityDispatcher _userActivity;
     private readonly ILogger<SignupLinkRedemptionCollaborators> _logger;
 
     public SignupLinkRedemptionOrchestrator(
@@ -67,6 +69,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         _configuration = collaborators.Configuration;
         _mfaChallengeIssuer = collaborators.Mfa;
         _embeddedTokens = collaborators.EmbeddedTokens;
+        _userActivity = collaborators.UserActivity;
         _logger = collaborators.Logger;
     }
 
@@ -78,6 +81,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     {
         if (string.IsNullOrWhiteSpace(code))
         {
+            _logger.LogWarning("Signup link redeem rejected: the request carried no code");
             return InvalidLink();
         }
 
@@ -85,6 +89,13 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var link = await _links.GetByCodeHashAsync(hash);
         if (link == null)
         {
+            // A miss has no link to hang a SignupLinkRedemptions record on, so this line is its
+            // only trace. The hash rather than the code, so the log cannot be replayed; it is
+            // the value SignupLinks.CodeHash holds.
+            _logger.LogWarning(
+                "Signup link redeem rejected: no link matches code hash {CodeHash} (tenant hint {TenantIdHint}). The code is wrong, or the link was generated in another tenant",
+                hash,
+                tenantIdHint);
             return InvalidLink();
         }
 
@@ -103,23 +114,31 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         {
             if (IsUnusableAccount(existing, allowPendingVerification: true))
             {
-                await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1, userId: existing.ItemId);
+                await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1, userId: existing.ItemId,
+                    detail: $"the account this link created is unusable: {DescribeUnusableAccount(existing)}");
                 return InvalidLink();
             }
 
             return await HandleLinkUserReturnedAsync(link, existing, request, response);
         }
 
-        if (IsUnusableAccount(existing, allowPendingVerification: false))
+        // A pending account -- invited, or left by another link, and never activated -- is
+        // usable here: redeeming the link proves what the activation email would have, so
+        // HandlePreExistingAsync activates it. Locked, suspended and deactivated stay refused.
+        if (IsUnusableAccount(existing, allowPendingVerification: true))
         {
-            await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1, userId: existing?.ItemId);
+            await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1, userId: existing!.ItemId,
+                detail: $"an account already exists for the invited email and is unusable: {DescribeUnusableAccount(existing)}");
             return InvalidLink();
         }
 
         var rejection = ClassifyExhaustion(link);
         if (rejection != null)
         {
-            await RecordRejectionAsync(link, rejection, request, ordinal: link.RedemptionCount + 1);
+            await RecordRejectionAsync(link, rejection, request, ordinal: link.RedemptionCount + 1,
+                detail: rejection == RejectionExhausted
+                    ? $"the link has no redemptions left (status {link.Status}, redeemed {link.RedemptionCount} of {DescribeMaxRedemptions(link)})"
+                    : $"the link status is {link.Status}, not Active");
             return InvalidLink();
         }
 
@@ -145,26 +164,30 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         if (!string.IsNullOrWhiteSpace(tenantIdHint)
             && !string.Equals(link.TenantId, tenantIdHint, StringComparison.OrdinalIgnoreCase))
         {
-            await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1);
+            await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1,
+                detail: $"the link belongs to tenant {link.TenantId} but the request named tenant {tenantIdHint}");
             return InvalidLink();
         }
 
         if (link.Status == SignupLinkStatus.Revoked)
         {
-            await RecordRejectionAsync(link, "revoked", request, ordinal: link.RedemptionCount + 1);
+            await RecordRejectionAsync(link, "revoked", request, ordinal: link.RedemptionCount + 1,
+                detail: "the link has been revoked");
             return InvalidLink();
         }
 
         if (link.ExpiresAtUtc <= DateTime.UtcNow || link.Status == SignupLinkStatus.Expired)
         {
-            await RecordRejectionAsync(link, "expired", request, ordinal: link.RedemptionCount + 1);
+            await RecordRejectionAsync(link, "expired", request, ordinal: link.RedemptionCount + 1,
+                detail: $"the link expired at {link.ExpiresAtUtc:O} (status {link.Status})");
             return InvalidLink();
         }
 
-        var (clientOk, clientRejection) = await ValidateClientAsync(link);
+        var (clientOk, clientRejection, clientDetail) = await ValidateClientAsync(link);
         if (!clientOk)
         {
-            await RecordRejectionAsync(link, clientRejection!, request, ordinal: link.RedemptionCount + 1);
+            await RecordRejectionAsync(link, clientRejection!, request, ordinal: link.RedemptionCount + 1,
+                detail: clientDetail);
             return InvalidLink();
         }
 
@@ -197,6 +220,11 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var user = await _userRepository.GetUserByIdAsync(ctx.UserId);
         if (user == null || IsUnusableAccount(user, allowPendingVerification: false))
         {
+            _logger.LogWarning(
+                "Signup link MFA redeem rejected for link {LinkId}: user {UserId} {Problem}",
+                ctx.LinkId,
+                ctx.UserId,
+                user == null ? "no longer exists" : $"is unusable: {DescribeUnusableAccount(user)}");
             return InvalidLink();
         }
 
@@ -223,6 +251,10 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var link = await _links.GetByIdAsync(ctx.LinkId, ctx.TenantId);
         if (link == null)
         {
+            _logger.LogWarning(
+                "Signup link MFA redeem rejected: link {LinkId} no longer exists in tenant {TenantId}",
+                ctx.LinkId,
+                ctx.TenantId);
             return InvalidLink();
         }
 
@@ -328,20 +360,30 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     }
 
 
-    private async Task<(bool Ok, string? Rejection)> ValidateClientAsync(SignupLink link)
+    private async Task<(bool Ok, string? Rejection, string? Detail)> ValidateClientAsync(SignupLink link)
     {
         // An embedded link has no client registration by construction, and never redirects,
         // so there is nothing here to check (SPEC26 C8).
         if (link.Mode == SignupLinkMode.Embedded)
         {
-            return (true, null);
+            return (true, null, null);
         }
 
         var clientOk = await _oidcLookup.GetByClientIdAsync(link.ClientId);
-        if (clientOk == null || !clientOk.IsActive
-            || !clientOk.RedirectUris.Any(u => string.Equals(u, link.RedirectUri, StringComparison.Ordinal)))
+        if (clientOk == null)
         {
-            return (false, "client_invalid");
+            return (false, "client_invalid", $"OIDC client {link.ClientId} is not registered");
+        }
+
+        if (!clientOk.IsActive)
+        {
+            return (false, "client_invalid", $"OIDC client {link.ClientId} is inactive");
+        }
+
+        if (!clientOk.RedirectUris.Any(u => string.Equals(u, link.RedirectUri, StringComparison.Ordinal)))
+        {
+            return (false, "client_invalid",
+                $"redirect URI {link.RedirectUri} is not registered on OIDC client {link.ClientId} (registered: {string.Join(", ", clientOk.RedirectUris)}); the match is exact and case-sensitive");
         }
 
         // The redemption ends at /idp/callback, which resolves the provider mirroring this
@@ -350,12 +392,19 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         // a created account and a burned code before failing with invalid_provider. Reject it
         // here instead, while nothing has been written.
         var provider = await _authentication.GetIdentityProviderByClientIdAsync(link.ClientId);
-        if (provider == null || !provider.IsActive)
+        if (provider == null)
         {
-            return (false, "provider_not_registered");
+            return (false, "provider_not_registered",
+                $"OIDC client {link.ClientId} has no identity provider; it was saved without RegisterAsIdentityProvider");
         }
 
-        return (true, null);
+        if (!provider.IsActive)
+        {
+            return (false, "provider_not_registered",
+                $"identity provider {provider.Provider} for OIDC client {link.ClientId} is inactive");
+        }
+
+        return (true, null, null);
     }
 
     private async Task<IActionResult> HandleLinkUserReturnedAsync(
@@ -405,15 +454,40 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var orgId = link.OrganizationId ?? string.Empty;
         var alreadyMember = OrganizationAccessResolver.HasOrganizationAccess(user, orgId);
 
+        // Pending: invited, or left by another link, and never activated. The link stands in
+        // for the activation email. A password-required link still has the invitee set one,
+        // through the same activation key a link-created account gets.
+        var pending = user.Status == UserLifecycleStatus.PendingVerification;
+        if (pending && link.CredentialMode == SignupLinkCredentialMode.PasswordRequired)
+        {
+            return await HandlePendingPasswordRequiredAsync(link, user, alreadyMember, request);
+        }
+
+        if (pending)
+        {
+            ActivateByLink(user);
+        }
+
         if (alreadyMember)
         {
+            if (pending)
+            {
+                await _userRepository.UpdateUserAsync(user);
+            }
+
             var updated = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, createdUserId: string.Empty, DateTime.UtcNow);
             var ordinal = updated?.RedemptionCount ?? link.RedemptionCount + 1;
             await RecordSuccessAsync(link, user.ItemId, SignupLinkRedemptionOutcome.ExistingUserRedirected, request, ordinal, grant: false);
-            return await CompleteForExistingUserAsync(link, user, request, response);
+            if (pending)
+            {
+                await AfterActivationByLinkAsync(link, user);
+            }
+
+            return await CompleteForExistingUserAsync(link, user, request, response, activatedByLink: pending);
         }
 
-        // OrganizationJoined — grant in link org only; leave other orgs untouched.
+        // OrganizationJoined — grant in link org only; leave other orgs untouched. A pending
+        // account's activation rides on the same write.
         GrantOrganization(user, orgId, link.Roles, link.Permissions);
         user.LastUpdatedDate = DateTime.UtcNow;
         user.LastUpdatedBy = user.ItemId;
@@ -422,7 +496,8 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var consumed = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, createdUserId: string.Empty, DateTime.UtcNow);
         if (consumed == null)
         {
-            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1, userId: user.ItemId);
+            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1, userId: user.ItemId,
+                detail: "a concurrent request took the last redemption while the existing user was being joined to the organization");
             return InvalidLink();
         }
 
@@ -434,7 +509,97 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             consumed.RedemptionCount,
             grant: true);
 
-        return await CompleteForExistingUserAsync(link, user, request, response);
+        if (pending)
+        {
+            await AfterActivationByLinkAsync(link, user);
+        }
+
+        return await CompleteForExistingUserAsync(link, user, request, response, activatedByLink: pending);
+    }
+
+    /// <summary>
+    /// A pending account on a password-required link: grant the organization and consume the
+    /// link now, then hand back an activation key so the invitee sets a password. The account
+    /// becomes active when that key is spent, through the ordinary activation endpoint, which
+    /// also retires the invite's own key.
+    /// </summary>
+    private async Task<IActionResult> HandlePendingPasswordRequiredAsync(
+        SignupLink link,
+        User user,
+        bool alreadyMember,
+        HttpRequest request)
+    {
+        if (!alreadyMember)
+        {
+            GrantOrganization(user, link.OrganizationId ?? string.Empty, link.Roles, link.Permissions);
+            user.LastUpdatedDate = DateTime.UtcNow;
+            user.LastUpdatedBy = user.ItemId;
+            await _userRepository.UpdateUserAsync(user);
+        }
+
+        // CreatedUserId is left unstamped: this link did not create the account, and stamping
+        // it would let the account back in through the link-returned branch after the link is
+        // spent.
+        var consumed = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, createdUserId: string.Empty, DateTime.UtcNow);
+        if (consumed == null)
+        {
+            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1, userId: user.ItemId,
+                detail: "a concurrent request took the last redemption while the pending account was being prepared for activation");
+            return InvalidLink();
+        }
+
+        var (key, expires) = await MintActivationKeyAsync(link, user);
+        await RecordSuccessAsync(
+            link,
+            user.ItemId,
+            alreadyMember ? SignupLinkRedemptionOutcome.ExistingUserRedirected : SignupLinkRedemptionOutcome.OrganizationJoined,
+            request,
+            consumed.RedemptionCount,
+            grant: !alreadyMember);
+
+        return new OkObjectResult(new RedeemSignupLinkResponse
+        {
+            ActivationKey = key,
+            ActivationKeyExpiresAtUtc = expires,
+            CredentialMode = nameof(SignupLinkCredentialMode.PasswordRequired)
+        });
+    }
+
+    /// <summary>
+    /// Leaves a pending account in the state the activation email would, short of a password:
+    /// a passwordless link sets none, exactly as for an account it creates.
+    /// </summary>
+    private static void ActivateByLink(User user)
+    {
+        var now = DateTime.UtcNow;
+        user.Active = true;
+        user.IsVerified = true;
+        user.Status = UserLifecycleStatus.Active;
+        user.StatusReason = "email_verified";
+        user.EmailVerifiedAtUtc ??= now;
+        user.FailedLoginCount = 0;
+        user.LastFailedLoginUtc = null;
+        user.LockoutUntilUtc = null;
+        user.LastUpdatedDate = now;
+        user.LastUpdatedBy = user.ItemId;
+    }
+
+    /// <summary>
+    /// What the activation email does once the account is active: retire its outstanding
+    /// keys, so the invite email stops working, and record the activation. Neither is worth
+    /// failing a sign-in the account is already committed to, so a failure is logged instead.
+    /// </summary>
+    private async Task AfterActivationByLinkAsync(SignupLink link, User user)
+    {
+        try
+        {
+            await AccountActivation.RetireActivationKeysAsync(_iamRepository, _cacheClient, user.ItemId);
+            await _userActivity.SendUserActivityAsync(AccountActivation.ActivatedEvent(user.ItemId, "signup-link"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Signup link {LinkId} activated user {UserId} but could not retire its activation keys or record the activation", link.ItemId, user.ItemId);
+        }
     }
 
     /// <summary>
@@ -446,14 +611,21 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     /// factor. The grant and the link's consumption happen before this either way -- they are
     /// not a session, and an abandoned challenge should not leave the invitation half applied.
     /// </para>
+    /// <para>
+    /// The one exception is an account this redemption just activated whose factor is an
+    /// authenticator app it never enrolled: there is no second factor to check yet, and the
+    /// challenge could only fail. Ordinary login refuses such an account outright.
+    /// </para>
     /// </summary>
     private async Task<IActionResult> CompleteForExistingUserAsync(
         SignupLink link,
         User user,
         HttpRequest request,
-        HttpResponse response)
+        HttpResponse response,
+        bool activatedByLink = false)
     {
-        if (user.MfaEnabled)
+        var unenrolledAuthenticator = user.UserMfaType == UserMfaType.TOTP && !user.IsMfaVerified;
+        if (user.MfaEnabled && !(activatedByLink && unenrolledAuthenticator))
         {
             return await StartMfaChallengeAsync(link, user);
         }
@@ -476,13 +648,15 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var updated = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, userId, now);
         if (updated == null)
         {
-            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1);
+            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1, userId: userId,
+                detail: "a concurrent request took the last redemption after the user was created");
             return InvalidLink();
         }
 
         var user = await _userRepository.GetUserByIdAsync(userId);
         if (user == null)
         {
+            _logger.LogError("Signup link redeem could not read back PendingVerification user {UserId} for link {LinkId}", userId, link.ItemId);
             return InvalidLink();
         }
 
@@ -513,7 +687,8 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var updated = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, userId, now);
         if (updated == null)
         {
-            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1);
+            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1, userId: userId,
+                detail: "a concurrent request took the last redemption after the user was created");
             return InvalidLink();
         }
 
@@ -528,6 +703,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var completionUser = await _userRepository.GetUserByIdAsync(userId);
         if (completionUser == null)
         {
+            _logger.LogError("Signup link redeem could not read back user {UserId} for link {LinkId}", userId, link.ItemId);
             return InvalidLink();
         }
 
@@ -752,6 +928,37 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         return false;
     }
 
+    /// <summary>
+    /// Why <see cref="IsUnusableAccount"/> refused an account, checked in the same order.
+    /// </summary>
+    private static string DescribeUnusableAccount(User user)
+    {
+        if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+        {
+            return $"locked out until {user.LockoutUntilUtc.Value:O}";
+        }
+
+        if (user.Status is UserLifecycleStatus.Suspended)
+        {
+            return "suspended";
+        }
+
+        if (user.DeactivatedAtUtc.HasValue)
+        {
+            return $"deactivated at {user.DeactivatedAtUtc.Value:O}";
+        }
+
+        if (user.Status == UserLifecycleStatus.PendingVerification)
+        {
+            return "pending verification";
+        }
+
+        return $"inactive (status {user.Status})";
+    }
+
+    private static string DescribeMaxRedemptions(SignupLink link) =>
+        link.MaxRedemptions == SignupLink.UnlimitedMaxRedemptions ? "unlimited" : link.MaxRedemptions.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
     private async Task<string> CreateSignupLinkUserAsync(SignupLink link, bool passwordRequired)
     {
         var previous = BlocksContext.GetContext();
@@ -940,8 +1147,20 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         string reason,
         HttpRequest request,
         int ordinal,
-        string? userId = null)
+        string? userId = null,
+        string? detail = null)
     {
+        // Every rejection answers the caller with the same invalid-link body on purpose, so
+        // this line and the SignupLinkRedemptions record are the only places the reason shows.
+        _logger.LogWarning(
+            "Signup link redeem rejected ({Reason}) for link {LinkId} in tenant {TenantId}, invitee {MaskedEmail}, user {UserId}: {Detail}",
+            reason,
+            link.ItemId,
+            link.TenantId,
+            SignupLinkCodeHasher.MaskEmail(link.Email),
+            userId,
+            detail ?? reason);
+
         try
         {
             var now = DateTime.UtcNow;
