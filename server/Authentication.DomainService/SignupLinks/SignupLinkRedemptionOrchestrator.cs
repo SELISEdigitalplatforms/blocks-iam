@@ -457,7 +457,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         // Pending: invited, or left by another link, and never activated. The link stands in
         // for the activation email. A password-required link still has the invitee set one,
         // through the same activation key a link-created account gets.
-        var pending = user.Status == UserLifecycleStatus.PendingVerification;
+        var pending = IsNeverActivated(user);
         if (pending && link.CredentialMode == SignupLinkCredentialMode.PasswordRequired)
         {
             return await HandlePendingPasswordRequiredAsync(link, user, alreadyMember, request);
@@ -577,6 +577,9 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         user.Status = UserLifecycleStatus.Active;
         user.StatusReason = "email_verified";
         user.EmailVerifiedAtUtc ??= now;
+        // Self-activation: the invitee is the actor, as LastUpdatedBy below records.
+        user.ActivatedAtUtc = now;
+        user.ActivatedBy = user.ItemId;
         user.FailedLoginCount = 0;
         user.LastFailedLoginUtc = null;
         user.LockoutUntilUtc = null;
@@ -909,7 +912,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return true;
         }
 
-        if (allowPendingVerification && user.Status == UserLifecycleStatus.PendingVerification)
+        if (allowPendingVerification && IsNeverActivated(user))
         {
             return false;
         }
@@ -927,6 +930,16 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         return false;
     }
+
+    /// <summary>
+    /// Created and never activated. Status alone does not say so: an invite whose
+    /// VerifiedType is not None -- Email is the default -- is stored with Status Active and
+    /// Active false, and so are documents written before Status existed. This is the rule
+    /// the user list applies, so an account it shows as pending is one a link will activate.
+    /// An inactive account that was ever verified reads as deactivated and stays refused.
+    /// </summary>
+    private static bool IsNeverActivated(User user) =>
+        UserAccountStates.Resolve(user.Active, user.Status, user.IsVerified) == UserAccountState.PendingVerification;
 
     /// <summary>
     /// Why <see cref="IsUnusableAccount"/> refused an account, checked in the same order.

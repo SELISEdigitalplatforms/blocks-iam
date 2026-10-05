@@ -795,6 +795,78 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
     }
 
+    /// <summary>
+    /// What an ordinary invite actually stores: VerifiedType defaults to Email, which writes
+    /// Status Active beside Active false. The user list shows it as pending all the same.
+    /// </summary>
+    private User EmailVerifiedTypeInvitee(params string[] organizationIds)
+    {
+        var user = PendingInvitee(organizationIds);
+        user.Status = UserLifecycleStatus.Active;
+        user.VerifiedType = UserVerifiedType.Email;
+        user.EmailVerifiedAtUtc = DateTime.UtcNow;
+        return user;
+    }
+
+    [Fact]
+    public async Task InviteeStoredWithStatusActive_PasswordlessLink_IsActivated_JoinsOrg_AndLandsSignedIn()
+    {
+        var link = ActivePasswordless("invited@example.com");
+        var user = EmailVerifiedTypeInvitee("org-other");
+        SetupExistingRedemption(link, user);
+
+        var result = await Sut().RedeemAsync("good-code", "t1", Http().Request, Http().Response);
+
+        // Pending only by Status was the first fix; this shape still answered invalid_link.
+        result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>()
+            .Which.AuthorizeUrl.Should().StartWith("https://iam.example.com/api/oidc/authorize?");
+        user.Active.Should().BeTrue();
+        user.IsVerified.Should().BeTrue();
+        user.Status.Should().Be(UserLifecycleStatus.Active);
+        user.ActivatedAtUtc.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
+        user.ActivatedBy.Should().Be("user-invited");
+        user.OrganizationIds.Should().Contain(["org-other", "org-acme"]);
+        _cache.Verify(c => c.RemoveKeyAsync("invite-key"), Times.Once);
+    }
+
+    [Fact]
+    public async Task InviteeStoredWithStatusActive_PasswordRequiredLink_ReturnsActivationKey_AndStaysInactive()
+    {
+        var link = ActivePasswordless("invited@example.com");
+        link.CredentialMode = SignupLinkCredentialMode.PasswordRequired;
+        var user = EmailVerifiedTypeInvitee("org-other");
+        SetupExistingRedemption(link, user);
+
+        var result = await Sut().RedeemAsync("good-code", "t1", Http().Request, Http().Response);
+        var body = result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>().Subject;
+
+        body.ActivationKey.Should().NotBeNullOrEmpty();
+        body.AuthorizeUrl.Should().BeNull();
+        user.Active.Should().BeFalse();
+        // Stamped by the activation endpoint when the password is set, not here.
+        user.ActivatedAtUtc.Should().BeNull();
+        user.OrganizationIds.Should().Contain("org-acme");
+    }
+
+    [Fact]
+    public async Task InactiveAccountThatWasVerified_IsStillRejected()
+    {
+        // Inactive after verification reads as deactivated, not pending: a link must not
+        // reopen it.
+        var link = ActivePasswordless("invited@example.com");
+        var user = EmailVerifiedTypeInvitee("org-other");
+        user.IsVerified = true;
+        SetupExistingRedemption(link, user);
+
+        var result = await Sut().RedeemAsync("good-code", "t1", Http().Request, Http().Response);
+
+        result.Should().BeOfType<BadRequestObjectResult>()
+            .Which.Value.Should().BeOfType<RedeemSignupLinkErrorResponse>()
+            .Which.Error.Should().Be("invalid_link");
+        user.Active.Should().BeFalse();
+        _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+    }
+
     [Fact]
     public async Task H4_MfaEnrolled_ReturnsChallenge_NoCookie()
     {
