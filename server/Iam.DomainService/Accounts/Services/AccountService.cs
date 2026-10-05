@@ -773,6 +773,9 @@ namespace Iam.DomainService.Accounts
             user.IsVerified = true;
             user.Status = UserLifecycleStatus.Active;
             user.StatusReason = "email_verified";
+            // The user spends their own key, so they are the actor.
+            user.ActivatedAtUtc = DateTime.UtcNow;
+            user.ActivatedBy = user.ItemId;
 
             // An invited user has no name until they set one here. Only fill an empty name so a
             // user who already had one (e.g. normal signup) is never overwritten on activation.
