@@ -65,6 +65,64 @@ public class SecurityHeadersMiddlewareTests
         nonces[0].Should().Be(nonces[1]).And.Be(Nonces.For(seed));
     }
 
+    [Theory]
+    [InlineData("/oidc/login")]
+    [InlineData("/oidc/error")]
+    [InlineData("/oidc/invitation")]
+    public async Task InvokeAsync_DoesNotLetHostedOidcPagesBeCached(string path)
+    {
+        var (context, start) = NewContext(path);
+        var middleware = new SecurityHeadersMiddleware(ctx =>
+        {
+            ctx.Response.ContentType = "text/html; charset=utf-8";
+            return Task.CompletedTask;
+        }, Policy, Nonces);
+
+        await middleware.InvokeAsync(context);
+        await start();
+
+        context.Response.Headers.CacheControl.ToString().Should().Be("no-store, no-cache, must-revalidate, max-age=0");
+        context.Response.Headers.Pragma.ToString().Should().Be("no-cache");
+    }
+
+    [Theory]
+    [InlineData("/oidc/authorize", "GET", null)]
+    [InlineData("/oidc/login", "POST", "text/html; charset=utf-8")]
+    [InlineData("/api/oidc/token", "GET", "application/json")]
+    [InlineData("/api/oidc/login", "GET", "text/html; charset=utf-8")]
+    public async Task InvokeAsync_LeavesCookieIssuingOidcResponsesAlone(string path, string method, string? contentType)
+    {
+        var (context, start) = NewContext(path);
+        context.Request.Method = method;
+        var middleware = new SecurityHeadersMiddleware(ctx =>
+        {
+            ctx.Response.ContentType = contentType;
+            return Task.CompletedTask;
+        }, Policy, Nonces);
+
+        await middleware.InvokeAsync(context);
+        await start();
+
+        context.Response.Headers.ContainsKey("Cache-Control").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_KeepsCacheControlAnOidcPageAlreadySet()
+    {
+        var (context, start) = NewContext("/oidc/login");
+        var middleware = new SecurityHeadersMiddleware(ctx =>
+        {
+            ctx.Response.ContentType = "text/html";
+            ctx.Response.Headers.CacheControl = "private";
+            return Task.CompletedTask;
+        }, Policy, Nonces);
+
+        await middleware.InvokeAsync(context);
+        await start();
+
+        context.Response.Headers.CacheControl.ToString().Should().Be("private");
+    }
+
     private static (HttpContext Context, Func<Task> Start) NewContext(string path)
     {
         var response = new StartableResponseFeature();

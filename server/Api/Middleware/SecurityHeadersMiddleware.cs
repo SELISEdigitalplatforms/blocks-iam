@@ -66,6 +66,14 @@ public sealed class SecurityHeadersMiddleware
         {
             ApplyCacheControl(headers, path);
         }
+        else if (IsOidcPage(context) && !headers.ContainsKey("Cache-Control"))
+        {
+            // The hosted login, error and invitation pages are HTML and must not be cached either.
+            // Only GET pages under /oidc: the token, authorize and callback responses that issue
+            // cookies keep their own headers.
+            headers["Cache-Control"] = NoStore;
+            headers["Pragma"] = "no-cache";
+        }
 
         if ((path.StartsWith("/api/oidc/authorize", StringComparison.OrdinalIgnoreCase)
              || path.StartsWith("/oidc/authorize", StringComparison.OrdinalIgnoreCase))
@@ -75,6 +83,13 @@ public sealed class SecurityHeadersMiddleware
             headers["Content-Type"] = "text/html; charset=utf-8";
         }
     }
+
+    private const string NoStore = "no-store, no-cache, must-revalidate, max-age=0";
+
+    private static bool IsOidcPage(HttpContext context) =>
+        (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+        && context.Request.Path.StartsWithSegments("/oidc", StringComparison.OrdinalIgnoreCase)
+        && (context.Response.ContentType?.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) ?? false);
 
     private static bool IsOidcOrTokenPath(string path) =>
         path.StartsWith("/api/oidc", StringComparison.OrdinalIgnoreCase)
@@ -94,7 +109,7 @@ public sealed class SecurityHeadersMiddleware
             || path.EndsWith("theme-init.js", StringComparison.OrdinalIgnoreCase)
             || !Path.HasExtension(path))
         {
-            headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+            headers["Cache-Control"] = NoStore;
             headers["Pragma"] = "no-cache";
         }
         else if (path.StartsWith("/assets/", StringComparison.OrdinalIgnoreCase))
