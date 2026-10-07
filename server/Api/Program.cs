@@ -117,6 +117,8 @@ static async Task WriteSpaShell(HttpContext context, string indexHtmlTemplate)
 
     var nonce = (string)context.Items[SecurityHeadersMiddleware.StyleNonceItemKey]!;
     context.Response.ContentType = "text/html; charset=utf-8";
+    // The shell is a page, never a cookie-issuing auth response, so it is not cached on any path.
+    SecurityHeadersMiddleware.DisableCaching(context.Response.Headers);
     await context.Response.WriteAsync(ContentSecurityPolicy.RenderIndex(indexHtmlTemplate, nonce));
 }
 

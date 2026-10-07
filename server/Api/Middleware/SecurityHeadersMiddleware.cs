@@ -62,17 +62,16 @@ public sealed class SecurityHeadersMiddleware
             headers["Content-Security-Policy"] = ContentSecurityPolicy.WithStyleNonce(_contentSecurityPolicy, styleNonce);
         }
 
-        if (!isOidcOrTokenPath && !headers.ContainsKey("Cache-Control"))
+        if (!isOidcOrTokenPath && !headers.ContainsKey(CacheControlHeader))
         {
             ApplyCacheControl(headers, path);
         }
-        else if (IsOidcPage(context) && !headers.ContainsKey("Cache-Control"))
+        else if (IsOidcPage(context) && !headers.ContainsKey(CacheControlHeader))
         {
             // The hosted login, error and invitation pages are HTML and must not be cached either.
             // Only GET pages under /oidc: the token, authorize and callback responses that issue
             // cookies keep their own headers.
-            headers["Cache-Control"] = NoStore;
-            headers["Pragma"] = "no-cache";
+            DisableCaching(headers);
         }
 
         if ((path.StartsWith("/api/oidc/authorize", StringComparison.OrdinalIgnoreCase)
@@ -84,7 +83,20 @@ public sealed class SecurityHeadersMiddleware
         }
     }
 
+    private const string CacheControlHeader = "Cache-Control";
     private const string NoStore = "no-store, no-cache, must-revalidate, max-age=0";
+
+    /// <summary>
+    /// Marks a response as not cacheable. The SPA shell calls this itself so it is never cached,
+    /// whatever path the fallback answered (including /api/oidc, /api/idp and /login, where
+    /// <see cref="Apply"/> leaves Cache-Control to the auth handlers).
+    /// </summary>
+    public static void DisableCaching(IHeaderDictionary headers)
+    {
+        ArgumentNullException.ThrowIfNull(headers);
+        headers[CacheControlHeader] = NoStore;
+        headers["Pragma"] = "no-cache";
+    }
 
     private static bool IsOidcPage(HttpContext context) =>
         (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
@@ -109,12 +121,11 @@ public sealed class SecurityHeadersMiddleware
             || path.EndsWith("theme-init.js", StringComparison.OrdinalIgnoreCase)
             || !Path.HasExtension(path))
         {
-            headers["Cache-Control"] = NoStore;
-            headers["Pragma"] = "no-cache";
+            DisableCaching(headers);
         }
         else if (path.StartsWith("/assets/", StringComparison.OrdinalIgnoreCase))
         {
-            headers["Cache-Control"] = "public, max-age=31536000, immutable";
+            headers[CacheControlHeader] = "public, max-age=31536000, immutable";
         }
     }
 }

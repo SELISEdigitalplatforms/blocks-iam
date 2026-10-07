@@ -123,6 +123,37 @@ public class SecurityHeadersMiddlewareTests
         context.Response.Headers.CacheControl.ToString().Should().Be("private");
     }
 
+    [Theory]
+    [InlineData("/api/oidc")]
+    [InlineData("/api/idp")]
+    [InlineData("/login")]
+    [InlineData("/api/auth/token")]
+    public async Task InvokeAsync_KeepsTheSpaShellUncachedOnAuthPaths(string path)
+    {
+        var (context, start) = NewContext(path);
+        var middleware = new SecurityHeadersMiddleware(ctx =>
+        {
+            // What the SPA fallback does when it answers an auth-prefixed path.
+            ctx.Response.ContentType = "text/html; charset=utf-8";
+            SecurityHeadersMiddleware.DisableCaching(ctx.Response.Headers);
+            return Task.CompletedTask;
+        }, Policy, Nonces);
+
+        await middleware.InvokeAsync(context);
+        await start();
+
+        context.Response.Headers.CacheControl.ToString().Should().Be("no-store, no-cache, must-revalidate, max-age=0");
+        context.Response.Headers.Pragma.ToString().Should().Be("no-cache");
+    }
+
+    [Fact]
+    public void DisableCaching_RejectsNullHeaders()
+    {
+        var act = () => SecurityHeadersMiddleware.DisableCaching(null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
     private static (HttpContext Context, Func<Task> Start) NewContext(string path)
     {
         var response = new StartableResponseFeature();

@@ -505,6 +505,13 @@
         <member name="F:Api.Middleware.SecurityHeadersMiddleware.StyleNonceItemKey">
             <summary><see cref="P:Microsoft.AspNetCore.Http.HttpContext.Items"/> key for the response's style nonce.</summary>
         </member>
+        <member name="M:Api.Middleware.SecurityHeadersMiddleware.DisableCaching(Microsoft.AspNetCore.Http.IHeaderDictionary)">
+            <summary>
+            Marks a response as not cacheable. The SPA shell calls this itself so it is never cached,
+            whatever path the fallback answered (including /api/oidc, /api/idp and /login, where
+            <see cref="M:Api.Middleware.SecurityHeadersMiddleware.Apply(Microsoft.AspNetCore.Http.HttpContext,System.String)"/> leaves Cache-Control to the auth handlers).
+            </summary>
+        </member>
         <member name="T:Api.Security.ContentSecurityPolicy">
             <summary>
             Builds the SPA's Content-Security-Policy from configuration.
