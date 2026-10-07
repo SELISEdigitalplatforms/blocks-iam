@@ -3,12 +3,15 @@ import { test, expect } from "../../support/test-base";
 import { ensureAuthenticated } from "../../support/login-helper";
 import { iamApi, resolveTenantId } from "../../support/iam-api";
 import { e2eCredentials } from "../../support/env";
+import { resetE2eFailedLogins } from "../../support/e2e-account";
 
 /**
  * #593 — existing active users confirm their password before a signup link signs them in.
  * Runs against the PR preview. The full flow uses the E2E user itself as the invitee:
  * it already exists and has a password, so redeem must stop at the password step.
  * One wrong attempt is followed by the correct one, which resets the failure counter.
+ * If the correct attempt does not get through (timeout, 5xx), the test clears the counter
+ * itself: two failures put the shared account behind a CAPTCHA for every suite.
  */
 
 const PERM_RESOURCE = "blocks-iam::iam::manage-signup-links";
@@ -22,7 +25,10 @@ type Generate = { linkId: string; url: string; emailAlreadyExists: boolean };
 type Perm = { itemId: string; resource: string };
 
 async function ensureManageSignupLinksPermission(page: Page) {
-  const listed = await iamApi<{ data: Perm[] }>(page, "POST", "/api/iam/permissions", { page: 0, pageSize: 300 });
+  const listed = await iamApi<{ data: Perm[] }>(page, "POST", "/api/iam/permissions", {
+    page: 0,
+    pageSize: 300,
+  });
   expect(listed.status).toBe(200);
   const perm = (listed.json.data || []).find((p) => p.resource === PERM_RESOURCE);
   expect(perm, "manage-signup-links permission must exist on the preview tenant").toBeTruthy();
@@ -45,7 +51,11 @@ async function anonContext(tenant: string): Promise<APIRequestContext> {
 async function generateFor(page: Page, tenant: string, cfgId: string, email: string) {
   const body = { configurationId: cfgId, email, firstName: "E2E", lastName: "Existing" };
   let gen = await iamApi<Generate & { errors?: Record<string, string> }>(
-    page, "POST", "/api/iam/signup-links", { ...body, organizationId: "default" }, tenant,
+    page,
+    "POST",
+    "/api/iam/signup-links",
+    { ...body, organizationId: "default" },
+    tenant,
   );
   if (gen.status !== 200 && gen.json.errors?.OrganizationId) {
     gen = await iamApi(page, "POST", "/api/iam/signup-links", body, tenant);
@@ -53,26 +63,43 @@ async function generateFor(page: Page, tenant: string, cfgId: string, email: str
   expect(gen.status, JSON.stringify(gen.json)).toBe(200);
   const code = new URLSearchParams(new URL(gen.json.url).hash.slice(1)).get("link");
   expect(code).toBeTruthy();
-  return { linkId: gen.json.linkId, url: gen.json.url, code: code!, emailAlreadyExists: gen.json.emailAlreadyExists };
+  return {
+    linkId: gen.json.linkId,
+    url: gen.json.url,
+    code: code!,
+    emailAlreadyExists: gen.json.emailAlreadyExists,
+  };
 }
 
 async function createConfig(page: Page, tenant: string, label: string): Promise<string> {
-  const created = await iamApi<Mutation>(page, "POST", "/api/iam/signup-links/configurations", {
-    name: `E2E 593 ${label} ${Date.now()}`,
-    defaultRoles: ["clouduser"],
-    defaultPermissions: [],
-    clientId: IAM_CLIENT_ID,
-    redirectUri: IAM_REDIRECT,
-    defaultForwardedTo: "/app/profile",
-    credentialMode: "Passwordless",
-    defaultLifetimeMinutes: 30,
-  }, tenant);
+  const created = await iamApi<Mutation>(
+    page,
+    "POST",
+    "/api/iam/signup-links/configurations",
+    {
+      name: `E2E 593 ${label} ${Date.now()}`,
+      defaultRoles: ["clouduser"],
+      defaultPermissions: [],
+      clientId: IAM_CLIENT_ID,
+      redirectUri: IAM_REDIRECT,
+      defaultForwardedTo: "/app/profile",
+      credentialMode: "Passwordless",
+      defaultLifetimeMinutes: 30,
+    },
+    tenant,
+  );
   expect(created.status, JSON.stringify(created.json)).toBe(200);
   return created.json.itemId!;
 }
 
 async function cleanupConfig(page: Page, tenant: string, cfgId: string) {
-  await iamApi(page, "POST", "/api/iam/signup-links/revoke-by-configuration", { configurationId: cfgId }, tenant);
+  await iamApi(
+    page,
+    "POST",
+    "/api/iam/signup-links/revoke-by-configuration",
+    { configurationId: cfgId },
+    tenant,
+  );
   await iamApi(page, "POST", `/api/iam/signup-links/configurations/${cfgId}/archive`, {}, tenant);
 }
 
@@ -102,7 +129,9 @@ test.describe("Signup link existing-user password step (#593)", () => {
     }
   });
 
-  test("config default, PATCH, and the full password step for an existing user", async ({ page }) => {
+  test("config default, PATCH, and the full password step for an existing user", async ({
+    page,
+  }) => {
     test.setTimeout(240_000);
     await ensureAuthenticated(page);
     await ensureManageSignupLinksPermission(page);
@@ -110,32 +139,60 @@ test.describe("Signup link existing-user password step (#593)", () => {
     const { email, password } = e2eCredentials();
 
     // H1: new configurations require the password step by default.
-    const created = await iamApi<Mutation>(page, "POST", "/api/iam/signup-links/configurations", {
-      name: `E2E 593 ${Date.now()}`,
-      defaultRoles: ["clouduser"],
-      defaultPermissions: [],
-      clientId: IAM_CLIENT_ID,
-      redirectUri: IAM_REDIRECT,
-      defaultForwardedTo: "/app/profile",
-      credentialMode: "Passwordless",
-      defaultLifetimeMinutes: 30,
-    }, tenant);
+    const created = await iamApi<Mutation>(
+      page,
+      "POST",
+      "/api/iam/signup-links/configurations",
+      {
+        name: `E2E 593 ${Date.now()}`,
+        defaultRoles: ["clouduser"],
+        defaultPermissions: [],
+        clientId: IAM_CLIENT_ID,
+        redirectUri: IAM_REDIRECT,
+        defaultForwardedTo: "/app/profile",
+        credentialMode: "Passwordless",
+        defaultLifetimeMinutes: 30,
+      },
+      tenant,
+    );
     expect(created.status, JSON.stringify(created.json)).toBe(200);
     const cfgId = created.json.itemId!;
 
     try {
-      const read = await iamApi<Config>(page, "GET", `/api/iam/signup-links/configurations/${cfgId}`, undefined, tenant);
+      const read = await iamApi<Config>(
+        page,
+        "GET",
+        `/api/iam/signup-links/configurations/${cfgId}`,
+        undefined,
+        tenant,
+      );
       expect(read.status).toBe(200);
       expect(read.json.requireExistingUserPassword).toBe(true);
 
       // H4: PATCH turns it off and back on.
-      const off = await iamApi<Mutation>(page, "PATCH", `/api/iam/signup-links/configurations/${cfgId}`,
-        { requireExistingUserPassword: false }, tenant);
+      const off = await iamApi<Mutation>(
+        page,
+        "PATCH",
+        `/api/iam/signup-links/configurations/${cfgId}`,
+        { requireExistingUserPassword: false },
+        tenant,
+      );
       expect(off.status, JSON.stringify(off.json)).toBe(200);
-      const readOff = await iamApi<Config>(page, "GET", `/api/iam/signup-links/configurations/${cfgId}`, undefined, tenant);
+      const readOff = await iamApi<Config>(
+        page,
+        "GET",
+        `/api/iam/signup-links/configurations/${cfgId}`,
+        undefined,
+        tenant,
+      );
       expect(readOff.json.requireExistingUserPassword).toBe(false);
-      const on = await iamApi<Mutation>(page, "PATCH", `/api/iam/signup-links/configurations/${cfgId}`,
-        { requireExistingUserPassword: true }, tenant);
+      const on = await iamApi<Mutation>(
+        page,
+        "PATCH",
+        `/api/iam/signup-links/configurations/${cfgId}`,
+        { requireExistingUserPassword: true },
+        tenant,
+      );
       expect(on.status, JSON.stringify(on.json)).toBe(200);
 
       // H6: the invitee already has an account, so redeem stops at the password step.
@@ -143,8 +200,12 @@ test.describe("Signup link existing-user password step (#593)", () => {
       expect(link.emailAlreadyExists).toBe(true);
 
       const anon = await anonContext(tenant);
+      let wrongPasswordSent = false;
+      let correctPasswordAccepted = false;
       try {
-        const redeem = await anon.post("/api/iam/signup-links/redeem", { data: { code: link.code } });
+        const redeem = await anon.post("/api/iam/signup-links/redeem", {
+          data: { code: link.code },
+        });
         expect(redeem.status()).toBe(200);
         const step = await redeem.json();
         expect(step.error).toBe("authentication_required");
@@ -154,6 +215,7 @@ test.describe("Signup link existing-user password step (#593)", () => {
         expect(step.loginUrl ?? null).toBeNull();
 
         // H8: a wrong password is refused and the step stays open.
+        wrongPasswordSent = true;
         const wrong = await anon.post("/api/iam/signup-links/redeem/authenticate", {
           data: { redemptionId: step.redemptionId, password: `${password}-wrong` },
         });
@@ -166,6 +228,7 @@ test.describe("Signup link existing-user password step (#593)", () => {
         });
         const okBody = await ok.json();
         expect(ok.status(), JSON.stringify({ error: okBody.error })).toBe(200);
+        correctPasswordAccepted = true;
         expect(okBody.error ?? null).toBeNull();
         expect(Boolean(okBody.authorizeUrl || okBody.loginUrl || okBody.mfaId)).toBe(true);
 
@@ -177,14 +240,32 @@ test.describe("Signup link existing-user password step (#593)", () => {
         expect((await replay.json()).error).toBe("invalid_redemption");
       } finally {
         await anon.dispose();
+        if (wrongPasswordSent && !correctPasswordAccepted) {
+          await resetE2eFailedLogins(page);
+        }
       }
     } finally {
-      await iamApi(page, "POST", "/api/iam/signup-links/revoke-by-configuration", { configurationId: cfgId }, tenant);
-      await iamApi(page, "POST", `/api/iam/signup-links/configurations/${cfgId}/archive`, {}, tenant);
+      await iamApi(
+        page,
+        "POST",
+        "/api/iam/signup-links/revoke-by-configuration",
+        { configurationId: cfgId },
+        tenant,
+      );
+      await iamApi(
+        page,
+        "POST",
+        `/api/iam/signup-links/configurations/${cfgId}/archive`,
+        {},
+        tenant,
+      );
     }
   });
 
-  test("hosted page: Confirm it's you, wrong password stays inline, correct password continues", async ({ page, browser }) => {
+  test("hosted page: Confirm it's you, wrong password stays inline, correct password continues", async ({
+    page,
+    browser,
+  }) => {
     test.setTimeout(240_000);
     await ensureAuthenticated(page);
     await ensureManageSignupLinksPermission(page);
@@ -194,6 +275,8 @@ test.describe("Signup link existing-user password step (#593)", () => {
 
     // The invitee opens the link in a fresh browser with no session.
     const invitee = await browser.newContext({ ignoreHTTPSErrors: true, storageState: undefined });
+    let wrongPasswordSent = false;
+    let correctPasswordAccepted = false;
     try {
       const link = await generateFor(page, tenant, cfgId, email);
       expect(link.emailAlreadyExists).toBe(true);
@@ -210,6 +293,7 @@ test.describe("Signup link existing-user password step (#593)", () => {
       // C15: a wrong password shows the inline error, clears and refocuses the field,
       // and does not send the invitee to /login.
       await field.fill(`${password}-wrong`);
+      wrongPasswordSent = true;
       await tab.getByRole("button", { name: "Continue" }).click();
       await expect(tab.locator("#invitation-password-error")).toBeVisible({ timeout: 30_000 });
       await expect(field).toHaveValue("");
@@ -221,9 +305,13 @@ test.describe("Signup link existing-user password step (#593)", () => {
       await field.fill(password);
       await tab.getByRole("button", { name: "Continue" }).click();
       await expect(masked).toBeHidden({ timeout: 60_000 });
+      correctPasswordAccepted = true;
       await expect(tab.locator("#invitation-password-error")).toHaveCount(0);
     } finally {
       await invitee.close();
+      if (wrongPasswordSent && !correctPasswordAccepted) {
+        await resetE2eFailedLogins(page);
+      }
       await cleanupConfig(page, tenant, cfgId);
     }
   });
