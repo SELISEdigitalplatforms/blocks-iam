@@ -21,6 +21,7 @@ using Microsoft.Extensions.Logging;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
+using StackExchange.Redis;
 
 namespace Authentication.DomainService.SignupLinks;
 
@@ -35,6 +36,14 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private const string MfaCachePrefix = "signup_link_mfa:";
     private const string RejectionNotFound = "not_found";
     private const string RejectionExhausted = "exhausted";
+    private const string RejectionPasswordNotSet = "password_not_set";
+    private const string RejectionInvalidPassword = "invalid_password";
+    private const string RejectionAccountLocked = "account_locked";
+    private const string RejectionCaptchaInvalid = "captcha_invalid";
+    private const string RejectionAttemptsExceeded = "redemption_attempts_exceeded";
+    private const string AuthenticationRequiredError = "authentication_required";
+    private const string BranchPreExisting = "PreExisting";
+    private const string BranchLinkUserReturned = "LinkUserReturned";
 
     private readonly ISignupLinkRepository _links;
     private readonly ISignupLinkRedemptionRepository _redemptions;
@@ -50,6 +59,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private readonly IMfaChallengeIssuer _mfaChallengeIssuer;
     private readonly ISignupLinkEmbeddedTokenIssuer _embeddedTokens;
     private readonly IUserActivityDispatcher _userActivity;
+    private readonly IPasswordCredentialVerifier? _passwordVerifier;
     private readonly ILogger<SignupLinkRedemptionCollaborators> _logger;
 
     public SignupLinkRedemptionOrchestrator(
@@ -70,6 +80,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         _mfaChallengeIssuer = collaborators.Mfa;
         _embeddedTokens = collaborators.EmbeddedTokens;
         _userActivity = collaborators.UserActivity;
+        _passwordVerifier = collaborators.PasswordVerifier;
         _logger = collaborators.Logger;
     }
 
@@ -144,6 +155,11 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         if (existing != null)
         {
+            if (link.RequireExistingUserPassword && !IsNeverActivated(existing))
+            {
+                return await RequirePasswordForPreExistingAsync(link, existing, request);
+            }
+
             return await HandlePreExistingAsync(link, existing, request, response);
         }
 
@@ -154,6 +170,410 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         return await HandlePasswordlessNewAsync(link, request, response);
     }
+
+
+    /// <summary>
+    /// Pre-existing branch with a password-requiring link: an active account confirms its own
+    /// password before anything is granted or consumed. An account with no password cannot,
+    /// so it is told so -- the link already names the account, and the invitee needs to know
+    /// to sign in normally first (spec A4).
+    /// </summary>
+    private async Task<IActionResult> RequirePasswordForPreExistingAsync(
+        SignupLink link,
+        User user,
+        HttpRequest request)
+    {
+        if (string.IsNullOrEmpty(user.Password))
+        {
+            await RecordRejectionAsync(link, RejectionPasswordNotSet, request, ordinal: link.RedemptionCount + 1, userId: user.ItemId,
+                detail: "the link requires the existing user's password and the account has none");
+            return new BadRequestObjectResult(new { error = RejectionPasswordNotSet });
+        }
+
+        return await StartPasswordStepAsync(link, user, BranchPreExisting, request);
+    }
+
+    /// <summary>
+    /// Answers redeem with a password step instead of a session. Nothing is granted, consumed
+    /// or issued; the server keeps what it needs under a single-use id for five minutes.
+    /// </summary>
+    private async Task<IActionResult> StartPasswordStepAsync(
+        SignupLink link,
+        User user,
+        string branch,
+        HttpRequest request)
+    {
+        var redemptionId = Base64Url(RandomNumberGenerator.GetBytes(32));
+        var ctx = new SignupLinkAuthContext
+        {
+            LinkId = link.ItemId,
+            TenantId = link.TenantId,
+            UserId = user.ItemId,
+            Branch = branch,
+            Attempts = 0,
+            ExpiresAtUtc = DateTime.UtcNow.AddSeconds(IdpConstants.OidcStateCacheTtlSeconds)
+        };
+
+        await _cacheClient.AddStringValueAsync(
+            IdpConstants.SignupLinkAuthCachePrefix + redemptionId,
+            JsonSerializer.Serialize(ctx),
+            IdpConstants.OidcStateCacheTtlSeconds);
+
+        await RecordSuccessAsync(link, user.ItemId, SignupLinkRedemptionOutcome.AuthenticationRequired, request, link.RedemptionCount, grant: false);
+        _logger.LogInformation(
+            "Signup link {LinkId} asked existing user {UserId} ({MaskedEmail}) to confirm their password ({Branch})",
+            link.ItemId,
+            user.ItemId,
+            SignupLinkCodeHasher.MaskEmail(link.Email),
+            branch);
+
+        return new OkObjectResult(new RedeemSignupLinkResponse
+        {
+            Error = AuthenticationRequiredError,
+            RedemptionId = redemptionId,
+            MaskedEmail = SignupLinkCodeHasher.MaskEmail(link.Email),
+            Mode = link.Mode.ToString()
+        });
+    }
+
+    public async Task<IActionResult> AuthenticateAsync(
+        string? redemptionId,
+        string? password,
+        string? captchaCode,
+        string? tenantIdHint,
+        HttpRequest request,
+        HttpResponse response)
+    {
+        if (string.IsNullOrWhiteSpace(redemptionId) || string.IsNullOrEmpty(password))
+        {
+            return new BadRequestObjectResult(new { error = "invalid_request", error_description = "redemptionId and password are required" });
+        }
+
+        var key = IdpConstants.SignupLinkAuthCachePrefix + redemptionId;
+        var ctx = await LoadAuthContextAsync(key);
+        if (ctx == null
+            || string.IsNullOrWhiteSpace(tenantIdHint)
+            || !string.Equals(ctx.TenantId, tenantIdHint, StringComparison.OrdinalIgnoreCase))
+        {
+            // The id is never logged: it is the credential for this step.
+            _logger.LogWarning("Signup link authenticate rejected: the redemption is unknown, expired, already used, or for another tenant (tenant hint {TenantIdHint})", tenantIdHint);
+            return InvalidRedemption();
+        }
+
+        var (link, user, refusal) = await ReloadForPasswordStepAsync(ctx, request);
+        if (refusal != null)
+        {
+            await _cacheClient.RemoveKeyAsync(key);
+            return refusal;
+        }
+
+        if (_passwordVerifier == null)
+        {
+            _logger.LogError("Signup link authenticate cannot run: no password verifier is registered");
+            return new ObjectResult(new { error = "server_error" }) { StatusCode = StatusCodes.Status500InternalServerError };
+        }
+
+        var verification = await _passwordVerifier.VerifyAsync(user!, password, captchaCode, request, ctx.TenantId);
+        if (!verification.Succeeded)
+        {
+            return await RefusePasswordAsync(link!, user!, ctx, key, verification, request);
+        }
+
+        // Exactly one caller gets past this point for a given id, however many raced here
+        // with the right password (C7).
+        if (!await TryClaimAsync(IdpConstants.SignupLinkAuthClaimCachePrefix + redemptionId))
+        {
+            return InvalidRedemption();
+        }
+
+        await _cacheClient.RemoveKeyAsync(key);
+
+        if (user!.MfaEnabled)
+        {
+            return await StartMfaChallengeAsync(link!, user, pendingGrant: true, branch: ctx.Branch);
+        }
+
+        var finalizeRefusal = await FinalizeExistingUserAsync(link!, user, ctx.Branch, request);
+        if (finalizeRefusal != null)
+        {
+            return finalizeRefusal;
+        }
+
+        return await CompleteRedemptionAsync(link!, user, request, response, ["link", "pwd"]);
+    }
+
+    private async Task<SignupLinkAuthContext?> LoadAuthContextAsync(string key)
+    {
+        var raw = await _cacheClient.GetStringValueAsync(key);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        try
+        {
+            var ctx = JsonSerializer.Deserialize<SignupLinkAuthContext>(raw);
+            if (ctx == null
+                || string.IsNullOrWhiteSpace(ctx.LinkId)
+                || string.IsNullOrWhiteSpace(ctx.UserId)
+                || ctx.ExpiresAtUtc <= DateTime.UtcNow)
+            {
+                return null;
+            }
+
+            return ctx;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Re-reads the link and the account the password step was issued for, so a link revoked,
+    /// expired or spent in the meantime, or an account suspended or deactivated, stops here.
+    /// A lockout is left to the verifier, which answers it with 423 as login does.
+    /// </summary>
+    private async Task<(SignupLink? Link, User? User, IActionResult? Refusal)> ReloadForPasswordStepAsync(
+        SignupLinkAuthContext ctx,
+        HttpRequest request)
+    {
+        var link = await _links.GetByIdAsync(ctx.LinkId, ctx.TenantId);
+        if (link == null)
+        {
+            _logger.LogWarning("Signup link authenticate rejected: link {LinkId} no longer exists in tenant {TenantId}", ctx.LinkId, ctx.TenantId);
+            return (null, null, InvalidLink());
+        }
+
+        var gate = await RejectIfLinkNotRedeemableAsync(link, ctx.TenantId, request);
+        if (gate != null)
+        {
+            return (link, null, gate);
+        }
+
+        var refusal = await RejectIfExhaustedForBranchAsync(link, ctx.Branch, request, ctx.UserId);
+        if (refusal != null)
+        {
+            return (link, null, refusal);
+        }
+
+        var user = await _userRepository.GetUserByIdAsync(ctx.UserId);
+        if (user == null
+            || !string.Equals(user.Email, link.Email, StringComparison.OrdinalIgnoreCase)
+            || IsUnusableAccount(user, allowPendingVerification: false, ignoreLockout: true))
+        {
+            await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1, userId: ctx.UserId,
+                detail: user == null
+                    ? "the account the password step was issued for no longer exists"
+                    : "the account the password step was issued for no longer matches the link or is unusable");
+            return (link, null, InvalidLink());
+        }
+
+        return (link, user, null);
+    }
+
+    /// <summary>
+    /// Only the pre-existing branch consumes the link, so only it can run out. The
+    /// link-returned branch re-enters a link it already spent, as it does today.
+    /// </summary>
+    private async Task<IActionResult?> RejectIfExhaustedForBranchAsync(
+        SignupLink link,
+        string? branch,
+        HttpRequest request,
+        string userId)
+    {
+        if (string.Equals(branch, BranchLinkUserReturned, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var rejection = ClassifyExhaustion(link);
+        if (rejection == null)
+        {
+            return null;
+        }
+
+        await RecordRejectionAsync(link, rejection, request, ordinal: link.RedemptionCount + 1, userId: userId,
+            detail: $"the link ran out before the password step finished (status {link.Status}, redeemed {link.RedemptionCount} of {DescribeMaxRedemptions(link)})");
+        return InvalidLink();
+    }
+
+    private async Task<IActionResult> RefusePasswordAsync(
+        SignupLink link,
+        User user,
+        SignupLinkAuthContext ctx,
+        string key,
+        PasswordVerificationResult verification,
+        HttpRequest request)
+    {
+        var ordinal = link.RedemptionCount + 1;
+
+        if (verification.StatusCode == StatusCodes.Status423Locked || verification.AccountLockedNow)
+        {
+            await RecordRejectionAsync(link, RejectionAccountLocked, request, ordinal, user.ItemId, "the account is locked");
+            return new ObjectResult(new
+            {
+                error = OAuth.OAuthError.AccountLocked,
+                error_description = PasswordCredentialVerifier.LockedDescription
+            })
+            { StatusCode = StatusCodes.Status423Locked };
+        }
+
+        if (verification.CaptchaRequired)
+        {
+            if (string.Equals(verification.Error, OAuth.OAuthError.CaptchaInvalid, StringComparison.Ordinal))
+            {
+                await RecordRejectionAsync(link, RejectionCaptchaInvalid, request, ordinal, user.ItemId, "the CAPTCHA answer was invalid");
+            }
+
+            return new BadRequestObjectResult(new
+            {
+                error = verification.Error,
+                error_description = verification.ErrorDescription,
+                captcha_required = true,
+                captcha_site_key = verification.CaptchaSiteKey
+            });
+        }
+
+        if (!string.Equals(verification.Error, OAuth.OAuthError.InValidUseNamePassword, StringComparison.Ordinal))
+        {
+            return new ObjectResult(new { error = verification.Error, error_description = verification.ErrorDescription })
+            {
+                StatusCode = verification.StatusCode
+            };
+        }
+
+        ctx.Attempts++;
+        if (ctx.Attempts >= IdpConstants.SignupLinkAuthMaxAttempts)
+        {
+            await _cacheClient.RemoveKeyAsync(key);
+            await RecordRejectionAsync(link, RejectionAttemptsExceeded, request, ordinal, user.ItemId,
+                $"{ctx.Attempts} wrong passwords on one password step; the step was discarded");
+        }
+        else
+        {
+            var remaining = (long)Math.Ceiling((ctx.ExpiresAtUtc - DateTime.UtcNow).TotalSeconds);
+            if (remaining > 0)
+            {
+                await _cacheClient.AddStringValueAsync(key, JsonSerializer.Serialize(ctx), remaining);
+            }
+
+            await RecordRejectionAsync(link, RejectionInvalidPassword, request, ordinal, user.ItemId, "the password was not correct");
+        }
+
+        // 400 rather than login's 401: the hosted page's HTTP client treats any 401 as an
+        // expired session and navigates to /login, which would drop the invitee (spec A6).
+        return new BadRequestObjectResult(new
+        {
+            error = OAuth.OAuthError.InValidUseNamePassword,
+            error_description = verification.ErrorDescription
+        });
+    }
+
+    /// <summary>
+    /// What the pre-existing branch used to do before the session, run only once the password
+    /// (and any OTP) has been confirmed. The link is consumed before the grant, so a link that
+    /// ran out grants nothing.
+    /// </summary>
+    private async Task<IActionResult?> FinalizeExistingUserAsync(
+        SignupLink link,
+        User user,
+        string? branch,
+        HttpRequest request)
+    {
+        if (string.Equals(branch, BranchLinkUserReturned, StringComparison.Ordinal))
+        {
+            await RecordSuccessAsync(link, user.ItemId, SignupLinkRedemptionOutcome.LinkUserReturned, request, link.RedemptionCount, grant: false);
+            return null;
+        }
+
+        var orgId = link.OrganizationId ?? string.Empty;
+        var alreadyMember = OrganizationAccessResolver.HasOrganizationAccess(user, orgId);
+
+        var consumed = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, createdUserId: string.Empty, DateTime.UtcNow);
+        if (consumed == null)
+        {
+            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1, userId: user.ItemId,
+                detail: "a concurrent request took the last redemption while the existing user was confirming their password");
+            return InvalidLink();
+        }
+
+        if (!alreadyMember)
+        {
+            GrantOrganization(user, orgId, link.Roles, link.Permissions);
+            user.LastUpdatedDate = DateTime.UtcNow;
+            user.LastUpdatedBy = user.ItemId;
+            await _userRepository.UpdateUserAsync(user);
+        }
+
+        await RecordSuccessAsync(
+            link,
+            user.ItemId,
+            alreadyMember ? SignupLinkRedemptionOutcome.ExistingUserRedirected : SignupLinkRedemptionOutcome.OrganizationJoined,
+            request,
+            consumed.RedemptionCount,
+            grant: !alreadyMember);
+        return null;
+    }
+
+    /// <summary>
+    /// The OTP leg of a password step: the grant waited for it, so it is applied here, once.
+    /// </summary>
+    private async Task<IActionResult> CompletePendingGrantMfaAsync(
+        string mfaId,
+        SignupLinkMfaContext ctx,
+        User user,
+        string method,
+        HttpRequest request,
+        HttpResponse response)
+    {
+        if (!await TryClaimAsync(IdpConstants.SignupLinkMfaClaimCachePrefix + mfaId))
+        {
+            return new BadRequestObjectResult(new { error = "invalid_mfa_session", error_description = "Mfa login session is expired or invalid" });
+        }
+
+        await _cacheClient.RemoveKeyAsync(MfaCachePrefix + mfaId);
+
+        var link = await _links.GetByIdAsync(ctx.LinkId, ctx.TenantId);
+        if (link == null)
+        {
+            _logger.LogWarning("Signup link MFA redeem rejected: link {LinkId} no longer exists in tenant {TenantId}", ctx.LinkId, ctx.TenantId);
+            return InvalidLink();
+        }
+
+        var refusal = await RejectIfLinkNotRedeemableAsync(link, ctx.TenantId, request)
+            ?? await RejectIfExhaustedForBranchAsync(link, ctx.Branch, request, user.ItemId)
+            ?? await FinalizeExistingUserAsync(link, user, ctx.Branch, request);
+        if (refusal != null)
+        {
+            return refusal;
+        }
+
+        return await CompleteRedemptionAsync(link, user, request, response, ["link", "pwd", method]);
+    }
+
+    /// <summary>SETNX. Fails closed: without a working claim the step must not proceed.</summary>
+    private async Task<bool> TryClaimAsync(string key)
+    {
+        try
+        {
+            return await _cacheClient.CacheDatabase().StringSetAsync(
+                key: key,
+                value: "1",
+                expiry: TimeSpan.FromSeconds(IdpConstants.OidcStateCacheTtlSeconds),
+                keepTtl: false,
+                when: When.NotExists,
+                flags: CommandFlags.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Signup link could not claim a single-use step; refusing it");
+            return false;
+        }
+    }
+
+    private static IActionResult InvalidRedemption() =>
+        new BadRequestObjectResult(new { error = "invalid_redemption" });
 
 
     private async Task<IActionResult?> RejectIfLinkNotRedeemableAsync(
@@ -246,6 +666,12 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return new BadRequestObjectResult(new { error = "invalid_mfa_code", error_description = "Invalid mfa code" });
         }
 
+        var method = user.UserMfaType == UserMfaType.TOTP ? "totp" : "otp";
+        if (ctx.PendingGrant)
+        {
+            return await CompletePendingGrantMfaAsync(mfaId, ctx, user, method, request, response);
+        }
+
         await _cacheClient.RemoveKeyAsync(MfaCachePrefix + mfaId);
 
         var link = await _links.GetByIdAsync(ctx.LinkId, ctx.TenantId);
@@ -258,7 +684,6 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return InvalidLink();
         }
 
-        var method = user.UserMfaType == UserMfaType.TOTP ? "totp" : "otp";
         var amr = new List<string> { "link", method };
         return await CompleteRedemptionAsync(link, user, request, response, amr);
     }
@@ -426,6 +851,16 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             });
         }
 
+        // An account this link created that has since set a password is as much an existing
+        // identity as any other, so it confirms that password too. One without a password --
+        // a passwordless joiner -- keeps re-entering through the link until it expires.
+        if (link.RequireExistingUserPassword
+            && !IsNeverActivated(user)
+            && !string.IsNullOrEmpty(user.Password))
+        {
+            return await StartPasswordStepAsync(link, user, BranchLinkUserReturned, request);
+        }
+
         if (user.MfaEnabled)
         {
             return await StartMfaChallengeAsync(link, user);
@@ -476,8 +911,16 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             }
 
             var updated = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, createdUserId: string.Empty, DateTime.UtcNow);
-            var ordinal = updated?.RedemptionCount ?? link.RedemptionCount + 1;
-            await RecordSuccessAsync(link, user.ItemId, SignupLinkRedemptionOutcome.ExistingUserRedirected, request, ordinal, grant: false);
+            if (updated == null)
+            {
+                // The budget ran out under a concurrent request. Issuing a session anyway would
+                // let a spent link keep signing people in.
+                await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1, userId: user.ItemId,
+                    detail: "a concurrent request took the last redemption while the existing member was being redirected");
+                return InvalidLink();
+            }
+
+            await RecordSuccessAsync(link, user.ItemId, SignupLinkRedemptionOutcome.ExistingUserRedirected, request, updated.RedemptionCount, grant: false);
             if (pending)
             {
                 await AfterActivationByLinkAsync(link, user);
@@ -713,7 +1156,11 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         return await CompleteRedemptionAsync(link, completionUser, request, response, new List<string> { "link" });
     }
 
-    private async Task<IActionResult> StartMfaChallengeAsync(SignupLink link, User user)
+    private async Task<IActionResult> StartMfaChallengeAsync(
+        SignupLink link,
+        User user,
+        bool pendingGrant = false,
+        string? branch = null)
     {
         var otpService = await _mfaChallengeIssuer.GetOtpServiceAsync(user);
         if (otpService == null)
@@ -746,7 +1193,9 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             LinkId = link.ItemId,
             TenantId = link.TenantId,
             ClientId = link.ClientId,
-            RedirectUri = link.RedirectUri
+            RedirectUri = link.RedirectUri,
+            PendingGrant = pendingGrant,
+            Branch = branch
         };
 
         await _cacheClient.AddStringValueAsync(
@@ -890,14 +1339,14 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         return null;
     }
 
-    private static bool IsUnusableAccount(User? user, bool allowPendingVerification)
+    private static bool IsUnusableAccount(User? user, bool allowPendingVerification, bool ignoreLockout = false)
     {
         if (user == null)
         {
             return false;
         }
 
-        if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+        if (!ignoreLockout && user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
         {
             return true;
         }
@@ -1213,5 +1662,24 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         public string TenantId { get; set; } = string.Empty;
         public string ClientId { get; set; } = string.Empty;
         public string RedirectUri { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Set when a password step preceded this challenge, so the grant and the link's
+        /// consumption still wait for the OTP. False on contexts cached before this field
+        /// existed, which complete exactly as they always did.
+        /// </summary>
+        public bool PendingGrant { get; set; }
+
+        public string? Branch { get; set; }
+    }
+
+    private sealed class SignupLinkAuthContext
+    {
+        public string LinkId { get; set; } = string.Empty;
+        public string TenantId { get; set; } = string.Empty;
+        public string UserId { get; set; } = string.Empty;
+        public string Branch { get; set; } = BranchPreExisting;
+        public int Attempts { get; set; }
+        public DateTime ExpiresAtUtc { get; set; }
     }
 }

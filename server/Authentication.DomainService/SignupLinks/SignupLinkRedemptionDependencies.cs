@@ -59,6 +59,12 @@ public sealed class SignupLinkRedemptionCollaborators
 
     public ILogger<SignupLinkRedemptionCollaborators> Logger { get; }
 
+    /// <summary>
+    /// Checks an existing user's password for the signup-link password step, with the same
+    /// lockout and CAPTCHA rules as embedded login.
+    /// </summary>
+    public IPasswordCredentialVerifier? PasswordVerifier { get; }
+
     public SignupLinkRedemptionCollaborators(
         IOidcClientRegistrationLookup oidc,
         IAuthenticationRepository authentication,
@@ -69,7 +75,8 @@ public sealed class SignupLinkRedemptionCollaborators
         IMfaChallengeIssuer mfa,
         ISignupLinkEmbeddedTokenIssuer embeddedTokens,
         IUserActivityDispatcher userActivity,
-        ILogger<SignupLinkRedemptionCollaborators> logger)
+        ILogger<SignupLinkRedemptionCollaborators> logger,
+        IPasswordCredentialVerifier? passwordVerifier = null)
     {
         Oidc = oidc;
         Authentication = authentication;
@@ -81,5 +88,6 @@ public sealed class SignupLinkRedemptionCollaborators
         EmbeddedTokens = embeddedTokens;
         UserActivity = userActivity;
         Logger = logger;
+        PasswordVerifier = passwordVerifier;
     }
 }

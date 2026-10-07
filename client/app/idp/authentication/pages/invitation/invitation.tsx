@@ -12,6 +12,14 @@ import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
 import { JOIN_PANEL } from "../oidc/oidc-panel-config";
 import { InvitationInvalid } from "./invitation-invalid";
 import { InvitationLoading } from "./invitation-loading";
+import {
+  CONFIRM_PASSWORD_COPY,
+  InvitationConfirmPassword,
+  type ConfirmPasswordExit,
+} from "./invitation-confirm-password";
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
+import { Button } from "@/components/ui-kits/button/button";
+import { isErrorWithErrors } from "@/lib/error";
 import type { RedeemSignupLinkResponse } from "@blocks-idp/authentication/services/signup-link.service";
 
 function readAndClearLinkCode(): string | null {
@@ -26,12 +34,24 @@ function readAndClearLinkCode(): string | null {
   return raw || null;
 }
 
+export const PASSWORD_STEP_TIMED_OUT = "This step timed out. Open your invitation link again.";
+export const PASSWORD_NOT_SET_COPY =
+  "This account has no password yet. Sign in normally first, then open your invitation again.";
+
+type PasswordStep = { redemptionId: string; maskedEmail: string };
+
 function applyRedeemNavigation(res: RedeemSignupLinkResponse | undefined): {
   mfaId?: string;
   userMfa?: string | null;
   activationKey?: string;
+  passwordStep?: PasswordStep;
 } {
   if (!res) return {};
+  if (res.error === "authentication_required" && res.redemptionId) {
+    return {
+      passwordStep: { redemptionId: res.redemptionId, maskedEmail: res.maskedEmail ?? "" },
+    };
+  }
   if (res.authorizeUrl) {
     globalThis.window.location.assign(res.authorizeUrl);
     return {};
@@ -58,6 +78,9 @@ export function InvitationPage() {
   const [mfaCode, setMfaCode] = useState("");
   const [activationKey, setActivationKey] = useState<string | null>(null);
   const [userMfa, setUserMfa] = useState<string | null>(null);
+  const [passwordStep, setPasswordStep] = useState<PasswordStep | null>(null);
+  const [passwordNotSet, setPasswordNotSet] = useState(false);
+  const [passwordExit, setPasswordExit] = useState<ConfirmPasswordExit | null>(null);
 
   if (codeRef.current === null && !codeReady) {
     codeRef.current = readAndClearLinkCode();
@@ -76,7 +99,12 @@ export function InvitationPage() {
 
   const onRedeemResult = (res: RedeemSignupLinkResponse | undefined) => {
     const next = applyRedeemNavigation(res);
+    if (next.passwordStep) {
+      setPasswordStep(next.passwordStep);
+      return;
+    }
     if (next.mfaId) {
+      setPasswordStep(null);
       setMfaId(next.mfaId);
       setUserMfa(next.userMfa ?? null);
     }
@@ -89,7 +117,11 @@ export function InvitationPage() {
     redeemedRef.current = true;
     redeemMutation.mutate(code, {
       onSuccess: onRedeemResult,
-      onError: () => {
+      onError: (error: unknown) => {
+        if (isErrorWithErrors(error) && error.errors?.error === "password_not_set") {
+          setPasswordNotSet(true);
+          return;
+        }
         showErrorToast({ errors: "Something went wrong. Please try again." });
         redeemedRef.current = false;
       },
@@ -106,6 +138,14 @@ export function InvitationPage() {
 
   if (!codeReady || contextQuery.isLoading || contextQuery.isFetching) {
     return <InvitationLoading template={template} />;
+  }
+
+  if (passwordExit === "invalid_redemption") {
+    return <InvitationInvalid template={template} message={PASSWORD_STEP_TIMED_OUT} />;
+  }
+
+  if (passwordExit === "invalid_link") {
+    return <InvitationInvalid template={template} />;
   }
 
   if (!code || contextQuery.isError || !contextQuery.data?.valid) {
@@ -125,6 +165,35 @@ export function InvitationPage() {
     showCorners: false,
     footerNote: <OidcFooter footerText={template.pages.shared.footerText} />,
   };
+
+  if (passwordNotSet) {
+    return (
+      <OidcAuthShell {...shellProps} heading="Sign in first">
+        <div className="flex flex-col items-center gap-4 py-6 text-center">
+          <p className="text-sm" style={{ color: "var(--fg)" }}>
+            {PASSWORD_NOT_SET_COPY}
+          </p>
+          <Button asChild variant="outline">
+            <LoginReturnLink preferOidcLogin>Sign in</LoginReturnLink>
+          </Button>
+        </div>
+      </OidcAuthShell>
+    );
+  }
+
+  if (passwordStep && !mfaId) {
+    return (
+      <OidcAuthShell {...shellProps} heading={CONFIRM_PASSWORD_COPY.heading}>
+        <InvitationConfirmPassword
+          tenantId={tenantId}
+          redemptionId={passwordStep.redemptionId}
+          maskedEmail={passwordStep.maskedEmail}
+          onSuccess={onRedeemResult}
+          onExit={setPasswordExit}
+        />
+      </OidcAuthShell>
+    );
+  }
 
   if (mfaId) {
     return (

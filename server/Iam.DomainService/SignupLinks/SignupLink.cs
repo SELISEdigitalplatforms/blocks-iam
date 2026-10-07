@@ -25,6 +25,12 @@ public class SignupLink : BaseEntity
     /// invitation already in someone's inbox does.
     /// </summary>
     public bool SignInAfterActivation { get; set; }
+
+    /// <summary>
+    /// Frozen from the configuration at generation. Links generated before this field existed
+    /// read as true, so an active user is asked for their password on those as well.
+    /// </summary>
+    public bool RequireExistingUserPassword { get; set; } = true;
     public string Email { get; set; } = string.Empty;
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;

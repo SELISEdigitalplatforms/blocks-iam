@@ -139,7 +139,11 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         Status = SignupLinkStatus.Active,
         ExpiresAtUtc = DateTime.UtcNow.AddHours(1),
         MaxRedemptions = 1,
-        RedemptionCount = 0
+        RedemptionCount = 0,
+        // These cases pin the redemption matrix with the existing-user password step off
+        // (#593 H10: unchanged behaviour). The step itself is covered in
+        // SignupLinkExistingUserPasswordTests.
+        RequireExistingUserPassword = false
     };
 
     private static DefaultHttpContext Http()

@@ -80,6 +80,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ITokenRevocationService, TokenRevocationService>();
             serviceCollection.AddSingleton<IIdpSessionService, IdpSessionService>();
 
+            serviceCollection.AddSingleton<IPasswordCredentialVerifier, PasswordCredentialVerifier>();
             serviceCollection.AddSingleton<PasswordAuthenticationService>();
             serviceCollection.AddSingleton<MfaAuthorizationService>();
             serviceCollection.AddSingleton<IMfaPolicyService, MfaPolicyService>();

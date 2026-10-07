@@ -93,6 +93,7 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             Mode = mode,
             JoinUrl = mode == SignupLinkMode.Embedded ? request.JoinUrl : null,
             SignInAfterActivation = request.SignInAfterActivation ?? false,
+            RequireExistingUserPassword = request.RequireExistingUserPassword ?? true,
             DefaultLifetimeMinutes = request.DefaultLifetimeMinutes
                 ?? SignupLinkConfigurationValidation.DefaultLifetimeMinutes,
             DefaultMaxRedemptions = request.DefaultMaxRedemptions,
@@ -202,6 +203,11 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         if (request.SignInAfterActivation.HasValue)
         {
             entity.SignInAfterActivation = request.SignInAfterActivation.Value;
+        }
+
+        if (request.RequireExistingUserPassword.HasValue)
+        {
+            entity.RequireExistingUserPassword = request.RequireExistingUserPassword.Value;
         }
 
         if (request.DefaultLifetimeMinutes.HasValue)
@@ -456,6 +462,7 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         Mode = entity.Mode,
         JoinUrl = entity.JoinUrl,
         SignInAfterActivation = entity.SignInAfterActivation,
+        RequireExistingUserPassword = entity.RequireExistingUserPassword,
         DefaultLifetimeMinutes = entity.DefaultLifetimeMinutes,
         DefaultMaxRedemptions = entity.DefaultMaxRedemptions,
         IsActive = entity.IsActive,
