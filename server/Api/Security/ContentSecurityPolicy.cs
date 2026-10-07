@@ -71,6 +71,28 @@ public static class ContentSecurityPolicy
         "https://www.google.com",
     ];
 
+    /// <summary>
+    /// Stands in for the style nonce (see <see cref="StyleNonce"/>): in the policy built at
+    /// startup and in the built index.html (meta[name=csp-nonce]). Replaced on every response.
+    /// </summary>
+    public const string StyleNoncePlaceholder = "__CSP_STYLE_NONCE__";
+
+    /// <summary>The policy for one response, with the placeholder swapped for its nonce.</summary>
+    public static string WithStyleNonce(string policy, string nonce)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        ArgumentException.ThrowIfNullOrEmpty(nonce);
+        return policy.Replace(StyleNoncePlaceholder, nonce, StringComparison.Ordinal);
+    }
+
+    /// <summary>The SPA shell for one response, carrying the same nonce as its header.</summary>
+    public static string RenderIndex(string indexHtmlTemplate, string nonce)
+    {
+        ArgumentNullException.ThrowIfNull(indexHtmlTemplate);
+        ArgumentException.ThrowIfNullOrEmpty(nonce);
+        return indexHtmlTemplate.Replace(StyleNoncePlaceholder, nonce, StringComparison.Ordinal);
+    }
+
     public static string Build(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -110,14 +132,18 @@ public static class ContentSecurityPolicy
             "default-src 'self';",
             $"script-src 'self'{Suffix(script)};",
 
-            // Inline styles, both <style> elements and style attributes. blocks-os measured
-            // the narrower option (style-src-elem 'self', relaxing only style-src-attr) and
-            // found it does not hold: Radix/vaul/sonner/cmdk inject <style> elements at
-            // runtime for scroll-lock and positioning, and the login page failed to lay out.
-            // Neither form can carry a nonce and the values are unbounded, so hashes are not
-            // an option either. script-src stays strict, which is the directive that matters
-            // for injection.
-            "style-src 'self' 'unsafe-inline';",
+            // Styles. <style> elements need the style nonce (StyleNonce). Radix
+            // (react-remove-scroll), vaul, sonner, cmdk and input-otp create them at runtime
+            // for scroll-lock and positioning; /csp-nonce.js stamps the nonce on every <style>
+            // made through document.createElement, and the server writes the same nonce into
+            // index.html (see WithStyleNonce / RenderIndex). Plain style-src 'self' without
+            // the nonce broke the login layout, which is why 'unsafe-inline' was there before.
+            //
+            // Style attributes stay allowed through style-src-attr only: components set them,
+            // an attribute cannot carry a nonce, and an attribute cannot load a script.
+            // script-src stays strict, which is the directive that matters for injection.
+            $"style-src 'self' 'nonce-{StyleNoncePlaceholder}';",
+            "style-src-attr 'unsafe-inline';",
 
             $"img-src 'self' data: blob:{Suffix(img)};",
             "font-src 'self' data:;",

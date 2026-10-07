@@ -8,7 +8,7 @@ namespace XUnitTest.ApiTests;
 /// The SPA's CSP. Three things went wrong with the first version of this policy and all
 /// three are pinned here: the host list was hardcoded to <c>dev-*</c>, <c>script-src 'self'</c>
 /// blocked the reCAPTCHA script the login and signup pages load, and <c>style-src 'self'</c>
-/// blocked the inline styles the UI libraries inject at runtime.
+/// blocked the inline styles the UI libraries inject at runtime (now allowed by nonce).
 /// </summary>
 public class ContentSecurityPolicyTests
 {
@@ -145,13 +145,60 @@ public class ContentSecurityPolicyTests
     // ---------- Directives that must not drift ----------
 
     [Fact]
-    public void Build_KeepsInlineStylesAllowedAndInlineScriptsBlocked()
+    public void Build_AllowsStyleElementsOnlyWithTheNonceAndBlocksInlineScripts()
+    {
+        // Radix/vaul/sonner/cmdk inject <style> elements at runtime. They now carry the
+        // response nonce (stamped by /csp-nonce.js), so style-src needs no 'unsafe-inline'.
+        var policy = ContentSecurityPolicy.Build(Config([]));
+
+        Directive(policy, "style-src").Should()
+            .Be($" 'self' 'nonce-{ContentSecurityPolicy.StyleNoncePlaceholder}'");
+        Directive(policy, "style-src").Should().NotContain("unsafe-inline");
+        Directive(policy, "script-src").Should().NotContain("'unsafe-inline'");
+        Directive(policy, "script-src").Should().NotContain("'unsafe-eval'");
+    }
+
+    [Fact]
+    public void Build_KeepsStyleAttributesThroughStyleSrcAttrOnly()
+    {
+        // Components set style attributes, which cannot carry a nonce.
+        var policy = ContentSecurityPolicy.Build(Config([]));
+
+        Directive(policy, "style-src-attr").Should().Be(" 'unsafe-inline'");
+        policy.Should().NotContain("style-src-elem");
+    }
+
+    [Fact]
+    public void WithStyleNonce_PutsTheResponseNonceInThePolicy()
     {
         var policy = ContentSecurityPolicy.Build(Config([]));
 
-        Directive(policy, "style-src").Should().Contain("'unsafe-inline'");
-        Directive(policy, "script-src").Should().NotContain("'unsafe-inline'");
-        Directive(policy, "script-src").Should().NotContain("'unsafe-eval'");
+        var perRequest = ContentSecurityPolicy.WithStyleNonce(policy, "abc123==");
+
+        Directive(perRequest, "style-src").Should().Be(" 'self' 'nonce-abc123=='");
+        perRequest.Should().NotContain(ContentSecurityPolicy.StyleNoncePlaceholder);
+    }
+
+    [Fact]
+    public void RenderIndex_PutsTheSameNonceInTheShell()
+    {
+        const string template =
+            "<head><meta name=\"csp-nonce\" nonce=\"__CSP_STYLE_NONCE__\" /></head>";
+
+        ContentSecurityPolicy.RenderIndex(template, "abc123==")
+            .Should().Be("<head><meta name=\"csp-nonce\" nonce=\"abc123==\" /></head>");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void WithStyleNonce_AndRenderIndex_RefuseAnEmptyNonce(string? nonce)
+    {
+        var policy = () => ContentSecurityPolicy.WithStyleNonce("style-src 'self'", nonce!);
+        var shell = () => ContentSecurityPolicy.RenderIndex("<head></head>", nonce!);
+
+        policy.Should().Throw<ArgumentException>();
+        shell.Should().Throw<ArgumentException>();
     }
 
     [Fact]
