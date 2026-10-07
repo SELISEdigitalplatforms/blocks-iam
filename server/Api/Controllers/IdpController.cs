@@ -68,7 +68,7 @@ public class IdpController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> PasswordCheck([FromBody] PasswordCheckRequest request)
     {
-        Response.Headers.CacheControl = "no-store";
+        Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
         return await _idpService.CheckPasswordAsync(request?.Password);
     }
 
@@ -76,7 +76,7 @@ public class IdpController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> OidcUiConfig()
     {
-        Response.Headers.CacheControl = "no-store";
+        Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
         return await _idpService.GetUiConfigAsync();
     }
 }

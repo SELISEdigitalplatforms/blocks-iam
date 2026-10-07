@@ -1,47 +1,36 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "../../support/test-base";
 import { ensureAuthenticated } from "../../support/login-helper";
-import { e2eBaseUrl, e2eCredentials } from "../../support/env";
+import { e2eCredentials } from "../../support/env";
 import { AVATAR_OVER_5MB, AVATAR_VALID } from "../../support/images";
+import { restoreE2ePassword } from "../../support/e2e-account";
 
 const ORIGINAL_PASSWORD = e2eCredentials().password;
 // Temporary password used only during the positive change-password step.
 const TEMP_PASSWORD = "123@Test";
-// Tracks the account's real current password across the test and its
-// afterEach hook. "Saving a valid password change" actually rotates the real
-// backend password; if anything later in the test throws, afterEach below
-// still reverts it back to ORIGINAL_PASSWORD — otherwise every later run's
-// Login step would fail forever with no way to know what the random
-// password had been.
+// The account's real password as far as this file knows. "Saving a valid
+// password change" rotates the real backend password, and the afterEach hook
+// below puts it back to ORIGINAL_PASSWORD.
 let currentPassword = ORIGINAL_PASSWORD;
+// Set right before the real change-password request is sent, so the revert
+// still runs when the request went through but the success toast was never
+// seen (slow response, page reload, timeout). Without this the account stays
+// on TEMP_PASSWORD and every suite that signs in with it fails.
+let passwordMayHaveChanged = false;
 
 const revertPasswordIfChanged = async (page: Page) => {
-  if (currentPassword === ORIGINAL_PASSWORD) return;
-  try {
-    await page.goto(`${e2eBaseUrl()}/app/profile`);
-    await expect(page.getByText("Account details")).toBeVisible({ timeout: 15000 });
-
-    const updateButton = page.getByRole("button", { name: "Update Password" });
-    if (!(await updateButton.isVisible({ timeout: 5000 }).catch(() => false))) {
-      return;
-    }
-    await updateButton.click();
-    await page.getByPlaceholder("Enter your current password").fill(currentPassword);
-    await page.getByPlaceholder("Enter your new password").fill(ORIGINAL_PASSWORD);
-    await page.getByPlaceholder("Confirm your new password").fill(ORIGINAL_PASSWORD);
-
-    const saveButton = page.getByRole("button", { name: /save changes/i });
-    if (await saveButton.isEnabled().catch(() => false)) {
-      await saveButton.click();
-      await expect(page.getByText("Password updated").first()).toBeVisible({
-        timeout: 15000,
-      });
-      currentPassword = ORIGINAL_PASSWORD;
-    }
-  } catch {
-    // Best-effort: if the page/dialog is already broken from an earlier
-    // failure, there's nothing more we can safely do here.
+  if (!passwordMayHaveChanged && currentPassword === ORIGINAL_PASSWORD) return;
+  // Uses the change-password API from the signed-in session rather than the
+  // dialog, so it works even when the page is in a broken state. A
+  // successful change also clears the failed-login counter.
+  const restored = await restoreE2ePassword(page, [currentPassword, TEMP_PASSWORD]);
+  if (!restored) {
+    throw new Error(
+      "profile.spec.ts could not put the shared E2E account back on E2E_PASSWORD after the change-password step.",
+    );
   }
+  currentPassword = ORIGINAL_PASSWORD;
+  passwordMayHaveChanged = false;
 };
 
 /** MFA Cancel is a DialogTrigger inside an open dialog: the click unmounts
@@ -554,6 +543,7 @@ test.describe("profile", () => {
 
       const saveButton = page.getByRole("button", { name: /save changes/i });
       if (await saveButton.isEnabled().catch(() => false)) {
+        passwordMayHaveChanged = true;
         await saveButton.click();
         await expect(page.getByText("Password updated").first()).toBeVisible({
           timeout: 15000,
@@ -561,8 +551,7 @@ test.describe("profile", () => {
         await expect(
           page.getByText("Your password has been changed successfully.").first(),
         ).toBeVisible();
-        // Track the change so later steps (and the afterEach revert hook at
-        // the top of this file) know the account's current real password.
+        // Later steps type the current password, so track the change here.
         currentPassword = TEMP_PASSWORD;
       }
     });

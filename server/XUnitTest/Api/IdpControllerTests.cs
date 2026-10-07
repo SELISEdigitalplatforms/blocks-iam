@@ -69,7 +69,7 @@ namespace XUnitTest.ApiTests
 
             var controller = CreateController();
             var result = await controller.OidcUiConfig();
-            controller.Response.Headers.CacheControl.ToString().Should().Be("no-store");
+            controller.Response.Headers.CacheControl.ToString().Should().Be("no-store, no-cache, must-revalidate");
 
             result.Should().BeSameAs(sentinel);
         }

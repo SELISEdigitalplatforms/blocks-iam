@@ -154,6 +154,29 @@ public class SignupLinkGenerationServiceTests : IDisposable
         return req;
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task H5_593_Generate_FreezesRequireExistingUserPasswordOntoTheLink(bool setting)
+    {
+        var config = ActiveConfig();
+        config.RequireExistingUserPassword = setting;
+        _configs.Setup(c => c.GetByIdAsync(CfgId, TenantId)).ReturnsAsync(config);
+        SignupLink? saved = null;
+        _links.Setup(l => l.InsertAsync(It.IsAny<SignupLink>()))
+            .Callback<SignupLink>(e => saved = e)
+            .Returns(Task.CompletedTask);
+
+        var result = await Sut().GenerateAsync(ValidRequest());
+
+        result.IsSuccess.Should().BeTrue();
+        saved!.RequireExistingUserPassword.Should().Be(setting);
+
+        // A later configuration change does not reach the link already generated.
+        config.RequireExistingUserPassword = !setting;
+        saved.RequireExistingUserPassword.Should().Be(setting);
+    }
+
     [Fact]
     public async Task H1_Generate_MintsHashOnlyAndReturnsCodeOnce()
     {

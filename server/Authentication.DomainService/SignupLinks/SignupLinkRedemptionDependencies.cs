@@ -33,6 +33,43 @@ public sealed class SignupLinkRedemptionStores
     }
 }
 
+/// <summary>
+/// Supporting services the redemption orchestrator uses: cache, tenant lookup,
+/// configuration, activity events and the password verifier.
+/// </summary>
+public sealed class SignupLinkRedemptionServices
+{
+    public ICacheClient Cache { get; }
+    public ITenants Tenants { get; }
+    public IConfiguration Configuration { get; }
+
+    /// <summary>
+    /// Records the activation when a link activates a pending account, as the activation
+    /// email does.
+    /// </summary>
+    public IUserActivityDispatcher UserActivity { get; }
+
+    /// <summary>
+    /// Checks an existing user's password for the signup-link password step, with the same
+    /// lockout and CAPTCHA rules as embedded login.
+    /// </summary>
+    public IPasswordCredentialVerifier? PasswordVerifier { get; }
+
+    public SignupLinkRedemptionServices(
+        ICacheClient cache,
+        ITenants tenants,
+        IConfiguration configuration,
+        IUserActivityDispatcher userActivity,
+        IPasswordCredentialVerifier? passwordVerifier = null)
+    {
+        Cache = cache;
+        Tenants = tenants;
+        Configuration = configuration;
+        UserActivity = userActivity;
+        PasswordVerifier = passwordVerifier;
+    }
+}
+
 public sealed class SignupLinkRedemptionCollaborators
 {
     public IOidcClientRegistrationLookup Oidc { get; }
@@ -45,41 +82,32 @@ public sealed class SignupLinkRedemptionCollaborators
     public IAuthenticationRepository Authentication { get; }
 
     public IUserManagementMutationService UserMutation { get; }
-    public ICacheClient Cache { get; }
-    public ITenants Tenants { get; }
-    public IConfiguration Configuration { get; }
     public IMfaChallengeIssuer Mfa { get; }
     public ISignupLinkEmbeddedTokenIssuer EmbeddedTokens { get; }
-
-    /// <summary>
-    /// Records the activation when a link activates a pending account, as the activation
-    /// email does.
-    /// </summary>
-    public IUserActivityDispatcher UserActivity { get; }
-
     public ILogger<SignupLinkRedemptionCollaborators> Logger { get; }
+    public ICacheClient Cache => _services.Cache;
+    public ITenants Tenants => _services.Tenants;
+    public IConfiguration Configuration => _services.Configuration;
+    public IUserActivityDispatcher UserActivity => _services.UserActivity;
+    public IPasswordCredentialVerifier? PasswordVerifier => _services.PasswordVerifier;
+
+    private readonly SignupLinkRedemptionServices _services;
 
     public SignupLinkRedemptionCollaborators(
         IOidcClientRegistrationLookup oidc,
         IAuthenticationRepository authentication,
         IUserManagementMutationService userMutation,
-        ICacheClient cache,
-        ITenants tenants,
-        IConfiguration configuration,
         IMfaChallengeIssuer mfa,
         ISignupLinkEmbeddedTokenIssuer embeddedTokens,
-        IUserActivityDispatcher userActivity,
+        SignupLinkRedemptionServices services,
         ILogger<SignupLinkRedemptionCollaborators> logger)
     {
         Oidc = oidc;
         Authentication = authentication;
         UserMutation = userMutation;
-        Cache = cache;
-        Tenants = tenants;
-        Configuration = configuration;
         Mfa = mfa;
         EmbeddedTokens = embeddedTokens;
-        UserActivity = userActivity;
+        _services = services;
         Logger = logger;
     }
 }

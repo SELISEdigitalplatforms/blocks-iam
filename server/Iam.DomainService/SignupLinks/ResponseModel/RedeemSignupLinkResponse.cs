@@ -22,6 +22,15 @@ public class RedeemSignupLinkResponse
     public string? MfaId { get; set; }
     public string? UserMfa { get; set; }
     public string? Error { get; set; }
+
+    /// <summary>
+    /// Set with <c>error = "authentication_required"</c>: the single-use id the password step
+    /// posts back to <c>redeem/authenticate</c>. Valid for five minutes.
+    /// </summary>
+    public string? RedemptionId { get; set; }
+
+    /// <summary>Set with <c>error = "authentication_required"</c>.</summary>
+    public string? MaskedEmail { get; set; }
 }
 
 public class RedeemSignupLinkErrorResponse

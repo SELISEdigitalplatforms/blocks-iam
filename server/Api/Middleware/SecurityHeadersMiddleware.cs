@@ -1,3 +1,5 @@
+using Api.Security;
+
 namespace Api.Middleware;
 
 /// <summary>
@@ -8,27 +10,37 @@ public sealed class SecurityHeadersMiddleware
 {
     private readonly RequestDelegate _next;
 
-    // Built once from configuration at startup -- the policy does not vary per request.
-    private readonly string _contentSecurityPolicy;
+    /// <summary><see cref="HttpContext.Items"/> key for the response's style nonce.</summary>
+    public const string StyleNonceItemKey = "csp-style-nonce";
 
-    public SecurityHeadersMiddleware(RequestDelegate next, string contentSecurityPolicy)
+    // Built once from configuration at startup; only the style nonce varies per response.
+    private readonly string _contentSecurityPolicy;
+    private readonly StyleNonce _styleNonces;
+
+    public SecurityHeadersMiddleware(RequestDelegate next, string contentSecurityPolicy, StyleNonce styleNonces)
     {
         _next = next;
         _contentSecurityPolicy = contentSecurityPolicy;
+        _styleNonces = styleNonces;
     }
 
     public Task InvokeAsync(HttpContext context)
     {
+        // The response's style nonce, stable per browser (see StyleNonce). The SPA shell is
+        // rendered with the same value as the header.
+        var styleNonce = _styleNonces.ForRequest(context);
+        context.Items[StyleNonceItemKey] = styleNonce;
+
         context.Response.OnStarting(() =>
         {
-            Apply(context);
+            Apply(context, styleNonce);
             return Task.CompletedTask;
         });
 
         return _next(context);
     }
 
-    private void Apply(HttpContext context)
+    private void Apply(HttpContext context, string styleNonce)
     {
         var headers = context.Response.Headers;
         var path = context.Request.Path.Value ?? string.Empty;
@@ -47,12 +59,19 @@ public sealed class SecurityHeadersMiddleware
 
         if (!headers.ContainsKey("Content-Security-Policy"))
         {
-            headers["Content-Security-Policy"] = _contentSecurityPolicy;
+            headers["Content-Security-Policy"] = ContentSecurityPolicy.WithStyleNonce(_contentSecurityPolicy, styleNonce);
         }
 
-        if (!isOidcOrTokenPath && !headers.ContainsKey("Cache-Control"))
+        if (!isOidcOrTokenPath && !headers.ContainsKey(CacheControlHeader))
         {
             ApplyCacheControl(headers, path);
+        }
+        else if (IsOidcPage(context) && !headers.ContainsKey(CacheControlHeader))
+        {
+            // The hosted login, error and invitation pages are HTML and must not be cached either.
+            // Only GET pages under /oidc: the token, authorize and callback responses that issue
+            // cookies keep their own headers.
+            DisableCaching(headers);
         }
 
         if ((path.StartsWith("/api/oidc/authorize", StringComparison.OrdinalIgnoreCase)
@@ -63,6 +82,26 @@ public sealed class SecurityHeadersMiddleware
             headers["Content-Type"] = "text/html; charset=utf-8";
         }
     }
+
+    private const string CacheControlHeader = "Cache-Control";
+    private const string NoStore = "no-store, no-cache, must-revalidate, max-age=0";
+
+    /// <summary>
+    /// Marks a response as not cacheable. The SPA shell calls this itself so it is never cached,
+    /// whatever path the fallback answered (including /api/oidc, /api/idp and /login, where
+    /// <see cref="Apply"/> leaves Cache-Control to the auth handlers).
+    /// </summary>
+    public static void DisableCaching(IHeaderDictionary headers)
+    {
+        ArgumentNullException.ThrowIfNull(headers);
+        headers[CacheControlHeader] = NoStore;
+        headers["Pragma"] = "no-cache";
+    }
+
+    private static bool IsOidcPage(HttpContext context) =>
+        (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+        && context.Request.Path.StartsWithSegments("/oidc", StringComparison.OrdinalIgnoreCase)
+        && (context.Response.ContentType?.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) ?? false);
 
     private static bool IsOidcOrTokenPath(string path) =>
         path.StartsWith("/api/oidc", StringComparison.OrdinalIgnoreCase)
@@ -82,12 +121,11 @@ public sealed class SecurityHeadersMiddleware
             || path.EndsWith("theme-init.js", StringComparison.OrdinalIgnoreCase)
             || !Path.HasExtension(path))
         {
-            headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
-            headers["Pragma"] = "no-cache";
+            DisableCaching(headers);
         }
         else if (path.StartsWith("/assets/", StringComparison.OrdinalIgnoreCase))
         {
-            headers["Cache-Control"] = "public, max-age=31536000, immutable";
+            headers[CacheControlHeader] = "public, max-age=31536000, immutable";
         }
     }
 }

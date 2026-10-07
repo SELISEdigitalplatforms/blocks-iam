@@ -309,6 +309,111 @@ public class SignupLinkConfigurationServiceTests : IDisposable
         result.Errors!["Name"].Should().Be("A configuration with this name already exists");
     }
 
+    // ---- #593 RequireExistingUserPassword ----
+
+    [Fact]
+    public async Task H1_593_Create_WithoutRequireExistingUserPassword_StoresAndReturnsTrue()
+    {
+        SignupLinkConfiguration? saved = null;
+        _repo.Setup(r => r.InsertAsync(It.IsAny<SignupLinkConfiguration>()))
+            .Callback<SignupLinkConfiguration>(e => saved = e)
+            .Returns(Task.CompletedTask);
+
+        await Sut().CreateAsync(ValidCreate());
+
+        saved!.RequireExistingUserPassword.Should().BeTrue();
+        _repo.Setup(r => r.GetByIdAsync(saved.ItemId, TenantId)).ReturnsAsync(saved);
+        var (response, _) = await Sut().GetByIdAsync(saved.ItemId);
+        response!.RequireExistingUserPassword.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task H2_593_Create_WithFalse_StoresAndReturnsFalse()
+    {
+        SignupLinkConfiguration? saved = null;
+        _repo.Setup(r => r.InsertAsync(It.IsAny<SignupLinkConfiguration>()))
+            .Callback<SignupLinkConfiguration>(e => saved = e)
+            .Returns(Task.CompletedTask);
+
+        await Sut().CreateAsync(ValidCreate(r => r.RequireExistingUserPassword = false));
+
+        saved!.RequireExistingUserPassword.Should().BeFalse();
+        _repo.Setup(r => r.GetByIdAsync(saved.ItemId, TenantId)).ReturnsAsync(saved);
+        var (response, _) = await Sut().GetByIdAsync(saved.ItemId);
+        response!.RequireExistingUserPassword.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task H4_593_Patch_ChangesOnlyRequireExistingUserPassword_WhenSupplied()
+    {
+        var existing = Stored();
+        existing.RequireExistingUserPassword = false;
+        _repo.Setup(r => r.GetByIdAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
+
+        // Omitted: unchanged.
+        var rename = await Sut().UpdateAsync(existing.ItemId, new UpdateSignupLinkConfigurationRequest { Name = "Renamed" });
+        rename.IsSuccess.Should().BeTrue();
+        existing.RequireExistingUserPassword.Should().BeFalse();
+
+        // Supplied: only that value changes.
+        var patch = await Sut().UpdateAsync(existing.ItemId, new UpdateSignupLinkConfigurationRequest { RequireExistingUserPassword = true });
+        patch.IsSuccess.Should().BeTrue();
+        existing.RequireExistingUserPassword.Should().BeTrue();
+        existing.Name.Should().Be("Renamed");
+        existing.SignInAfterActivation.Should().BeFalse();
+
+        var (response, _) = await Sut().GetByIdAsync(existing.ItemId);
+        response!.RequireExistingUserPassword.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task H3_593_Query_MapsTheFlag()
+    {
+        var on = Stored("on");
+        var off = Stored("off");
+        off.RequireExistingUserPassword = false;
+        _repo.Setup(r => r.QueryAsync(TenantId, It.IsAny<QuerySignupLinkConfigurationsRequest>()))
+            .ReturnsAsync((new List<SignupLinkConfiguration> { on, off }, 2L));
+
+        var (response, _) = await Sut().QueryAsync(new QuerySignupLinkConfigurationsRequest { Page = 0, PageSize = 20 });
+
+        response!.Items.Select(i => i.RequireExistingUserPassword).Should().Equal(true, false);
+    }
+
+    [Fact]
+    public void H3_593_LegacyDocumentWithoutTheElement_ReadsAsTrue()
+    {
+        var document = new MongoDB.Bson.BsonDocument
+        {
+            { "_id", Guid.NewGuid().ToString() },
+            { "TenantId", TenantId },
+            { "Name", "legacy" },
+            { "CredentialMode", 0 },
+            { "SignInAfterActivation", false }
+        };
+
+        var configuration = MongoDB.Bson.Serialization.BsonSerializer.Deserialize<SignupLinkConfiguration>(document);
+        configuration.RequireExistingUserPassword.Should().BeTrue();
+
+        document["RequireExistingUserPassword"] = false;
+        MongoDB.Bson.Serialization.BsonSerializer.Deserialize<SignupLinkConfiguration>(document)
+            .RequireExistingUserPassword.Should().BeFalse();
+    }
+
+    [Fact]
+    public void H3_593_LegacyLinkWithoutTheElement_ReadsAsTrue()
+    {
+        var document = new MongoDB.Bson.BsonDocument
+        {
+            { "_id", Guid.NewGuid().ToString() },
+            { "TenantId", TenantId },
+            { "Email", "jo@acme.io" }
+        };
+
+        MongoDB.Bson.Serialization.BsonSerializer.Deserialize<SignupLink>(document)
+            .RequireExistingUserPassword.Should().BeTrue();
+    }
+
     private static SignupLinkConfiguration Stored(string? name = null) => new()
     {
         ItemId = Guid.NewGuid().ToString(),

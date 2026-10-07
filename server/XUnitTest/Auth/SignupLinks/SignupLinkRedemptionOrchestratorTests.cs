@@ -96,16 +96,18 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
             _sessions.Object,
             _users.Object,
             _iam.Object);
+        var services = new SignupLinkRedemptionServices(
+            _cache.Object,
+            _tenants.Object,
+            config,
+            _activity.Object);
         var collaborators = new SignupLinkRedemptionCollaborators(
             _oidc.Object,
             _authentication.Object,
             _mutation.Object,
-            _cache.Object,
-            _tenants.Object,
-            config,
             _mfa.Object,
             _embeddedTokens.Object,
-            _activity.Object,
+            services,
             NullLogger<SignupLinkRedemptionCollaborators>.Instance);
         return new SignupLinkRedemptionOrchestrator(stores, collaborators);
     }
@@ -139,7 +141,11 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         Status = SignupLinkStatus.Active,
         ExpiresAtUtc = DateTime.UtcNow.AddHours(1),
         MaxRedemptions = 1,
-        RedemptionCount = 0
+        RedemptionCount = 0,
+        // These cases pin the redemption matrix with the existing-user password step off
+        // (#593 H10: unchanged behaviour). The step itself is covered in
+        // SignupLinkExistingUserPasswordTests.
+        RequireExistingUserPassword = false
     };
 
     private static DefaultHttpContext Http()
