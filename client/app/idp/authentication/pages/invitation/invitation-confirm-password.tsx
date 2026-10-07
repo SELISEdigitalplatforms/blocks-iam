@@ -102,6 +102,12 @@ export function InvitationConfirmPassword({
   const pending = authenticate.isPending;
   const disabled = pending || locked;
 
+  // After a wrong password the field is cleared and focused again. The input is disabled
+  // while the request is pending, so focus waits until it is enabled.
+  useEffect(() => {
+    if (rejected && !pending) inputRef.current?.focus();
+  }, [rejected, pending]);
+
   function shake() {
     if (!formRef.current) return;
     formRef.current.classList.remove("oidc-animate-shake");
@@ -118,7 +124,6 @@ export function InvitationConfirmPassword({
         form.reset({ password: "" });
         shake();
         if (captchaRequired) resetCaptcha();
-        globalThis.setTimeout(() => inputRef.current?.focus(), 0);
         return;
       case "account_locked":
         setLocked(true);

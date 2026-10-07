@@ -120,6 +120,8 @@ describe("InvitationConfirmPassword", () => {
     expect(passwordInput().value).toBe("");
     expect(passwordInput()).toHaveAttribute("aria-invalid", "true");
     expect(passwordInput()).toHaveAttribute("aria-describedby", alert.id);
+    await waitFor(() => expect(passwordInput()).toBeEnabled());
+    expect(passwordInput()).toHaveFocus();
   });
 
   it("locked account: replaces the form with the locked view", async () => {
