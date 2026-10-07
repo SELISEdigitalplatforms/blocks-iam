@@ -42,6 +42,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private const string RejectionCaptchaInvalid = "captcha_invalid";
     private const string RejectionAttemptsExceeded = "redemption_attempts_exceeded";
     private const string AuthenticationRequiredError = "authentication_required";
+    private const string ServerError = "server_error";
     private const string BranchPreExisting = "PreExisting";
     private const string BranchLinkUserReturned = "LinkUserReturned";
 
@@ -153,6 +154,19 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return InvalidLink();
         }
 
+        return await DispatchRedeemableAsync(link, existing, request, response);
+    }
+
+    /// <summary>
+    /// Routes a link that passed every redeemability check to its branch: an existing account
+    /// (with or without the password step), or a new account by the link's credential mode.
+    /// </summary>
+    private async Task<IActionResult> DispatchRedeemableAsync(
+        SignupLink link,
+        User? existing,
+        HttpRequest request,
+        HttpResponse response)
+    {
         if (existing != null)
         {
             if (link.RequireExistingUserPassword && !IsNeverActivated(existing))
@@ -270,7 +284,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         if (_passwordVerifier == null)
         {
             _logger.LogError("Signup link authenticate cannot run: no password verifier is registered");
-            return new ObjectResult(new { error = "server_error" }) { StatusCode = StatusCodes.Status500InternalServerError };
+            return new ObjectResult(new { error = ServerError }) { StatusCode = StatusCodes.Status500InternalServerError };
         }
 
         var verification = await _passwordVerifier.VerifyAsync(user!, password, captchaCode, request, ctx.TenantId);
@@ -651,7 +665,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var otpService = await _mfaChallengeIssuer.GetOtpServiceAsync(user);
         if (otpService == null)
         {
-            return new ObjectResult(new { error = "server_error" }) { StatusCode = 500 };
+            return new ObjectResult(new { error = ServerError }) { StatusCode = 500 };
         }
 
         var verification = await otpService.VerifyAsync(new VerifyOtpRequest
@@ -1165,7 +1179,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var otpService = await _mfaChallengeIssuer.GetOtpServiceAsync(user);
         if (otpService == null)
         {
-            return new ObjectResult(new { error = "server_error", error_description = "Mfa provider is not available" })
+            return new ObjectResult(new { error = ServerError, error_description = "Mfa provider is not available" })
             {
                 StatusCode = StatusCodes.Status500InternalServerError
             };
@@ -1181,7 +1195,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         if (challengeResponse == null || !challengeResponse.IsSuccess || string.IsNullOrWhiteSpace(challengeResponse.MfaId))
         {
-            return new ObjectResult(new { error = "server_error", error_description = "Failed to generate mfa challenge" })
+            return new ObjectResult(new { error = ServerError, error_description = "Failed to generate mfa challenge" })
             {
                 StatusCode = StatusCodes.Status500InternalServerError
             };

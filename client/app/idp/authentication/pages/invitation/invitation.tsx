@@ -34,8 +34,8 @@ function readAndClearLinkCode(): string | null {
   return raw || null;
 }
 
-export const PASSWORD_STEP_TIMED_OUT = "This step timed out. Open your invitation link again.";
-export const PASSWORD_NOT_SET_COPY =
+export const CONFIRM_STEP_TIMED_OUT = "This step timed out. Open your invitation link again.";
+export const NO_CREDENTIAL_YET_COPY =
   "This account has no password yet. Sign in normally first, then open your invitation again.";
 
 type PasswordStep = { redemptionId: string; maskedEmail: string };
@@ -141,7 +141,7 @@ export function InvitationPage() {
   }
 
   if (passwordExit === "invalid_redemption") {
-    return <InvitationInvalid template={template} message={PASSWORD_STEP_TIMED_OUT} />;
+    return <InvitationInvalid template={template} message={CONFIRM_STEP_TIMED_OUT} />;
   }
 
   if (passwordExit === "invalid_link") {
@@ -171,7 +171,7 @@ export function InvitationPage() {
       <OidcAuthShell {...shellProps} heading="Sign in first">
         <div className="flex flex-col items-center gap-4 py-6 text-center">
           <p className="text-sm" style={{ color: "var(--fg)" }}>
-            {PASSWORD_NOT_SET_COPY}
+            {NO_CREDENTIAL_YET_COPY}
           </p>
           <Button asChild variant="outline">
             <LoginReturnLink preferOidcLogin>Sign in</LoginReturnLink>

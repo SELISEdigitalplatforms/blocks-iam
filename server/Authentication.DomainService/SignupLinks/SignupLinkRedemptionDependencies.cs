@@ -33,6 +33,39 @@ public sealed class SignupLinkRedemptionStores
     }
 }
 
+/// <summary>
+/// Cross-cutting services the redemption orchestrator uses: cache, tenant lookup,
+/// configuration, activity events and its logger.
+/// </summary>
+public sealed class SignupLinkRedemptionInfrastructure
+{
+    public ICacheClient Cache { get; }
+    public ITenants Tenants { get; }
+    public IConfiguration Configuration { get; }
+
+    /// <summary>
+    /// Records the activation when a link activates a pending account, as the activation
+    /// email does.
+    /// </summary>
+    public IUserActivityDispatcher UserActivity { get; }
+
+    public ILogger<SignupLinkRedemptionCollaborators> Logger { get; }
+
+    public SignupLinkRedemptionInfrastructure(
+        ICacheClient cache,
+        ITenants tenants,
+        IConfiguration configuration,
+        IUserActivityDispatcher userActivity,
+        ILogger<SignupLinkRedemptionCollaborators> logger)
+    {
+        Cache = cache;
+        Tenants = tenants;
+        Configuration = configuration;
+        UserActivity = userActivity;
+        Logger = logger;
+    }
+}
+
 public sealed class SignupLinkRedemptionCollaborators
 {
     public IOidcClientRegistrationLookup Oidc { get; }
@@ -45,19 +78,13 @@ public sealed class SignupLinkRedemptionCollaborators
     public IAuthenticationRepository Authentication { get; }
 
     public IUserManagementMutationService UserMutation { get; }
-    public ICacheClient Cache { get; }
-    public ITenants Tenants { get; }
-    public IConfiguration Configuration { get; }
     public IMfaChallengeIssuer Mfa { get; }
     public ISignupLinkEmbeddedTokenIssuer EmbeddedTokens { get; }
-
-    /// <summary>
-    /// Records the activation when a link activates a pending account, as the activation
-    /// email does.
-    /// </summary>
-    public IUserActivityDispatcher UserActivity { get; }
-
-    public ILogger<SignupLinkRedemptionCollaborators> Logger { get; }
+    public ICacheClient Cache => _infrastructure.Cache;
+    public ITenants Tenants => _infrastructure.Tenants;
+    public IConfiguration Configuration => _infrastructure.Configuration;
+    public IUserActivityDispatcher UserActivity => _infrastructure.UserActivity;
+    public ILogger<SignupLinkRedemptionCollaborators> Logger => _infrastructure.Logger;
 
     /// <summary>
     /// Checks an existing user's password for the signup-link password step, with the same
@@ -65,29 +92,23 @@ public sealed class SignupLinkRedemptionCollaborators
     /// </summary>
     public IPasswordCredentialVerifier? PasswordVerifier { get; }
 
+    private readonly SignupLinkRedemptionInfrastructure _infrastructure;
+
     public SignupLinkRedemptionCollaborators(
         IOidcClientRegistrationLookup oidc,
         IAuthenticationRepository authentication,
         IUserManagementMutationService userMutation,
-        ICacheClient cache,
-        ITenants tenants,
-        IConfiguration configuration,
         IMfaChallengeIssuer mfa,
         ISignupLinkEmbeddedTokenIssuer embeddedTokens,
-        IUserActivityDispatcher userActivity,
-        ILogger<SignupLinkRedemptionCollaborators> logger,
+        SignupLinkRedemptionInfrastructure infrastructure,
         IPasswordCredentialVerifier? passwordVerifier = null)
     {
         Oidc = oidc;
         Authentication = authentication;
         UserMutation = userMutation;
-        Cache = cache;
-        Tenants = tenants;
-        Configuration = configuration;
         Mfa = mfa;
         EmbeddedTokens = embeddedTokens;
-        UserActivity = userActivity;
-        Logger = logger;
+        _infrastructure = infrastructure;
         PasswordVerifier = passwordVerifier;
     }
 }

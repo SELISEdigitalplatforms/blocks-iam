@@ -124,9 +124,9 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
             });
 
         var stores = new SignupLinkRedemptionStores(_links.Object, _redemptions.Object, _sessions.Object, _users.Object, _iam.Object);
+        var infrastructure = new SignupLinkRedemptionInfrastructure(_cache.Object, _tenants.Object, config, _activity.Object, _logger);
         var collaborators = new SignupLinkRedemptionCollaborators(
-            _oidc.Object, _authentication.Object, _mutation.Object, _cache.Object, _tenants.Object, config,
-            _mfa.Object, _embeddedTokens.Object, _activity.Object, _logger,
+            _oidc.Object, _authentication.Object, _mutation.Object, _mfa.Object, _embeddedTokens.Object, infrastructure,
             withVerifier ? _verifier.Object : null);
         return new SignupLinkRedemptionOrchestrator(stores, collaborators);
     }

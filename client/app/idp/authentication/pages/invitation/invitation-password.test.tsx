@@ -39,7 +39,7 @@ vi.mock("../oidc/oidc-auth-shell", () => ({
 vi.mock("@/hooks/use-toast", () => ({ showErrorToast: vi.fn() }));
 
 import InvitationPage from "./invitation";
-import { PASSWORD_NOT_SET_COPY, PASSWORD_STEP_TIMED_OUT } from "./invitation";
+import { NO_CREDENTIAL_YET_COPY, CONFIRM_STEP_TIMED_OUT } from "./invitation";
 import { CONFIRM_PASSWORD_COPY } from "./invitation-confirm-password";
 
 const originalLocation = globalThis.window.location;
@@ -153,7 +153,7 @@ describe("InvitationPage password step (#593)", () => {
     await reachPasswordStep();
     authenticate.mockRejectedValue({ errors: { error: "invalid_redemption" } });
     submitPassword("Correct#1");
-    await waitFor(() => expect(screen.getByText(PASSWORD_STEP_TIMED_OUT)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(CONFIRM_STEP_TIMED_OUT)).toBeInTheDocument());
   });
 
   it("a link that stopped being valid shows the invalid view", async () => {
@@ -166,7 +166,7 @@ describe("InvitationPage password step (#593)", () => {
   it("password_not_set tells the user to sign in first", async () => {
     redeem.mockRejectedValue({ errors: { error: "password_not_set" } });
     renderJoin();
-    await waitFor(() => expect(screen.getByText(PASSWORD_NOT_SET_COPY)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(NO_CREDENTIAL_YET_COPY)).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "Sign in first" })).toBeInTheDocument();
   });
 });

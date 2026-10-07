@@ -74,7 +74,7 @@ ApplicationConfigurations.ConfigureMiddleware(
 // rather than sent verbatim. Read after ApplyFrontendRuntimeSettings filled the runtime
 // placeholders.
 var indexHtml = Path.Combine(app.Environment.WebRootPath ?? "", "index.html");
-var indexHtmlTemplate = File.Exists(indexHtml) ? File.ReadAllText(indexHtml) : null;
+var indexHtmlTemplate = File.Exists(indexHtml) ? await File.ReadAllTextAsync(indexHtml) : null;
 
 if (indexHtmlTemplate is not null)
 {

@@ -4,11 +4,8 @@ using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
-using Iam.DomainService.Services;
-using Iam.DomainService.Accounts;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Authentication.DomainService.Authentication;
 using BCryptNet = BCrypt.Net.BCrypt;
 
@@ -25,27 +22,18 @@ namespace Authentication.DomainService.OAuth
         public PasswordAuthenticationService(
             ILogger<PasswordAuthenticationService> logger,
             IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
-            ITenants tenants,
             ICryptoService cryptoService,
             IAuthenticationRepository oAuthRepository,
-            IAuthenticationDomainService authenticationDomainService,
-            IAccountService accountService,
-            IUserActivityDispatcher userActivityDispatcher,
-            IPasswordCredentialVerifier? passwordVerifier = null
+            IPasswordCredentialVerifier passwordVerifier
         )
         {
             _logger = logger;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
             _cryptoService = cryptoService;
             _oAuthRepository = oAuthRepository;
-            _passwordVerifier = passwordVerifier ?? new PasswordCredentialVerifier(
-                NullLogger<PasswordCredentialVerifier>.Instance,
-                tenants,
-                oAuthRepository,
-                accountService,
-                userActivityDispatcher,
-                authenticationDomainService);
+            _passwordVerifier = passwordVerifier;
         }
+
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             _logger.LogInformation("Password Authentication start");

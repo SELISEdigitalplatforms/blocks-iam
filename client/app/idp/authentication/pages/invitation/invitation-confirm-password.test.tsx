@@ -116,7 +116,7 @@ describe("InvitationConfirmPassword", () => {
     renderStep();
     typeAndSubmit("nope");
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(CONFIRM_PASSWORD_COPY.wrongPassword);
+    expect(alert).toHaveTextContent(CONFIRM_PASSWORD_COPY.wrongCredential);
     expect(passwordInput().value).toBe("");
     expect(passwordInput()).toHaveAttribute("aria-invalid", "true");
     expect(passwordInput()).toHaveAttribute("aria-describedby", alert.id);

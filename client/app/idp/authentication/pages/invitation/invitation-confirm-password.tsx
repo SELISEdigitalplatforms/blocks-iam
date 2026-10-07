@@ -24,7 +24,7 @@ import type { RedeemSignupLinkResponse } from "@blocks-idp/authentication/servic
 export const CONFIRM_PASSWORD_COPY = {
   heading: "Confirm it's you",
   body: "You already have an account. Enter your password to accept this invitation.",
-  wrongPassword: "That password is not correct.",
+  wrongCredential: "That password is not correct.",
   locked: "Your account is locked. Please contact support or reset your password.",
   captchaRequired: "Captcha verification is required. Please complete the given captcha.",
   captchaInvalid: "Captcha verification failed. Please try again.",
@@ -111,7 +111,8 @@ export function InvitationConfirmPassword({
   function shake() {
     if (!formRef.current) return;
     formRef.current.classList.remove("oidc-animate-shake");
-    void formRef.current.offsetWidth;
+    // Reading layout forces a reflow, so re-adding the class restarts the animation.
+    formRef.current.getBoundingClientRect();
     formRef.current.classList.add("oidc-animate-shake");
   }
 
@@ -119,7 +120,7 @@ export function InvitationConfirmPassword({
     const server = readServerError(error);
     switch (server.error) {
       case "invalid_username_password":
-        setServerError(CONFIRM_PASSWORD_COPY.wrongPassword);
+        setServerError(CONFIRM_PASSWORD_COPY.wrongCredential);
         setRejected(true);
         form.reset({ password: "" });
         shake();
