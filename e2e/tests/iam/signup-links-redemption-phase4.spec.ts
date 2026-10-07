@@ -32,8 +32,8 @@ test.describe("Signup link redemption (Phase 4)", () => {
     expect(body.valid).toBe(false);
   });
 
-  test("join page still reachable under OidcLayout", async ({ page }) => {
-    await page.goto("/oidc/join/preview-tenant");
+  test("invitation page still reachable under OidcLayout", async ({ page }) => {
+    await page.goto("/oidc/invitation/preview-tenant");
     await expect(
       page.getByText(/no longer valid|Checking your invite|Joining|Link unavailable|Welcome|Verify|Password/i),
     ).toBeVisible({ timeout: 30_000 });
