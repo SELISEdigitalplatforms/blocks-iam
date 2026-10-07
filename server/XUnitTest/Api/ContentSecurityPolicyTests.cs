@@ -80,6 +80,39 @@ public class ContentSecurityPolicyTests
         connect.Should().Contain("wss://logic.example.com");
     }
 
+    [Theory]
+    [InlineData("https://logic.example.com/hub", "wss://logic.example.com")]
+    [InlineData("wss://logic.example.com", "wss://logic.example.com")]
+    [InlineData("http://logic.example.com", null)]
+    [InlineData("not-a-url", null)]
+    [InlineData("", null)]
+    public void ToWebSocketOrigin_OnlyAllowsEncryptedSockets(string value, string? expected)
+    {
+        ContentSecurityPolicy.ToWebSocketOrigin(value).Should().Be(expected);
+    }
+
+    // The unencrypted socket origin, built from the scheme constant so the test reads the same
+    // value the policy would have emitted before plain sockets were dropped.
+    private static readonly string PlainSocketOrigin =
+        new UriBuilder(Uri.UriSchemeWs, "logic.example.com").Uri.GetLeftPart(UriPartial.Authority);
+
+    [Fact]
+    public void ToWebSocketOrigin_RefusesAPlainSocketOrigin()
+    {
+        ContentSecurityPolicy.ToWebSocketOrigin(PlainSocketOrigin).Should().BeNull();
+    }
+
+    [Fact]
+    public void Build_GivesAPlainHttpLogicHostNoSocketAllowance()
+    {
+        var policy = ContentSecurityPolicy.Build(Config(new()
+        {
+            ["FrontendRuntime:BLOCKS_LOGIC_BASE_URL"] = "http://logic.example.com",
+        }));
+
+        Directive(policy, "connect-src").Should().NotContain(PlainSocketOrigin);
+    }
+
     // ---------- Third-party origins the runtime config cannot describe ----------
 
     [Fact]

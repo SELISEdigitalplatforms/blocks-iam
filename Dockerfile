@@ -13,6 +13,7 @@ FROM node:22-alpine AS client
 WORKDIR /src
 
 COPY client/package.json client/package-lock.json ./client/
+COPY client/vendor ./client/vendor
 RUN cd client && npm ci --no-audit --no-fund
 
 COPY client ./client

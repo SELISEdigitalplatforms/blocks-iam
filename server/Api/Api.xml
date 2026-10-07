@@ -563,7 +563,11 @@
             </summary>
         </member>
         <member name="M:Api.Security.ContentSecurityPolicy.ToWebSocketOrigin(System.String)">
-            <summary>The ws:// or wss:// form of an http(s) origin, or null if it is not one.</summary>
+            <summary>
+            The wss origin a browser uses to open a socket to an https host, or null. Plain http and
+            ws hosts get no socket allowance: an unencrypted socket would carry the session token and
+            notification payloads in clear text.
+            </summary>
         </member>
         <member name="M:Api.Security.ContentSecurityPolicy.Split(System.String)">
             <summary>Space- or comma-separated list, for origins no runtime key describes.</summary>
