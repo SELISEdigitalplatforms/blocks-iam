@@ -96,19 +96,19 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
             _sessions.Object,
             _users.Object,
             _iam.Object);
-        var infrastructure = new SignupLinkRedemptionInfrastructure(
+        var services = new SignupLinkRedemptionServices(
             _cache.Object,
             _tenants.Object,
             config,
-            _activity.Object,
-            NullLogger<SignupLinkRedemptionCollaborators>.Instance);
+            _activity.Object);
         var collaborators = new SignupLinkRedemptionCollaborators(
             _oidc.Object,
             _authentication.Object,
             _mutation.Object,
             _mfa.Object,
             _embeddedTokens.Object,
-            infrastructure);
+            services,
+            NullLogger<SignupLinkRedemptionCollaborators>.Instance);
         return new SignupLinkRedemptionOrchestrator(stores, collaborators);
     }
 

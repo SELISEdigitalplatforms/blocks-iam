@@ -34,10 +34,10 @@ public sealed class SignupLinkRedemptionStores
 }
 
 /// <summary>
-/// Cross-cutting services the redemption orchestrator uses: cache, tenant lookup,
-/// configuration, activity events and its logger.
+/// Supporting services the redemption orchestrator uses: cache, tenant lookup,
+/// configuration, activity events and the password verifier.
 /// </summary>
-public sealed class SignupLinkRedemptionInfrastructure
+public sealed class SignupLinkRedemptionServices
 {
     public ICacheClient Cache { get; }
     public ITenants Tenants { get; }
@@ -49,20 +49,24 @@ public sealed class SignupLinkRedemptionInfrastructure
     /// </summary>
     public IUserActivityDispatcher UserActivity { get; }
 
-    public ILogger<SignupLinkRedemptionCollaborators> Logger { get; }
+    /// <summary>
+    /// Checks an existing user's password for the signup-link password step, with the same
+    /// lockout and CAPTCHA rules as embedded login.
+    /// </summary>
+    public IPasswordCredentialVerifier? PasswordVerifier { get; }
 
-    public SignupLinkRedemptionInfrastructure(
+    public SignupLinkRedemptionServices(
         ICacheClient cache,
         ITenants tenants,
         IConfiguration configuration,
         IUserActivityDispatcher userActivity,
-        ILogger<SignupLinkRedemptionCollaborators> logger)
+        IPasswordCredentialVerifier? passwordVerifier = null)
     {
         Cache = cache;
         Tenants = tenants;
         Configuration = configuration;
         UserActivity = userActivity;
-        Logger = logger;
+        PasswordVerifier = passwordVerifier;
     }
 }
 
@@ -80,19 +84,14 @@ public sealed class SignupLinkRedemptionCollaborators
     public IUserManagementMutationService UserMutation { get; }
     public IMfaChallengeIssuer Mfa { get; }
     public ISignupLinkEmbeddedTokenIssuer EmbeddedTokens { get; }
-    public ICacheClient Cache => _infrastructure.Cache;
-    public ITenants Tenants => _infrastructure.Tenants;
-    public IConfiguration Configuration => _infrastructure.Configuration;
-    public IUserActivityDispatcher UserActivity => _infrastructure.UserActivity;
-    public ILogger<SignupLinkRedemptionCollaborators> Logger => _infrastructure.Logger;
+    public ILogger<SignupLinkRedemptionCollaborators> Logger { get; }
+    public ICacheClient Cache => _services.Cache;
+    public ITenants Tenants => _services.Tenants;
+    public IConfiguration Configuration => _services.Configuration;
+    public IUserActivityDispatcher UserActivity => _services.UserActivity;
+    public IPasswordCredentialVerifier? PasswordVerifier => _services.PasswordVerifier;
 
-    /// <summary>
-    /// Checks an existing user's password for the signup-link password step, with the same
-    /// lockout and CAPTCHA rules as embedded login.
-    /// </summary>
-    public IPasswordCredentialVerifier? PasswordVerifier { get; }
-
-    private readonly SignupLinkRedemptionInfrastructure _infrastructure;
+    private readonly SignupLinkRedemptionServices _services;
 
     public SignupLinkRedemptionCollaborators(
         IOidcClientRegistrationLookup oidc,
@@ -100,15 +99,15 @@ public sealed class SignupLinkRedemptionCollaborators
         IUserManagementMutationService userMutation,
         IMfaChallengeIssuer mfa,
         ISignupLinkEmbeddedTokenIssuer embeddedTokens,
-        SignupLinkRedemptionInfrastructure infrastructure,
-        IPasswordCredentialVerifier? passwordVerifier = null)
+        SignupLinkRedemptionServices services,
+        ILogger<SignupLinkRedemptionCollaborators> logger)
     {
         Oidc = oidc;
         Authentication = authentication;
         UserMutation = userMutation;
         Mfa = mfa;
         EmbeddedTokens = embeddedTokens;
-        _infrastructure = infrastructure;
-        PasswordVerifier = passwordVerifier;
+        _services = services;
+        Logger = logger;
     }
 }
