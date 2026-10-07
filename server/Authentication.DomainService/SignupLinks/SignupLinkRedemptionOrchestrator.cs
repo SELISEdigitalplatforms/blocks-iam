@@ -36,8 +36,8 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private const string MfaCachePrefix = "signup_link_mfa:";
     private const string RejectionNotFound = "not_found";
     private const string RejectionExhausted = "exhausted";
-    private const string RejectionPasswordNotSet = "password_not_set";
-    private const string RejectionInvalidPassword = "invalid_password";
+    private const string RejectionNoCredentialSet = "password_not_set";
+    private const string RejectionWrongCredential = "invalid_password";
     private const string RejectionAccountLocked = "account_locked";
     private const string RejectionCaptchaInvalid = "captcha_invalid";
     private const string RejectionAttemptsExceeded = "redemption_attempts_exceeded";
@@ -185,9 +185,9 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     {
         if (string.IsNullOrEmpty(user.Password))
         {
-            await RecordRejectionAsync(link, RejectionPasswordNotSet, request, ordinal: link.RedemptionCount + 1, userId: user.ItemId,
+            await RecordRejectionAsync(link, RejectionNoCredentialSet, request, ordinal: link.RedemptionCount + 1, userId: user.ItemId,
                 detail: "the link requires the existing user's password and the account has none");
-            return new BadRequestObjectResult(new { error = RejectionPasswordNotSet });
+            return new BadRequestObjectResult(new { error = RejectionNoCredentialSet });
         }
 
         return await StartPasswordStepAsync(link, user, BranchPreExisting, request);
@@ -221,10 +221,9 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         await RecordSuccessAsync(link, user.ItemId, SignupLinkRedemptionOutcome.AuthenticationRequired, request, link.RedemptionCount, grant: false);
         _logger.LogInformation(
-            "Signup link {LinkId} asked existing user {UserId} ({MaskedEmail}) to confirm their password ({Branch})",
+            "Signup link {LinkId} asked existing user {UserId} to confirm their password ({Branch})",
             link.ItemId,
             user.ItemId,
-            SignupLinkCodeHasher.MaskEmail(link.Email),
             branch);
 
         return new OkObjectResult(new RedeemSignupLinkResponse
@@ -255,8 +254,9 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             || string.IsNullOrWhiteSpace(tenantIdHint)
             || !string.Equals(ctx.TenantId, tenantIdHint, StringComparison.OrdinalIgnoreCase))
         {
-            // The id is never logged: it is the credential for this step.
-            _logger.LogWarning("Signup link authenticate rejected: the redemption is unknown, expired, already used, or for another tenant (tenant hint {TenantIdHint})", tenantIdHint);
+            // Neither the id (the credential for this step) nor the caller-supplied tenant
+            // header is logged.
+            _logger.LogWarning("Signup link authenticate rejected: the redemption is unknown, expired, already used, or for another tenant");
             return InvalidRedemption();
         }
 
@@ -458,7 +458,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
                 await _cacheClient.AddStringValueAsync(key, JsonSerializer.Serialize(ctx), remaining);
             }
 
-            await RecordRejectionAsync(link, RejectionInvalidPassword, request, ordinal, user.ItemId, "the password was not correct");
+            await RecordRejectionAsync(link, RejectionWrongCredential, request, ordinal, user.ItemId, "the password was not correct");
         }
 
         // 400 rather than login's 401: the hosted page's HTTP client treats any 401 as an
