@@ -12,22 +12,7 @@ import type {
   IAccountResendActivationPayload,
   IActivationCodeValidationPayload,
 } from "../../iam/models/user";
-import type {
-  ISaveSignUpSettingPayload,
-  ISaveRolesAndPermissionsPayload,
-  IGetUserRolesPayload,
-  IGetUserPermissionsPayload,
-} from "../../iam/models/user";
-import type { IGetActivitiesPayload, IActivityItemApi } from "../../iam/security/api";
-import type { IGeneratePATPayload } from "../../iam/security/api";
-import type {
-  IRole,
-  GetRolesPayload,
-  IGetRolePayload,
-  CreateRolePayload,
-  UpdateRolePayload,
-  SetRoles,
-} from "../../iam/models/role";
+import type { ISaveSignUpSettingPayload, ISaveRolesAndPermissionsPayload, IGetUserRolesPayload } from "../../iam/models/user";
 import {
   type IPermission,
   type IGetPermissionsPayload,
@@ -44,17 +29,12 @@ import type {
   ICreateOrUpdateOrganizationPayload,
 } from "../../iam/models/organization";
 import type { IOrganizationConfigPayload, IOrganizationConfigResponse } from "../../iam/models/organization-config.model";
-import type {
-  IIAMConfiguration,
-  IIAMConfigurationSavePayload,
-} from "../../iam/models/configuration.model";
 
 export { mockSuccessResponse, mockErrorResponse };
 
 // ─── Mock IDs ─────────────────────────────────────────────────────────────────
 
 export const MOCK_USER_ITEM_ID = "usr-a1b2-c3d4-e5f6";
-export const MOCK_ROLE_ITEM_ID = "role-g7h8-i9j0-k1l2";
 export const MOCK_PERMISSION_ITEM_ID = "perm-m3n4-o5p6-q7r8";
 export const MOCK_ORGANIZATION_ITEM_ID = "org-s9t0-u1v2-w3x4";
 
@@ -101,12 +81,6 @@ export const mockUsersResponse = {
   totalCount: 2,
 };
 
-export const mockEmptyUsersResponse = {
-  data: [],
-  errors: null,
-  totalCount: 0,
-};
-
 export const mockGetUsersPayload: IGetUsersPayload = {
   page: 1,
   pageSize: 20,
@@ -136,44 +110,7 @@ export const mockSaveRolesAndPermissionsPayload: ISaveRolesAndPermissionsPayload
   projectKey: TEST_PROJECT_KEY,
 };
 
-export const mockGetHistoriesPayload: IGetActivitiesPayload = {
-  page: 0,
-  pageSize: 10,
-  userId: MOCK_USER_ITEM_ID,
-};
-
-export const mockUserActivity: IActivityItemApi = {
-  itemId: "activity-1",
-  userId: MOCK_USER_ITEM_ID,
-  actorUserId: MOCK_USER_ITEM_ID,
-  category: "Auth",
-  event: "LOGIN_SUCCESS",
-  outcome: "Success",
-  severity: "Info",
-  context: {
-    ipAddress: "127.0.0.1",
-    deviceName: "Chrome on macOS",
-    deviceInformation: {
-      browser: "Chrome",
-      os: "macOS",
-      device: "Macbook",
-    },
-  },
-  createdDate: "2026-07-09T08:56:18.707Z",
-};
-
-export const mockGeneratePATPayload: IGeneratePATPayload = {
-  note: "test pat",
-  codeTtlInMinute: 60,
-  clientId: "client-123",
-};
-
 export const mockGetUserRolesPayload: IGetUserRolesPayload = {
-  userId: MOCK_USER_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
-};
-
-export const mockGetUserPermissionsPayload: IGetUserPermissionsPayload = {
   userId: MOCK_USER_ITEM_ID,
   projectKey: TEST_PROJECT_KEY,
 };
@@ -228,65 +165,6 @@ export const mockActivationCodeValidationResponse = {
   errors: null,
   isSuccess: true,
   userId: MOCK_USER_ITEM_ID,
-};
-
-// ─── Role Mocks ──────────────────────────────────────────────────────────────
-
-export const mockRole: IRole = {
-  itemId: MOCK_ROLE_ITEM_ID,
-  name: "Admin",
-  description: "Administrator role",
-  slug: "admin",
-  projectKey: TEST_PROJECT_KEY,
-};
-
-export const mockRole2: IRole = {
-  itemId: "role-e5f6-g7h8-i9j0",
-  name: "User",
-  description: "Standard user role",
-  slug: "user",
-  projectKey: TEST_PROJECT_KEY,
-};
-
-export const mockRolesResponse = {
-  data: [mockRole, mockRole2],
-  errors: null,
-  totalCount: 2,
-};
-
-export const mockGetRolesPayload: GetRolesPayload = {
-  page: 1,
-  pageSize: 20,
-  projectKey: TEST_PROJECT_KEY,
-};
-
-export const mockGetRolePayload: IGetRolePayload = {
-  id: MOCK_ROLE_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
-};
-
-export const mockGetRoleResponse = {
-  data: mockRole,
-  errors: null,
-};
-
-export const mockCreateRolePayload: CreateRolePayload = {
-  name: "New Role",
-  description: "New role description",
-  slug: "new-role",
-  projectKey: TEST_PROJECT_KEY,
-};
-
-export const mockUpdateRolePayload: UpdateRolePayload = {
-  itemId: MOCK_ROLE_ITEM_ID,
-  name: "Updated Role",
-};
-
-export const mockSetRolesPayload: SetRoles = {
-  addPermissions: [MOCK_PERMISSION_ITEM_ID],
-  removePermissions: [],
-  slug: "admin",
-  projectKey: TEST_PROJECT_KEY,
 };
 
 // ─── Permission Mocks ────────────────────────────────────────────────────────
@@ -427,25 +305,4 @@ export const mockSaveOrganizationConfigPayload: IOrganizationConfigPayload = {
   allowOrgCreationFromCloud: true,
   allowOrgCreationFromConstruct: false,
   isMultiOrgEnabled: false,
-};
-
-// ─── IAM Configuration Mocks ────────────────────────────────────────────────
-
-export const mockIamConfiguration: IIAMConfiguration = {
-  accountActivationUrl: "https://app.blocks.com/activate",
-  accountVerificationUrl: "https://app.blocks.com/verify",
-  recoverAccountUrl: "https://app.blocks.com/recover",
-  activationUrlLifetimeInMinutes: 1440,
-  recoverAccountUrlLifetimeInMinutes: 1440,
-  logoutOnPasswordChange: true,
-};
-
-export const mockGetIamConfigResponse = {
-  data: mockIamConfiguration,
-  errors: null,
-};
-
-export const mockSaveIamConfigPayload: IIAMConfigurationSavePayload = {
-  ...mockIamConfiguration,
-  projectKey: TEST_PROJECT_KEY,
 };

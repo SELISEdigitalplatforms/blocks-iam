@@ -73,6 +73,23 @@ export interface LoginOption {
   [key: string]: unknown;
 }
 
+export interface IOidcTokenExchangeResponse {
+  access_token?: string;
+  refresh_token?: string;
+  [key: string]: unknown;
+}
+
+export interface IOidcLoginResponse {
+  authorizationUrl?: string;
+  error?: string;
+  [key: string]: unknown;
+}
+
+export interface IOidcSelectAccountResponse {
+  redirect_url?: string;
+  [key: string]: unknown;
+}
+
 export interface IActivateAccountPayload {
   code: string;
   password: string;

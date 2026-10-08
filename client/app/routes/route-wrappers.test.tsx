@@ -14,32 +14,7 @@ const stub = (id: string) => {
   return Stub;
 };
 
-vi.mock("@blocks-idp/authentication/pages/auth-logs", () => ({ AuthLogs: stub("auth-logs") }));
-vi.mock("@blocks-idp/authentication/pages/authentication-config", () => ({
-  AuthenticationConfig: stub("authentication-config"),
-}));
-vi.mock("@blocks-idp/iam/modules/permission-management", () => ({
-  AddPermission: stub("add-permission"),
-}));
-vi.mock("@blocks-idp/iam/modules/user-management", () => ({
-  Configure: stub("configure"),
-  IamLogs: stub("iam-logs"),
-  User: stub("user"),
-}));
-vi.mock("@blocks-idp/iam/modules/permission-management/permission-details", () => ({
-  PermissionDetails: stub("permission-details"),
-}));
-vi.mock("@blocks-idp/iam/modules/role-management", () => ({
-  RoleDetails: stub("role-details"),
-}));
-vi.mock("@blocks-idp/iam/pages/iam-management", () => ({ IamManagement: stub("iam-management") }));
-vi.mock("@blocks-identifier/pages/services/managed-services", () => ({
-  ManagedServices: stub("managed-services"),
-}));
 vi.mock("@blocks-idp/iam/modules/user-management/profile", () => ({ Profile: stub("profile") }));
-vi.mock("@blocks-idp/authentication/pages/sso-configuration", () => ({
-  SSOConfiguration: stub("sso-configuration"),
-}));
 
 // Auth + oidc + device wrappers.
 vi.mock("@blocks-idp/authentication/pages/activation-success", () => ({
@@ -84,59 +59,18 @@ vi.mock("@blocks-idp/authentication/pages/device/success", () => ({
 
 const renderRoute = async (path: string, testId: string, initialEntries = ["/"]) => {
   const mod = await import(path);
-  const Route = mod.default as React.ComponentType<Record<string, unknown>>;
+  const Route = mod.default as React.ComponentType;
   render(
     <MemoryRouter initialEntries={initialEntries}>
-      <Route section="users" />
+      <Route />
     </MemoryRouter>,
   );
   expect(screen.getByTestId(testId)).toBeInTheDocument();
 };
 
 describe("dashboard route wrappers", () => {
-  it.each([
-    ["./dashboard/auth-logs", "auth-logs"],
-    ["./dashboard/authentication-config", "authentication-config"],
-    ["./dashboard/iam-add-permission", "add-permission"],
-    ["./dashboard/iam-configure", "configure"],
-    ["./dashboard/iam-logs", "iam-logs"],
-    ["./dashboard/iam", "iam-management"],
-    ["./dashboard/managed-services", "managed-services"],
-    ["./dashboard/profile", "profile"],
-    ["./dashboard/sso-configuration", "sso-configuration"],
-  ])("renders %s", async (path, testId) => {
-    await renderRoute(path, testId);
-  });
-
-  // iam-org-detail and iam-user-detail were removed with the Users and
-  // Organizations routes, which the OS frontend now owns (blocks-os#359).
-  it.each([
-    ["./dashboard/iam-permission-detail", "permission-details"],
-    ["./dashboard/iam-role-detail", "role-details"],
-  ])("renders param route %s", async (path, testId) => {
-    await renderRoute(path, testId, ["/x/abc"]);
-  });
-
-  it("renders the static rate limiter page", async () => {
-    const mod = await import("./dashboard/rate-limiter");
-    const Route = mod.default;
-    render(<Route />);
-    expect(screen.getByText("Rate Limiter")).toBeInTheDocument();
-  });
-
-  it.each([
-    ["./dashboard/captcha-logs"],
-    ["./dashboard/mfa-logs"],
-  ])("renders redirect route %s without throwing", async (path) => {
-    const mod = await import(path);
-    const Route = mod.default;
-    expect(() =>
-      render(
-        <MemoryRouter>
-          <Route />
-        </MemoryRouter>,
-      ),
-    ).not.toThrow();
+  it("renders ./dashboard/profile", async () => {
+    await renderRoute("./dashboard/profile", "profile");
   });
 });
 

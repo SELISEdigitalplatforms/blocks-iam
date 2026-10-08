@@ -20,13 +20,7 @@ const alias = {
   "@seliseblocks/genesis-os": path.resolve(__dirname, "./app/test-utils/stubs/blocks-kit.tsx"),
   "@": path.resolve(__dirname, "./app"),
   "@blocks-idp": path.resolve(__dirname, "./app/idp"),
-  "@blocks-lmt": path.resolve(__dirname, "./app/cross-modules/lmt"),
   "@blocks-storage": path.resolve(__dirname, "./app/cross-modules/storage"),
-  "@blocks-communication": path.resolve(__dirname, "./app/cross-modules/communication"),
-  "@blocks-identifier": path.resolve(__dirname, "./app/cross-modules/identifier"),
-  "@blocks-localization": path.resolve(__dirname, "./app/cross-modules/localization"),
-  "@blocks-utilities": path.resolve(__dirname, "./app/cross-modules/utilities"),
-  "@blocks-ai": path.resolve(__dirname, "./app/cross-modules/ai"),
 };
 
 // DOM-free areas: pure request/mapping/format logic.
@@ -42,14 +36,10 @@ const NODE_GLOBS = [
 
 // These sit in DOM-free folders but touch `window` directly, so they stay on jsdom.
 const NEEDS_DOM = [
-  "app/cross-modules/devops/services/github-info.service.test.ts",
-  "app/cross-modules/devops/services/providers.service.test.ts",
   "app/cross-modules/storage/services/storage-file.service.test.ts",
   "app/cross-modules/storage/services/storage.service.test.ts",
   "app/idp/authentication/utils/oidc-navigation.util.test.ts",
   "app/idp/authentication/utils/oidc-utils.test.ts",
-  "app/notifications/services/notification-client.service.test.ts",
-  "app/notifications/services/notification.service.test.ts",
 ];
 
 // Resolve the node set once, so the jsdom project can exclude exactly those

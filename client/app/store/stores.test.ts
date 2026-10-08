@@ -1,10 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useAuthStore } from "./useAuthStore";
-import { useImpersonateStore } from "./impersonate-store";
-import { useExecutionContextStore } from "./execution-context-store";
 import { useProjectStore } from "./useProjectStore";
 import type { User } from "@blocks-idp/iam/models/user";
-import type { IProject } from "@blocks-identifier/models/project.model";
+import type { IProject } from "@seliseblocks/genesis-os/models";
 
 const user = { itemId: "u1", email: "a@b.com" } as User;
 const project = {
@@ -55,61 +53,6 @@ describe("useAuthStore", () => {
     const s = useAuthStore.getState();
     expect(s.isAuthenticated).toBe(false);
     expect(s.accessToken).toBeNull();
-  });
-});
-
-describe("useImpersonateStore", () => {
-  beforeEach(() => useImpersonateStore.getState().reset());
-
-  it("impersonate() sets the impersonation state", () => {
-    useImpersonateStore.getState().impersonate("imp-tenant", "orig-tenant");
-    const s = useImpersonateStore.getState();
-    expect(s.isImpersonated).toBe(true);
-    expect(s.impersonatedTenantId).toBe("imp-tenant");
-    expect(s.originalTenantId).toBe("orig-tenant");
-  });
-
-  it("terminate() clears impersonation but keeps the original tenant", () => {
-    useImpersonateStore.getState().impersonate("imp-tenant", "orig-tenant");
-    useImpersonateStore.getState().terminate("orig-tenant");
-    const s = useImpersonateStore.getState();
-    expect(s.isImpersonated).toBe(false);
-    expect(s.impersonatedTenantId).toBeNull();
-    expect(s.originalTenantId).toBe("orig-tenant");
-  });
-
-  it("setImpersonation() sets all three fields explicitly", () => {
-    useImpersonateStore.getState().setImpersonation(true, "orig", "imp");
-    const s = useImpersonateStore.getState();
-    expect(s.isImpersonated).toBe(true);
-    expect(s.originalTenantId).toBe("orig");
-    expect(s.impersonatedTenantId).toBe("imp");
-  });
-
-  it("setInitialized() toggles the initialized flag", () => {
-    useImpersonateStore.getState().setInitialized(true);
-    expect(useImpersonateStore.getState().isInitialized).toBe(true);
-  });
-
-  it("reset() restores defaults", () => {
-    useImpersonateStore.getState().impersonate("i", "o");
-    useImpersonateStore.getState().setInitialized(true);
-    useImpersonateStore.getState().reset();
-    const s = useImpersonateStore.getState();
-    expect(s.isImpersonated).toBe(false);
-    expect(s.isInitialized).toBe(false);
-  });
-});
-
-describe("useExecutionContextStore", () => {
-  beforeEach(() => useExecutionContextStore.getState().reset());
-
-  it("setContext / resetContext manage the context", () => {
-    const ctx = { tenantId: "t1", contextId: "c1" };
-    useExecutionContextStore.getState().setContext(ctx);
-    expect(useExecutionContextStore.getState().context).toEqual(ctx);
-    useExecutionContextStore.getState().resetContext();
-    expect(useExecutionContextStore.getState().context).toBeNull();
   });
 });
 
