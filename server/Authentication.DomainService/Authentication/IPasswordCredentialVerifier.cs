@@ -6,15 +6,17 @@ namespace Authentication.DomainService.Authentication
 {
     /// <summary>
     /// The single place a user's password is checked: lockout pre-check, CAPTCHA gate, BCrypt
-    /// with the tenant salt, failed-attempt accounting with lockout and its notification, and
-    /// the counter reset on success. Embedded login and the signup-link password step both run
-    /// through it, so the two cannot drift apart.
+    /// with the tenant salt, and failed-attempt accounting with lockout and its notification.
+    /// Embedded login and the signup-link password step both run through it, so the two cannot
+    /// drift apart. Neither verification method resets the counters: a correct password is not
+    /// yet a sign-in, so each caller calls <see cref="ResetFailureCountersAsync"/> only once it
+    /// has issued a session.
     /// </summary>
     public interface IPasswordCredentialVerifier
     {
         /// <summary>
         /// Full verification for a caller that has already identified the user: lockout,
-        /// CAPTCHA, password, accounting, and the counter reset when it succeeds.
+        /// CAPTCHA, password and accounting. It does not reset the counters on success.
         /// </summary>
         Task<PasswordVerificationResult> VerifyAsync(
             User user,
@@ -25,8 +27,7 @@ namespace Authentication.DomainService.Authentication
 
         /// <summary>
         /// Lockout pre-check, password, and failed-attempt accounting only. Embedded login
-        /// gates CAPTCHA itself and resets the counters only once tokens are minted, so it uses
-        /// this step and <see cref="ResetFailureCountersAsync"/> separately.
+        /// gates CAPTCHA itself, so it uses this step rather than <see cref="VerifyAsync"/>.
         /// </summary>
         Task<PasswordVerificationResult> VerifyPasswordAsync(
             User user,

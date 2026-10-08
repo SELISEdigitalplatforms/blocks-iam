@@ -76,13 +76,9 @@ namespace Authentication.DomainService.Authentication
                 return captcha;
             }
 
-            var verification = await VerifyPasswordAsync(user, password, configuration, request, tenantId);
-            if (verification.Succeeded)
-            {
-                await ResetFailureCountersAsync(user);
-            }
-
-            return verification;
+            // No counter reset here: a correct password is not yet a sign-in. The caller resets
+            // once it has issued a session, after any second factor, as login does.
+            return await VerifyPasswordAsync(user, password, configuration, request, tenantId);
         }
 
         public async Task<PasswordVerificationResult> VerifyPasswordAsync(

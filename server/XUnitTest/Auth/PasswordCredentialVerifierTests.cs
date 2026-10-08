@@ -71,16 +71,36 @@ public class PasswordCredentialVerifierTests
     }
 
     [Fact]
-    public async Task CorrectPassword_WithTheTenantSalt_Succeeds_AndResetsCounters()
+    public async Task CorrectPassword_WithTheTenantSalt_Succeeds_ButLeavesTheCountersToTheCaller()
     {
-        var user = UserWith("Correct#1");
+        // A correct password is not yet a sign-in: an MFA user still owes a code. Clearing
+        // FailedMfaCount and LockoutCount here would let the password alone wipe the MFA
+        // lockout backoff, so the caller resets once it has issued a session.
+        var user = UserWith("Correct#1", failed: 1);
         user.LastFailedLoginUtc = DateTime.UtcNow.AddMinutes(-1);
+        user.FailedMfaCount = 3;
+        user.LockoutCount = 2;
 
         var result = await Sut().VerifyAsync(user, "Correct#1", null, Request(), "t1");
 
         result.Succeeded.Should().BeTrue();
+        _repo.Verify(r => r.UpdatePartialAsync<User>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResetFailureCounters_ClearsLoginMfaAndLockoutState()
+    {
+        var user = UserWith("Correct#1", failed: 2);
+        user.FailedMfaCount = 3;
+        user.LockoutCount = 2;
+
+        await Sut().ResetFailureCountersAsync(user);
+
         _repo.Verify(r => r.UpdatePartialAsync<User>("u1", It.Is<Dictionary<string, object>>(d =>
-            (int)d[nameof(User.FailedLoginCount)] == 0 && d.ContainsKey(nameof(User.LockoutUntilUtc))), ""), Times.Once);
+            (int)d[nameof(User.FailedLoginCount)] == 0
+            && (int)d[nameof(User.FailedMfaCount)] == 0
+            && (int)d[nameof(User.LockoutCount)] == 0
+            && d.ContainsKey(nameof(User.LockoutUntilUtc))), ""), Times.Once);
     }
 
     [Fact]

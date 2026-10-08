@@ -836,6 +836,188 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
         http.Response.Headers.SetCookie.ToString().Should().NotContain("blocks-link-session");
     }
 
+    // ---------------- failure counters ----------------
+    //
+    // The user is read before the password check, and the password and OTP checks write the
+    // failure counters themselves. Saving that early copy over the whole document would put
+    // the old counters back, so the grant is applied to a copy read after the checks; and the
+    // counters are cleared only once a session is issued, as login does.
+
+    /// <summary>The copy read before the password, then the copy the store holds after it.</summary>
+    private (User Stale, User Fresh) StaleThenFresh(SignupLink link)
+    {
+        var stale = Active();
+        stale.FailedLoginCount = 2;
+        stale.LockoutCount = 1;
+        var fresh = Active();
+        var passwordChecked = false;
+
+        Arrange(link, stale);
+        _users.Setup(u => u.GetUserByIdAsync("u1")).ReturnsAsync(() => passwordChecked ? fresh : stale);
+        _verifier.Setup(v => v.VerifyAsync(It.IsAny<User>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<HttpRequest?>(), It.IsAny<string?>()))
+            .Callback(() => passwordChecked = true)
+            .ReturnsAsync(PasswordVerificationResult.Success());
+        return (stale, fresh);
+    }
+
+    [Fact]
+    public async Task Grant_IsSavedOnACopyReadAfterThePassword_NotTheCopyReadBeforeIt()
+    {
+        var link = Link();
+        var (stale, fresh) = StaleThenFresh(link);
+        AllowConsume(link);
+        var sut = Sut();
+        var step = await RedeemToPasswordStepAsync(sut);
+
+        await sut.AuthenticateAsync(step.RedemptionId, "Correct#1", null, "t1", Http().Request, Http().Response);
+
+        _users.Verify(u => u.UpdateUserAsync(It.Is<User>(x => ReferenceEquals(x, fresh))), Times.Once);
+        _users.Verify(u => u.UpdateUserAsync(It.Is<User>(x => ReferenceEquals(x, stale))), Times.Never);
+        fresh.Roles["org-acme"].Should().Equal("r1");
+        fresh.FailedLoginCount.Should().Be(0);
+        fresh.LockoutCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Embedded_TokensAreIssuedForTheCopyThatWasSaved()
+    {
+        var link = Link();
+        link.Mode = SignupLinkMode.Embedded;
+        link.ClientId = string.Empty;
+        link.RedirectUri = string.Empty;
+        var (_, fresh) = StaleThenFresh(link);
+        AllowConsume(link);
+        _embeddedTokens
+            .Setup(t => t.IssueAsync(It.IsAny<SignupLink>(), It.IsAny<User>(), It.IsAny<List<string>>(), It.IsAny<HttpRequest>()))
+            .ReturnsAsync(new OkObjectResult(new Dictionary<string, object?> { ["token_type"] = "Bearer" }));
+        var sut = Sut();
+        var step = await RedeemToPasswordStepAsync(sut);
+
+        await sut.AuthenticateAsync(step.RedemptionId, "Correct#1", null, "t1", Http().Request, Http().Response);
+
+        // The new roles must be in the tokens, so they are issued for the copy that holds them.
+        _embeddedTokens.Verify(t => t.IssueAsync(It.IsAny<SignupLink>(),
+            It.Is<User>(u => ReferenceEquals(u, fresh) && u.Roles["org-acme"].SequenceEqual(new[] { "r1" })),
+            It.IsAny<List<string>>(), It.IsAny<HttpRequest>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AccountRemovedBeforeTheGrant_IsInvalidLink_AndConsumesNothing()
+    {
+        var link = Link();
+        var user = Active();
+        Arrange(link, user);
+        AllowConsume(link);
+        var passwordChecked = false;
+        _users.Setup(u => u.GetUserByIdAsync("u1")).ReturnsAsync(() => passwordChecked ? null : user);
+        _verifier.Setup(v => v.VerifyAsync(It.IsAny<User>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<HttpRequest?>(), It.IsAny<string?>()))
+            .Callback(() => passwordChecked = true)
+            .ReturnsAsync(PasswordVerificationResult.Success());
+        var sut = Sut();
+        var step = await RedeemToPasswordStepAsync(sut);
+
+        var result = await sut.AuthenticateAsync(step.RedemptionId, "Correct#1", null, "t1", Http().Request, Http().Response);
+
+        result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().BeOfType<RedeemSignupLinkErrorResponse>();
+        _links.Verify(l => l.TryIncrementRedemptionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
+        _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+        _verifier.Verify(v => v.ResetFailureCountersAsync(It.IsAny<User>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CorrectPassword_NoMfa_ClearsTheCountersOnlyAfterTheSessionIsIssued()
+    {
+        var link = Link();
+        var (_, fresh) = StaleThenFresh(link);
+        AllowConsume(link);
+        var sut = Sut();
+        // After Sut(), which registers its own session callback.
+        var order = new List<string>();
+        _sessions.Setup(s => s.CreateAsync(It.IsAny<LinkSessionModel>()))
+            .Callback<LinkSessionModel>(m => { _createdSessions.Add(m); order.Add("session"); })
+            .Returns(Task.CompletedTask);
+        _verifier.Setup(v => v.ResetFailureCountersAsync(It.IsAny<User>()))
+            .Callback(() => order.Add("reset"))
+            .Returns(Task.CompletedTask);
+        var step = await RedeemToPasswordStepAsync(sut);
+
+        await sut.AuthenticateAsync(step.RedemptionId, "Correct#1", null, "t1", Http().Request, Http().Response);
+
+        order.Should().Equal("session", "reset");
+        _verifier.Verify(v => v.ResetFailureCountersAsync(It.Is<User>(u => ReferenceEquals(u, fresh))), Times.Once);
+    }
+
+    [Fact]
+    public async Task CorrectPassword_ButTheLinkRanOutWhileFinalizing_LeavesTheCounters()
+    {
+        var link = Link();
+        Arrange(link, Active());
+        Verifier(PasswordVerificationResult.Success());
+        _links.Setup(l => l.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, "", It.IsAny<DateTime>()))
+            .ReturnsAsync((SignupLink?)null);
+        var sut = Sut();
+        var step = await RedeemToPasswordStepAsync(sut);
+
+        await sut.AuthenticateAsync(step.RedemptionId, "Correct#1", null, "t1", Http().Request, Http().Response);
+
+        _verifier.Verify(v => v.ResetFailureCountersAsync(It.IsAny<User>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MfaUser_CorrectPasswordAlone_LeavesTheCounters_EvenWhenTheOtpFails()
+    {
+        var link = Link();
+        var user = Active();
+        user.MfaEnabled = true;
+        user.FailedMfaCount = 3;
+        user.LockoutCount = 2;
+        Arrange(link, user);
+        AllowConsume(link);
+        Verifier(PasswordVerificationResult.Success());
+        SetupMfa(user, "mfa-r1", valid: false);
+        var sut = Sut();
+        var step = await RedeemToPasswordStepAsync(sut);
+
+        await sut.AuthenticateAsync(step.RedemptionId, "Correct#1", null, "t1", Http().Request, Http().Response);
+        _verifier.Verify(v => v.ResetFailureCountersAsync(It.IsAny<User>()), Times.Never);
+
+        await sut.CompleteRedeemMfaAsync("mfa-r1", "000000", Http().Request, Http().Response);
+        _verifier.Verify(v => v.ResetFailureCountersAsync(It.IsAny<User>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MfaUser_ClearsTheCountersOnlyOnceTheOtpSucceeds_OnACopyReadAfterIt()
+    {
+        var link = Link();
+        var stale = Active();
+        stale.MfaEnabled = true;
+        stale.FailedMfaCount = 1;
+        var fresh = Active();
+        fresh.MfaEnabled = true;
+        var otpChecked = false;
+        Arrange(link, stale);
+        AllowConsume(link);
+        Verifier(PasswordVerificationResult.Success());
+        var otp = new Mock<IOtpService>();
+        otp.Setup(o => o.GenerateAsync(It.IsAny<UserInfo>(), It.IsAny<string?>()))
+            .ReturnsAsync(new OtpGenerationResponse { IsSuccess = true, MfaId = "mfa-r2" });
+        otp.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+            .Callback(() => otpChecked = true)
+            .ReturnsAsync(new OtpVerificationResponse { IsValid = true });
+        _mfa.Setup(m => m.GetOtpServiceAsync(It.IsAny<User>())).ReturnsAsync(otp.Object);
+        _users.Setup(u => u.GetUserByIdAsync("u1")).ReturnsAsync(() => otpChecked ? fresh : stale);
+        var sut = Sut();
+        var step = await RedeemToPasswordStepAsync(sut);
+        await sut.AuthenticateAsync(step.RedemptionId, "Correct#1", null, "t1", Http().Request, Http().Response);
+
+        await sut.CompleteRedeemMfaAsync("mfa-r2", "123456", Http().Request, Http().Response);
+
+        _users.Verify(u => u.UpdateUserAsync(It.Is<User>(x => ReferenceEquals(x, fresh))), Times.Once);
+        _users.Verify(u => u.UpdateUserAsync(It.Is<User>(x => ReferenceEquals(x, stale))), Times.Never);
+        _verifier.Verify(v => v.ResetFailureCountersAsync(It.Is<User>(u => ReferenceEquals(u, fresh))), Times.Once);
+        _createdSessions.Should().ContainSingle().Which.Amr.Should().Equal("link", "pwd", "otp");
+    }
+
     [Fact]
     public async Task NoVerifierRegistered_Is500()
     {

@@ -16,6 +16,7 @@ using Iam.DomainService.Utilities;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Mfa.DomainService.Entities;
@@ -302,19 +303,41 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         await _cacheClient.RemoveKeyAsync(key);
 
+        // The failure counters stay as they are until a session is issued. Clearing them here
+        // would let a correct password alone wipe the MFA lockout backoff.
         if (user!.MfaEnabled)
         {
             return await StartMfaChallengeAsync(link!, user, pendingGrant: true, branch: ctx.Branch);
         }
 
-        var finalizeRefusal = await FinalizeExistingUserAsync(link!, user, ctx.Branch, request);
+        var (finalizeRefusal, finalized) = await FinalizeExistingUserAsync(link!, user, ctx.Branch, request);
         if (finalizeRefusal != null)
         {
             return finalizeRefusal;
         }
 
-        return await CompleteRedemptionAsync(link!, user, request, response, ["link", "pwd"]);
+        var completion = await CompleteRedemptionAsync(link!, finalized, request, response, ["link", "pwd"]);
+        await ResetFailureCountersIfSignedInAsync(completion, finalized);
+        return completion;
     }
+
+    /// <summary>
+    /// Login clears failed-login, failed-MFA and lockout state only once it has issued tokens.
+    /// The password step follows the same rule, so it runs after the session and any OTP.
+    /// </summary>
+    private async Task ResetFailureCountersIfSignedInAsync(IActionResult completion, User user)
+    {
+        if (_passwordVerifier == null || !IsSuccessStatus(completion))
+        {
+            return;
+        }
+
+        await _passwordVerifier.ResetFailureCountersAsync(user);
+    }
+
+    private static bool IsSuccessStatus(IActionResult result) =>
+        result is IStatusCodeActionResult { StatusCode: var status }
+        && (status ?? StatusCodes.Status200OK) is >= 200 and < 300;
 
     private async Task<SignupLinkAuthContext?> LoadAuthContextAsync(string key)
     {
@@ -487,9 +510,9 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     /// <summary>
     /// What the pre-existing branch used to do before the session, run only once the password
     /// (and any OTP) has been confirmed. The link is consumed before the grant, so a link that
-    /// ran out grants nothing.
+    /// ran out grants nothing. Returns the account the session must be issued for.
     /// </summary>
-    private async Task<IActionResult?> FinalizeExistingUserAsync(
+    private async Task<(IActionResult? Refusal, User User)> FinalizeExistingUserAsync(
         SignupLink link,
         User user,
         string? branch,
@@ -498,36 +521,47 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         if (string.Equals(branch, BranchLinkUserReturned, StringComparison.Ordinal))
         {
             await RecordSuccessAsync(link, user.ItemId, SignupLinkRedemptionOutcome.LinkUserReturned, request, link.RedemptionCount, grant: false);
-            return null;
+            return (null, user);
+        }
+
+        // UpdateUserAsync replaces the whole document. The copy in hand was read before the
+        // password and OTP checks, which write the user's failure counters themselves, so
+        // saving it would put those counters back. Grant on a copy read just now instead.
+        var current = await _userRepository.GetUserByIdAsync(user.ItemId);
+        if (current == null)
+        {
+            await RecordRejectionAsync(link, RejectionNotFound, request, ordinal: link.RedemptionCount + 1, userId: user.ItemId,
+                detail: "the account was removed while it was confirming its password");
+            return (InvalidLink(), user);
         }
 
         var orgId = link.OrganizationId ?? string.Empty;
-        var alreadyMember = OrganizationAccessResolver.HasOrganizationAccess(user, orgId);
+        var alreadyMember = OrganizationAccessResolver.HasOrganizationAccess(current, orgId);
 
         var consumed = await _links.TryIncrementRedemptionAsync(link.ItemId, link.TenantId, createdUserId: string.Empty, DateTime.UtcNow);
         if (consumed == null)
         {
-            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1, userId: user.ItemId,
+            await RecordRejectionAsync(link, RejectionExhausted, request, ordinal: link.RedemptionCount + 1, userId: current.ItemId,
                 detail: "a concurrent request took the last redemption while the existing user was confirming their password");
-            return InvalidLink();
+            return (InvalidLink(), current);
         }
 
         if (!alreadyMember)
         {
-            GrantOrganization(user, orgId, link.Roles, link.Permissions);
-            user.LastUpdatedDate = DateTime.UtcNow;
-            user.LastUpdatedBy = user.ItemId;
-            await _userRepository.UpdateUserAsync(user);
+            GrantOrganization(current, orgId, link.Roles, link.Permissions);
+            current.LastUpdatedDate = DateTime.UtcNow;
+            current.LastUpdatedBy = current.ItemId;
+            await _userRepository.UpdateUserAsync(current);
         }
 
         await RecordSuccessAsync(
             link,
-            user.ItemId,
+            current.ItemId,
             alreadyMember ? SignupLinkRedemptionOutcome.ExistingUserRedirected : SignupLinkRedemptionOutcome.OrganizationJoined,
             request,
             consumed.RedemptionCount,
             grant: !alreadyMember);
-        return null;
+        return (null, current);
     }
 
     /// <summary>
@@ -556,14 +590,23 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         }
 
         var refusal = await RejectIfLinkNotRedeemableAsync(link, ctx.TenantId, request)
-            ?? await RejectIfExhaustedForBranchAsync(link, ctx.Branch, request, user.ItemId)
-            ?? await FinalizeExistingUserAsync(link, user, ctx.Branch, request);
+            ?? await RejectIfExhaustedForBranchAsync(link, ctx.Branch, request, user.ItemId);
         if (refusal != null)
         {
             return refusal;
         }
 
-        return await CompleteRedemptionAsync(link, user, request, response, ["link", "pwd", method]);
+        var (finalizeRefusal, finalized) = await FinalizeExistingUserAsync(link, user, ctx.Branch, request);
+        if (finalizeRefusal != null)
+        {
+            return finalizeRefusal;
+        }
+
+        // Password and OTP are both confirmed and the session is issued: only now is this a
+        // sign-in, so only now are the failure counters cleared.
+        var completion = await CompleteRedemptionAsync(link, finalized, request, response, ["link", "pwd", method]);
+        await ResetFailureCountersIfSignedInAsync(completion, finalized);
+        return completion;
     }
 
     /// <summary>SETNX. Fails closed: without a working claim the step must not proceed.</summary>
