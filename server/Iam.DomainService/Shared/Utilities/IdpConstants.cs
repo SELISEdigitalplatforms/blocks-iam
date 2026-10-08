@@ -21,6 +21,15 @@ namespace Iam.DomainService.Utilities
 
         #endregion
 
+        #region Mail Purposes
+
+        // Informational only: the change has already been applied when these go out, so a
+        // tenant with no template for either purpose simply sends nothing.
+        public const string OrganizationMemberAddedMailPurpose = "organization_member_added";
+        public const string OrganizationMemberRemovedMailPurpose = "organization_member_removed";
+
+        #endregion
+
         #region Cookies
 
         public const string RefreshTokenCookieName = "rt";

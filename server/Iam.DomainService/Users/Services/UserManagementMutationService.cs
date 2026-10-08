@@ -104,7 +104,7 @@ namespace Iam.DomainService.Users
                 return permissionCountFailure;
             }
 
-            var existingUser = await TryGrantOrganizationToExistingUserAsync(
+            var (existingUser, addedToOrganization) = await TryGrantOrganizationToExistingUserAsync(
                 command.Email,
                 organizationId,
                 command.Roles,
@@ -115,6 +115,14 @@ namespace Iam.DomainService.Users
                 _logger.LogInformation(
                     "User creation end -- email already has an account; granted organization {OrganizationId} instead of creating a duplicate",
                     organizationId);
+
+                // Only for an admin acting through the API. Anonymous signup and queue consumers also
+                // land here, and an "added to organization" mail would be noise on those paths.
+                if (command.NotifyUser && addedToOrganization && BlocksContext.GetContext()?.IsAuthenticated == true)
+                {
+                    await NotifyOrganizationMembershipChangedAsync(
+                        existingUser, organizationId, null, IdpConstants.OrganizationMemberAddedMailPurpose);
+                }
 
                 return new BaseMutationResponse
                 {
@@ -137,7 +145,7 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            await SendEvent(itemId, MutationEventType.Create, command.ClientId, command.RedirectUri);
+            await SendEvent(itemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail);
             var bc = BlocksContext.GetContext();
 
             _logger.LogInformation("User creation end -- Success");
@@ -152,7 +160,8 @@ namespace Iam.DomainService.Users
             string itemId,
             MutationEventType mutationEventType,
             string? clientId = null,
-            string? redirectUri = null)
+            string? redirectUri = null,
+            bool sendMail = true)
         {
             _logger.LogInformation("User mutation event -- initiate");
             await _messageClient.SendToConsumerAsync(
@@ -166,7 +175,8 @@ namespace Iam.DomainService.Users
                         // The email is built by the consumer, which only loads the User —
                         // so the originating app's OIDC context has to travel on the message.
                         ClientId = clientId,
-                        RedirectUri = redirectUri
+                        RedirectUri = redirectUri,
+                        SendMail = sendMail
                     }
                 }
             );
@@ -216,7 +226,8 @@ namespace Iam.DomainService.Users
         /// </para>
         /// <para>
         /// Returns the existing account with the requested organization granted, or <c>null</c> when the
-        /// email is new and the caller should go on to create one.
+        /// email is new and the caller should go on to create one. <c>AddedToOrganization</c> is true
+        /// only when the account did not already belong to the organization.
         /// </para>
         /// <para>
         /// Account lifecycle is deliberately not consulted here. There is no way to disable an account
@@ -224,7 +235,7 @@ namespace Iam.DomainService.Users
         /// than refuse -- so the decision belongs with that feature, not with this lookup.
         /// </para>
         /// </summary>
-        private async Task<User?> TryGrantOrganizationToExistingUserAsync(
+        private async Task<(User? User, bool AddedToOrganization)> TryGrantOrganizationToExistingUserAsync(
             string email,
             string organizationId,
             List<string>? roles,
@@ -233,8 +244,10 @@ namespace Iam.DomainService.Users
             var existingUser = await _userRepository.GetUserByEmailAsync(email);
             if (existingUser == null)
             {
-                return null;
+                return (null, false);
             }
+
+            var addedToOrganization = !IsOrganizationMember(existingUser, organizationId);
 
             GrantOrganization(existingUser, organizationId, roles, permissions);
 
@@ -243,7 +256,85 @@ namespace Iam.DomainService.Users
 
             await _userRepository.UpdateUserAsync(existingUser);
 
-            return existingUser;
+            return (existingUser, addedToOrganization);
+        }
+
+        /// <summary>
+        /// The same three-way membership test as <c>OrganizationAccessResolver.HasOrganizationAccess</c>,
+        /// which lives in the Authentication project and so cannot be called from here.
+        /// </summary>
+        private static bool IsOrganizationMember(User user, string organizationId) =>
+            user.OrganizationIds.Contains(organizationId)
+            || user.Roles.ContainsKey(organizationId)
+            || user.Permissions.ContainsKey(organizationId);
+
+        /// <summary>
+        /// Tells <paramref name="user"/> they were added to or removed from an organization. It is
+        /// informational and goes out after the change is saved, so it must never fail the caller:
+        /// any error here is logged and swallowed. A tenant with no template for the purpose is the
+        /// mail service's concern, which then sends nothing.
+        /// </summary>
+        private async Task NotifyOrganizationMembershipChangedAsync(
+            User user,
+            string organizationId,
+            Organization? organization,
+            string mailPurpose)
+        {
+            if (string.IsNullOrWhiteSpace(user.Email))
+            {
+                _logger.LogInformation("Organization membership mail skipped for {UserId} -- no email", user.ItemId);
+                return;
+            }
+
+            try
+            {
+                var context = BlocksContext.GetContext();
+                var isDefaultOrganization = string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal);
+
+                if (organization == null && !isDefaultOrganization && _resourceRepository != null)
+                {
+                    organization = await _resourceRepository.GetOrganizationById(organizationId);
+                }
+
+                var applicationName = string.IsNullOrWhiteSpace(context?.TenantId)
+                    ? null
+                    : _tenants.GetTenantByID(context.TenantId)?.Name;
+
+                var displayName = $"{user.FirstName} {user.LastName}".Trim();
+
+                // BlocksContext stores an absent claim as "", so ?? alone would never reach UserName.
+                var changedBy = string.IsNullOrWhiteSpace(context?.DisplayName) ? context?.UserName : context.DisplayName;
+
+                var dataContext = new Dictionary<string, string>
+                {
+                    { "DisplayName", string.IsNullOrWhiteSpace(displayName) ? user.Email : displayName },
+                    { "UserName", user.UserName ?? user.Email },
+                    { "Email", user.Email },
+                    { "OrganizationId", organizationId },
+                    { "OrganizationName", organization?.Name ?? (isDefaultOrganization ? "Default" : organizationId) },
+                    { "ApplicationName", applicationName ?? string.Empty },
+                    { "ChangedBy", changedBy ?? string.Empty }
+                };
+
+                await _identityAccessManagementService.SendEmailAsync(new SendMail
+                {
+                    Cc = Array.Empty<string>(),
+                    Bcc = Array.Empty<string>(),
+                    SubjectDataContext = new Dictionary<string, string>(dataContext),
+                    BodyDataContext = dataContext,
+                    Language = user.Language ?? "en-US",
+                    Purpose = mailPurpose,
+                    To = new[] { NormalizeEmail(user.Email) }
+                });
+
+                _logger.LogInformation("Organization membership mail {Purpose} queued for {UserId} in {OrganizationId}",
+                    mailPurpose, user.ItemId, organizationId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Organization membership mail {Purpose} could not be queued for {UserId} in {OrganizationId}",
+                    mailPurpose, user.ItemId, organizationId);
+            }
         }
 
         /// <summary>
@@ -923,8 +1014,9 @@ namespace Iam.DomainService.Users
             // The activation mail belongs to account creation only. Update is also raised by
             // revoke-access and the activate paths, for users who already exist (and are
             // usually active), and mailing them a fresh activation link there reads as a
-            // re-invitation.
-            if (command.Action == MutationEventType.Create)
+            // re-invitation. A caller can also opt out of it on create with SendMail = false; the
+            // activity event below is published either way.
+            if (command.Action == MutationEventType.Create && command.SendMail)
             {
                 await SendActivationAsync(user, command.ClientId, command.RedirectUri);
             }
@@ -1038,9 +1130,10 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            Organization? organization = null;
             if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal))
             {
-                var organization = await _resourceRepository.GetOrganizationById(organizationId);
+                organization = await _resourceRepository.GetOrganizationById(organizationId);
                 if (organization == null)
                 {
                     _logger.LogInformation("Update User Access Control end -- Validation Error");
@@ -1066,6 +1159,8 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            var addedToOrganization = !IsOrganizationMember(user, organizationId);
+
             GrantOrganization(user, organizationId, command.Roles, command.Permissions);
 
             user.LastUpdatedDate = DateTime.UtcNow;
@@ -1076,6 +1171,12 @@ namespace Iam.DomainService.Users
             {
                 _logger.LogError("Update User Access Control end -- Repository Error for UserId {UserId}", command.UserId);
                 return new BaseMutationResponse();
+            }
+
+            if (command.NotifyUser && addedToOrganization)
+            {
+                await NotifyOrganizationMembershipChangedAsync(
+                    user, organizationId, organization, IdpConstants.OrganizationMemberAddedMailPurpose);
             }
 
             //await SendEvent(user.ItemId, MutationEventType.Update);
@@ -1180,9 +1281,10 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            Organization? organization = null;
             if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal))
             {
-                var organization = await _resourceRepository.GetOrganizationById(organizationId);
+                organization = await _resourceRepository.GetOrganizationById(organizationId);
                 if (organization == null)
                 {
                     _logger.LogInformation("Revoke User Access Control end -- Validation Error");
@@ -1196,6 +1298,10 @@ namespace Iam.DomainService.Users
                     };
                 }
             }
+
+            // Revoking an organization the user never belonged to still succeeds, but must not tell
+            // them they were removed from it.
+            var wasMember = IsOrganizationMember(user, organizationId);
 
             user.OrganizationIds.Remove(organizationId);
             user.Roles.Remove(organizationId);
@@ -1234,6 +1340,12 @@ namespace Iam.DomainService.Users
                 }
             });
 
+            if (command.NotifyUser && wasMember)
+            {
+                await NotifyOrganizationMembershipChangedAsync(
+                    user, organizationId, organization, IdpConstants.OrganizationMemberRemovedMailPurpose);
+            }
+
             _logger.LogInformation("Revoke User Access Control end -- Success");
             return new BaseMutationResponse
             {
@@ -1265,7 +1377,7 @@ namespace Iam.DomainService.Users
             // Inviting an email that already has an account is a join, not a signup: the invited
             // organization is granted on that account rather than opening a second one for the
             // same person.
-            var existingUser = await TryGrantOrganizationToExistingUserAsync(email, organizationId, roles, permissions);
+            var (existingUser, _) = await TryGrantOrganizationToExistingUserAsync(email, organizationId, roles, permissions);
 
             if (existingUser != null)
             {
@@ -1400,7 +1512,7 @@ namespace Iam.DomainService.Users
             // SSO consent reaches this method on every exchange, not only for unknown emails, so
             // without a lookup here each sign-in minted another account. An email that already has
             // one is signing in, not signing up: grant the organization and skip the welcome mail.
-            var existingUser = await TryGrantOrganizationToExistingUserAsync(
+            var (existingUser, _) = await TryGrantOrganizationToExistingUserAsync(
                 command.Email,
                 command.OrganizationId,
                 command.Roles,

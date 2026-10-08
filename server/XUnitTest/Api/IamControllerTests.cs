@@ -467,6 +467,44 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
+        public async Task Create_ForwardsMailFlagsUntouched()
+        {
+            _userMutation.Setup(s => s.CreateUserAsync(It.IsAny<CreateUserRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            await CreateController().CreateUser(new CreateUserRequest { SendMail = false, NotifyUser = false });
+
+            _userMutation.Verify(s => s.CreateUserAsync(
+                It.Is<CreateUserRequest>(c => !c.SendMail && !c.NotifyUser)), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateUserAccessControl_ForwardsNotifyUserUntouched()
+        {
+            _userMutation.Setup(s => s.UpdateUserAccessControlAsync(It.IsAny<UpdateUserAccessControlRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            await CreateController().UpdateUserAccessControl(
+                new UpdateUserAccessControlRequest { UserId = "u-1", NotifyUser = false });
+
+            _userMutation.Verify(s => s.UpdateUserAccessControlAsync(
+                It.Is<UpdateUserAccessControlRequest>(c => !c.NotifyUser)), Times.Once);
+        }
+
+        [Fact]
+        public async Task RevokeUserAccessControl_ForwardsNotifyUserUntouched()
+        {
+            _userMutation.Setup(s => s.RevokeUserAccessControlAsync(It.IsAny<RevokeUserAccessControlRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            await CreateController().RevokeUserAccessControl(
+                new RevokeUserAccessControlRequest { UserId = "u-1", NotifyUser = false });
+
+            _userMutation.Verify(s => s.RevokeUserAccessControlAsync(
+                It.Is<RevokeUserAccessControlRequest>(c => !c.NotifyUser)), Times.Once);
+        }
+
+        [Fact]
         public async Task Update_Success_SetsItemIdAndReturnsOk()
         {
             _userMutation.Setup(s => s.UpdateUserAsync(It.Is<UpdateUserRequest>(c => c.ItemId == "u-1")))

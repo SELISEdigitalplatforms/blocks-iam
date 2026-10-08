@@ -15,5 +15,11 @@ namespace Iam.DomainService.Dtos
         /// </summary>
         public string? ClientId { get; set; }
         public string? RedirectUri { get; set; }
+
+        /// <summary>
+        /// Whether a <see cref="MutationEventType.Create"/> sends the activation mail. Defaults to
+        /// true so messages already in flight during a deploy keep sending it.
+        /// </summary>
+        public bool SendMail { get; set; } = true;
     }
 }
