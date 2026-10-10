@@ -7,7 +7,7 @@ export const SuccessConfirmationCardHeader = () => (
       width={200}
       height={250}
       alt="Blocks IAM"
-      className="h-auto w-[5.5rem] sm:w-[6.75rem] md:w-[7.25rem]"
+      className="h-auto w-22 sm:w-27 md:w-29"
     />
     <div className="shrink-0" role="group" aria-label="Theme">
       <span className="sr-only">Appearance</span>

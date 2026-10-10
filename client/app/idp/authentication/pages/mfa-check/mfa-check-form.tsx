@@ -179,7 +179,7 @@ export const MfaCheckFrom = () => {
                   </InputOTPGroup>
                 </InputOTP>
               </FormControl>
-              <FormMessage className="text-xs text-[var(--danger)]" />
+              <FormMessage className="text-xs text-(--danger)" />
             </FormItem>
           )}
         />
@@ -189,7 +189,7 @@ export const MfaCheckFrom = () => {
             <Button
               type="button"
               variant="link"
-              className="oidc-sci-fi-link flex items-center gap-1.5 p-0 text-sm font-medium !no-underline"
+              className="oidc-sci-fi-link flex items-center gap-1.5 p-0 text-sm font-medium no-underline!"
               onClick={resend}
               disabled={!!remainingTime}
             >

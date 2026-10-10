@@ -101,7 +101,7 @@ export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: Up
           </Button>
         ) : own ? (
           <Button
-            className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-sm transition-all hover:bg-muted"
+            className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-xs transition-all hover:bg-muted"
           >
             <Pen className="h-4 w-4" />
             Edit Profile

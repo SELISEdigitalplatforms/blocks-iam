@@ -119,7 +119,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
 
   if (!template) {
     return (
-      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-(--bg)">
         <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
       </div>
     );
@@ -242,12 +242,12 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
           {resendMessage && (
             <div className="flex items-center gap-2 text-sm">
               {resendSuccess ? (
-                <CheckCircle2 className="h-4 w-4 text-[var(--success)]" />
+                <CheckCircle2 className="h-4 w-4 text-(--success)" />
               ) : (
-                <AlertTriangle className="h-4 w-4 text-[var(--danger)]" />
+                <AlertTriangle className="h-4 w-4 text-(--danger)" />
               )}
               <span
-                className={resendSuccess ? "text-[var(--success)]" : "text-[var(--danger)]"}
+                className={resendSuccess ? "text-(--success)" : "text-(--danger)"}
                 style={{ fontFamily: "system-ui, sans-serif" }}
               >
                 {resendMessage}

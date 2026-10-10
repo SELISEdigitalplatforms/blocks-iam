@@ -212,7 +212,7 @@ function IdleCard({ icon, title, description, badge }: {
   return (
     <div className="oidc-sci-fi-node relative z-10 shadow-xl flex items-center gap-4 oidc-node-float-1" style={{ padding: "20px 18px" }}>
       <div
-        className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 relative"
+        className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 relative"
         style={{ background: "var(--accent-soft)", border: "1px solid var(--border-hover)" }}
       >
         <IconComp size={24} style={{ color: "var(--accent2)" }} />
@@ -360,7 +360,7 @@ export function NodesPanelOidc({ config, phase, errorMessage, idleContent, insta
         <div className="oidc-sci-fi-panel-inner h-full p-5 lg:p-7 flex flex-col overflow-hidden">
           <div className="oidc-frame-top-line" />
 
-          <div className="relative z-10 max-w-xs flex-shrink-0">
+          <div className="relative z-10 max-w-xs shrink-0">
             <div className="oidc-sci-fi-badge mb-3" style={badgeStyle}>
               <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={dotStyle} />
               <span>{badgeText}</span>
@@ -387,7 +387,7 @@ export function NodesPanelOidc({ config, phase, errorMessage, idleContent, insta
                     {idleContent}
                   </div>
                 )}
-                <div className={idleContent ? "flex-shrink-0" : "mt-auto"}>
+                <div className={idleContent ? "shrink-0" : "mt-auto"}>
                   <IdleCard
                     icon={config.idleNode.icon}
                     title={config.idleNode.title}
@@ -412,7 +412,7 @@ export function NodesPanelOidc({ config, phase, errorMessage, idleContent, insta
                   return (
                     <div
                       key={`${vis.kind}-${vis.kind === "success" ? vis.index : 0}`}
-                      className="oidc-node-cascade-enter flex-shrink-0"
+                      className="oidc-node-cascade-enter shrink-0"
                     >
                       <NodeCard
                         node={node}
@@ -429,7 +429,7 @@ export function NodesPanelOidc({ config, phase, errorMessage, idleContent, insta
                 {showTerminal && (
                   <div
                     ref={terminalRef}
-                    className="p-3 font-mono text-[11px] rounded-lg oidc-node-cascade-enter flex-shrink-0"
+                    className="p-3 font-mono text-[11px] rounded-lg oidc-node-cascade-enter shrink-0"
                     style={{ background: "var(--terminal-bg)", maxHeight: 110, overflowY: "auto" }}
                   >
                     <div className="space-y-0.5">

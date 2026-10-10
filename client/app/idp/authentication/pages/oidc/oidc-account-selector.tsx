@@ -49,7 +49,7 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
 
   if (isLoading) {
     return (
-      <Card style={buildOidcThemeStyle(template.theme[resolvedTheme])} className="flex h-full flex-col rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--fg)] shadow-none md:min-w-[448px] lg:max-w-md">
+      <Card style={buildOidcThemeStyle(template.theme[resolvedTheme])} className="flex h-full flex-col rounded border border-(--border) bg-(--surface) text-(--fg) shadow-none md:min-w-[448px] lg:max-w-md">
         <CardHeader className="text-center">
           <OidcBrand
             logoUrl={resolvedTheme === "dark" ? template.branding.logoUrlDark : template.branding.logoUrlLight}
@@ -59,7 +59,7 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
           <CardDescription className="text-xl text-foreground">{template.pages.accountSelector.subheading}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-1 flex-col items-center justify-center">
-          <Loader className="h-12 w-12 animate-spin text-[var(--accent)]" />
+          <Loader className="h-12 w-12 animate-spin text-(--accent)" />
         </CardContent>
         <OidcFooter footerText={template.pages.shared.footerText} />
       </Card>
@@ -67,7 +67,7 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
   }
 
   return (
-    <Card style={buildOidcThemeStyle(template.theme[resolvedTheme])} className="flex h-full flex-col rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--fg)] shadow-none md:min-w-[448px] lg:max-w-md">
+    <Card style={buildOidcThemeStyle(template.theme[resolvedTheme])} className="flex h-full flex-col rounded border border-(--border) bg-(--surface) text-(--fg) shadow-none md:min-w-[448px] lg:max-w-md">
       <CardHeader className="text-center">
         <OidcBrand
           logoUrl={resolvedTheme === "dark" ? template.branding.logoUrlDark : template.branding.logoUrlLight}
@@ -78,7 +78,7 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-between">
         <div className="flex flex-1 flex-col gap-3">
-          <p className="mb-2 text-sm text-[var(--muted)]">{template.pages.accountSelector.bodyText}</p>
+          <p className="mb-2 text-sm text-(--muted)">{template.pages.accountSelector.bodyText}</p>
           {accounts.map((account) => (
             <button
               key={`${account.user_id}-${account.tenant_id}`}
@@ -86,17 +86,17 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
               disabled={isSubmitting}
               className={`rounded border-2 p-4 text-left transition-all ${
                 selectedAccount?.user_id === account.user_id && selectedAccount?.tenant_id === account.tenant_id
-                  ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-                  : "border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                  ? "border-(--accent) bg-(--accent-soft)"
+                  : "border-(--border) hover:border-(--accent) hover:bg-(--accent-soft)"
               } disabled:opacity-50`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  {account.display_name && <p className="font-semibold text-[var(--fg)]">{account.display_name}</p>}
-                  <p className="text-sm text-[var(--muted)]">{account.email}</p>
+                  {account.display_name && <p className="font-semibold text-(--fg)">{account.display_name}</p>}
+                  <p className="text-sm text-(--muted)">{account.email}</p>
                 </div>
                 {selectedAccount?.user_id === account.user_id && selectedAccount?.tenant_id === account.tenant_id && isSubmitting && (
-                  <Loader className="ml-2 h-5 w-5 animate-spin text-[var(--accent)]" />
+                  <Loader className="ml-2 h-5 w-5 animate-spin text-(--accent)" />
                 )}
               </div>
             </button>

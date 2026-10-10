@@ -25,7 +25,7 @@ export const MfaCheck = () => {
 
   if (!template) {
     return (
-      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-(--bg)">
         <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
       </div>
     );
@@ -33,12 +33,12 @@ export const MfaCheck = () => {
 
   return (
     <div
-      className="oidc-scifi-root min-h-screen overflow-hidden relative bg-[var(--bg)]"
+      className="oidc-scifi-root min-h-screen overflow-hidden relative bg-(--bg)"
       data-theme={resolvedTheme}
       style={buildOidcThemeStyle(template.theme[resolvedTheme])}>
       <SciFiBackgroundOidc showCorners={false} />
       <main className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 gap-6">
-        <div className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--node-bg)] p-10 backdrop-blur-[16px]">
+        <div className="w-full max-w-lg rounded-2xl border border-(--border) bg-(--node-bg) p-10 backdrop-blur-lg">
           <div className="mb-8 flex items-start justify-between gap-4">
             <OidcBrand
               logoUrl={resolvedTheme === "dark" ? template.branding.logoUrlDark : template.branding.logoUrlLight}
@@ -47,10 +47,10 @@ export const MfaCheck = () => {
           </div>
 
           <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2 font-sans text-[var(--fg)]">
+            <h2 className="text-xl font-semibold mb-2 font-sans text-(--fg)">
               {template.pages.mfa.heading}
             </h2>
-            <p className="text-sm font-sans text-[var(--muted)]">
+            <p className="text-sm font-sans text-(--muted)">
               {mfa_type_message}
             </p>
           </div>

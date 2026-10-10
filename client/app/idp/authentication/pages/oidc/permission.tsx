@@ -101,7 +101,7 @@ export const OIDCPermissionScreen = () => {
         <div className="space-y-1">
           <div className="text-3xl font-semibold">Hello</div>
           {userName && (
-            <div className="break-words text-xl font-medium text-muted-foreground">{userName}</div>
+            <div className="wrap-break-word text-xl font-medium text-muted-foreground">{userName}</div>
           )}
         </div>
         <CardDescription className="mt-3 text-lg text-foreground">
