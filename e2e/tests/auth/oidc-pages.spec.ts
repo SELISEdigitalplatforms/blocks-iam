@@ -1,3 +1,4 @@
+import { type Page, type Route } from "@playwright/test";
 import { test, expect } from "../../support/test-base";
 
 /**
@@ -12,8 +13,8 @@ import { test, expect } from "../../support/test-base";
  * a 6-slot TOTP; mfa_type=2 maps to a 5-slot email OTP plus a resend button.
  */
 
-const mockOidcUiConfig = async (page: any) => {
-  await page.route("**/api/idp/oidc-ui-config*", async (route: any) => {
+const mockOidcUiConfig = async (page: Page) => {
+  await page.route("**/api/idp/oidc-ui-config*", async (route: Route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -66,7 +67,7 @@ test.describe("OIDC MFA check", () => {
     });
 
     await test.step("[Negative] Server returns invalid_mfa_code → inline error + form resets", async () => {
-      await page.route("**/api/oidc/login", async (route: any) => {
+      await page.route("**/api/oidc/login", async (route: Route) => {
         const body = JSON.parse(route.request().postData() || "{}");
         // Only intercept MFA-stage requests, not regular signin requests.
         if (!body.mfa_code) {
@@ -98,7 +99,7 @@ test.describe("OIDC MFA check", () => {
     });
 
     await test.step("[Negative] Server returns account_locked → locked-account message", async () => {
-      await page.route("**/api/oidc/login", async (route: any) => {
+      await page.route("**/api/oidc/login", async (route: Route) => {
         const body = JSON.parse(route.request().postData() || "{}");
         if (!body.mfa_code) {
           await route.fallback();
@@ -128,7 +129,7 @@ test.describe("OIDC MFA check", () => {
     });
 
     await test.step("[Positive] Successful verification with redirect_uri navigates to it", async () => {
-      await page.route("**/api/oidc/login", async (route: any) => {
+      await page.route("**/api/oidc/login", async (route: Route) => {
         const body = JSON.parse(route.request().postData() || "{}");
         if (!body.mfa_code) {
           await route.fallback();
