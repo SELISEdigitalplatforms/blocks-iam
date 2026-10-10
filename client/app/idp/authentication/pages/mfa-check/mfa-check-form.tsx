@@ -25,7 +25,7 @@ import { useState } from "react";
 
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { navigateToUrl } from "@/lib/utils";
+import { navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
 
 const CustomInputOTPSlot = ({ index }: { index: number }) => {
   return (
@@ -119,7 +119,8 @@ export const MfaCheckFrom = () => {
         }
         if (returnUrl) {
           await animCtx?.succeedAnimation();
-          navigateToUrl(returnUrl);
+          // returnUrl comes from the query string, so it may only point back at this origin.
+          if (!navigateToSameOrigin(returnUrl)) navigate("/app/profile");
           return;
         }
         await animCtx?.succeedAnimation();

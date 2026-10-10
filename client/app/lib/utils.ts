@@ -192,9 +192,36 @@ export function formatSize(
 }
 
 /**
- * Full-page navigation away from the SPA. Kept outside components so the assignment to the
- * global `location` is not treated as a render-time mutation.
+ * Full-page navigation away from the SPA to a server-provided URL (for example an OIDC
+ * `redirect_uri` the backend has already validated against the client). Only http(s) URLs
+ * are followed, so a `javascript:` or `data:` value can never run in this origin.
+ * Returns false, without navigating, when the URL is refused.
  */
-export function navigateToUrl(url: string) {
+export function navigateToUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url, window.location.origin);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
   window.location.href = url;
+  return true;
+}
+
+/**
+ * Full-page navigation to a URL that must stay on this origin, such as a `returnUrl` read from
+ * the query string. Anything pointing at another origin (or not parseable) is refused, so the
+ * value cannot be used as an open redirect. Returns false, without navigating, when refused.
+ */
+export function navigateToSameOrigin(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url, window.location.origin);
+  } catch {
+    return false;
+  }
+  if (parsed.origin !== window.location.origin) return false;
+  window.location.href = `${window.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`;
+  return true;
 }
