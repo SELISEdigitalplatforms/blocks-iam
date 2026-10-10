@@ -30,6 +30,7 @@ import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 import { useOidcAuthAnimation } from "./oidc-auth-shell";
 import { OidcErrorDialog } from "./oidc-error-dialog";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
+import { navigateToUrl } from "@/lib/utils";
 
 const base64UrlEncode = (bytes: Uint8Array) => {
   const binary = String.fromCharCode(...bytes);
@@ -273,7 +274,7 @@ export const OidcLoginForm = ({
           setIsLoading(false);
           return;
         }
-        window.location.href = target;
+        navigateToUrl(target);
         return;
       }
 
@@ -489,7 +490,7 @@ shake();
         <Form {...form}>
           <form
             ref={formRef}
-            onSubmit={form.handleSubmit(onSubmitHandler, shake)}
+            onSubmit={(event) => form.handleSubmit(onSubmitHandler, shake)(event)}
             className="flex flex-col gap-5 w-full"
             noValidate
           >

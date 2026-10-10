@@ -34,10 +34,11 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
   const { mutateAsync: resendActivationLink, isPending: isResendPending } =
     useAccountResendActivation();
 
-  const [isValidCode, setIsValidCode] = useState<boolean | null>(null);
+  // A link without a code can never validate, so that state is known before any request.
+  const [isValidCode, setIsValidCode] = useState<boolean | null>(() => (code ? null : false));
   const [activationError, setActivationError] = useState<
     "invalid" | "expired" | "already-active" | null
-  >(null);
+  >(() => (code ? null : "invalid"));
   const [activationUserId, setActivationUserId] = useState<string | null>(null);
   const [knownName, setKnownName] = useState<{ firstName: string; lastName: string }>({
     firstName: "",
@@ -46,15 +47,21 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const [resendSuccess, setResendSuccess] = useState(false);
 
-  useEffect(() => {
+  // The code dropping out of the URL after mount is settled during render, the same way.
+  const [settledCode, setSettledCode] = useState(code);
+  if (settledCode !== code) {
+    setSettledCode(code);
     if (!code) {
       setActivationError("invalid");
       setActivationUserId(null);
       setResendMessage(null);
       setResendSuccess(false);
       setIsValidCode(false);
-      return;
     }
+  }
+
+  useEffect(() => {
+    if (!code) return;
 
     const validateCode = async () => {
       try {

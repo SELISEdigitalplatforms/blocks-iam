@@ -86,8 +86,12 @@ function ProgressBar({
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!running) { setWidth(failed ? 100 : completed ? 100 : 0); return; }
-    setWidth(0);
+    if (!running) {
+      const settled = failed || completed ? 100 : 0;
+      rafRef.current = requestAnimationFrame(() => setWidth(settled));
+      return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    }
+    // The first frame starts the bar from 0, so a re-run never animates from a stale width.
     let start: number | null = null;
 
     function animate(ts: number) {
@@ -245,42 +249,60 @@ export function NodesPanelOidc({ config, phase, errorMessage, idleContent, insta
   const [terminalLines, setTerminalLines] = useState<Array<{ text: string; color: string }>>([]);
   const terminalRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (phase === "idle") { setVisible([]); setTerminalLines([]); return; }
-
-    if (phase === "submitting") {
+  // Each phase starts from a known state. It is applied during render whenever one of the
+  // inputs the timers below depend on changes, so the first frame of a phase never shows the
+  // previous phase's nodes; the effect only schedules what happens after that.
+  const [syncedFor, setSyncedFor] = useState<{
+    phase: NodesPanelOidcProps["phase"];
+    config: NodesPanelOidcProps["config"];
+    errorMessage: NodesPanelOidcProps["errorMessage"];
+    instant: NodesPanelOidcProps["instant"];
+  } | null>(null);
+  if (
+    !syncedFor ||
+    syncedFor.phase !== phase ||
+    syncedFor.config !== config ||
+    syncedFor.errorMessage !== errorMessage ||
+    syncedFor.instant !== instant
+  ) {
+    setSyncedFor({ phase, config, errorMessage, instant });
+    const failureLines = [
+      ...(config.errorTerminalPrefix ?? [{ text: "$ verifying...", color: "var(--fg)" }]),
+      { text: `  > error: ${errorMessage ?? "request failed"}`, color: "var(--danger)" },
+      { text: "  > status: aborted", color: "var(--muted)" },
+    ];
+    if (phase === "idle") {
+      setVisible([]);
+      setTerminalLines([]);
+    } else if (phase === "submitting") {
       setVisible([{ kind: "validating", state: "active" }]);
       setTerminalLines([]);
-      return;
-    }
-
-    if (instant && phase === "succeeded") {
+    } else if (instant && phase === "succeeded") {
       setVisible([
         { kind: "validating", state: "complete" },
         ...config.successNodes.map((_, i) => ({ kind: "success" as const, index: i, state: "complete" as const })),
       ]);
       setTerminalLines(config.terminalMessages);
-      return;
-    }
-
-    if (instant && phase === "failed") {
+    } else if (instant && phase === "failed") {
       setVisible([{ kind: "validating", state: "failed" }]);
-      setTerminalLines([
-        ...(config.errorTerminalPrefix ?? [{ text: "$ verifying...", color: "var(--fg)" }]),
-        { text: `  > error: ${errorMessage ?? "request failed"}`, color: "var(--danger)" },
-        { text: "  > status: aborted", color: "var(--muted)" },
-      ]);
-      return;
+      setTerminalLines(failureLines);
+    } else if (phase === "failed") {
+      setVisible([{ kind: "validating", state: "failed" }]);
+      setTerminalLines([]);
+    } else if (phase === "succeeded") {
+      setVisible([{ kind: "validating", state: "active" }]);
     }
+  }
+
+  useEffect(() => {
+    if (instant) return;
 
     if (phase === "failed") {
-      setVisible([{ kind: "validating", state: "failed" }]);
       const lines = [
         ...(config.errorTerminalPrefix ?? [{ text: "$ verifying...", color: "var(--fg)" }]),
         { text: `  > error: ${errorMessage ?? "request failed"}`, color: "var(--danger)" },
         { text: "  > status: aborted", color: "var(--muted)" },
       ];
-      setTerminalLines([]);
       let cancelled = false;
       const timers: ReturnType<typeof setTimeout>[] = [];
       lines.forEach((line, i) => {
@@ -297,8 +319,6 @@ export function NodesPanelOidc({ config, phase, errorMessage, idleContent, insta
         const id = setTimeout(() => { if (!cancelled) fn(); }, ms);
         timers.push(id);
       };
-
-      setVisible([{ kind: "validating", state: "active" }]);
 
       t(() => {
         setVisible(prev => prev.map(n => n.kind === "validating" ? { ...n, state: "complete" } : n));

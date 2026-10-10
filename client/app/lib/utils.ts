@@ -54,19 +54,18 @@ export type DebouncedFunction<T extends (...args: never[]) => void> = T & {
 
 export function debounce<T extends (...args: never[]) => void>(fn: T, ms = 300): DebouncedFunction<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  let lastThis: unknown;
-  let lastArgs: Parameters<T> | null = null;
+  // The latest call, bound to its own `this` and arguments; null when nothing is pending.
+  let pendingCall: (() => void) | null = null;
 
   const flushPending = () => {
-    if (lastArgs === null) return;
-    const args = lastArgs;
-    lastArgs = null;
-    fn.apply(lastThis, args);
+    if (pendingCall === null) return;
+    const call = pendingCall;
+    pendingCall = null;
+    call();
   };
 
   const debounced = function (this: unknown, ...args: Parameters<T>) {
-    lastThis = this;
-    lastArgs = args;
+    pendingCall = () => fn.apply(this, args);
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => {
       timeoutId = null;
@@ -79,11 +78,11 @@ export function debounce<T extends (...args: never[]) => void>(fn: T, ms = 300):
       clearTimeout(timeoutId);
       timeoutId = null;
     }
-    lastArgs = null;
+    pendingCall = null;
   };
 
   debounced.flush = () => {
-    if (timeoutId === null || lastArgs === null) return;
+    if (timeoutId === null || pendingCall === null) return;
     clearTimeout(timeoutId);
     timeoutId = null;
     flushPending();
@@ -190,4 +189,12 @@ export function formatSize(
   }
 
   return `${parseFloat(bytes.toFixed(decimals))} ${UNITS[unitIndex]}`;
+}
+
+/**
+ * Full-page navigation away from the SPA. Kept outside components so the assignment to the
+ * global `location` is not treated as a render-time mutation.
+ */
+export function navigateToUrl(url: string) {
+  window.location.href = url;
 }

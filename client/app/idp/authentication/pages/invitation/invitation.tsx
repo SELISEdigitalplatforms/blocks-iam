@@ -22,16 +22,21 @@ import { Button } from "@/components/ui-kits/button/button";
 import { isErrorWithErrors } from "@/lib/error";
 import type { RedeemSignupLinkResponse } from "@blocks-idp/authentication/services/signup-link.service";
 
-function readAndClearLinkCode(): string | null {
+function readLinkCode(): string | null {
   if (globalThis.window === undefined) return null;
-  const { location, history } = globalThis.window;
+  const { location } = globalThis.window;
   const hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
   const params = new URLSearchParams(hash);
   const raw = params.get("link") ?? (hash.startsWith("link=") ? hash.slice(5) : "");
+  return raw || null;
+}
+
+function clearLinkHash() {
+  if (globalThis.window === undefined) return;
+  const { location, history } = globalThis.window;
   if (location.hash) {
     history.replaceState(null, "", `${location.pathname}${location.search}`);
   }
-  return raw || null;
 }
 
 export const CONFIRM_STEP_TIMED_OUT = "This step timed out. Open your invitation link again.";
@@ -71,8 +76,9 @@ function applyRedeemNavigation(res: RedeemSignupLinkResponse | undefined): {
 
 export function InvitationPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
-  const codeRef = useRef<string | null>(null);
-  const [codeReady, setCodeReady] = useState(false);
+  // The link code is read from the URL hash once, on mount; the hash is then cleared so the
+  // code never lingers in the address bar or history.
+  const [code] = useState(readLinkCode);
   const redeemedRef = useRef(false);
   const [mfaId, setMfaId] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState("");
@@ -82,18 +88,13 @@ export function InvitationPage() {
   const [passwordNotSet, setPasswordNotSet] = useState(false);
   const [passwordExit, setPasswordExit] = useState<ConfirmPasswordExit | null>(null);
 
-  if (codeRef.current === null && !codeReady) {
-    codeRef.current = readAndClearLinkCode();
-  }
-
   useEffect(() => {
-    setCodeReady(true);
+    clearLinkHash();
   }, []);
 
-  const code = codeRef.current;
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
   const template = oidcUiConfig?.template ?? null;
-  const contextQuery = useSignupLinkContext(codeReady ? code : null, tenantId);
+  const contextQuery = useSignupLinkContext(code, tenantId);
   const redeemMutation = useRedeemSignupLink(tenantId);
   const mfaMutation = useCompleteSignupLinkMfa(tenantId);
 
@@ -136,7 +137,7 @@ export function InvitationPage() {
     );
   }
 
-  if (!codeReady || contextQuery.isLoading || contextQuery.isFetching) {
+  if (contextQuery.isLoading || contextQuery.isFetching) {
     return <InvitationLoading template={template} />;
   }
 

@@ -1,6 +1,6 @@
 
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { getApiUrl } from "@/lib/get-api-path";
 import { getRuntimeEnv } from "@/lib/runtime-env";
@@ -26,12 +26,10 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
   const { setAuthenticated, setTokens } = useAuthStore();
   const [isChecked, setIsChecked] = useState(false);
   const [isPending, setIsPending] = useState(false);
-  const [providerKey, setProviderKey] = useState<string | null>(null);
+  const [providerKey] = useState<string | null>(() =>
+    sessionStorage.getItem("clicked_sso_provider"),
+  );
   const navigate = useNavigate();
-
-  useEffect(() => {
-    setProviderKey(sessionStorage.getItem("clicked_sso_provider"));
-  }, []);
 
   const { config, providerLabel } = useMemo(() => {
     if (!providerKey) return { config: null, providerLabel: "" };

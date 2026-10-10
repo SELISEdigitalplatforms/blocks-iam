@@ -172,7 +172,7 @@ export const SignupForm = ({
         <Form {...form}>
           <form
             ref={formRef}
-            onSubmit={form.handleSubmit(onSubmitHandler, shake)}
+            onSubmit={(event) => form.handleSubmit(onSubmitHandler, shake)(event)}
             onInput={() => {
               if (serverError) setServerError(null);
               if (animCtx?.phase === "failed") animCtx?.resetAnimation();
@@ -297,7 +297,7 @@ export const SignupForm = ({
             {/* CAPTCHA (shown when captcha is enabled and form is valid) */}
             {captchaEnabled && isValid && (
               <div>
-                <Captcha {...(captcha as any)} />
+                <Captcha {...captcha} />
               </div>
             )}
 

@@ -25,6 +25,7 @@ import { useState } from "react";
 
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { navigateToUrl } from "@/lib/utils";
 
 const CustomInputOTPSlot = ({ index }: { index: number }) => {
   return (
@@ -113,12 +114,12 @@ export const MfaCheckFrom = () => {
           data?.redirect_uri || data?.redirect_url || data?.redirectUrl;
         if (redirectUrl) {
           await animCtx?.succeedAnimation();
-          window.location.href = redirectUrl;
+          navigateToUrl(redirectUrl);
           return;
         }
         if (returnUrl) {
           await animCtx?.succeedAnimation();
-          window.location.href = returnUrl;
+          navigateToUrl(returnUrl);
           return;
         }
         await animCtx?.succeedAnimation();
