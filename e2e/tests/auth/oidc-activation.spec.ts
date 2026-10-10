@@ -1,3 +1,4 @@
+import { type Page, type Route } from "@playwright/test";
 import { test, expect } from "../../support/test-base";
 
 /**
@@ -18,10 +19,10 @@ import { test, expect } from "../../support/test-base";
  */
 
 const mockOidcUiConfig = async (
-  page: any,
+  page: Page,
   overrides: { collectPasswordOnActivation?: boolean } = {},
 ) => {
-  await page.route("**/api/idp/oidc-ui-config*", async (route: any) => {
+  await page.route("**/api/idp/oidc-ui-config*", async (route: Route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -49,7 +50,7 @@ test.describe("Activation page", () => {
     page,
   }) => {
     await test.step("[Positive] status=Valid renders the activation form with the supplied name", async () => {
-      await page.route("**/api/auth/validate-activation", async (route: any) => {
+      await page.route("**/api/auth/validate-activation", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -79,7 +80,7 @@ test.describe("Activation page", () => {
     });
 
     await test.step("[Negative] status=Invalid renders the 'Invalid Activation Link' card", async () => {
-      await page.route("**/api/auth/validate-activation", async (route: any) => {
+      await page.route("**/api/auth/validate-activation", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -108,7 +109,7 @@ test.describe("Activation page", () => {
     });
 
     await test.step("[Negative] status=Expired renders the 'Link Expired' card with the resend button", async () => {
-      await page.route("**/api/auth/validate-activation", async (route: any) => {
+      await page.route("**/api/auth/validate-activation", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -137,7 +138,7 @@ test.describe("Activation page", () => {
     });
 
     await test.step("[Positive] status=Expired: clicking 'Resend' calls /api/auth/resend-activation and shows the success message", async () => {
-      await page.route("**/api/auth/validate-activation", async (route: any) => {
+      await page.route("**/api/auth/validate-activation", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -145,8 +146,8 @@ test.describe("Activation page", () => {
         });
       });
 
-      let resendPayload: any = null;
-      await page.route("**/api/auth/resend-activation", async (route: any) => {
+      let resendPayload = null as { userId?: string; tenantId?: string } | null;
+      await page.route("**/api/auth/resend-activation", async (route: Route) => {
         resendPayload = JSON.parse(route.request().postData() || "{}");
         await route.fulfill({
           status: 200,
@@ -162,8 +163,8 @@ test.describe("Activation page", () => {
       await page.getByRole("button", { name: /resend activation link/i }).click();
 
       await expect.poll(() => resendPayload, { timeout: 10_000 }).not.toBeNull();
-      expect(resendPayload.userId).toBe("user-abc");
-      expect(resendPayload.tenantId).toBe("test-tenant");
+      expect(resendPayload?.userId).toBe("user-abc");
+      expect(resendPayload?.tenantId).toBe("test-tenant");
 
       await expect(page.getByText(/a new activation link has been sent/i)).toBeVisible({
         timeout: 15_000,
@@ -174,7 +175,7 @@ test.describe("Activation page", () => {
     });
 
     await test.step("[Negative] status=Expired + resend failure shows the failure message", async () => {
-      await page.route("**/api/auth/validate-activation", async (route: any) => {
+      await page.route("**/api/auth/validate-activation", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -182,7 +183,7 @@ test.describe("Activation page", () => {
         });
       });
 
-      await page.route("**/api/auth/resend-activation", async (route: any) => {
+      await page.route("**/api/auth/resend-activation", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -215,7 +216,7 @@ test.describe("Activation page", () => {
       await page.unroute("**/api/idp/oidc-ui-config*").catch(() => {});
       await mockOidcUiConfig(page, { collectPasswordOnActivation: false });
 
-      await page.route("**/api/auth/validate-activation", async (route: any) => {
+      await page.route("**/api/auth/validate-activation", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -241,7 +242,7 @@ test.describe("Activation page", () => {
       await page.unroute("**/api/idp/oidc-ui-config*").catch(() => {});
       await mockOidcUiConfig(page, { collectPasswordOnActivation: true });
 
-      await page.route("**/api/auth/validate-activation", async (route: any) => {
+      await page.route("**/api/auth/validate-activation", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -268,7 +269,7 @@ test.describe("Activation page", () => {
 
     await test.step("[Negative] No code at all → invalid branch (no backend call)", async () => {
       let validationCalled = false;
-      await page.route("**/api/auth/validate-activation", async (route: any) => {
+      await page.route("**/api/auth/validate-activation", async (route: Route) => {
         validationCalled = true;
         await route.fallback();
       });
@@ -286,7 +287,7 @@ test.describe("Activation page", () => {
     });
 
     await test.step("[Negative] Validation endpoint throws → invalid branch", async () => {
-      await page.route("**/api/auth/validate-activation", (route: any) =>
+      await page.route("**/api/auth/validate-activation", (route: Route) =>
         route.abort("failed"),
       );
 
@@ -304,7 +305,7 @@ test.describe("Activation page", () => {
     await test.step("[Positive] Legacy server without `status` field — isSuccess=true → Valid", async () => {
       // Older backends responded with isSuccess + errors instead of a status enum;
       // resolveActivationCodeStatus() falls back to that mapping.
-      await page.route("**/api/auth/validate-activation", async (route: any) => {
+      await page.route("**/api/auth/validate-activation", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",

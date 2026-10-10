@@ -243,7 +243,7 @@ export const SessionDetailsDrawer = ({
                       {vm.timeline.map((event) => (
                         <li key={`${event.type}-${event.timestampDisplay}`} className="relative">
                           <span
-                            className={`absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border-2 bg-background ${TONE_CLASS[event.tone]} border-current`}
+                            className={`absolute left-[-21px] top-1 h-2.5 w-2.5 rounded-full border-2 bg-background ${TONE_CLASS[event.tone]} border-current`}
                           />
                           <p className="text-sm font-medium text-high-emphasis">{event.label}</p>
                           <p className="text-xs text-muted-foreground">

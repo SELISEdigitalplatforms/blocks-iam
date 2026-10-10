@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 
 const switchVariants = cva(
-  "relative cursor-pointer rounded-full border-[1px] border-solid transition-colors duration-200",
+  "relative cursor-pointer rounded-full border border-solid transition-colors duration-200",
   {
     variants: {
       size: {
@@ -26,9 +26,9 @@ const switchThumbVariants = cva(
   {
     variants: {
       size: {
-        sm: "size-3 translate-x-[1px] data-[state=checked]:translate-x-[17px]", // 12px thumb
-        md: "size-5 translate-x-[1px] data-[state=checked]:translate-x-[23px]", // 20px thumb
-        lg: "size-[20px] translate-x-[1px] data-[state=checked]:translate-x-[23px]", // 20px thumb
+        sm: "size-3 translate-x-px data-[state=checked]:translate-x-[17px]", // 12px thumb
+        md: "size-5 translate-x-px data-[state=checked]:translate-x-[23px]", // 20px thumb
+        lg: "size-[20px] translate-x-px data-[state=checked]:translate-x-[23px]", // 20px thumb
       },
     },
     defaultVariants: {
@@ -52,7 +52,7 @@ const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitive.Root>, S
       )}
       {...props}
     >
-      <SwitchPrimitive.Thumb className={cn(switchThumbVariants({ size }), "bg-white shadow-sm")} />
+      <SwitchPrimitive.Thumb className={cn(switchThumbVariants({ size }), "bg-white shadow-xs")} />
     </SwitchPrimitive.Root>
   ),
 );

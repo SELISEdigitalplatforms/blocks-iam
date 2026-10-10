@@ -95,8 +95,8 @@ export function OidcBrand({
       ) : (
         <BlocksLogo />
       )}
-      <Separator orientation="vertical" className="h-4 bg-[var(--border)]" />
-      <span className="text-xs font-semibold tracking-[.18em] uppercase text-[var(--fg)] font-sans">
+      <Separator orientation="vertical" className="h-4 bg-(--border)" />
+      <span className="text-xs font-semibold tracking-[.18em] uppercase text-(--fg) font-sans">
         {brandName}
       </span>
     </div>
@@ -145,7 +145,7 @@ function SectionHeading({
 function SuccessState({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="flex-1 flex flex-col justify-center items-center text-center oidc-animate-fade-up">
-      <div className="w-16 h-16 rounded-full flex items-center justify-center mb-6 bg-[var(--success-soft)] border border-[var(--success-border)]">
+      <div className="w-16 h-16 rounded-full flex items-center justify-center mb-6 bg-(--success-soft) border border-(--success-border)">
         <svg
           width="32" height="32" viewBox="0 0 24 24"
           fill="none" stroke="var(--success)"
@@ -154,8 +154,8 @@ function SuccessState({ title, subtitle }: { title: string; subtitle: string }) 
           <path className="oidc-checkmark-path animate" d="M20 6L9 17l-5-5" />
         </svg>
       </div>
-      <h2 className="text-xl font-semibold mb-2 text-[var(--fg)]">{title}</h2>
-      <p className="text-sm text-[var(--muted)]">{subtitle}</p>
+      <h2 className="text-xl font-semibold mb-2 text-(--fg)">{title}</h2>
+      <p className="text-sm text-(--muted)">{subtitle}</p>
     </div>
   );
 }
@@ -272,7 +272,7 @@ export function OidcAuthShell({
   return (
     <OidcAuthAnimContext.Provider value={ctx}>
       <div
-        className="oidc-scifi-root h-screen overflow-hidden flex flex-col bg-[var(--bg)]"
+        className="oidc-scifi-root h-screen overflow-hidden flex flex-col bg-(--bg)"
         data-theme={htmlTheme}
         data-anim-phase={phase}
         style={buildOidcThemeStyle(theme[htmlTheme])}
@@ -281,7 +281,7 @@ export function OidcAuthShell({
 
         <main className="relative z-10 flex-1 min-h-0 w-full max-w-5xl mx-auto px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-5 flex items-center justify-center">
           <div
-            className="w-full rounded-[1.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl bg-[var(--surface)]"
+            className="w-full rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl bg-(--surface)"
             style={{ height: "min(620px, calc(100dvh - 3rem))" }}
           >
               {/* Left — form / success */}
@@ -298,7 +298,7 @@ export function OidcAuthShell({
                     <SuccessState title={successTitle} subtitle={successSubtitle} />
                   ) : (
                     <div
-                      className={`flex flex-col transition-[opacity,transform] duration-[600ms] ease-[ease] ${formContainerClass}`}
+                      className={`flex flex-col transition-[opacity,transform] duration-600 ease-[ease] ${formContainerClass}`}
                     >
                       <SectionHeading text={heading} dimFirst={headingDimFirst} align={headingAlign} />
                       {children}

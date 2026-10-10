@@ -146,9 +146,9 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
           {hasPassword && <SigninForm mode={mode} oidcContext={oidcContext} />}
           {hasPassword && hasSocial && (
             <div className="my-2 mt-4 flex items-center">
-              <hr className="flex-grow border" />
+              <hr className="grow border" />
               <span className="mx-2 text-xs text-low-emphasis">OR</span>
-              <hr className="flex-grow border" />
+              <hr className="grow border" />
             </div>
           )}
           {hasSocial && <SsoSignin loginOption={loginOption} mode={mode} />}

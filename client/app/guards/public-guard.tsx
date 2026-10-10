@@ -1,11 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useAuthStore } from "@seliseblocks/genesis-os";
+const subscribeNoop = () => () => {};
+
+// False for the server render and the hydration pass, true once running on the client.
 export const useAppState = () => {
-  const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  const isMounted = useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false,
+  );
   return { isMounted };
 };
 export function PublicGuard({ children }: { children: React.ReactNode }) {

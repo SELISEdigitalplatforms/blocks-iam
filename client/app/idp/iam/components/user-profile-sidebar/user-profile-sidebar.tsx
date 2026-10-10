@@ -87,7 +87,7 @@ export const UserProfileSidebar = ({ id, projectKey, own = false }: UserProfileS
       </div>
 
       {/* Account details */}
-      <CardContent className="mt-4 flex-1 overflow-y-auto w-full rounded-sm border bg-card p-5 shadow-sm">
+      <CardContent className="mt-4 flex-1 overflow-y-auto w-full rounded-sm border bg-card p-5 shadow-xs">
         <h3 className="mb-3 text-base font-semibold text-high-emphasis">
           Account details
         </h3>

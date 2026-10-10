@@ -72,7 +72,7 @@ export function DeviceEntryPage() {
 
   if (!template) {
     return (
-      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-(--bg)">
         <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
       </div>
     );
@@ -375,12 +375,12 @@ export function DeviceEntryPage() {
                     </p>
                   )}
                   {payload.requestUserAgent && (
-                    <p className="break-words">
+                    <p className="wrap-break-word">
                       Browser: <span style={{ color: "var(--fg)" }}>{payload.requestUserAgent}</span>
                     </p>
                   )}
                   {payload.deviceInfo && (
-                    <p className="break-words">
+                    <p className="wrap-break-word">
                       Details: <span style={{ color: "var(--fg)" }}>{payload.deviceInfo}</span>
                     </p>
                   )}

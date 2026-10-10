@@ -54,19 +54,18 @@ export type DebouncedFunction<T extends (...args: never[]) => void> = T & {
 
 export function debounce<T extends (...args: never[]) => void>(fn: T, ms = 300): DebouncedFunction<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  let lastThis: unknown;
-  let lastArgs: Parameters<T> | null = null;
+  // The latest call, bound to its own `this` and arguments; null when nothing is pending.
+  let pendingCall: (() => void) | null = null;
 
   const flushPending = () => {
-    if (lastArgs === null) return;
-    const args = lastArgs;
-    lastArgs = null;
-    fn.apply(lastThis, args);
+    if (pendingCall === null) return;
+    const call = pendingCall;
+    pendingCall = null;
+    call();
   };
 
   const debounced = function (this: unknown, ...args: Parameters<T>) {
-    lastThis = this;
-    lastArgs = args;
+    pendingCall = () => fn.apply(this, args);
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => {
       timeoutId = null;
@@ -79,11 +78,11 @@ export function debounce<T extends (...args: never[]) => void>(fn: T, ms = 300):
       clearTimeout(timeoutId);
       timeoutId = null;
     }
-    lastArgs = null;
+    pendingCall = null;
   };
 
   debounced.flush = () => {
-    if (timeoutId === null || lastArgs === null) return;
+    if (timeoutId === null || pendingCall === null) return;
     clearTimeout(timeoutId);
     timeoutId = null;
     flushPending();
@@ -190,4 +189,39 @@ export function formatSize(
   }
 
   return `${parseFloat(bytes.toFixed(decimals))} ${UNITS[unitIndex]}`;
+}
+
+/**
+ * Full-page navigation away from the SPA to a server-provided URL (for example an OIDC
+ * `redirect_uri` the backend has already validated against the client). Only http(s) URLs
+ * are followed, so a `javascript:` or `data:` value can never run in this origin.
+ * Returns false, without navigating, when the URL is refused.
+ */
+export function navigateToUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url, window.location.origin);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+  window.location.href = url;
+  return true;
+}
+
+/**
+ * Full-page navigation to a URL that must stay on this origin, such as a `returnUrl` read from
+ * the query string. Anything pointing at another origin (or not parseable) is refused, so the
+ * value cannot be used as an open redirect. Returns false, without navigating, when refused.
+ */
+export function navigateToSameOrigin(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url, window.location.origin);
+  } catch {
+    return false;
+  }
+  if (parsed.origin !== window.location.origin) return false;
+  window.location.href = `${window.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`;
+  return true;
 }
