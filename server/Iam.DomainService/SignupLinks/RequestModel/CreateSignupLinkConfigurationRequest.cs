@@ -17,6 +17,9 @@ public class CreateSignupLinkConfigurationRequest
     /// <summary>PasswordRequired only. Absent means false.</summary>
     public bool? SignInAfterActivation { get; set; }
 
+    /// <summary>Absent means true: an active user must confirm their password.</summary>
+    public bool? RequireExistingUserPassword { get; set; }
+
     public int? DefaultLifetimeMinutes { get; set; }
     public int? DefaultMaxRedemptions { get; set; }
 }

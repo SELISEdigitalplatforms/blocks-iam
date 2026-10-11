@@ -94,4 +94,5 @@ export const SIGNUP_LINK_ENDPOINTS = {
   CONTEXT: "/api/iam/signup-links/context",
   REDEEM: "/api/iam/signup-links/redeem",
   REDEEM_MFA: "/api/iam/signup-links/redeem/mfa",
+  REDEEM_AUTHENTICATE: "/api/iam/signup-links/redeem/authenticate",
 } as const;

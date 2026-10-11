@@ -113,10 +113,10 @@ export const OIDCForgotPasswordForm = () => {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold mb-2 font-sans text-[var(--fg)]">
+        <h2 className="text-xl font-semibold mb-2 font-sans text-(--fg)">
           {forgotPasswordCopy.heading}
         </h2>
-        <p className="text-sm font-sans text-[var(--muted)]">
+        <p className="text-sm font-sans text-(--muted)">
           {forgotPasswordCopy.introText}
         </p>
       </div>
@@ -138,7 +138,7 @@ export const OIDCForgotPasswordForm = () => {
                     {...field}
                   />
                 </FormControl>
-                <FormMessage className="text-xs text-[var(--danger)]" />
+                <FormMessage className="text-xs text-(--danger)" />
               </FormItem>
             )}
           />
@@ -146,7 +146,7 @@ export const OIDCForgotPasswordForm = () => {
           {captchaEnabled && isValid && <Captcha {...captcha} />}
 
           {serverError && (
-            <p className="text-sm font-sans text-[var(--danger)]">{serverError}</p>
+            <p className="text-sm font-sans text-(--danger)">{serverError}</p>
           )}
 
           {isPending ? (

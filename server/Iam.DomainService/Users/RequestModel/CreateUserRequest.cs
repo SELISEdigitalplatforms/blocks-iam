@@ -33,6 +33,14 @@ namespace Iam.DomainService.Users
         // event so the activation email can link back to it. Not persisted on the user.
         public string? ClientId { get; set; }
         public string? RedirectUri { get; set; }
+
+        // Only consulted when the email already has an account and is granted the organization
+        // instead. A brand-new account's activation mail is governed by SendMail.
+        public bool NotifyUser { get; set; } = true;
+
+        // Only consulted when a brand-new account is created. False suppresses the activation mail;
+        // the account is still created and can be sent one later through resend-activation.
+        public bool SendMail { get; set; } = true;
     }
 
 }

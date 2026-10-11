@@ -21,6 +21,15 @@ namespace Iam.DomainService.Utilities
 
         #endregion
 
+        #region Mail Purposes
+
+        // Informational only: the change has already been applied when these go out, so a
+        // tenant with no template for either purpose simply sends nothing.
+        public const string OrganizationMemberAddedMailPurpose = "organization_member_added";
+        public const string OrganizationMemberRemovedMailPurpose = "organization_member_removed";
+
+        #endregion
+
         #region Cookies
 
         public const string RefreshTokenCookieName = "rt";
@@ -131,6 +140,22 @@ namespace Iam.DomainService.Utilities
         public const int OidcAuthorizationCodeCacheTtlSeconds = 600;
         public const int OidcStateCacheTtlSeconds = 300;
         public const int IdpFlowCacheTtlSeconds = 600;
+
+        #endregion
+
+        #region Signup link password step
+
+        /// <summary>signup_link_auth:{redemptionId} -> pending password step context.</summary>
+        public const string SignupLinkAuthCachePrefix = "signup_link_auth:";
+
+        /// <summary>SETNX key that makes a redemption id single use.</summary>
+        public const string SignupLinkAuthClaimCachePrefix = "signup_link_auth_claim:";
+
+        /// <summary>SETNX key that makes a pending-grant MFA completion single use.</summary>
+        public const string SignupLinkMfaClaimCachePrefix = "signup_link_mfa_claim:";
+
+        /// <summary>Wrong passwords allowed on one redemption id before it is discarded.</summary>
+        public const int SignupLinkAuthMaxAttempts = 5;
 
         #endregion
 

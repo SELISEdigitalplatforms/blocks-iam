@@ -27,14 +27,17 @@ public class EmailAvailabilityController : ControllerBase
     [Obsolete("Use POST iam/email/available. Scheduled for removal once callers have migrated.")]
     [HttpGet("email/available")]
     [AllowAnonymous]
-    public async Task<IActionResult> IsEmailAvailableFromQuery([FromQuery] IsEmailAvailableRequest query)
+    public async Task<IActionResult> IsEmailAvailableFromQuery([FromQuery] string? email)
     {
-        if (query == null || string.IsNullOrWhiteSpace(query.Email))
+        // Bound as an optional string, so a missing address reaches the check below and gets the
+        // same fixed 400 body as the POST form. Binding the request model made the framework
+        // answer first with a ProblemDetails carrying a per-request traceId.
+        if (string.IsNullOrWhiteSpace(email))
         {
             return BadRequest(new { error = "email is required" });
         }
 
-        var result = await _userManagementQueryService.IsUserAvailableAsync(query);
+        var result = await _userManagementQueryService.IsUserAvailableAsync(new IsEmailAvailableRequest { Email = email });
         return Ok(new IsEmailAvailableResponse
         {
             IsAvailable = result

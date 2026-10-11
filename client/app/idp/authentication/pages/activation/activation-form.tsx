@@ -1,5 +1,5 @@
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { activationFormDefaultValue, activationFormSchema, buildActivationFormSchema } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -155,8 +155,10 @@ export const ActivationForm = ({
     }
   }, [code, navigate]);
 
-  const password = form.watch("password");
-  const confirmPassword = form.watch("confirmPassword");
+  const [password, confirmPassword] = useWatch({
+    control: form.control,
+    name: ["password", "confirmPassword"],
+  });
   const { isValid } = form.formState;
 
   /** Nothing to satisfy when the password step is off. */
@@ -322,7 +324,7 @@ export const ActivationForm = ({
   return (
     <form
       ref={formRef}
-      onSubmit={form.handleSubmit(onSubmitHandler, shake)}
+      onSubmit={(event) => form.handleSubmit(onSubmitHandler, shake)(event)}
       onInput={() => {
         if (animCtx?.phase === "failed") animCtx?.resetAnimation();
       }}

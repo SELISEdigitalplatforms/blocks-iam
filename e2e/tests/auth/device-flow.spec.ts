@@ -1,3 +1,4 @@
+import { type Page, type Route } from "@playwright/test";
 import { test, expect } from "../../support/test-base";
 
 /**
@@ -24,8 +25,11 @@ import { test, expect } from "../../support/test-base";
 const TENANT_ID = "tenant-xyz";
 const ENTRY_URL = `/device/${TENANT_ID}`;
 
-const mockOidcUiConfig = async (page: any) => {
-  await page.route("**/api/idp/oidc-ui-config*", async (route: any) => {
+// Body the page posts to the decision endpoint.
+type DeviceDecisionPayload = { decision?: string; user_code?: string; approvalToken?: string };
+
+const mockOidcUiConfig = async (page: Page) => {
+  await page.route("**/api/idp/oidc-ui-config*", async (route: Route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -79,7 +83,7 @@ test.describe("Device flow — entry page", () => {
     });
 
     await test.step("[Positive] Valid code + ready response swaps the form for the consent panel", async () => {
-      await page.route("**/api/device/verify", async (route: any) => {
+      await page.route("**/api/device/verify", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -118,7 +122,7 @@ test.describe("Device flow — entry page", () => {
     });
 
     await test.step("[Positive] 'Allow' submits the decision and follows the redirect", async () => {
-      await page.route("**/api/device/verify", async (route: any) => {
+      await page.route("**/api/device/verify", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -135,8 +139,8 @@ test.describe("Device flow — entry page", () => {
         });
       });
 
-      let decisionPayload: any = null;
-      await page.route("**/api/device/decision", async (route: any) => {
+      let decisionPayload = null as DeviceDecisionPayload | null;
+      await page.route("**/api/device/decision", async (route: Route) => {
         decisionPayload = JSON.parse(route.request().postData() || "{}");
         await route.fulfill({
           status: 200,
@@ -156,9 +160,9 @@ test.describe("Device flow — entry page", () => {
 
       // The decision endpoint receives the right payload.
       await expect.poll(() => decisionPayload, { timeout: 10_000 }).not.toBeNull();
-      expect(decisionPayload.decision).toBe("allow");
-      expect(decisionPayload.user_code).toBe("ABCD-EFGH");
-      expect(decisionPayload.approvalToken).toBe("approval-token-1");
+      expect(decisionPayload?.decision).toBe("allow");
+      expect(decisionPayload?.user_code).toBe("ABCD-EFGH");
+      expect(decisionPayload?.approvalToken).toBe("approval-token-1");
 
       // The page navigates to the success URL.
       await expect(page).toHaveURL(/\/device\/[^/]+\/success/, { timeout: 15_000 });
@@ -169,7 +173,7 @@ test.describe("Device flow — entry page", () => {
     });
 
     await test.step("[Positive] 'Deny' submits decision=deny", async () => {
-      await page.route("**/api/device/verify", async (route: any) => {
+      await page.route("**/api/device/verify", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -186,8 +190,8 @@ test.describe("Device flow — entry page", () => {
         });
       });
 
-      let decision: any = null;
-      await page.route("**/api/device/decision", async (route: any) => {
+      let decision = null as DeviceDecisionPayload | null;
+      await page.route("**/api/device/decision", async (route: Route) => {
         decision = JSON.parse(route.request().postData() || "{}");
         await route.fulfill({
           status: 200,
@@ -206,7 +210,7 @@ test.describe("Device flow — entry page", () => {
       await page.getByRole("button", { name: /^deny$/i }).click();
 
       await expect.poll(() => decision, { timeout: 10_000 }).not.toBeNull();
-      expect(decision.decision).toBe("deny");
+      expect(decision?.decision).toBe("deny");
 
       await expect(page).toHaveURL(/outcome=denied/);
 
@@ -215,7 +219,7 @@ test.describe("Device flow — entry page", () => {
     });
 
     await test.step("[Negative] login_required response redirects the user to /oidc/login", async () => {
-      await page.route("**/api/device/verify", async (route: any) => {
+      await page.route("**/api/device/verify", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -239,7 +243,7 @@ test.describe("Device flow — entry page", () => {
     });
 
     await test.step("[Negative] expired_token via manual submit shows the 'expired' terminal", async () => {
-      await page.route("**/api/device/verify", async (route: any) => {
+      await page.route("**/api/device/verify", async (route: Route) => {
         await route.fulfill({
           status: 500,
           contentType: "application/json",
@@ -261,7 +265,7 @@ test.describe("Device flow — entry page", () => {
     });
 
     await test.step("[Negative] Auto-submitted expired_token clears the user_code and shows an inline error", async () => {
-      await page.route("**/api/device/verify", async (route: any) => {
+      await page.route("**/api/device/verify", async (route: Route) => {
         await route.fulfill({
           status: 500,
           contentType: "application/json",
@@ -286,7 +290,7 @@ test.describe("Device flow — entry page", () => {
     });
 
     await test.step("[Negative] tenant_mismatch response shows the 'Wrong tenant' card", async () => {
-      await page.route("**/api/device/verify", async (route: any) => {
+      await page.route("**/api/device/verify", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",

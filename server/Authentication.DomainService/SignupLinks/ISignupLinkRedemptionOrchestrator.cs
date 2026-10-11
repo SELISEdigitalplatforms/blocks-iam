@@ -18,6 +18,19 @@ public interface ISignupLinkRedemptionOrchestrator
         HttpResponse response);
 
     /// <summary>
+    /// The password step an already-active user takes when redeem answered
+    /// <c>authentication_required</c>. On success it returns what redeem would have returned
+    /// for the link's mode, or an MFA challenge when the account has one.
+    /// </summary>
+    Task<IActionResult> AuthenticateAsync(
+        string? redemptionId,
+        string? password,
+        string? captchaCode,
+        string? tenantIdHint,
+        HttpRequest request,
+        HttpResponse response);
+
+    /// <summary>
     /// Runs after a successful activation, and only when the activation key's
     /// <c>UserKeyMap.Value</c> carries <c>signup-link:{linkId}</c>. A no-op for ordinary
     /// invites and recoveries, whose Value is a URL and can never carry that prefix.

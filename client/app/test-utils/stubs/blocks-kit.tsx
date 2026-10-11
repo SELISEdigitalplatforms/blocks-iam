@@ -83,9 +83,6 @@ export const TooltipContent = ({ children, className }: PassthroughProps) =>
     children,
   );
 export const ConsoleLayout = passthrough("ConsoleLayout");
-export const ConsolePage = passthrough("ConsolePage");
-export const DashboardOverview = passthrough("DashboardOverview");
-export const DashboardRoute = passthrough("DashboardRoute");
 export const LoginPage = passthrough("LoginPage");
 export const CallbackPage = passthrough("CallbackPage");
 export const AuthResolver = passthrough("AuthResolver");
@@ -102,4 +99,3 @@ export const useTheme = () => ({
   resolvedTheme: "light",
   setTheme: () => {},
 });
-export const useScopedPath = () => (segment: string) => `/app/:itemId/${segment}`;

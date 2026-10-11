@@ -34,10 +34,11 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
   const { mutateAsync: resendActivationLink, isPending: isResendPending } =
     useAccountResendActivation();
 
-  const [isValidCode, setIsValidCode] = useState<boolean | null>(null);
+  // A link without a code can never validate, so that state is known before any request.
+  const [isValidCode, setIsValidCode] = useState<boolean | null>(() => (code ? null : false));
   const [activationError, setActivationError] = useState<
     "invalid" | "expired" | "already-active" | null
-  >(null);
+  >(() => (code ? null : "invalid"));
   const [activationUserId, setActivationUserId] = useState<string | null>(null);
   const [knownName, setKnownName] = useState<{ firstName: string; lastName: string }>({
     firstName: "",
@@ -46,15 +47,21 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const [resendSuccess, setResendSuccess] = useState(false);
 
-  useEffect(() => {
+  // The code dropping out of the URL after mount is settled during render, the same way.
+  const [settledCode, setSettledCode] = useState(code);
+  if (settledCode !== code) {
+    setSettledCode(code);
     if (!code) {
       setActivationError("invalid");
       setActivationUserId(null);
       setResendMessage(null);
       setResendSuccess(false);
       setIsValidCode(false);
-      return;
     }
+  }
+
+  useEffect(() => {
+    if (!code) return;
 
     const validateCode = async () => {
       try {
@@ -119,7 +126,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
 
   if (!template) {
     return (
-      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-(--bg)">
         <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
       </div>
     );
@@ -242,12 +249,12 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
           {resendMessage && (
             <div className="flex items-center gap-2 text-sm">
               {resendSuccess ? (
-                <CheckCircle2 className="h-4 w-4 text-[var(--success)]" />
+                <CheckCircle2 className="h-4 w-4 text-(--success)" />
               ) : (
-                <AlertTriangle className="h-4 w-4 text-[var(--danger)]" />
+                <AlertTriangle className="h-4 w-4 text-(--danger)" />
               )}
               <span
-                className={resendSuccess ? "text-[var(--success)]" : "text-[var(--danger)]"}
+                className={resendSuccess ? "text-(--success)" : "text-(--danger)"}
                 style={{ fontFamily: "system-ui, sans-serif" }}
               >
                 {resendMessage}

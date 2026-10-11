@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { mfaService } from "../services/mfa.service";
-import { IGetUserByIdPayload } from "@blocks-idp/iam/models/user";
 
 export const useGetMFAConfig = () => {
   return useQuery({
@@ -48,7 +47,8 @@ export const useGenerateUserMfaOTP = () => {
 
 export const useVerifyMfaOTP = (option: { id: string; projectKey?: string; own?: boolean }) => {
   const queryClient = useQueryClient();
-  const { own = false, ...rest } = option;
+  // own is split off only to keep it out of the query key.
+  const { own: _own, ...rest } = option;
   return useMutation({
     mutationKey: ["mfa-config", "verify-otp"],
     mutationFn: mfaService.verifyOtp,

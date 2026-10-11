@@ -16,7 +16,10 @@ vi.mock("@/components/breadcrumb/breadcrumb", () => ({ default: () => <div data-
 vi.mock("@/components/copy-to-clipboard-button", () => ({
   CopyToClipboardButton: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock("@/constants/breadcrumb-custom-title", () => ({ BREADCRUMB_CUSTOM_TITLES: {} }));
+vi.mock("@/constants/breadcrumb-custom-title", () => ({
+  BREADCRUMB_CUSTOM_TITLES: {},
+  setBreadcrumbTitle: vi.fn(),
+}));
 vi.mock("@blocks-idp/iam/hooks/use-user", () => ({
   useGetMe: () => h.me,
   useGetUserById: () => ({ data: undefined }),

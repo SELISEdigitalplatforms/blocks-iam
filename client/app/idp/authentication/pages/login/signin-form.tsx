@@ -31,7 +31,7 @@ type SigninFormProps = {
 
 export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) => {
   const navigate = useNavigate();
-  const { setAuthenticated, setTokens } = useAuthStore();
+  const { setAuthenticated } = useAuthStore();
   const [captchaRequired, setCaptchaRequired] = useState(false);
   const [captchaSiteKey, setCaptchaSiteKey] = useState<string | undefined>(undefined);
   const form = useForm({
@@ -89,7 +89,7 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
       }
     } catch (error: unknown) {
       if (isErrorWithErrors(error)) {
-        const errs: any = (error as any).errors;
+        const errs = error.errors;
         const errorCode = errs?.error;
         if (errorCode === "captcha_enabled" || errorCode === "captcha_invalid") {
           setCaptchaRequired(true);

@@ -31,25 +31,9 @@ import DeviceEntryRoute from "./routes/device";
 import DeviceSuccessRoute from "./routes/device/success";
 
 // Dashboard routes (protected)
-// Only the profile page is served to signed-in users for now; every other
-// dashboard route is parked below, so their imports stay commented out too
-// (lint-staged runs eslint with --max-warnings 0, and an unused import fails it).
+// The profile page is the only page this frontend serves to signed-in users;
+// the console and IAM administration pages live in the OS frontend.
 import ProfilePage from "./routes/dashboard/profile";
-// import AuthLogsPage from "./routes/dashboard/auth-logs";
-// import AuthenticationConfigPage from "./routes/dashboard/authentication-config";
-// import CaptchaLogsPage from "./routes/dashboard/captcha-logs";
-// import IamPage from "./routes/dashboard/iam";
-// import IamAddPermissionPage from "./routes/dashboard/iam-add-permission";
-// import IamConfigurePage from "./routes/dashboard/iam-configure";
-// import IamLogsPage from "./routes/dashboard/iam-logs";
-// import IamPermissionDetailPage from "./routes/dashboard/iam-permission-detail";
-// import IamRoleDetailPage from "./routes/dashboard/iam-role-detail";
-// import ManagedServicesPage from "./routes/dashboard/managed-services";
-// import MfaLogsPage from "./routes/dashboard/mfa-logs";
-// import RateLimiterPage from "./routes/dashboard/rate-limiter";
-// import SsoConfigurationPage from "./routes/dashboard/sso-configuration";
-
-// import { CreateProjectWrapper } from "./pages/create-project/create-project";
 
 import {
   AuthResolver,
@@ -59,17 +43,7 @@ import {
   ProtectedGuard,
   PublicGuard,
   TooltipProvider,
-  // ConsolePage,
-  // DashboardOverview,
-  // DashboardRoute,
 } from "@seliseblocks/genesis-os";
-// import { navigationMenus } from "./constants/navigation-menus";
-
-// const redirectPaths: Record<string, string> = {
-//   "/app/role-detail/*": "/app/iam?tab=roles",
-//   "/app/permission-detail/*": "/app/iam?tab=permissions",
-//   "/app/sso-configuration": "/app/authentication?tab=social",
-// };
 
 export const router = createBrowserRouter([
   {
@@ -84,11 +58,6 @@ export const router = createBrowserRouter([
           { path: "login", element: <OidcLoginPage /> },
           { path: "permission", element: <OidcPermissionPage /> },
           { path: "error", element: <OidcErrorPage /> },
-          
-          // {
-          //   path: "email-sent-confirmation",
-          //   element: <OidcEmailSentConfirmationPage />,
-          // },
 
           // OIDC-scoped auth pages (relative paths under /oidc)
           { path: "forgot-password", element: <ForgotPasswordPage /> },
@@ -143,7 +112,6 @@ export const router = createBrowserRouter([
             path: "/login",
             element: <LoginPage />,
           },
-          // { path: "/sso/:provider/callback", element: <SSOCallbackPage /> },
         ],
       },
 
@@ -196,33 +164,9 @@ export const router = createBrowserRouter([
               {
                 element: <AuthLayout />,
                 children: [
-                  // { path: "/signup", element: <SignupPage /> },
                   { path: "/sso-activate", element: <SsoActivatePage /> },
                 ],
               },
-
-              //     // { path: "/forgot-password", element: <ForgotPasswordPage /> },
-
-              //     // { path: "/resetpassword", element: <ResetPasswordPage /> },
-              //     {
-              //       path: "/activate-success",
-              //       element: <ActivateSuccessPage />,
-              //     },
-              //     {
-              //       path: "/forgot-email-sent",
-              //       element: <ForgotEmailSentPage />,
-              //     },
-              //     {
-              //       path: "/signup-email-sent",
-              //       element: <SignupEmailSentPage />,
-              //     },
-              //     { path: "/mfa-check", element: <MfaCheckPage /> },
-              //     {
-              //       path: "/reset-password-success",
-              //       element: <ResetPasswordSuccessPage />,
-              //     },
-              //   ],
-              // },
             ],
           },
 
@@ -236,10 +180,9 @@ export const router = createBrowserRouter([
             ),
             children: [
               { index: true, element: <Navigate to="profile" replace /> },
-              // ── Console group (no impersonation allowed) ──
-              // Profile is the only page this frontend serves right now. Console
-              // and create-project are parked; anything else typed by hand falls
-              // through to the catch-all below and lands back on /app/profile.
+              // Profile is the only page this frontend serves; anything else typed
+              // by hand falls through to the catch-all below and lands back on
+              // /app/profile.
               {
                 element: (
                   <TooltipProvider delayDuration={0}>
@@ -250,88 +193,8 @@ export const router = createBrowserRouter([
                 ),
                 children: [
                   { path: "profile", element: <ProfilePage /> },
-                  // { path: "console", element: <ConsolePage /> },
-                  // {
-                  //   path: "create-project",
-                  //   element: <CreateProjectWrapper />,
-                  // },
                 ],
               },
-              // ── Parked: every dashboard/overview route ──
-              // Kept for reference while this frontend serves profile only.
-              // {
-                // path: ":itemId",
-                // element: (
-                  // <DashboardRoute
-                    // redirectPaths={redirectPaths}
-                    // navigationMenus={navigationMenus}
-                  // />
-                // ),
-//
-                // children: [
-                  // { index: true, element: <Navigate to="dashboard" replace /> },
-                  // { path: "iam", element: <IamPage /> },
-                  // {
-                    // path: "role-detail/:id",
-                    // element: <IamRoleDetailPage />,
-                  // },
-                  // {
-                    // path: "permission-detail/new",
-                    // element: <IamAddPermissionPage />,
-                  // },
-                  // {
-                    // path: "permission-detail/:id",
-                    // element: <IamPermissionDetailPage />,
-                  // },
-                  // { path: "iam/logs", element: <IamLogsPage /> },
-                  // {
-                    // path: "iam/configure",
-                    // element: <IamConfigurePage />,
-                  // },
-                  // // Users and Organizations moved to the OS frontend under
-                  // // /app/iam/*. This path stays registered because it is an
-                  // // existing redirect target, and now serves the one section
-                  // // this frontend still owns.
-                  // {
-                    // path: "authentication",
-                    // element: (
-                      // <AuthenticationConfigPage section="client-credential" />
-                    // ),
-                  // },
-                  // {
-                    // path: "client-credential",
-                    // element: (
-                      // <AuthenticationConfigPage section="client-credential" />
-                    // ),
-                  // },
-                  // {
-                    // path: "sso-configuration",
-                    // element: <SsoConfigurationPage />,
-                  // },
-                  // {
-                    // path: "authentication/logs",
-                    // element: <AuthLogsPage />,
-                  // },
-                  // {
-                    // path: "mfa/logs",
-                    // element: <MfaLogsPage />,
-                  // },
-                  // {
-                    // path: "rate-limiter",
-                    // element: <RateLimiterPage />,
-                  // },
-                  // {
-                    // path: "managed-services",
-                    // element: <ManagedServicesPage />,
-                  // },
-                  // {
-                    // path: "captcha/logs",
-                    // element: <CaptchaLogsPage />,
-                  // },
-                  // { path: "dashboard", element: <DashboardOverview /> },
-//
-                // ],
-              // },
               // Anything else under /app (typed by hand, stale bookmark, or an
               // old deep link from another service) goes back to the profile page.
               { path: "*", element: <Navigate to="/app/profile" replace /> },

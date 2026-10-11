@@ -70,7 +70,7 @@ export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
 
             <p className="mt-3 w-full text-base leading-relaxed text-muted-foreground sm:mt-4 sm:text-lg">
               An email has been sent to{" "}
-              <span className="break-words font-semibold text-primary [overflow-wrap:anywhere]">
+              <span className="wrap-break-word font-semibold text-primary wrap-anywhere">
                 {email || "your email address"}
               </span>
               . Please follow the link in the email to continue your sign up.

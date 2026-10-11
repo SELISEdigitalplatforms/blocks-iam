@@ -20,6 +20,16 @@ export type RedeemSignupLinkResponse = {
   mfaId?: string;
   userMfa?: string;
   error?: string;
+  /** Set with error "authentication_required": the id the password step posts back. */
+  redemptionId?: string;
+  maskedEmail?: string;
+  mode?: "Oidc" | "Embedded";
+};
+
+export type AuthenticateSignupLinkPayload = {
+  redemptionId: string;
+  password: string;
+  captchaCode?: string;
 };
 
 export const signupLinkService = {
@@ -44,6 +54,28 @@ export const signupLinkService = {
     return serviceInstances.idpService.post(
       SIGNUP_LINK_ENDPOINTS.REDEEM,
       { code },
+      headers,
+      tenantId ? { skipBlocksKey: true } : undefined,
+    );
+  },
+
+  authenticate(
+    payload: AuthenticateSignupLinkPayload,
+    tenantId?: string,
+  ): Promise<RedeemSignupLinkResponse> {
+    const headers: Record<string, string> = tenantId
+      ? { "X-Blocks-Key": tenantId }
+      : {};
+    const body: Record<string, string> = {
+      redemptionId: payload.redemptionId,
+      password: payload.password,
+    };
+    if (payload.captchaCode) {
+      body.captcha_code = payload.captchaCode;
+    }
+    return serviceInstances.idpService.post(
+      SIGNUP_LINK_ENDPOINTS.REDEEM_AUTHENTICATE,
+      body,
       headers,
       tenantId ? { skipBlocksKey: true } : undefined,
     );

@@ -46,6 +46,22 @@ public class SignupLinkRedemptionController : ControllerBase
             Response);
     }
 
+    [HttpPost("signup-links/redeem/authenticate")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RedeemAuthenticate(
+        [FromBody] RedeemSignupLinkAuthenticateRequest? request,
+        [FromHeader(Name = "X-Blocks-Key")] string? blocksKey)
+    {
+        var tenantId = BlocksContext.GetContext()?.TenantId ?? blocksKey;
+        return await _redemptionOrchestrator.AuthenticateAsync(
+            request?.RedemptionId,
+            request?.Password,
+            request?.CaptchaCode,
+            tenantId,
+            Request,
+            Response);
+    }
+
     [HttpPost("signup-links/redeem/mfa")]
     [AllowAnonymous]
     public async Task<IActionResult> RedeemMfa(

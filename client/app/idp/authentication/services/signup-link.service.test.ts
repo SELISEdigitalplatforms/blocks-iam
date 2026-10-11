@@ -52,4 +52,26 @@ describe("signupLinkService", () => {
       { skipBlocksKey: true },
     );
   });
+  it("posts the password step in the body, never in headers or the URL", async () => {
+    post.mockResolvedValue({ authorizeUrl: "https://iam/api/oidc/authorize" });
+    await signupLinkService.authenticate({ redemptionId: "rid-1", password: "Correct#1" }, "t1");
+    expect(post).toHaveBeenCalledWith(
+      SIGNUP_LINK_ENDPOINTS.REDEEM_AUTHENTICATE,
+      { redemptionId: "rid-1", password: "Correct#1" },
+      { "X-Blocks-Key": "t1" },
+      { skipBlocksKey: true },
+    );
+    expect(SIGNUP_LINK_ENDPOINTS.REDEEM_AUTHENTICATE).not.toContain("Correct#1");
+  });
+
+  it("adds captcha_code only when a code is present, and omits the tenant header without a tenant", async () => {
+    post.mockResolvedValue({});
+    await signupLinkService.authenticate({ redemptionId: "rid-1", password: "pw", captchaCode: "cap" });
+    expect(post).toHaveBeenCalledWith(
+      SIGNUP_LINK_ENDPOINTS.REDEEM_AUTHENTICATE,
+      { redemptionId: "rid-1", password: "pw", captcha_code: "cap" },
+      {},
+      undefined,
+    );
+  });
 });

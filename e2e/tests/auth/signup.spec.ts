@@ -1,3 +1,4 @@
+import { type Page, type Route } from "@playwright/test";
 import { test, expect } from "../../support/test-base";
 
 /**
@@ -17,10 +18,10 @@ const SIGNUP_URL = "/oidc/signup/test-tenant";
 
 // All four backend reads return defaults unless a test step overrides one of them.
 const baseMocks = (overrides: {
-  signupSetting?: any;
-  orgConfig?: any;
-  loginOptions?: any;
-  oidcUiConfig?: any;
+  signupSetting?: unknown;
+  orgConfig?: unknown;
+  loginOptions?: unknown;
+  oidcUiConfig?: unknown;
 }) => {
   const signupSetting = overrides.signupSetting ?? {
     isSignUpEnable: true,
@@ -41,7 +42,7 @@ const baseMocks = (overrides: {
   return [
     // Tenant-scoped signup settings; tenantId comes from BLOCKS_X_BLOCKS_KEY or
     // an explicit query param.
-    (route: any) =>
+    (route: Route) =>
       route.request().url().includes("/api/iam/signup-settings")
         ? route.fulfill({
             status: 200,
@@ -50,7 +51,7 @@ const baseMocks = (overrides: {
           })
         : route.fallback(),
     // Org config — only fetched when signup is enabled.
-    (route: any) =>
+    (route: Route) =>
       route.request().url().includes("/api/iam/organizations/config")
         ? route.fulfill({
             status: 200,
@@ -59,7 +60,7 @@ const baseMocks = (overrides: {
           })
         : route.fallback(),
     // Login options (ssoInfo) — only when SSO signup is on.
-    (route: any) =>
+    (route: Route) =>
       route.request().url().includes("/api/auth/login-options")
         ? route.fulfill({
             status: 200,
@@ -68,7 +69,7 @@ const baseMocks = (overrides: {
           })
         : route.fallback(),
     // UI config / template.
-    (route: any) =>
+    (route: Route) =>
       route.request().url().includes("/api/idp/oidc-ui-config")
         ? route.fulfill({
             status: 200,
@@ -80,7 +81,7 @@ const baseMocks = (overrides: {
 };
 
 const applyBaseMocks = async (
-  page: any,
+  page: Page,
   overrides: Parameters<typeof baseMocks>[0] = {},
 ) => {
   const handlers = baseMocks(overrides);
@@ -238,7 +239,7 @@ test.describe("Signup form", () => {
     });
 
     await test.step("[Positive] Happy path: filled form + terms → /oidc/signup-email-sent", async () => {
-      await page.route("**/api/auth/signup", async (route: any) => {
+      await page.route("**/api/auth/signup", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -268,7 +269,7 @@ test.describe("Signup form", () => {
     });
 
     await test.step("[Negative] Server error surfaces inline and the form remains usable", async () => {
-      await page.route("**/api/auth/signup", async (route: any) => {
+      await page.route("**/api/auth/signup", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -309,7 +310,7 @@ test.describe("Signup form", () => {
           isOrgNameUnique: true,
         },
       });
-      await page.route("**/api/auth/signup", async (route: any) => {
+      await page.route("**/api/auth/signup", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -346,7 +347,7 @@ test.describe("Signup form", () => {
     });
 
     await test.step("[Negative] Network throw falls back to 'Something went wrong'", async () => {
-      await page.route("**/api/auth/signup", (route: any) => route.abort("failed"));
+      await page.route("**/api/auth/signup", (route: Route) => route.abort("failed"));
 
       await expect(page.locator("#signup-first-name")).toBeVisible({ timeout: 30_000 });
 
@@ -369,7 +370,7 @@ test.describe("Signup form", () => {
       const gate = new Promise<void>((resolve) => {
         release = resolve;
       });
-      await page.route("**/api/auth/signup", async (route: any) => {
+      await page.route("**/api/auth/signup", async (route: Route) => {
         await gate;
         await route.fulfill({
           status: 200,

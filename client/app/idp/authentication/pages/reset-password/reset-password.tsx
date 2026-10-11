@@ -18,7 +18,7 @@ export const ResetPassword = ({ code, tenantId }: ResetPasswordProps) => {
 
   if (!template) {
     return (
-      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-(--bg)">
         <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
       </div>
     );

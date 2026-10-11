@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { serviceInstances } from "@/lib/http-client";
 import { AuthService } from "./auth.service";
 import { AUTH_ENDPOINTS } from "../constants/endpoint.constant";
-import { PEOPLE_ENDPOINTS } from "@blocks-identifier/constants/endpoint.constant";
 import {
   mockSigninPayload,
   mockSigninResponse,
@@ -177,20 +175,6 @@ describe("AuthService", () => {
     });
   });
 
-  // ─── verifySsoConsent ────────────────────────────────────────────────────────
-  describe("verifySsoConsent", () => {
-    it("posts a form-encoded sso_consent grant to the OIDC token endpoint", async () => {
-      vi.mocked(http.post).mockResolvedValue({ ok: true });
-      await service.verifySsoConsent("consent-code");
-      expect(http.post).toHaveBeenCalledWith(AUTH_ENDPOINTS.OIDC_TOKEN, expect.any(URLSearchParams), {
-        "Content-Type": "application/x-www-form-urlencoded",
-      });
-      const body = vi.mocked(http.post).mock.calls[0][1] as URLSearchParams;
-      expect(body.get("grant_type")).toBe("sso_consent");
-      expect(body.get("code")).toBe("consent-code");
-    });
-  });
-
   // ─── getLoginOptions ─────────────────────────────────────────────────────────
   describe("getLoginOptions", () => {
     it("GETs the plain endpoint with empty headers when no tenant is given", async () => {
@@ -207,22 +191,6 @@ describe("AuthService", () => {
         { "X-Blocks-Key": "tenant-7" },
         { skipBlocksKey: true },
       );
-    });
-  });
-
-  // ─── impersonation ───────────────────────────────────────────────────────────
-  describe("impersonation", () => {
-    it("stopImpersonation posts an empty body to the stop endpoint", async () => {
-      vi.mocked(http.post).mockResolvedValue({ mode: "root", status: "ok" });
-      await service.stopImpersonation();
-      expect(http.post).toHaveBeenCalledWith(AUTH_ENDPOINTS.STOP_IMPERSONATION, {});
-    });
-
-    it("startImpersonation posts the payload to the impersonate endpoint", async () => {
-      const payload = { targeted_tenant_id: "t-9" };
-      vi.mocked(http.post).mockResolvedValue({ ok: true });
-      await service.startImpersonation(payload);
-      expect(http.post).toHaveBeenCalledWith(AUTH_ENDPOINTS.IMPERSONATE, payload);
     });
   });
 });

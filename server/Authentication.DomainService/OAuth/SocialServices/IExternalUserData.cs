@@ -1,5 +1,4 @@
 using Newtonsoft.Json;
-using SixLabors.ImageSharp;
 using System.Text.Json.Serialization;
 
 namespace Authentication.DomainService.OAuth
