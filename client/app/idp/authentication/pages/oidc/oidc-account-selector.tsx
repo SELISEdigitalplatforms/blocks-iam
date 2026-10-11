@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
-import { Button } from "@/components/ui-kits/button/button";
 import { showErrorToast } from "@/hooks/use-toast";
-import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { Loader } from "lucide-react";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { buildOidcThemeStyle, OidcBrand, OidcFooter, useOidcResolvedTheme } from "./oidc-auth-shell";

@@ -4,7 +4,6 @@ import { createWrapper } from "@/test-utils/test-providers/query-client";
 import { useSsoActivation } from "./use-sso-activation";
 
 const mockPush = vi.fn();
-const mockReplace = vi.fn();
 const mockGet = vi.fn();
 vi.mock("react-router", () => ({
   useNavigate: vi.fn(() => mockPush),

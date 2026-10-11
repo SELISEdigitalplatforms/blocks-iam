@@ -43,7 +43,7 @@ export const MfaCheckFrom = () => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const { data: oidcUiConfig } = useOidcUiConfig();
-  const [{ mfa_id, mfa_type, returnUrl }] = useQueryStates({
+  const [{ mfa_id: mfaId, mfa_type: mfaType, returnUrl }] = useQueryStates({
     mfa_id: parseAsString.withDefault(""),
     mfa_type: parseAsInteger.withDefault(0),
     // Carried through from a device-flow (RFC 8628) login that required MFA — the
@@ -54,10 +54,10 @@ export const MfaCheckFrom = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const { setAuthenticated } = useAuthStore();
-  const { remainingTime, resend } = useResendOtp({ mfaId: mfa_id });
+  const { remainingTime, resend } = useResendOtp({ mfaId });
 
   const form = useForm<{ code: string }>({
-    resolver: zodResolver(getFormSchema(mfa_type)),
+    resolver: zodResolver(getFormSchema(mfaType)),
     defaultValues: {
       code: "",
     },
@@ -89,7 +89,7 @@ export const MfaCheckFrom = () => {
         extractOIDCParams().tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
 
       const payload = {
-        mfa_id,
+        mfa_id: mfaId,
         mfa_code: code,
         tenant_id: finalTenantId || "",
       };
@@ -170,14 +170,14 @@ export const MfaCheckFrom = () => {
           render={({ field }) => (
             <FormItem>
               <FormControl>
-                <InputOTP maxLength={mfa_type === 1 ? 6 : 5} {...field}>
+                <InputOTP maxLength={mfaType === 1 ? 6 : 5} {...field}>
                   <InputOTPGroup className="w-full justify-between gap-6">
                     <CustomInputOTPSlot index={0} />
                     <CustomInputOTPSlot index={1} />
                     <CustomInputOTPSlot index={2} />
                     <CustomInputOTPSlot index={3} />
                     <CustomInputOTPSlot index={4} />
-                    {mfa_type === 1 && <CustomInputOTPSlot index={5} />}
+                    {mfaType === 1 && <CustomInputOTPSlot index={5} />}
                   </InputOTPGroup>
                 </InputOTP>
               </FormControl>
@@ -186,7 +186,7 @@ export const MfaCheckFrom = () => {
           )}
         />
 
-        {mfa_type === 2 && mfaCopy.resendButton && (
+        {mfaType === 2 && mfaCopy.resendButton && (
           <div className="flex items-center justify-end text-sm">
             <Button
               type="button"

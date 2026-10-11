@@ -10,7 +10,6 @@ import {
   mockSaveS3CompatibleConfigPayload,
   mockDeleteConfigPayload,
 } from "../test-utils/__mocks__";
-import { serviceInstances } from "@/lib/http-client";
 import { StorageConfiguration } from "./storage-configuration.service";
 import { TEST_PROJECT_KEY } from "@/test-utils/__mocks__/data.mock";
 import { STORAGE_CONFIG_ENDPOINTS } from "../constants/endpoint.constant";

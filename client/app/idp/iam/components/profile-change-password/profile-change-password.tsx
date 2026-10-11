@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyRound, Loader } from "lucide-react";
 import {
@@ -60,9 +60,10 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
     resolver: zodResolver(changePasswordSchema),
   });
 
-  const newPassword = form.watch("newPassword");
-  const confirmNewPassword = form.watch("confirmNewPassword");
-  const oldPassword = form.watch("oldPassword");
+  const [newPassword, confirmNewPassword, oldPassword] = useWatch({
+    control: form.control,
+    name: ["newPassword", "confirmNewPassword", "oldPassword"],
+  });
 
   const onClose = () => {
     form.reset();

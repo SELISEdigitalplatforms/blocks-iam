@@ -36,7 +36,7 @@ export const ProfileMFAVerify = () => {
       isFirstMount.current = true;
       setIsVerifyModalOpen(false);
     }
-  }, [mfaMethodType, mutateAsync, projectKey, setIsVerifyModalOpen, userId]);
+  }, [mfaMethodType, mutateAsync, projectKey, queryClient, setIsVerifyModalOpen, userId]);
 
   useEffect(() => {
     if (isFirstMount.current && isVerifyModalOpen) {
