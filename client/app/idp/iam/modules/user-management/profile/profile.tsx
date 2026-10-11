@@ -7,7 +7,7 @@ import { ProfileDetails } from "@blocks-idp/iam/components/profile-details";
 import { UserHistories } from "../user-histories";
 import { UserDevices } from "../user-devices";
 
-const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
+const xBlocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
 
 const ProfileSkeleton = () => (
   <div className="mx-auto w-full max-w-7xl p-6 md:p-8">
@@ -38,13 +38,13 @@ export const UserProfile = ({ id }: { id: string }) => {
       value: "devices",
       label: "Sessions",
       icon: <Smartphone className="h-3.5 w-3.5" />,
-      render: () => <UserDevices id={id} projectKey={x_blocks_key} />,
+      render: () => <UserDevices id={id} projectKey={xBlocksKey} />,
     },
     {
       value: "history",
       label: "History",
       icon: <Clock className="h-3.5 w-3.5" />,
-      render: () => <UserHistories id={id} projectKey={x_blocks_key} />,
+      render: () => <UserHistories id={id} projectKey={xBlocksKey} />,
     },
     // {
     //   value: "personalAccessTokens",
@@ -57,7 +57,7 @@ export const UserProfile = ({ id }: { id: string }) => {
   return (
     <UserProfileShell
       id={id}
-      projectKey={x_blocks_key}
+      projectKey={xBlocksKey}
       defaultTab="security"
       tabs={tabs}
       own

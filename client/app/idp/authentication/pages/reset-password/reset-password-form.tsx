@@ -1,6 +1,6 @@
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import {
   buildResetPasswordFormSchema,
   ResetPasswordFormValuesType,
@@ -35,7 +35,6 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
     data: oidcUiConfig,
     captchaEnabled: tenantCaptchaEnabled,
     passwordPolicy,
-    isLoading: isConfigLoading,
   } = useOidcUiConfig(tenantId);
   const formSchema = useMemo(
     () => buildResetPasswordFormSchema(passwordPolicy),
@@ -66,9 +65,10 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
 
   const { isPending, mutateAsync } = useAccountResetPassword();
   const { isValid } = form.formState;
-  const password = form.watch("password");
-  const confirmPassword = form.watch("confirmPassword");
-  const logoutFromAllDevices = form.watch("logoutFromAllDevices");
+  const [password, confirmPassword, logoutFromAllDevices] = useWatch({
+    control: form.control,
+    name: ["password", "confirmPassword", "logoutFromAllDevices"],
+  });
 
   /* Inject PasswordStrengthChecker into the right panel's idle slot */
   const setPanelIdleSlot = animCtx?.setPanelIdleSlot;
@@ -154,7 +154,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
     <div className="flex flex-col gap-5">
       <form
         ref={formRef}
-        onSubmit={form.handleSubmit(onSubmitHandler, shake)}
+        onSubmit={(event) => form.handleSubmit(onSubmitHandler, shake)(event)}
         onInput={() => {
           if (serverError) setServerError(null);
           if (animCtx?.phase === "failed") animCtx?.resetAnimation();

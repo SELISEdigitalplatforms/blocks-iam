@@ -1,3 +1,4 @@
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
@@ -26,8 +27,9 @@ namespace XUnitTest.Auth.OAuth
         private readonly Mock<IUserActivityDispatcher> _activity = new();
 
         private PasswordAuthenticationService Create() =>
-            new(NullLogger<PasswordAuthenticationService>.Instance, _tokenManager.Object, _tenants.Object,
-                _crypto.Object, _repo.Object, _authDomain.Object, _account.Object, _activity.Object);
+            new(NullLogger<PasswordAuthenticationService>.Instance, _tokenManager.Object, _crypto.Object, _repo.Object,
+                new PasswordCredentialVerifier(NullLogger<PasswordCredentialVerifier>.Instance, _tenants.Object,
+                    _repo.Object, _account.Object, _activity.Object, _authDomain.Object));
 
         private static TokenRequest Request(string user = "jane", string pass = "secret", string? org = null) => new()
         {

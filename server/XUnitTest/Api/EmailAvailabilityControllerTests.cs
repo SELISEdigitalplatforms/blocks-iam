@@ -48,16 +48,19 @@ public class EmailAvailabilityControllerTests
     [Fact]
     public async Task IsEmailAvailableFromQuery_ReturnsOk()
     {
-        _userQuery.Setup(s => s.IsUserAvailableAsync(It.IsAny<IsEmailAvailableRequest>())).ReturnsAsync(true);
-        var result = await Sut().IsEmailAvailableFromQuery(new IsEmailAvailableRequest { Email = "a@b.com" });
+        _userQuery.Setup(s => s.IsUserAvailableAsync(It.Is<IsEmailAvailableRequest>(r => r.Email == "a@b.com"))).ReturnsAsync(true);
+        var result = await Sut().IsEmailAvailableFromQuery("a@b.com");
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         ok.Value.Should().BeOfType<IsEmailAvailableResponse>().Which.IsAvailable.Should().BeTrue();
     }
 
-    [Fact]
-    public async Task IsEmailAvailableFromQuery_MissingEmail_ReturnsBadRequest()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task IsEmailAvailableFromQuery_MissingEmail_ReturnsBadRequest(string? email)
     {
-        var result = await Sut().IsEmailAvailableFromQuery(new IsEmailAvailableRequest { Email = "" });
+        var result = await Sut().IsEmailAvailableFromQuery(email);
         result.Should().BeOfType<BadRequestObjectResult>();
         _userQuery.Verify(s => s.IsUserAvailableAsync(It.IsAny<IsEmailAvailableRequest>()), Times.Never);
     }

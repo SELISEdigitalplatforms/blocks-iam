@@ -18,18 +18,17 @@ import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { isErrorWithErrors } from "@/lib/error";
 import {
-  getCurrentOIDCParams,
   buildOIDCNavigationUrl,
 } from "@blocks-idp/authentication/utils/oidc-utils";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { SsoSignin } from "@blocks-idp/authentication/pages/login/sso-signin";
-import { useAuthStore } from "@seliseblocks/genesis-os";
 import { sha256 } from "js-sha256";
 import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 import { useOidcAuthAnimation } from "./oidc-auth-shell";
 import { OidcErrorDialog } from "./oidc-error-dialog";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
+import { navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
 
 const base64UrlEncode = (bytes: Uint8Array) => {
   const binary = String.fromCharCode(...bytes);
@@ -107,7 +106,6 @@ export const OidcLoginForm = ({
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
   const { data: signUpSetting } = useGetSignUpSetting(tenantId);
   const isSignUpEnabled = signUpSetting?.isSignUpEnable ?? false;
-  const [token, setToken] = useState("");
   const [accounts, setAccounts] = useState<OidcAccountInfo[]>([]);
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -116,7 +114,7 @@ export const OidcLoginForm = ({
   // Kept apart from serverError: this one arrives from a round trip the form cannot retry, and
   // it is shown as a modal rather than a line under the password field.
   const [roundTripError, setRoundTripError] = useState<string | null>(initialError ?? null);
-  const [lastAttemptedEmail, setLastAttemptedEmail] = useState("");
+  const [, setLastAttemptedEmail] = useState("");
   const [showActivationError, setShowActivationError] = useState(false);
   const [activeCodeChallenge, setActiveCodeChallenge] = useState(codeChallenge);
   const [activeCodeChallengeMethod, setActiveCodeChallengeMethod] = useState(
@@ -213,7 +211,6 @@ export const OidcLoginForm = ({
       // Use provided tenantId; if absent, fallback to configured tenant key when available.
       const finalTenantId =
         tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
-      const codeVerifier = sessionStorage.getItem("oidc-code-verifier");
 
       const payload = {
         username: values.username,
@@ -264,8 +261,12 @@ export const OidcLoginForm = ({
         // Normal flow always gets `redirect_uri` back; only device flow (RFC 8628)
         // completes with `{ success: true }` and no redirect_uri, so returnUrl is
         // only ever used as a fallback for that case, never preferred over it.
-        const target = data.redirect_uri || returnUrl;
-        if (!target) {
+        // redirect_uri is validated by the server against the client; returnUrl comes from
+        // the query string, so it may only point back at this origin.
+        const navigated = data.redirect_uri
+          ? navigateToUrl(data.redirect_uri)
+          : !!returnUrl && navigateToSameOrigin(returnUrl);
+        if (!navigated) {
           const errMsg = "Login succeeded but no redirect target was provided";
           shake();
           setServerError(errMsg);
@@ -273,7 +274,6 @@ export const OidcLoginForm = ({
           setIsLoading(false);
           return;
         }
-        window.location.href = target;
         return;
       }
 
@@ -489,7 +489,7 @@ shake();
         <Form {...form}>
           <form
             ref={formRef}
-            onSubmit={form.handleSubmit(onSubmitHandler, shake)}
+            onSubmit={(event) => form.handleSubmit(onSubmitHandler, shake)(event)}
             className="flex flex-col gap-5 w-full"
             noValidate
           >

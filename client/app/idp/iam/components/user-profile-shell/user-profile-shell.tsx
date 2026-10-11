@@ -11,7 +11,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui-kits/select/select";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { cn } from "@/lib/utils";
-import { BREADCRUMB_CUSTOM_TITLES } from "@/constants/breadcrumb-custom-title";
+import { setBreadcrumbTitle } from "@/constants/breadcrumb-custom-title";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
 import PageBreadcrumb from "@/components/breadcrumb/breadcrumb";
 import { UserProfileSidebar } from "../user-profile-sidebar";
@@ -76,8 +76,8 @@ export const UserProfileShell = ({
   const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: initialTab });
   const activeTab = tabs.find((t) => t.value === tabId) ?? tabs[0];
 
-  BREADCRUMB_CUSTOM_TITLES["/app/user-detail"] = "Users";
-  BREADCRUMB_CUSTOM_TITLES[`/app/user-detail/${id}`] = activeTab?.label || "";
+  setBreadcrumbTitle("/app/user-detail", "Users");
+  setBreadcrumbTitle(`/app/user-detail/${id}`, activeTab?.label || "");
 
   return (
     // The header above this shell is fixed and the page scrolls at the document level

@@ -502,6 +502,16 @@
             still works on PR previews. Skips Cache-Control on cookie-issuing auth paths.
             </summary>
         </member>
+        <member name="F:Api.Middleware.SecurityHeadersMiddleware.StyleNonceItemKey">
+            <summary><see cref="P:Microsoft.AspNetCore.Http.HttpContext.Items"/> key for the response's style nonce.</summary>
+        </member>
+        <member name="M:Api.Middleware.SecurityHeadersMiddleware.DisableCaching(Microsoft.AspNetCore.Http.IHeaderDictionary)">
+            <summary>
+            Marks a response as not cacheable. The SPA shell calls this itself so it is never cached,
+            whatever path the fallback answered (including /api/oidc, /api/idp and /login, where
+            <see cref="M:Api.Middleware.SecurityHeadersMiddleware.Apply(Microsoft.AspNetCore.Http.HttpContext,System.String)"/> leaves Cache-Control to the auth handlers).
+            </summary>
+        </member>
         <member name="T:Api.Security.ContentSecurityPolicy">
             <summary>
             Builds the SPA's Content-Security-Policy from configuration.
@@ -542,6 +552,18 @@
             policy blocked captcha on login and signup in every environment.
             </summary>
         </member>
+        <member name="F:Api.Security.ContentSecurityPolicy.StyleNoncePlaceholder">
+            <summary>
+            Stands in for the style nonce (see <see cref="T:Api.Security.StyleNonce"/>): in the policy built at
+            startup and in the built index.html (meta[name=csp-nonce]). Replaced on every response.
+            </summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.WithStyleNonce(System.String,System.String)">
+            <summary>The policy for one response, with the placeholder swapped for its nonce.</summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.RenderIndex(System.String,System.String)">
+            <summary>The SPA shell for one response, carrying the same nonce as its header.</summary>
+        </member>
         <member name="M:Api.Security.ContentSecurityPolicy.BuildPolicy(System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String})">
             <summary>
             The policy itself, separated from configuration so it can be asserted directly.
@@ -563,10 +585,54 @@
             </summary>
         </member>
         <member name="M:Api.Security.ContentSecurityPolicy.ToWebSocketOrigin(System.String)">
-            <summary>The ws:// or wss:// form of an http(s) origin, or null if it is not one.</summary>
+            <summary>
+            The wss origin a browser uses to open a socket to an https host, or null. Plain http and
+            ws hosts get no socket allowance: an unencrypted socket would carry the session token and
+            notification payloads in clear text.
+            </summary>
         </member>
         <member name="M:Api.Security.ContentSecurityPolicy.Split(System.String)">
             <summary>Space- or comma-separated list, for origins no runtime key describes.</summary>
+        </member>
+        <member name="T:Api.Security.StyleNonce">
+            <summary>
+            The CSP style nonce for a browser.
+            <para>
+            A fresh nonce on every response changes the HTML body on every request, and a scanner
+            comparing two responses for the same page (ZAP rule 10104, User Agent Fuzzer) then reports
+            every page. So the nonce is derived from a random per-browser seed held in an HttpOnly
+            cookie, keyed with a secret that never leaves the process. The same browser gets the same
+            shell; another browser, or the same one after the cookie expires, gets a different nonce.
+            A page cannot read the seed, and the nonce itself is hidden from CSS and the DOM.
+            </para>
+            </summary>
+        </member>
+        <member name="F:Api.Security.StyleNonce.SeedCookieName">
+            <summary>Host-only, Secure, HttpOnly cookie carrying the per-browser seed.</summary>
+        </member>
+        <member name="F:Api.Security.StyleNonce.SeedLifetime">
+            <summary>The seed is rotated by expiry, which also rotates the nonce.</summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.CreateWithRandomKey">
+            <summary>A process-local key: every response from this process uses it.</summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.NewSeed">
+            <summary>A new random seed, base64url without padding (cookie-safe).</summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.IsValidSeed(System.String)">
+            <summary>True for a value <see cref="M:Api.Security.StyleNonce.NewSeed"/> could have produced.</summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.For(System.String)">
+            <summary>The nonce for a seed: 128 bits of HMAC-SHA256(key, seed), base64.</summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.ForRequest(Microsoft.AspNetCore.Http.HttpContext)">
+            <summary>
+            The nonce for one response. A request without a valid seed that may render the SPA shell
+            gets a new seed cookie; API calls and static files get a throwaway nonce and no cookie.
+            </summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.MayServeShell(System.String)">
+            <summary>True for "/index.html" and extension-less paths outside /api (SPA routes).</summary>
         </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">
             <summary>

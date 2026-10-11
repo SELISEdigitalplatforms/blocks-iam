@@ -1,3 +1,4 @@
+import { type Page, type Route } from "@playwright/test";
 import { test, expect } from "../../support/test-base";
 
 /**
@@ -23,8 +24,11 @@ const OIDC_UI_CONFIG_URL = "**/api/idp/oidc-ui-config";
 const FORGOT_PASSWORD_URL = "/oidc/forgot-password";
 
 // Default UI config: empty captcha + empty template (normalize() fills defaults).
-const mockOidcUiConfig = async (page: any, overrides: any = {}) => {
-  return page.route(OIDC_UI_CONFIG_URL, async (route: any) => {
+const mockOidcUiConfig = async (
+  page: Page,
+  overrides: { captcha?: unknown; template?: unknown } = {},
+) => {
+  return page.route(OIDC_UI_CONFIG_URL, async (route: Route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -42,7 +46,7 @@ const mockOidcUiConfig = async (page: any, overrides: any = {}) => {
 // directly via the form's submit event triggers validation, so the handler
 // runs even when the button is still disabled. Bypasses `await submit.click()`
 // checks like `toBeEnabled`.
-const submitForm = async (page: any) => {
+const submitForm = async (page: Page) => {
   await page.evaluate(() => {
     const form = document.querySelector("form");
     if (form && typeof form.requestSubmit === "function") form.requestSubmit();
@@ -73,7 +77,7 @@ test.describe("Account recovery", () => {
     });
 
     await test.step("[Positive] Forgot-password: submitting a valid email redirects to /oidc/forgot-email-sent", async () => {
-      await page.route("**/api/auth/recover", async (route: any) => {
+      await page.route("**/api/auth/recover", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -99,7 +103,7 @@ test.describe("Account recovery", () => {
     await test.step("[Negative] Forgot-password: server error surfaces inline and the form remains", async () => {
       await page.goto(FORGOT_PASSWORD_URL, { waitUntil: "domcontentloaded" });
 
-      await page.route("**/api/auth/recover", async (route: any) => {
+      await page.route("**/api/auth/recover", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -125,7 +129,7 @@ test.describe("Account recovery", () => {
     await test.step("[Negative] Forgot-password: network throw shows 'Something went wrong'", async () => {
       await page.goto(FORGOT_PASSWORD_URL, { waitUntil: "domcontentloaded" });
 
-      await page.route("**/api/auth/recover", (route: any) => route.abort("failed"));
+      await page.route("**/api/auth/recover", (route: Route) => route.abort("failed"));
 
       const input = page.getByPlaceholder("name@company.com");
       await input.pressSequentially("any@example.test", { delay: 5 });
@@ -166,7 +170,7 @@ test.describe("Account recovery", () => {
       const gate = new Promise<void>((resolve) => {
         release = resolve;
       });
-      await page.route("**/api/auth/recover", async (route: any) => {
+      await page.route("**/api/auth/recover", async (route: Route) => {
         await gate;
         await route.fulfill({
           status: 200,
@@ -254,7 +258,7 @@ test.describe("Account recovery", () => {
     });
 
     await test.step("[Positive] Reset-password: submitting a valid reset navigates to /oidc/reset-password-success", async () => {
-      await page.route("**/api/auth/reset-password", async (route: any) => {
+      await page.route("**/api/auth/reset-password", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -295,7 +299,7 @@ test.describe("Account recovery", () => {
     });
 
     await test.step("[Negative] Reset-password: server error surfaces inline and the form remains", async () => {
-      await page.route("**/api/auth/reset-password", async (route: any) => {
+      await page.route("**/api/auth/reset-password", async (route: Route) => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",

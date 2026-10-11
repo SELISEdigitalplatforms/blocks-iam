@@ -10,6 +10,10 @@ import {
   IActivateAccountResponse,
   IRecoverAccountPayload,
   IRecoverAccountResponse,
+  LoginOption,
+  IOidcTokenExchangeResponse,
+  IOidcLoginResponse,
+  IOidcSelectAccountResponse,
 } from "@blocks-idp/authentication/models/auth.model";
 import { AUTH_ENDPOINTS } from "../constants/endpoint.constant";
 
@@ -56,8 +60,8 @@ export class AuthService {
     codeVerifier?: string;
     tenantId?: string;
     state?: string;
-  }): Promise<any> {
-    const body: any = {
+  }): Promise<IOidcTokenExchangeResponse> {
+    const body: Record<string, string> = {
       code: payload.code,
     };
 
@@ -76,16 +80,6 @@ export class AuthService {
     }
 
     return serviceInstances.idpService.post(AUTH_ENDPOINTS.TOKEN_EXCHANGE, body);
-  }
-
-  verifySsoConsent(code: string): Promise<any> {
-    const body = new URLSearchParams();
-    body.append("grant_type", "sso_consent");
-    body.append("code", code);
-
-    return serviceInstances.idpService.post(AUTH_ENDPOINTS.OIDC_TOKEN, body, {
-      "Content-Type": "application/x-www-form-urlencoded",
-    });
   }
 
   signupByEmail(
@@ -128,7 +122,7 @@ export class AuthService {
     return serviceInstances.idpService.post(AUTH_ENDPOINTS.RECOVER, payload);
   }
 
-  getLoginOptions(tenantId?: string): Promise<any> {
+  getLoginOptions(tenantId?: string): Promise<LoginOption> {
     const url = tenantId
       ? `${AUTH_ENDPOINTS.GET_LOGIN_OPTIONS}?tenantId=${encodeURIComponent(tenantId)}`
       : AUTH_ENDPOINTS.GET_LOGIN_OPTIONS;
@@ -146,22 +140,6 @@ export class AuthService {
     return serviceInstances.idpService.post(AUTH_ENDPOINTS.LOGOUT, {});
   }
 
-  stopImpersonation(): Promise<{
-    mode: "root" | "impersonation";
-    status: string;
-    reason?: string;
-  }> {
-    return serviceInstances.idpService.post(AUTH_ENDPOINTS.STOP_IMPERSONATION, {});
-  }
-
-  startImpersonation(payload: {
-    targeted_tenant_id: string;
-    orgId?: string;
-    clientId?: string;
-  }): Promise<any> {
-    return serviceInstances.idpService.post(AUTH_ENDPOINTS.IMPERSONATE, payload);
-  }
-
   signinByOidcEmail(payload: {
     provider?: string;
     clientId: string;
@@ -174,7 +152,7 @@ export class AuthService {
     tenantId?: string;
     provider_client_id: string;
     provider_redirect_uri: string;
-  }): Promise<any> {
+  }): Promise<IOidcLoginResponse> {
     const tenantId = payload.tenantId?.trim();
     
     const headers: Record<string, string> = tenantId
@@ -215,7 +193,7 @@ export class AuthService {
     nonce?: string;
     code_challenge?: string;
     code_challenge_method?: string;
-  }): Promise<any> {
+  }): Promise<IOidcSelectAccountResponse> {
     const headers: Record<string, string> = payload.tenantId
       ? { "X-Blocks-Key": payload.tenantId }
       : {};
@@ -242,42 +220,3 @@ export class AuthService {
 }
 
 export const authService = new AuthService();
-
-// import { serviceInstances } from "@/lib/http-client";
-// import { getRuntimeEnv } from "@/lib/runtime-env";
-// import { useAuthStore } from "@seliseblocks/genesis-os";
-// import {
-//   ISigninByEmailPayload,
-//   ISigninByEmailResponse,
-//   ISignupByEmailPayload,
-//   ISignupByEmailResponse,
-//   IVerifyMfaPayload,
-//   IVerifyMfaResponse,
-// } from "@blocks-idp/authentication/models/auth.model";
-// import { AUTH_ENDPOINTS } from "../constants/endpoint.constant";
-// import { PEOPLE_ENDPOINTS } from "@blocks-identifier/constants/endpoint.constant";
-
-
-//     return serviceInstances.idpService.post(
-//       AUTH_ENDPOINTS.TOKEN,
-//       body,
-//       {
-//         "Content-Type": "application/x-www-form-urlencoded",
-//       },
-//       {
-//         skipTokenRotation: true,
-//       },
-//     );
-//   }
-
-
-//     return serviceInstances.idpService.post(
-//       `https://dev-idp.blocksdevelopers.com${AUTH_ENDPOINTS.TOKEN}`,
-//       body,
-//       {
-//         "Content-Type": "application/x-www-form-urlencoded",
-//         "Authorization": "Basic c2VsaXNlYmxvY2tzOkJsMDNrc0B1JFU3VjEwUw=="
-//       },
-//       {
-//         absoluteUrl: true,
-

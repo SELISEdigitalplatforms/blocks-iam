@@ -38,6 +38,17 @@ public class SignupLinkConfiguration : BaseEntity
     /// </summary>
     public bool SignInAfterActivation { get; set; }
 
+    /// <summary>
+    /// When true, an already-active user who redeems one of this configuration's links must
+    /// confirm their own password before the link grants anything or signs them in.
+    /// <para>
+    /// Defaults to true, and a document written before this field existed reads as true too:
+    /// the initializer runs before the BSON serializer fills the object, and the element is
+    /// simply absent.
+    /// </para>
+    /// </summary>
+    public bool RequireExistingUserPassword { get; set; } = true;
+
     public int DefaultLifetimeMinutes { get; set; } = 1440;
     public int? DefaultMaxRedemptions { get; set; }
     public bool IsActive { get; set; } = true;

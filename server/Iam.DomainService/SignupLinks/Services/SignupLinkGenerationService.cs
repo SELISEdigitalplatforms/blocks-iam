@@ -139,6 +139,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             CredentialMode = config.CredentialMode,
             Mode = config.Mode,
             SignInAfterActivation = config.SignInAfterActivation,
+            RequireExistingUserPassword = config.RequireExistingUserPassword,
             Email = email,
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),

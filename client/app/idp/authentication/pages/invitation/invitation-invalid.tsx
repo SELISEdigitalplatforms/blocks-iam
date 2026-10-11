@@ -5,10 +5,14 @@ import { JOIN_PANEL } from "../oidc/oidc-panel-config";
 import type { IOidcUiTemplate } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { Button } from "@/components/ui-kits/button/button";
 
-type Props = Readonly<{ template: IOidcUiTemplate }>;
+type Props = Readonly<{
+  template: IOidcUiTemplate;
+  /** Overrides the default refusal text, e.g. for a timed-out password step. */
+  message?: string;
+}>;
 
 /** Single refusal card for every invalid/expired/revoked/exhausted link (C1). */
-export function InvitationInvalid({ template }: Props) {
+export function InvitationInvalid({ template, message }: Props) {
   return (
     <OidcAuthShell
       panelConfig={JOIN_PANEL}
@@ -27,7 +31,7 @@ export function InvitationInvalid({ template }: Props) {
       <div className="flex flex-col items-center gap-4 py-6 text-center">
         <AlertTriangle className="h-10 w-10" style={{ color: "var(--warn, #f59e0b)" }} />
         <p className="text-sm" style={{ color: "var(--fg)" }}>
-          This link is no longer valid.
+          {message ?? "This link is no longer valid."}
         </p>
         <Button asChild variant="outline">
           <LoginReturnLink preferOidcLogin>Back to login</LoginReturnLink>

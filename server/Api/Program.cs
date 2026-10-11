@@ -62,7 +62,7 @@ DomainResolver.Configure(app.Services.GetRequiredService<IHttpContextAccessor>()
 // The CSP origins come from configuration (FrontendRuntime + Csp:Extra*), not from a
 // compiled-in host list -- see Api.Security.ContentSecurityPolicy.
 var contentSecurityPolicy = ContentSecurityPolicy.Build(app.Configuration);
-app.UseMiddleware<SecurityHeadersMiddleware>(contentSecurityPolicy);
+app.UseMiddleware<SecurityHeadersMiddleware>(contentSecurityPolicy, StyleNonce.CreateWithRandomKey());
 
 // Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
 var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);
@@ -70,18 +70,57 @@ ApplicationConfigurations.ConfigureMiddleware(
     app,
     tenantValidationPrefixes: new[] { normalizedApiRoutePrefix });
 
+// The SPA shell carries the response's style nonce (meta[name=csp-nonce]), so it is rendered
+// rather than sent verbatim. Read after ApplyFrontendRuntimeSettings filled the runtime
+// placeholders.
+var indexHtml = Path.Combine(app.Environment.WebRootPath ?? "", "index.html");
+var indexHtmlTemplate = File.Exists(indexHtml) ? await File.ReadAllTextAsync(indexHtml) : null;
+
+if (indexHtmlTemplate is not null)
+{
+    // "/" and "/index.html" would otherwise be served verbatim by the static file
+    // middleware, with the nonce placeholder still in them.
+    app.Use(async (context, next) =>
+    {
+        var path = context.Request.Path.Value;
+        if ((HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+            && (path is "/" or "" || string.Equals(path, "/index.html", StringComparison.OrdinalIgnoreCase)))
+        {
+            await WriteSpaShell(context, indexHtmlTemplate);
+            return;
+        }
+
+        await next();
+    });
+}
+
 // THEN serve static files
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// Finally, fallback to index.html for React SPA routing (non-API routes)
-var indexHtml = Path.Combine(app.Environment.WebRootPath ?? "", "index.html");
-if (File.Exists(indexHtml))
+// Finally, fallback to index.html for React SPA routing (non-API, non-file routes)
+if (indexHtmlTemplate is not null)
 {
-    app.MapFallbackToFile("/index.html");
+    app.MapFallback(context => WriteSpaShell(context, indexHtmlTemplate));
 }
 
 await app.RunAsync();
+
+static async Task WriteSpaShell(HttpContext context, string indexHtmlTemplate)
+{
+    // Same methods the static file fallback answered before; anything else is not a page.
+    if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    var nonce = (string)context.Items[SecurityHeadersMiddleware.StyleNonceItemKey]!;
+    context.Response.ContentType = "text/html; charset=utf-8";
+    // The shell is a page, never a cookie-issuing auth response, so it is not cached on any path.
+    SecurityHeadersMiddleware.DisableCaching(context.Response.Headers);
+    await context.Response.WriteAsync(ContentSecurityPolicy.RenderIndex(indexHtmlTemplate, nonce));
+}
 
 static void ApplyFrontendRuntimeSettings(IConfiguration configuration, string webRootPath)
 {

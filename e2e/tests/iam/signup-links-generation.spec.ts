@@ -162,7 +162,7 @@ test.describe("Signup link generation (#567)", () => {
 
     expect(generateOk).toBe(true);
     expect(generateJson.linkId).toBeTruthy();
-    expect(generateJson.url).toContain(`/oidc/join/${tenant}#link=`);
+    expect(generateJson.url).toContain(`/oidc/invitation/${tenant}#link=`);
     const code = generateJson.url.split("#link=")[1];
     expect(code.length).toBe(43);
     expect(generateJson.emailAlreadyExists).toBe(false);

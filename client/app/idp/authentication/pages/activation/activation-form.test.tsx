@@ -61,11 +61,6 @@ beforeEach(() => {
   h.revalidate.mockResolvedValue({ isSuccess: false, status: "Expired" });
 });
 
-const fillNames = () => {
-  fireEvent.change(screen.getByPlaceholderText("First name"), { target: { value: "Grace" } });
-  fireEvent.change(screen.getByPlaceholderText("Last name"), { target: { value: "Hopper" } });
-};
-
 const fillValidPasswords = (container: HTMLElement) => {
   fireEvent.change(screen.getByPlaceholderText("First name"), { target: { value: "Grace" } });
   fireEvent.change(screen.getByPlaceholderText("Last name"), { target: { value: "Hopper" } });

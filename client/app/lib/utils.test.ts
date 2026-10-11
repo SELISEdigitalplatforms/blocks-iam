@@ -16,6 +16,8 @@ import {
   clearQueryString,
   getUniqueID,
   formatSize,
+  navigateToSameOrigin,
+  navigateToUrl,
 } from "./utils";
 
 describe("cn", () => {
@@ -250,5 +252,62 @@ describe("formatSize", () => {
 
   it("respects the decimals argument", () => {
     expect(formatSize(1536, "B", 1)).toBe("1.5 KB");
+  });
+});
+
+describe("navigateToUrl / navigateToSameOrigin", () => {
+  const originalLocation = window.location;
+  let hrefSet: string | undefined;
+
+  beforeEach(() => {
+    hrefSet = undefined;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        origin: "https://iam.example.com",
+        get href() {
+          return hrefSet ?? "https://iam.example.com/oidc/login";
+        },
+        set href(value: string) {
+          hrefSet = value;
+        },
+      },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
+  });
+
+  it("navigateToUrl follows http(s) URLs unchanged", () => {
+    expect(navigateToUrl("https://app.example.com/callback?code=1")).toBe(true);
+    expect(hrefSet).toBe("https://app.example.com/callback?code=1");
+  });
+
+  it("navigateToUrl refuses script and data URLs", () => {
+    expect(navigateToUrl("javascript:alert(1)")).toBe(false);
+    expect(navigateToUrl(" JavaScript:alert(1)")).toBe(false);
+    expect(navigateToUrl("data:text/html,<script>alert(1)</script>")).toBe(false);
+    expect(hrefSet).toBeUndefined();
+  });
+
+  it("navigateToSameOrigin follows same-origin absolute URLs and paths", () => {
+    expect(navigateToSameOrigin("https://iam.example.com/device?user_code=AB#x")).toBe(true);
+    expect(hrefSet).toBe("https://iam.example.com/device?user_code=AB#x");
+    expect(navigateToSameOrigin("/oidc/authorize?client_id=c")).toBe(true);
+    expect(hrefSet).toBe("https://iam.example.com/oidc/authorize?client_id=c");
+  });
+
+  it("navigateToSameOrigin refuses other origins and tricks", () => {
+    for (const url of [
+      "https://evil.example.com/",
+      "//evil.example.com/path",
+      "/\\evil.example.com",
+      "javascript:alert(1)",
+      "https://iam.example.com.evil.com/",
+    ]) {
+      expect(navigateToSameOrigin(url)).toBe(false);
+    }
+    expect(hrefSet).toBeUndefined();
   });
 });

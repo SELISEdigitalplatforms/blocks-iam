@@ -116,6 +116,47 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
+        public async Task CreateUser_SendMailOmitted_EventAsksForActivationMail()
+        {
+            await Create().CreateUserAsync(new CreateUserRequest { Email = "new@test.com", Password = "pw" });
+
+            _message.Verify(m => m.SendToConsumerAsync(
+                It.Is<ConsumerMessage<UserMutationEvent>>(c => c.Payload.SendMail)), Times.Once);
+        }
+
+        [Fact]
+        public async Task CreateUser_SendMailFalse_StillCreates_EventSuppressesActivationMail()
+        {
+            var result = await Create().CreateUserAsync(new CreateUserRequest { Email = "new@test.com", Password = "pw", SendMail = false });
+
+            result.IsSuccess.Should().BeTrue();
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Once);
+            _message.Verify(m => m.SendToConsumerAsync(
+                It.Is<ConsumerMessage<UserMutationEvent>>(c => !c.Payload.SendMail)), Times.Once);
+        }
+
+        [Fact]
+        public void CreateUserRequest_SendMailAbsentFromJson_DefaultsToTrue()
+        {
+            var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+
+            System.Text.Json.JsonSerializer.Deserialize<CreateUserRequest>("""{"email":"a@b.com"}""", options)!
+                .SendMail.Should().BeTrue();
+            System.Text.Json.JsonSerializer.Deserialize<CreateUserRequest>("""{"email":"a@b.com","sendMail":false}""", options)!
+                .SendMail.Should().BeFalse();
+        }
+
+        [Fact]
+        public void UserMutationEvent_QueuedBeforeSendMailExisted_StillSendsActivationMail()
+        {
+            // A message published by the previous build carries no SendMail field at all.
+            var queued = System.Text.Json.JsonSerializer.Deserialize<UserMutationEvent>(
+                $$"""{"ItemId":"u1","Action":{{(int)MutationEventType.Create}}}""");
+
+            queued!.SendMail.Should().BeTrue();
+        }
+
+        [Fact]
         public async Task CreateUser_EmailIsInAnotherOrganization_GrantsTheOrganizationInsteadOfDuplicating()
         {
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
@@ -859,6 +900,21 @@ namespace XUnitTest.IamTests.Users
 
             _iam.Verify(i => i.SendActivationToEmailAsync(user, It.Is<string>(s => s.StartsWith("https://app.test")), It.IsAny<string>()), Times.Once);
             _userRepo.Verify(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task ExecuteUserMutationCommand_CreateWithSendMailFalse_RecordsActivityWithoutActivationMail()
+        {
+            var user = new User { ItemId = "u1", Language = "en-US", MailPurpose = "AccountActivation" };
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            await Create().ExecuteUserMutationCommandAsync(
+                new UserMutationEvent { ItemId = "u1", Action = MutationEventType.Create, SendMail = false });
+
+            _iam.Verify(i => i.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+            _userRepo.Verify(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()), Times.Never);
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
         }
 
         [Theory]
