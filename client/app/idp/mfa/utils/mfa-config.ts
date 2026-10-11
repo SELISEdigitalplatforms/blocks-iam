@@ -1,6 +1,6 @@
 import { Mail, Smartphone } from "lucide-react";
 
-export const MFA_Provider_Data = [
+export const MFA_PROVIDER_DATA = [
   {
     provider: "email",
     label: "Email",

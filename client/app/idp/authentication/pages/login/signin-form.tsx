@@ -31,7 +31,7 @@ type SigninFormProps = {
 
 export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) => {
   const navigate = useNavigate();
-  const { setAuthenticated, setTokens } = useAuthStore();
+  const { setAuthenticated } = useAuthStore();
   const [captchaRequired, setCaptchaRequired] = useState(false);
   const [captchaSiteKey, setCaptchaSiteKey] = useState<string | undefined>(undefined);
   const form = useForm({

@@ -11,7 +11,6 @@ import {
   mockPreSignedUrlPayload,
   mockGetFilesInfoPayload,
 } from "../test-utils/__mocks__";
-import { serviceInstances } from "@/lib/http-client";
 import { StorageFile } from "./storage-file.service";
 import { TEST_PROJECT_KEY } from "@/test-utils/__mocks__/data.mock";
 import { STORAGE_FILE_ENDPOINTS } from "../constants/endpoint.constant";

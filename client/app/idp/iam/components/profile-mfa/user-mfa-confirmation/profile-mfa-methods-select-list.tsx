@@ -1,8 +1,8 @@
 import { profileMfaContext } from "../profile-mfa";
-import { ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { ReactNode, useContext, useMemo } from "react";
 import { useGetMFAConfig } from "@blocks-idp/mfa/hooks/use-mfa-config";
 import { useGetMe, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
-import { MFA_Provider_Data } from "@blocks-idp/mfa/utils/mfa-config";
+import { MFA_PROVIDER_DATA } from "@blocks-idp/mfa/utils/mfa-config";
 import { Button } from "@/components/ui-kits/button/button";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,7 @@ import { ProfileMFAVerify } from "./profile-mfa-veriffy";
 import { UserMFAConfirmationDisable } from "./profile-mfa-confirmation-disable";
 
 type MethodsOptionProps = {
-  method: Omit<(typeof MFA_Provider_Data)[0], "description"> & { description: ReactNode };
+  method: Omit<(typeof MFA_PROVIDER_DATA)[0], "description"> & { description: ReactNode };
   onEnableClick: () => void;
   onDisableClick: () => void;
   isActive: boolean;
@@ -77,11 +77,12 @@ export const ProfileMfaMethodSelectList = () => {
   const userData = own ? meData : userByIdData;
 
   const projectEnabled = !!projectConfig?.enabled;
-  const projectAllowedMethods = projectConfig?.allowedMethods ?? [];
+  const allowedMethods = projectConfig?.allowedMethods;
+  const projectAllowedMethods = useMemo(() => allowedMethods ?? [], [allowedMethods]);
 
   const availableMFaMethod = useMemo(() => {
     if (!projectAllowedMethods.length) return [];
-    return MFA_Provider_Data.filter((item) => projectAllowedMethods.includes(item.type));
+    return MFA_PROVIDER_DATA.filter((item) => projectAllowedMethods.includes(item.type));
   }, [projectAllowedMethods]);
 
   const userMfaType = userData?.data.userMfaType;

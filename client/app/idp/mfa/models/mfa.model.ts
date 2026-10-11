@@ -43,12 +43,12 @@ export interface ISetupUserTotpResponse {
   qrCode: string;
   secret?: string;
 }
-export interface IGenerateUserMFA_OtpPayload {
+export interface IGenerateUserMfaOtpPayload {
   userId: string;
   mfaType: number;
   sendPhoneNumberAsEmailDomain?: string;
 }
-export interface IGenerateUserMFA_OtpResponse {
+export interface IGenerateUserMfaOtpResponse {
   errors: unknown | null;
   isSuccess: boolean;
   mfaId: string;

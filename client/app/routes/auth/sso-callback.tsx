@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useParams, useSearchParams } from "react-router";
 import { useAuthStore } from "@seliseblocks/genesis-os";
 import { getSelfBaseUrl } from "@/lib/runtime-env";
 import { showErrorToast } from "@/hooks/use-toast";
 import {
-  getCurrentOIDCParams,
   OIDC_DEVICE_RETURN_URL_STORAGE_KEY,
 } from "@blocks-idp/authentication/utils/oidc-utils";
 

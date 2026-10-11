@@ -8,7 +8,6 @@ import { useTheme } from "@/hooks/use-theme";
 import { useCallback, useMemo } from "react";
 import { sanitizeProviderUrl } from "@blocks-idp/authentication/utils/sanitize-provider-url.util";
 import {
-  buildOIDCNavigationUrl,
   OIDC_DEVICE_RETURN_URL_STORAGE_KEY,
 } from "@blocks-idp/authentication/utils/oidc-utils";
 import { getRuntimeEnv } from "@/lib/runtime-env";
@@ -97,7 +96,7 @@ export const SSOSigninCard = ({
         return showErrorToast({ errors: error.errors });
       showErrorToast({ errors: "Something went wrong" });
     }
-  }, [mode, providerConfig, oidcContext]);
+  }, [mode, providerConfig, oidcContext, iamBaseUrl]);
 
   const imageSrc = useMemo(() => {
     return resolvedTheme === "light"

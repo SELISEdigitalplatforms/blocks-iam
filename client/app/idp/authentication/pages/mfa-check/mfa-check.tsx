@@ -15,11 +15,11 @@ export const MfaCheck = () => {
   const { data: oidcUiConfig } = useOidcUiConfig();
   const template = oidcUiConfig?.template;
   const resolvedTheme = useOidcResolvedTheme();
-  const [{ mfa_type }] = useQueryStates({
+  const [{ mfa_type: mfaType }] = useQueryStates({
     mfa_type: parseAsInteger.withDefault(0),
   });
-  const mfa_type_message =
-    mfa_type == 1
+  const mfaTypeMessage =
+    mfaType == 1
       ? "Open your authenticator app and enter the verification code."
       : "Check your email for the verification code and enter it here to continue.";
 
@@ -51,7 +51,7 @@ export const MfaCheck = () => {
               {template.pages.mfa.heading}
             </h2>
             <p className="text-sm font-sans text-(--muted)">
-              {mfa_type_message}
+              {mfaTypeMessage}
             </p>
           </div>
 

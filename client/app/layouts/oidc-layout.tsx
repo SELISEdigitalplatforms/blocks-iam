@@ -104,8 +104,8 @@ function OIDCProvider({ children }: { children: ReactNode }) {
   return <OIDCContext.Provider value={params}>{children}</OIDCContext.Provider>;
 }
 
-function OidcLayoutContent({ children }: { children: ReactNode }) {
-  const { logoUrl, themeColor, isLoading } = useOIDCContext();
+function OidcLayoutContent() {
+  const { themeColor, isLoading } = useOIDCContext();
 
   if (isLoading) {
     return (
@@ -128,9 +128,7 @@ function OidcLayoutContent({ children }: { children: ReactNode }) {
 export function OidcLayout() {
   return (
     <OIDCProvider>
-      <OidcLayoutContent>
-        <Outlet />
-      </OidcLayoutContent>
+      <OidcLayoutContent />
     </OIDCProvider>
   );
 }
