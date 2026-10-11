@@ -59,7 +59,7 @@ export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
 
             <p className="mt-3 w-full text-base leading-relaxed text-muted-foreground sm:mt-4 sm:text-lg">
               A password reset email has been sent to{" "}
-              <span className="break-words font-semibold text-primary [overflow-wrap:anywhere]">
+              <span className="wrap-break-word font-semibold text-primary wrap-anywhere">
                 {email || "your email address"}
               </span>
               . Please follow the instructions in the email to reset your password.

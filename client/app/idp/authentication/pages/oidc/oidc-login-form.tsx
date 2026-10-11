@@ -30,6 +30,7 @@ import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 import { useOidcAuthAnimation } from "./oidc-auth-shell";
 import { OidcErrorDialog } from "./oidc-error-dialog";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
+import { navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
 
 const base64UrlEncode = (bytes: Uint8Array) => {
   const binary = String.fromCharCode(...bytes);
@@ -264,8 +265,12 @@ export const OidcLoginForm = ({
         // Normal flow always gets `redirect_uri` back; only device flow (RFC 8628)
         // completes with `{ success: true }` and no redirect_uri, so returnUrl is
         // only ever used as a fallback for that case, never preferred over it.
-        const target = data.redirect_uri || returnUrl;
-        if (!target) {
+        // redirect_uri is validated by the server against the client; returnUrl comes from
+        // the query string, so it may only point back at this origin.
+        const navigated = data.redirect_uri
+          ? navigateToUrl(data.redirect_uri)
+          : !!returnUrl && navigateToSameOrigin(returnUrl);
+        if (!navigated) {
           const errMsg = "Login succeeded but no redirect target was provided";
           shake();
           setServerError(errMsg);
@@ -273,7 +278,6 @@ export const OidcLoginForm = ({
           setIsLoading(false);
           return;
         }
-        window.location.href = target;
         return;
       }
 
@@ -489,7 +493,7 @@ shake();
         <Form {...form}>
           <form
             ref={formRef}
-            onSubmit={form.handleSubmit(onSubmitHandler, shake)}
+            onSubmit={(event) => form.handleSubmit(onSubmitHandler, shake)(event)}
             className="flex flex-col gap-5 w-full"
             noValidate
           >

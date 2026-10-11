@@ -208,20 +208,20 @@ export function SciFiBackgroundOidc({ showCorners = true }: SciFiBackgroundOidcP
       {/* Corner brackets */}
       {showCorners && (
         <>
-          <div className="corner corner-tl fixed w-12 h-12 pointer-events-none z-[100]"
+          <div className="corner corner-tl fixed w-12 h-12 pointer-events-none z-100"
             style={{ top: 20, left: 20, borderTop: "1.5px solid var(--accent)", borderLeft: "1.5px solid var(--accent)", opacity: "var(--atm-corner-opacity)" }} />
-          <div className="corner corner-tr fixed w-12 h-12 pointer-events-none z-[100]"
+          <div className="corner corner-tr fixed w-12 h-12 pointer-events-none z-100"
             style={{ top: 20, right: 20, borderTop: "1.5px solid var(--accent)", borderRight: "1.5px solid var(--accent)", opacity: "var(--atm-corner-opacity)" }} />
-          <div className="corner corner-bl fixed w-12 h-12 pointer-events-none z-[100]"
+          <div className="corner corner-bl fixed w-12 h-12 pointer-events-none z-100"
             style={{ bottom: 20, left: 20, borderBottom: "1.5px solid var(--accent)", borderLeft: "1.5px solid var(--accent)", opacity: "var(--atm-corner-opacity)" }} />
-          <div className="corner corner-br fixed w-12 h-12 pointer-events-none z-[100]"
+          <div className="corner corner-br fixed w-12 h-12 pointer-events-none z-100"
             style={{ bottom: 20, right: 20, borderBottom: "1.5px solid var(--accent)", borderRight: "1.5px solid var(--accent)", opacity: "var(--atm-corner-opacity)" }} />
 
           {/* Corner dots */}
           {(["tl","tr","bl","br"] as const).map((pos) => (
             <div
               key={pos}
-              className="fixed w-[3px] h-[3px] rounded-full pointer-events-none z-[100]"
+              className="fixed w-[3px] h-[3px] rounded-full pointer-events-none z-100"
               style={{
                 background: "var(--accent)",
                 opacity: "var(--atm-corner-dot-opacity)",

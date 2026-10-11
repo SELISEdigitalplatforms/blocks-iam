@@ -1,3 +1,4 @@
+import { type Route } from "@playwright/test";
 import { test, expect } from "../../support/test-base";
 
 /**
@@ -59,7 +60,7 @@ test.describe("OIDC login form", () => {
     // One persistent handler for the entire test. Steps mutate the
     // module-level vars above before clicking submit; this is the only place
     // that calls `route.fulfill()`.
-    await page.route("**/api/oidc/login", async (route: any) => {
+    await page.route("**/api/oidc/login", async (route: Route) => {
       const gate = loginPendingGate;
       const next = nextLoginResponse;
       if (gate) await gate;
@@ -263,8 +264,10 @@ test.describe("OIDC login form", () => {
       let submitCount = 0;
       try {
         await page.unroute("**/api/oidc/login");
-      } catch {}
-      const captchaHandler = async (route: any) => {
+      } catch {
+        // No default handler registered yet; nothing to remove.
+      }
+      const captchaHandler = async (route: Route) => {
         submitCount += 1;
         if (submitCount === 1) {
           await route.fulfill({
@@ -299,7 +302,9 @@ test.describe("OIDC login form", () => {
       } finally {
         try {
           await page.unroute("**/api/oidc/login", captchaHandler);
-        } catch {}
+        } catch {
+          // Already removed; nothing to restore.
+        }
       }
     });
 

@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useSearchParams } from "react-router";
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, ReactNode } from "react";
 import { Loader } from "lucide-react";
 import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 
@@ -45,12 +45,9 @@ function OIDCProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
-  const [params, setParams] = useState<OIDCContextType>({
-    themeColor: "#124091",
-    isLoading: true,
-  });
-
-  useEffect(() => {
+  // Recomputed whenever the route or its query changes: the URL wins, and only branding fields
+  // fall back to the copy persisted by an earlier page of the flow.
+  const params = useMemo<OIDCContextType>(() => {
     const urlParams = extractOIDCParams(true);
 
     let stored: OIDCContextType = {};
@@ -82,11 +79,17 @@ function OIDCProvider({ children }: { children: ReactNode }) {
       isLoading: false,
     };
 
+    return mergedParams;
+    // searchParams/pathname are what extractOIDCParams reads through window.location.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, searchParams]);
+
+  useEffect(() => {
     const persistableParams = {
-      tenantId: mergedParams.tenantId,
-      userName: mergedParams.userName,
-      logoUrl: mergedParams.logoUrl,
-      themeColor: mergedParams.themeColor,
+      tenantId: params.tenantId,
+      userName: params.userName,
+      logoUrl: params.logoUrl,
+      themeColor: params.themeColor,
     };
 
     const hasAnyPersistableParams = Object.values(persistableParams).some(
@@ -96,9 +99,7 @@ function OIDCProvider({ children }: { children: ReactNode }) {
     if (hasAnyPersistableParams) {
       localStorage.setItem("oidc-flow-params", JSON.stringify(persistableParams));
     }
-
-    setParams(mergedParams);
-  }, [location.pathname, searchParams]);
+  }, [params]);
 
   return <OIDCContext.Provider value={params}>{children}</OIDCContext.Provider>;
 }

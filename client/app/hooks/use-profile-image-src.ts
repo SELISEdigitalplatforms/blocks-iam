@@ -20,21 +20,14 @@ const getLogicHostname = () => {
  * For external CDN URLs (Azure Blob, S3) the URL is returned as-is.
  */
 export const useProfileImageSrc = (url: string | null | undefined): string | null => {
-  const [src, setSrc] = useState<string | null>(null);
+  // The blob URL fetched for a logic-service image, tagged with the url it belongs to so a
+  // stale result is never shown for a different url.
+  const [fetched, setFetched] = useState<{ url: string; src: string | null } | null>(null);
+
+  const isLogicUrl = !!url && (url.startsWith("/") || url.includes(getLogicHostname()));
 
   useEffect(() => {
-    if (!url) {
-      setSrc(null);
-      return;
-    }
-
-    const logicHostname = getLogicHostname();
-    const isLogicUrl = url.startsWith("/") || url.includes(logicHostname);
-
-    if (!isLogicUrl) {
-      setSrc(url);
-      return;
-    }
+    if (!url || !isLogicUrl) return;
 
     let objectUrl: string | null = null;
     let cancelled = false;
@@ -45,11 +38,11 @@ export const useProfileImageSrc = (url: string | null | undefined): string | nul
         if (cancelled) return;
         if (result instanceof Blob) {
           objectUrl = URL.createObjectURL(result);
-          setSrc(objectUrl);
+          setFetched({ url, src: objectUrl });
         }
       })
       .catch(() => {
-        if (!cancelled) setSrc(null);
+        if (!cancelled) setFetched({ url, src: null });
       });
 
     return () => {
@@ -58,9 +51,12 @@ export const useProfileImageSrc = (url: string | null | undefined): string | nul
         URL.revokeObjectURL(objectUrl);
         objectUrl = null;
       }
-      setSrc(null);
+      setFetched(null);
     };
-  }, [url]);
+  }, [url, isLogicUrl]);
 
-  return src;
+  if (!url) return null;
+  // External CDN URLs (Azure Blob, S3) are used as-is.
+  if (!isLogicUrl) return url;
+  return fetched?.url === url ? fetched.src : null;
 };

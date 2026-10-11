@@ -89,7 +89,7 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
       }
     } catch (error: unknown) {
       if (isErrorWithErrors(error)) {
-        const errs: any = (error as any).errors;
+        const errs = error.errors;
         const errorCode = errs?.error;
         if (errorCode === "captcha_enabled" || errorCode === "captcha_invalid") {
           setCaptchaRequired(true);
