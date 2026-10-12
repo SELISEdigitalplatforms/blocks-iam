@@ -223,7 +223,7 @@ namespace Authentication.DomainService.Authentication
 
             if (string.IsNullOrWhiteSpace(authCode.IdpSessionId))
             {
-                _logger.LogWarning("Authorization code {Code} is missing IdP session id", code);
+                _logger.LogWarning("Authorization code is missing IdP session id");
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is missing IdP session" }));
             }
 
@@ -270,7 +270,7 @@ namespace Authentication.DomainService.Authentication
             var authCode = await _authCodeRepo.GetByCodeAsync(code);
             if (authCode == null)
             {
-                _logger.LogWarning("Authorization code not found: {Code}", code);
+                _logger.LogWarning("Authorization code not found");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" })), null, null, null);
             }
 
@@ -284,7 +284,7 @@ namespace Authentication.DomainService.Authentication
 
             if (authCode.ExpiresAt < DateTime.UtcNow)
             {
-                _logger.LogWarning("Authorization code expired: {Code}", code);
+                _logger.LogWarning("Authorization code expired");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has expired" })), null, null, null);
             }
 
@@ -306,6 +306,14 @@ namespace Authentication.DomainService.Authentication
             {
                 _logger.LogWarning("Redirect URI mismatch for code exchange");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Redirect URI mismatch" })), null, null, null);
+            }
+
+            // A code issued with a PKCE challenge can only be redeemed with its verifier; skipping the
+            // verifier must not skip the check (RFC 7636 4.6, RFC 9700 2.1.1).
+            if (!string.IsNullOrWhiteSpace(authCode.CodeChallenge) && string.IsNullOrWhiteSpace(codeVerifier))
+            {
+                _logger.LogWarning("PKCE code_verifier missing for client {ClientId}", clientId);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE code_verifier is required" })), null, null, null);
             }
 
             if (!string.IsNullOrWhiteSpace(codeVerifier))
@@ -331,6 +339,14 @@ namespace Authentication.DomainService.Authentication
                 {
                     StatusCode = StatusCodes.Status423Locked
                 }), null, null, null);
+            }
+
+            // Last check before tokens are minted, so a code is only spent by a request that passed
+            // every other check. A second redemption of the same code is refused.
+            if (!await _authCodeRepo.TryConsumeAsync(code))
+            {
+                _logger.LogWarning("Authorization code reuse refused for client {ClientId}", clientId);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" })), null, null, null);
             }
 
             var effectiveTenantId = authCode.TenantId ?? tenantId ?? "default";

@@ -48,6 +48,35 @@ namespace XUnitTest.Auth
                 .ReturnsAsync("access-token");
             _tokenService.Setup(t => t.GenerateRefreshTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>()))
                 .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-1", AbsoluteExpiry = DateTime.UtcNow.AddDays(30) });
+            _authCodeRepo.Setup(r => r.TryConsumeAsync(It.IsAny<string>())).ReturnsAsync(true);
+        }
+
+        [Fact]
+        public async Task Exchange_CodeAlreadyUsed_ReturnsInvalidGrantAndMintsNothing()
+        {
+            SetupValidExchange();
+            _authCodeRepo.Setup(r => r.TryConsumeAsync("auth-code")).ReturnsAsync(false);
+
+            var result = await Create().ExchangeAsync(BuildContext().Request);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_grant");
+            _tokenService.Verify(t => t.GenerateAccessTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Exchange_ChallengeStoredButNoVerifier_ReturnsInvalidGrant()
+        {
+            SetupValidExchange();
+            var authCode = ValidAuthCode();
+            authCode.CodeChallenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+            _authCodeRepo.Setup(r => r.GetByCodeAsync("auth-code")).ReturnsAsync(authCode);
+
+            var result = await Create().ExchangeAsync(BuildContext(codeVerifier: "").Request);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error_description").Should().Be("PKCE code_verifier is required");
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<string>()), Times.Never);
         }
 
         public void Dispose()
