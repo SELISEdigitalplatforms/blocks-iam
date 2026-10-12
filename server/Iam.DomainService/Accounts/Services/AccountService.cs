@@ -67,6 +67,7 @@ namespace Iam.DomainService.Accounts
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
+        private readonly IUserSessionTerminator? _userSessionTerminator;
         private readonly IValidator<SignupOrganizationInfo>? _signupOrganizationValidator;
         private readonly IOrganizationNameResolver? _organizationNameResolver;
         private readonly IConfiguration? _configuration;
@@ -92,7 +93,8 @@ namespace Iam.DomainService.Accounts
             // test fixtures that construct this service keep compiling. DI supplies both.
             IValidator<SignupOrganizationInfo>? signupOrganizationValidator = null,
             IOrganizationNameResolver? organizationNameResolver = null,
-            IConfiguration? configuration = null)
+            IConfiguration? configuration = null,
+            IUserSessionTerminator? userSessionTerminator = null)
         {
             _logger = logger;
             _repository = repository;
@@ -113,6 +115,7 @@ namespace Iam.DomainService.Accounts
             _signupOrganizationValidator = signupOrganizationValidator;
             _organizationNameResolver = organizationNameResolver;
             _configuration = configuration;
+            _userSessionTerminator = userSessionTerminator;
         }
 
         public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
@@ -1006,13 +1009,9 @@ namespace Iam.DomainService.Accounts
                     Source = "iam-account"
                 });
 
-                if (resetPasswordRequest.LogoutFromAllDevices)
-                {
-                    await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
-                    {
-                        UserId = userId
-                    });
-                }
+                // Always, whatever LogoutFromAllDevices says: a reset is how a user takes the account
+                // back, so no session may survive it. Every Blocks reset form sends true anyway.
+                await EndAllSessionsAsync(userId, "password_reset");
             }
 
 
@@ -1075,13 +1074,33 @@ namespace Iam.DomainService.Accounts
 
                 if (config.LogoutOnPasswordChange)
                 {
-                    await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
-                    {
-                        UserId = bc?.UserId ?? string.Empty
-                    });
+                    await EndAllSessionsAsync(bc?.UserId ?? string.Empty, "password_change");
                 }
             }
             return result;
+        }
+
+        // Inline, so the sessions are dead before the response goes out; the logout-all queue is
+        // only the backup for when that fails (or no terminator is wired).
+        private async Task EndAllSessionsAsync(string userId, string reason)
+        {
+            if (_userSessionTerminator != null)
+            {
+                try
+                {
+                    await _userSessionTerminator.EndAllSessionsAsync(userId, reason);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Ending sessions inline failed for user {UserId}; queueing logout-all", userId);
+                }
+            }
+
+            await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
+            {
+                UserId = userId
+            });
         }
 
         public async Task<BaseAccountResponse> ResendActivationAsync(ResendActivationRequest resendActivationRequest)

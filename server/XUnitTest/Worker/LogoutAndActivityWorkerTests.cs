@@ -1,4 +1,6 @@
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
+using Authentication.DomainService.Services;
 using Authentication.DomainService.Worker;
 using Blocks.Genesis;
 using FluentAssertions;
@@ -14,61 +16,122 @@ namespace XUnitTest.Worker
 {
     public class LogoutAllWorkerServiceTests
     {
-        private readonly Mock<ICacheClient> _cache = new();
-        private readonly Mock<IRefreshTokenRepository> _refreshRepo = new();
-        private readonly Mock<ITokenRevocationService> _revocation = new();
+        private readonly Mock<IUserSessionTerminator> _terminator = new();
         private readonly Mock<IUserActivityDispatcher> _dispatcher = new();
 
-        private LogoutAllWorkerService Create() =>
-            new(_cache.Object, _refreshRepo.Object, _revocation.Object, _dispatcher.Object,
-                NullLogger<LogoutAllWorkerService>.Instance);
+        private LogoutAllWorkerService Create() => new(_terminator.Object, _dispatcher.Object);
 
         [Fact]
-        public async Task Consume_RevokesActiveTokens_ClearsCache_RevokesAll_AndAudits()
+        public async Task Consume_EndsAllSessions_ThenAudits()
         {
-            _refreshRepo.Setup(r => r.GetActiveTokensByUserAsync("user-1"))
-                .ReturnsAsync(new List<RefreshTokenModel>
-                {
-                    new() { TokenId = "t1", UserId = "user-1" },
-                    new() { TokenId = "t2", UserId = "user-1" },
-                    new() { TokenId = "  ", UserId = "user-1" } // whitespace -> filtered out
-                });
-            // t1 succeeds; t2 fails -> exercises both the success and warning branches.
-            _revocation.Setup(s => s.RevokeTokenAsync("t1", It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync(new TokenRevocationResult { Success = true });
-            _revocation.Setup(s => s.RevokeTokenAsync("t2", It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync(new TokenRevocationResult { Success = false, Error = "already_revoked" });
-            _cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>())).ReturnsAsync(true);
-            _refreshRepo.Setup(r => r.RevokeAllByTokenIdsAsync(It.IsAny<IEnumerable<string>>(), "logout_all")).ReturnsAsync(2);
             _dispatcher.Setup(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
 
             await Create().Consume(new LogoutAllEvent { UserId = "user-1" });
 
-            _revocation.Verify(s => s.RevokeTokenAsync("t1", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
-            _revocation.Verify(s => s.RevokeTokenAsync("t2", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
-            _cache.Verify(c => c.RemoveKeyAsync("t1"), Times.Once);
-            _cache.Verify(c => c.RemoveKeyAsync("t2"), Times.Once);
-            _refreshRepo.Verify(r => r.RevokeAllByTokenIdsAsync(
-                It.Is<IEnumerable<string>>(ids => ids.Contains("t1") && ids.Contains("t2") && ids.Count() == 2),
-                "logout_all"), Times.Once);
+            _terminator.Verify(t => t.EndAllSessionsAsync("user-1", "logout_all"), Times.Once);
             _dispatcher.Verify(d => d.SendUserActivityAsync(
                 It.Is<UserActivityEvent>(e => e.UserId == "user-1" && e.Event == "LOGGED_OUT_ALL" && e.Category == UserActivityCategory.Auth)),
                 Times.Once);
         }
 
         [Fact]
-        public async Task Consume_NoActiveTokens_StillRevokesAll_AndAudits()
+        public async Task Consume_TerminatorFails_Throws_AndDoesNotAudit()
         {
-            _refreshRepo.Setup(r => r.GetActiveTokensByUserAsync("user-2"))
-                .ReturnsAsync(new List<RefreshTokenModel>());
-            _refreshRepo.Setup(r => r.RevokeAllByTokenIdsAsync(It.IsAny<IEnumerable<string>>(), "logout_all")).ReturnsAsync(0);
-            _dispatcher.Setup(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
+            _terminator.Setup(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("db down"));
 
-            await Create().Consume(new LogoutAllEvent { UserId = "user-2" });
+            var act = () => Create().Consume(new LogoutAllEvent { UserId = "user-1" });
 
-            _revocation.Verify(s => s.RevokeTokenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-            _refreshRepo.Verify(r => r.RevokeAllByTokenIdsAsync(It.Is<IEnumerable<string>>(ids => !ids.Any()), "logout_all"), Times.Once);
-            _dispatcher.Verify(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
+            await act.Should().ThrowAsync<InvalidOperationException>();
+            _dispatcher.Verify(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Never);
+        }
+    }
+
+    public class UserSessionTerminatorTests
+    {
+        private readonly Mock<ITokenRevocationService> _revocation = new();
+        private readonly Mock<IIdpSessionService> _sessions = new();
+
+        private UserSessionTerminator Create() => new(_revocation.Object, _sessions.Object);
+
+        private static void InstallContext(string? tenantId)
+        {
+            BlocksContext.IsTestMode = true;
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: tenantId, roles: null, userId: "caller", impersonated: false,
+                isAuthenticated: true, requestUri: "https://test", organizationId: "default",
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
+                userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
+                originalTenantId: tenantId, impersonationSessionId: null, applicationDomain: "test"));
+        }
+
+        private static void ClearContext()
+        {
+            BlocksContext.SetContext(null);
+            BlocksContext.IsTestMode = false;
+        }
+
+        [Fact]
+        public async Task EndAll_RevokesTokens_AndRemovesOnlyThisUserFromLiveSessions()
+        {
+            InstallContext("tenant-1");
+            try
+            {
+                _revocation.Setup(r => r.RevokeAllUserTokensAsync("user-3", "tenant-1", "password_reset")).ReturnsAsync(true);
+                _sessions.Setup(s => s.GetUserSessionsAsync("user-3", "tenant-1")).ReturnsAsync(new List<IdpSessionModel>
+                {
+                    new() { SessionId = "live-1" },
+                    new() { SessionId = "gone-1", RevokedAt = DateTime.UtcNow.AddMinutes(-5) }
+                });
+                _sessions.Setup(s => s.RemoveAccountAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>())).ReturnsAsync(true);
+
+                await Create().EndAllSessionsAsync("user-3", "password_reset");
+
+                _revocation.Verify(r => r.RevokeAllUserTokensAsync("user-3", "tenant-1", "password_reset"), Times.Once);
+                _sessions.Verify(s => s.RemoveAccountAsync("live-1", "user-3", "tenant-1"), Times.Once);
+                _sessions.Verify(s => s.RemoveAccountAsync("gone-1", It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
+                _sessions.Verify(s => s.RevokeSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            }
+            finally
+            {
+                ClearContext();
+            }
+        }
+
+        [Fact]
+        public async Task EndAll_NoTenant_Throws_AndTouchesNothing()
+        {
+            InstallContext(null);
+            try
+            {
+                var act = () => Create().EndAllSessionsAsync("user-3", "password_reset");
+
+                await act.Should().ThrowAsync<InvalidOperationException>();
+                _revocation.Verify(r => r.RevokeAllUserTokensAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            }
+            finally
+            {
+                ClearContext();
+            }
+        }
+
+        [Fact]
+        public async Task EndAll_TokenRevokeFails_Throws_SoCallerCanQueue()
+        {
+            InstallContext("tenant-1");
+            try
+            {
+                _revocation.Setup(r => r.RevokeAllUserTokensAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                    .ThrowsAsync(new TimeoutException("mongo"));
+
+                var act = () => Create().EndAllSessionsAsync("user-3", "password_reset");
+
+                await act.Should().ThrowAsync<TimeoutException>();
+            }
+            finally
+            {
+                ClearContext();
+            }
         }
     }
 

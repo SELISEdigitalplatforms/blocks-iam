@@ -54,6 +54,7 @@ namespace Authentication.DomainService.Utilities
             // Satisfies Iam.DomainService's account-action email builders, which need the
             // tenant's default OIDC client but cannot reference this assembly.
             serviceCollection.AddSingleton<IDefaultOidcClientResolver, DefaultOidcClientResolver>();
+            serviceCollection.AddSingleton<IUserSessionTerminator, UserSessionTerminator>();
             serviceCollection.AddSingleton<IOidcClientRegistrationLookup, OidcClientRegistrationLookup>();
 
             serviceCollection.AddSingleton<IOAuthJwtAccessTokenManager, OAuthJwtAccessTokenManager>();
