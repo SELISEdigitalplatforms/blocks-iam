@@ -151,8 +151,10 @@ namespace Authentication.DomainService.Authentication
                 var state = GenerateRandomBase64Url(16);
                 var nonce = GenerateRandomBase64Url(16);
 
-                var codeVerifier = identityProvider.RequirePkce ? GenerateRandomBase64Url(32) : null;
-                var codeChallenge = codeVerifier != null ? GenerateCodeChallenge(codeVerifier) : null;
+                // Always: IAM is both ends of this leg, and the authorize endpoint refuses a client that
+                // requires PKCE when no challenge is sent, whatever this provider row says.
+                var codeVerifier = GenerateRandomBase64Url(32);
+                var codeChallenge = GenerateCodeChallenge(codeVerifier);
 
                 // Store flow context in cache (10 minute TTL)
                 var flowContext = new
@@ -584,7 +586,7 @@ namespace Authentication.DomainService.Authentication
                 { "nonce", nonce }
             };
 
-            if (provider.RequirePkce && !string.IsNullOrEmpty(codeChallenge))
+            if (!string.IsNullOrEmpty(codeChallenge))
             {
                 queryParams["code_challenge"] = codeChallenge;
                 queryParams["code_challenge_method"] = IdpConstants.PkceMethodS256;

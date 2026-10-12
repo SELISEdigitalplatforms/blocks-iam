@@ -155,6 +155,17 @@ namespace Authentication.DomainService.Authentication
                     return BuildBrowserError("invalid_request", "Invalid redirect_uri");
                 }
 
+                // RequirePkce is stored per client (on by default) and was never read, so a login could
+                // start without PKCE even for a client that requires it. Refuse before the login hop.
+                if (earlyClient != null
+                    && !earlyClient.IsDeviceFlowClient
+                    && earlyClient.RequirePkce
+                    && string.IsNullOrWhiteSpace(code_challenge))
+                {
+                    _logger.LogWarning("Authorize without PKCE refused for client {ClientId}", client_id);
+                    return BuildBrowserError("invalid_request", "PKCE code_challenge is required");
+                }
+
                 scope = EnsureOfflineAccess(scope);
 
                 var effectiveSessionId = request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant_id)];

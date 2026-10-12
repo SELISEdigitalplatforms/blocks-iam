@@ -3,6 +3,7 @@ using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
@@ -61,10 +62,16 @@ namespace Authentication.DomainService.Authentication
             var codeVerifier = request.Form["code_verifier"].ToString();
             var clientId = request.Form["client_id"].ToString();
             var redirectUri = request.Form["redirect_uri"].ToString();
+            var clientSecret = request.Form["client_secret"].ToString();
 
+            OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out var basicClientId, out var basicClientSecret);
             if (string.IsNullOrWhiteSpace(clientId))
             {
-                OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out clientId, out _);
+                clientId = basicClientId;
+            }
+            if (string.IsNullOrWhiteSpace(clientSecret))
+            {
+                clientSecret = basicClientSecret;
             }
 
             // Tenant ID resolution: form > query > header (X-Blocks-Key)
@@ -76,12 +83,12 @@ namespace Authentication.DomainService.Authentication
                         ? headerValue.ToString()
                         : string.Empty));
 
-            return await ExchangeCoreAsync(code, codeVerifier, clientId, redirectUri, tenantId, request, request.HttpContext.Response);
+            return await ExchangeCoreAsync(code, codeVerifier, clientId, clientSecret, redirectUri, tenantId, request, request.HttpContext.Response);
         }
 
-        private async Task<IActionResult> ExchangeCoreAsync(string code, string codeVerifier, string clientId, string redirectUri, string tenantId, HttpRequest request, HttpResponse response)
+        private async Task<IActionResult> ExchangeCoreAsync(string code, string codeVerifier, string clientId, string clientSecret, string redirectUri, string tenantId, HttpRequest request, HttpResponse response)
         {
-            var exchangeResult = await ExchangeToTokenSetAsync(code, codeVerifier, clientId, redirectUri, tenantId, request);
+            var exchangeResult = await ExchangeToTokenSetAsync(code, codeVerifier, clientId, clientSecret, redirectUri, tenantId, request);
             if (exchangeResult.ErrorResult != null)
             {
                 return exchangeResult.ErrorResult;
@@ -151,7 +158,7 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
-        private async Task<OidcExchangeResult> ExchangeToTokenSetAsync(string code, string codeVerifier, string clientId, string redirectUri, string tenantId, HttpRequest request)
+        private async Task<OidcExchangeResult> ExchangeToTokenSetAsync(string code, string codeVerifier, string clientId, string clientSecret, string redirectUri, string tenantId, HttpRequest request)
         {
             if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(clientId))
             {
@@ -162,7 +169,7 @@ namespace Authentication.DomainService.Authentication
                 ? tenantId
                 : request.HttpContext.User.FindFirst("tenant_id")?.Value;
 
-            var (validation, authCode, user, effectiveTenantId) = await ValidateInputsAsync(code, codeVerifier, clientId, redirectUri, resolvedTenantId);
+            var (validation, authCode, user, effectiveTenantId) = await ValidateInputsAsync(code, codeVerifier, clientId, clientSecret, redirectUri, resolvedTenantId);
             if (validation != null)
             {
                 return validation;
@@ -264,6 +271,7 @@ namespace Authentication.DomainService.Authentication
             string code,
             string codeVerifier,
             string clientId,
+            string clientSecret,
             string redirectUri,
             string? tenantId)
         {
@@ -293,6 +301,21 @@ namespace Authentication.DomainService.Authentication
             {
                 _logger.LogWarning("Client validation failed for code exchange");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_client" })), null, null, null);
+            }
+
+            // A confidential client proves it is the client (RFC 6749 3.2.1); without this a leaked code
+            // plus the public client_id and redirect_uri was enough. Same rule as the device flow.
+            if (OidcClientValidator.RequiresClientAuthentication(client) && !OidcClientValidator.SecretsMatch(clientSecret, client.ClientSecret))
+            {
+                _logger.LogWarning("Client authentication failed for code exchange, client {ClientId}", clientId);
+                return (OidcExchangeResult.FromError(new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client authentication failed" })), null, null, null);
+            }
+
+            // A public client has no secret, so PKCE is its only proof (RFC 9700 2.1.1).
+            if (OidcClientValidator.IsPublicClient(client, GrantTypes.AuthCode) && string.IsNullOrWhiteSpace(authCode.CodeChallenge))
+            {
+                _logger.LogWarning("Public client code without PKCE refused, client {ClientId}", clientId);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE is required for public clients" })), null, null, null);
             }
 
             if (string.IsNullOrWhiteSpace(clientId)

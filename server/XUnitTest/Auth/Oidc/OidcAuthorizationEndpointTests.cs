@@ -123,12 +123,15 @@ namespace XUnitTest.Auth.Oidc
                 ctx.Request, ctx.Response, blocksUserId, returnRedirectResponse, mfaCompleted);
         }
 
-        private void ClientExists(string redirectUri = RedirectUri) =>
+        // RequirePkce off by default here: these tests are about the rest of the flow and send no
+        // challenge. The PKCE rule has its own tests below.
+        private void ClientExists(string redirectUri = RedirectUri, bool requirePkce = false) =>
             _authRepo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
                 .ReturnsAsync(new OidcClientRegistration
                 {
                     ClientId = "client-1",
-                    RedirectUris = new List<string> { redirectUri }
+                    RedirectUris = new List<string> { redirectUri },
+                    RequirePkce = requirePkce
                 });
 
         private static User ValidUser(string id = "user-1") => new()
@@ -586,6 +589,32 @@ namespace XUnitTest.Auth.Oidc
         }
 
         // ================= code issuance (happy path) =================
+
+        [Fact]
+        public async Task AuthorizeAsync_RefusesLoginWithoutChallenge_WhenClientRequiresPkce()
+        {
+            ClientExists(requirePkce: true);
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: false);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_request");
+            (Prop(bad.Value, "error_description") as string).Should().Contain("code_challenge is required");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_IssuesCode_WithChallenge_WhenClientRequiresPkce()
+        {
+            ClientExists(requirePkce: true);
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var result = await Authorize(blocksUserId: "user-1", code_challenge: new string('a', 43),
+                code_challenge_method: "S256", returnRedirectResponse: true);
+
+            result.Should().BeOfType<RedirectResult>().Subject.Url.Should().Contain("code=authcode123");
+        }
 
         [Fact]
         public async Task AuthorizeAsync_IssuesCode_AndRedirects_OnValidRequest()

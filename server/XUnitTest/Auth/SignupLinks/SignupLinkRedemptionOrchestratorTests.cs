@@ -281,14 +281,13 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task Redeem_ProviderWithoutPkce_SendsNoChallengeAndCachesNoVerifier()
+    public async Task Redeem_ProviderWithoutPkceFlag_StillCachesVerifier()
     {
         var context = await RedeemAndCaptureFlowContextAsync();
 
-        // The two halves have to agree: /idp/callback sends code_verifier only when the
-        // context holds one, and the token endpoint checks it only when the authorize request
-        // stored a challenge. Half a pair is an invalid_grant at the very last step.
-        context.GetProperty("codeVerifier").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        // PKCE is always on for this leg: the authorize endpoint refuses a client that requires
+        // PKCE when no challenge is sent, whatever the provider row says.
+        context.GetProperty("codeVerifier").GetString().Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
