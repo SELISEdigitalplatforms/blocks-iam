@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Authentication.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Blocks.Genesis;
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -16,9 +17,10 @@ namespace XUnitTest.Auth.Oidc
         private readonly Mock<ITokenRevocationRepository> _revocationRepo = new();
         private readonly Mock<IRefreshTokenRepository> _refreshRepo = new();
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
+        private readonly Mock<ICacheClient> _cache = new();
 
         private TokenRevocationService Create() =>
-            new(_revocationRepo.Object, _refreshRepo.Object, _authRepo.Object,
+            new(_revocationRepo.Object, _refreshRepo.Object, _authRepo.Object, _cache.Object,
                 NullLogger<TokenRevocationService>.Instance);
 
         /// <summary>Builds a signed JWT carrying jti, audience (client), subject, scope and expiry.</summary>
