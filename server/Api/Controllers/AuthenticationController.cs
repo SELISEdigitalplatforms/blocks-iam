@@ -64,7 +64,18 @@ public class AuthenticationController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> ExecuteSignup([FromBody] SignupUserRequest request)
     {
-        var result = await _accountService.SignupAccountAsync(request);
+        // This endpoint is anonymous, so it must never accept a caller's claim of an SSO identity:
+        // an SSO signup here created an active, verified user for any email and could link a
+        // caller-chosen external id to a pending account. SSO users are provisioned server-side
+        // after a real provider callback (SsoUserProvisioningService), never from this body.
+        if (request != null)
+        {
+            request.IsSsoSignup = false;
+            request.Provider = null;
+            request.ExternalUserId = null;
+        }
+
+        var result = await _accountService.SignupAccountAsync(request!);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
