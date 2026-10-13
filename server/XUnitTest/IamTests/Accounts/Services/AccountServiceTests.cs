@@ -90,7 +90,9 @@ namespace XUnitTest.IamTests.Accounts.Services
 
         private readonly Mock<ICaptchaConfigurationService> _captchaConfigurationServiceMock = new();
 
-        private AccountService CreateService(IHttpContextAccessor? http = null) =>
+        private readonly Mock<IUserSessionTerminator> _sessionTerminatorMock = new();
+
+        private AccountService CreateService(IHttpContextAccessor? http = null, IUserSessionTerminator? sessionTerminator = null) =>
             new(
                 _loggerMock.Object,
                 _repositoryMock.Object,
@@ -109,7 +111,9 @@ namespace XUnitTest.IamTests.Accounts.Services
                 http,
                 null,
                 _signupOrganizationValidator,
-                _organizationNameResolverMock.Object);
+                _organizationNameResolverMock.Object,
+                null,
+                sessionTerminator);
 
         private static Mock<IMongoCollection<T>> MockMongoCollection<T>(IEnumerable<T> items)
         {
@@ -923,30 +927,62 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
-        public async Task Reset_Valid_LogoutFromAllFalse_PreventPostEventTrue()
+        public async Task Reset_Valid_LogoutFromAllFalse_StillEndsSessions()
         {
-            var service = CreateService();
-            var user = TestDataBuilder.CreateUser();
-            _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new ValidationResult());
-            _cacheClientMock.Setup(c => c.GetStringValueAsync("x")).ReturnsAsync(user.ItemId);
-            _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
-            _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
+            var user = SetupValidReset();
 
-            await service.ResetAccountPasswordAsync(new ResetPasswordRequest
+            await CreateService().ResetAccountPasswordAsync(new ResetPasswordRequest
             {
                 Code = "x",
                 Password = "NewP@ssw0rd",
                 LogoutFromAllDevices = false
             });
 
-            _userActivityDispatcherMock.Verify(d => d.SendUserActivityAsync(
-                It.Is<UserActivityEvent>(e => e.Event == "Reset_Password")),
-                Times.Once);
             _iamServiceMock.Verify(s => s.SendToQueueAsync(
                 IdpConstants.AuthenticationQueue,
-                It.IsAny<LogoutAllEvent>()),
-                Times.Never);
+                It.Is<LogoutAllEvent>(e => e.UserId == user.ItemId)),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task Reset_Valid_EndsSessionsInline_AndDoesNotQueue()
+        {
+            var user = SetupValidReset();
+
+            var result = await CreateService(sessionTerminator: _sessionTerminatorMock.Object)
+                .ResetAccountPasswordAsync(new ResetPasswordRequest { Code = "x", Password = "NewP@ssw0rd" });
+
+            result.IsSuccess.Should().BeTrue();
+            _sessionTerminatorMock.Verify(t => t.EndAllSessionsAsync(user.ItemId, "password_reset"), Times.Once);
+            _iamServiceMock.Verify(s => s.SendToQueueAsync(It.IsAny<string>(), It.IsAny<LogoutAllEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Reset_Valid_InlineFails_QueuesLogoutAll_AndStillSucceeds()
+        {
+            var user = SetupValidReset();
+            _sessionTerminatorMock.Setup(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ThrowsAsync(new TimeoutException("mongo"));
+
+            var result = await CreateService(sessionTerminator: _sessionTerminatorMock.Object)
+                .ResetAccountPasswordAsync(new ResetPasswordRequest { Code = "x", Password = "NewP@ssw0rd" });
+
+            result.IsSuccess.Should().BeTrue();
+            _iamServiceMock.Verify(s => s.SendToQueueAsync(
+                IdpConstants.AuthenticationQueue,
+                It.Is<LogoutAllEvent>(e => e.UserId == user.ItemId)),
+                Times.Once);
+        }
+
+        private User SetupValidReset()
+        {
+            var user = TestDataBuilder.CreateUser();
+            _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult());
+            _cacheClientMock.Setup(c => c.GetStringValueAsync("x")).ReturnsAsync(user.ItemId);
+            _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
+            _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
+            return user;
         }
 
         #endregion
@@ -1018,6 +1054,24 @@ namespace XUnitTest.IamTests.Accounts.Services
                 IdpConstants.AuthenticationQueue,
                 It.Is<LogoutAllEvent>(e => e.UserId == user.ItemId)),
                 Times.Once);
+        }
+
+        [Fact]
+        public async Task Change_Valid_EndsSessionsInline_WhenLogoutOnPasswordChangeTrue()
+        {
+            var user = TestDataBuilder.CreateUser();
+            user.Password = "h:OldP@ss";
+            _changePasswordValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<ChangePasswordRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult());
+            _repositoryMock.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
+            _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration(logoutOnPasswordChange: true));
+
+            await CreateService(sessionTerminator: _sessionTerminatorMock.Object)
+                .ChangePasswordAsync(new ChangePasswordRequest { OldPassword = "OldP@ss", NewPassword = "NewP@ss1" });
+
+            _sessionTerminatorMock.Verify(t => t.EndAllSessionsAsync(It.IsAny<string>(), "password_change"), Times.Once);
+            _iamServiceMock.Verify(s => s.SendToQueueAsync(It.IsAny<string>(), It.IsAny<LogoutAllEvent>()), Times.Never);
         }
 
         [Fact]

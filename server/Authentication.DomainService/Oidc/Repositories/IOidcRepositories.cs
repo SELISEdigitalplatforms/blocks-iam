@@ -14,6 +14,8 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<string> CreateAsync(AuthorizationCodeModel code);
         Task<AuthorizationCodeModel> GetByCodeAsync(string code);
         Task<bool> DeleteAsync(string code);
+        /// <summary>Atomically marks an unused code as used. True only for the one caller that consumed it.</summary>
+        Task<bool> TryConsumeAsync(string code);
         Task<IEnumerable<AuthorizationCodeModel>> GetExpiredAsync();
     }
 

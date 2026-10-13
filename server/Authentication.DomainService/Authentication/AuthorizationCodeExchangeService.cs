@@ -3,6 +3,7 @@ using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
@@ -61,10 +62,16 @@ namespace Authentication.DomainService.Authentication
             var codeVerifier = request.Form["code_verifier"].ToString();
             var clientId = request.Form["client_id"].ToString();
             var redirectUri = request.Form["redirect_uri"].ToString();
+            var clientSecret = request.Form["client_secret"].ToString();
 
+            OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out var basicClientId, out var basicClientSecret);
             if (string.IsNullOrWhiteSpace(clientId))
             {
-                OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out clientId, out _);
+                clientId = basicClientId;
+            }
+            if (string.IsNullOrWhiteSpace(clientSecret))
+            {
+                clientSecret = basicClientSecret;
             }
 
             // Tenant ID resolution: form > query > header (X-Blocks-Key)
@@ -76,12 +83,12 @@ namespace Authentication.DomainService.Authentication
                         ? headerValue.ToString()
                         : string.Empty));
 
-            return await ExchangeCoreAsync(code, codeVerifier, clientId, redirectUri, tenantId, request, request.HttpContext.Response);
+            return await ExchangeCoreAsync(code, codeVerifier, clientId, clientSecret, redirectUri, tenantId, request, request.HttpContext.Response);
         }
 
-        private async Task<IActionResult> ExchangeCoreAsync(string code, string codeVerifier, string clientId, string redirectUri, string tenantId, HttpRequest request, HttpResponse response)
+        private async Task<IActionResult> ExchangeCoreAsync(string code, string codeVerifier, string clientId, string clientSecret, string redirectUri, string tenantId, HttpRequest request, HttpResponse response)
         {
-            var exchangeResult = await ExchangeToTokenSetAsync(code, codeVerifier, clientId, redirectUri, tenantId, request);
+            var exchangeResult = await ExchangeToTokenSetAsync(code, codeVerifier, clientId, clientSecret, redirectUri, tenantId, request);
             if (exchangeResult.ErrorResult != null)
             {
                 return exchangeResult.ErrorResult;
@@ -151,7 +158,7 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
-        private async Task<OidcExchangeResult> ExchangeToTokenSetAsync(string code, string codeVerifier, string clientId, string redirectUri, string tenantId, HttpRequest request)
+        private async Task<OidcExchangeResult> ExchangeToTokenSetAsync(string code, string codeVerifier, string clientId, string clientSecret, string redirectUri, string tenantId, HttpRequest request)
         {
             if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(clientId))
             {
@@ -162,7 +169,7 @@ namespace Authentication.DomainService.Authentication
                 ? tenantId
                 : request.HttpContext.User.FindFirst("tenant_id")?.Value;
 
-            var (validation, authCode, user, effectiveTenantId) = await ValidateInputsAsync(code, codeVerifier, clientId, redirectUri, resolvedTenantId);
+            var (validation, authCode, user, effectiveTenantId) = await ValidateInputsAsync(code, codeVerifier, clientId, clientSecret, redirectUri, resolvedTenantId);
             if (validation != null)
             {
                 return validation;
@@ -223,7 +230,7 @@ namespace Authentication.DomainService.Authentication
 
             if (string.IsNullOrWhiteSpace(authCode.IdpSessionId))
             {
-                _logger.LogWarning("Authorization code {Code} is missing IdP session id", code);
+                _logger.LogWarning("Authorization code is missing IdP session id");
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is missing IdP session" }));
             }
 
@@ -264,13 +271,14 @@ namespace Authentication.DomainService.Authentication
             string code,
             string codeVerifier,
             string clientId,
+            string clientSecret,
             string redirectUri,
             string? tenantId)
         {
             var authCode = await _authCodeRepo.GetByCodeAsync(code);
             if (authCode == null)
             {
-                _logger.LogWarning("Authorization code not found: {Code}", code);
+                _logger.LogWarning("Authorization code not found");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" })), null, null, null);
             }
 
@@ -284,7 +292,7 @@ namespace Authentication.DomainService.Authentication
 
             if (authCode.ExpiresAt < DateTime.UtcNow)
             {
-                _logger.LogWarning("Authorization code expired: {Code}", code);
+                _logger.LogWarning("Authorization code expired");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has expired" })), null, null, null);
             }
 
@@ -293,6 +301,21 @@ namespace Authentication.DomainService.Authentication
             {
                 _logger.LogWarning("Client validation failed for code exchange");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_client" })), null, null, null);
+            }
+
+            // A confidential client proves it is the client (RFC 6749 3.2.1); without this a leaked code
+            // plus the public client_id and redirect_uri was enough. Same rule as the device flow.
+            if (OidcClientValidator.RequiresClientAuthentication(client) && !OidcClientValidator.SecretsMatch(clientSecret, client.ClientSecret))
+            {
+                _logger.LogWarning("Client authentication failed for code exchange, client {ClientId}", clientId);
+                return (OidcExchangeResult.FromError(new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client authentication failed" })), null, null, null);
+            }
+
+            // A public client has no secret, so PKCE is its only proof (RFC 9700 2.1.1).
+            if (OidcClientValidator.IsPublicClient(client, GrantTypes.AuthCode) && string.IsNullOrWhiteSpace(authCode.CodeChallenge))
+            {
+                _logger.LogWarning("Public client code without PKCE refused, client {ClientId}", clientId);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE is required for public clients" })), null, null, null);
             }
 
             if (string.IsNullOrWhiteSpace(clientId)
@@ -306,6 +329,14 @@ namespace Authentication.DomainService.Authentication
             {
                 _logger.LogWarning("Redirect URI mismatch for code exchange");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Redirect URI mismatch" })), null, null, null);
+            }
+
+            // A code issued with a PKCE challenge can only be redeemed with its verifier; skipping the
+            // verifier must not skip the check (RFC 7636 4.6, RFC 9700 2.1.1).
+            if (!string.IsNullOrWhiteSpace(authCode.CodeChallenge) && string.IsNullOrWhiteSpace(codeVerifier))
+            {
+                _logger.LogWarning("PKCE code_verifier missing for client {ClientId}", clientId);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE code_verifier is required" })), null, null, null);
             }
 
             if (!string.IsNullOrWhiteSpace(codeVerifier))
@@ -331,6 +362,14 @@ namespace Authentication.DomainService.Authentication
                 {
                     StatusCode = StatusCodes.Status423Locked
                 }), null, null, null);
+            }
+
+            // Last check before tokens are minted, so a code is only spent by a request that passed
+            // every other check. A second redemption of the same code is refused.
+            if (!await _authCodeRepo.TryConsumeAsync(code))
+            {
+                _logger.LogWarning("Authorization code reuse refused for client {ClientId}", clientId);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" })), null, null, null);
             }
 
             var effectiveTenantId = authCode.TenantId ?? tenantId ?? "default";

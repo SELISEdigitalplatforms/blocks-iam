@@ -49,6 +49,22 @@ namespace Authentication.DomainService.Oidc.Repositories
             return result.ModifiedCount > 0;
         }
 
+        public async Task<bool> TryConsumeAsync(string code)
+        {
+            // One atomic update: the filter only matches a code nobody has used yet, so two parallel
+            // exchanges of the same code cannot both succeed (RFC 9700 4.2.4: codes are single use).
+            var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("IdpAuthorizationCodes");
+            var filter = Builders<AuthorizationCodeModel>.Filter.And(
+                Builders<AuthorizationCodeModel>.Filter.Eq(c => c.Code, code),
+                Builders<AuthorizationCodeModel>.Filter.Ne(c => c.IsRevoked, true));
+            var update = Builders<AuthorizationCodeModel>.Update
+                .Set(c => c.IsRevoked, true)
+                .Set(c => c.RevokedAt, DateTime.UtcNow);
+
+            var result = await collection.UpdateOneAsync(filter, update);
+            return result.ModifiedCount == 1;
+        }
+
         public async Task<IEnumerable<AuthorizationCodeModel>> GetExpiredAsync()
         {
             var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("IdpAuthorizationCodes");

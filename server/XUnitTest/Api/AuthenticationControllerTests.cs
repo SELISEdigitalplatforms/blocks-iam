@@ -97,6 +97,28 @@ namespace XUnitTest.ApiTests
             result.Should().BeOfType<BadRequestObjectResult>();
         }
 
+        [Fact]
+        public async Task ExecuteSignup_IgnoresCallerClaimedSsoIdentity()
+        {
+            SignupUserRequest? passed = null;
+            _accountService.Setup(s => s.SignupAccountAsync(It.IsAny<SignupUserRequest>()))
+                .Callback<SignupUserRequest>(r => passed = r)
+                .ReturnsAsync(new BaseAccountResponse { IsSuccess = true });
+
+            await CreateController().ExecuteSignup(new SignupUserRequest
+            {
+                Email = "victim@example.com",
+                IsSsoSignup = true,
+                Provider = "google",
+                ExternalUserId = "attacker-sub"
+            });
+
+            passed.Should().NotBeNull();
+            passed!.IsSsoSignup.Should().BeFalse();
+            passed.Provider.Should().BeNull();
+            passed.ExternalUserId.Should().BeNull();
+        }
+
         // ---------- RetrieveLoginOptions ----------
 
         [Fact]

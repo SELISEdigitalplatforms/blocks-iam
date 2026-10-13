@@ -48,6 +48,89 @@ namespace XUnitTest.Auth
                 .ReturnsAsync("access-token");
             _tokenService.Setup(t => t.GenerateRefreshTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>()))
                 .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-1", AbsoluteExpiry = DateTime.UtcNow.AddDays(30) });
+            _authCodeRepo.Setup(r => r.TryConsumeAsync(It.IsAny<string>())).ReturnsAsync(true);
+        }
+
+        [Fact]
+        public async Task Exchange_CodeAlreadyUsed_ReturnsInvalidGrantAndMintsNothing()
+        {
+            SetupValidExchange();
+            _authCodeRepo.Setup(r => r.TryConsumeAsync("auth-code")).ReturnsAsync(false);
+
+            var result = await Create().ExchangeAsync(BuildContext().Request);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_grant");
+            _tokenService.Verify(t => t.GenerateAccessTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Exchange_ChallengeStoredButNoVerifier_ReturnsInvalidGrant()
+        {
+            SetupValidExchange();
+            var authCode = ValidAuthCode();
+            authCode.CodeChallenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+            _authCodeRepo.Setup(r => r.GetByCodeAsync("auth-code")).ReturnsAsync(authCode);
+
+            var result = await Create().ExchangeAsync(BuildContext(codeVerifier: "").Request);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error_description").Should().Be("PKCE code_verifier is required");
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        private static OidcClientRegistration ConfidentialClient() => new()
+        {
+            ItemId = "cid", ClientId = "cid", UseTokensCookie = true,
+            ClientType = "confidential", TokenEndpointAuthMethod = "client_secret_post", ClientSecret = "s3cret"
+        };
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("wrong")]
+        public async Task Exchange_ConfidentialClient_BadOrMissingSecret_ReturnsInvalidClient(string secret)
+        {
+            SetupValidExchange(ConfidentialClient());
+
+            var result = await Create().ExchangeAsync(BuildContext(clientSecret: secret).Request);
+
+            var unauthorized = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
+            Prop(unauthorized.Value, "error").Should().Be("invalid_client");
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Exchange_ConfidentialClient_SecretInForm_Passes()
+        {
+            SetupValidExchange(ConfidentialClient());
+
+            var result = await Create().ExchangeAsync(BuildContext(clientSecret: "s3cret").Request);
+
+            result.Should().NotBeOfType<UnauthorizedObjectResult>();
+            _authCodeRepo.Verify(r => r.TryConsumeAsync("auth-code"), Times.Once);
+        }
+
+        [Fact]
+        public async Task Exchange_ConfidentialClient_SecretInBasicHeader_Passes()
+        {
+            SetupValidExchange(ConfidentialClient());
+
+            var result = await Create().ExchangeAsync(BuildContext(clientId: "", basicAuth: "cid:s3cret").Request);
+
+            result.Should().NotBeOfType<UnauthorizedObjectResult>();
+            _authCodeRepo.Verify(r => r.TryConsumeAsync("auth-code"), Times.Once);
+        }
+
+        [Fact]
+        public async Task Exchange_PublicClient_CodeWithoutPkce_ReturnsInvalidGrant()
+        {
+            SetupValidExchange(new OidcClientRegistration { ItemId = "cid", ClientId = "cid", ClientType = "public", TokenEndpointAuthMethod = "none" });
+
+            var result = await Create().ExchangeAsync(BuildContext().Request);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error_description").Should().Be("PKCE is required for public clients");
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<string>()), Times.Never);
         }
 
         public void Dispose()
@@ -62,7 +145,8 @@ namespace XUnitTest.Auth
 
         private static DefaultHttpContext BuildContext(
             string code = "auth-code", string codeVerifier = "", string clientId = "cid",
-            string redirectUri = "https://app/cb", string tenantId = "", string? origin = null)
+            string redirectUri = "https://app/cb", string tenantId = "", string? origin = null,
+            string clientSecret = "", string? basicAuth = null)
         {
             var ctx = new DefaultHttpContext();
             ctx.Request.Form = new FormCollection(new Dictionary<string, StringValues>
@@ -71,8 +155,13 @@ namespace XUnitTest.Auth
                 ["code_verifier"] = codeVerifier,
                 ["client_id"] = clientId,
                 ["redirect_uri"] = redirectUri,
-                ["tenant_id"] = tenantId
+                ["tenant_id"] = tenantId,
+                ["client_secret"] = clientSecret
             });
+            if (basicAuth != null)
+            {
+                ctx.Request.Headers["Authorization"] = "Basic " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(basicAuth));
+            }
             if (origin != null)
             {
                 ctx.Request.Headers["Origin"] = origin;

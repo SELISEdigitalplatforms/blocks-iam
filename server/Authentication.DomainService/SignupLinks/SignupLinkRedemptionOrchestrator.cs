@@ -1579,11 +1579,10 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             ?? throw new InvalidOperationException(
                 $"No identity provider is registered for signup-link client '{link.ClientId}'");
 
-        // PKCE binds the authorization code to this redemption. Driven by the provider's own
-        // flag so the pair matches what /idp/callback will present at the token endpoint:
-        // it sends the verifier only when the context carries one, and the exchange validates
-        // it only when the authorize request stored a challenge.
-        var codeVerifier = provider.RequirePkce ? Base64Url(RandomNumberGenerator.GetBytes(32)) : null;
+        // PKCE binds the authorization code to this redemption. Always on: /idp/callback sends the
+        // verifier the context carries, and the authorize endpoint refuses a client that requires
+        // PKCE when no challenge is sent, whatever the provider row says.
+        var codeVerifier = Base64Url(RandomNumberGenerator.GetBytes(32));
 
         var flowContext = new
         {
@@ -1615,11 +1614,8 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             ["tenant_id"] = link.TenantId
         };
 
-        if (codeVerifier != null)
-        {
-            query["code_challenge"] = CodeChallenge(codeVerifier);
-            query["code_challenge_method"] = IdpConstants.PkceMethodS256;
-        }
+        query["code_challenge"] = CodeChallenge(codeVerifier);
+        query["code_challenge_method"] = IdpConstants.PkceMethodS256;
 
         var qs = string.Join("&", query.Select(kvp =>
             $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));

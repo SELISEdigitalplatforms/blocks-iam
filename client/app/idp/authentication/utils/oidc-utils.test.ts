@@ -187,6 +187,22 @@ describe("oidc-utils", () => {
       expect(params.get("state")).toBe("abc");
     });
 
+    it("should forward the relying party's PKCE challenge unchanged", () => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "?state=abc&code_challenge=rp-challenge&code_challenge_method=S256",
+          hash: "",
+          href: "http://localhost:3000/oidc/login?state=abc&code_challenge=rp-challenge&code_challenge_method=S256",
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      const params = getCurrentOIDCParams();
+      expect(params.get("code_challenge")).toBe("rp-challenge");
+      expect(params.get("code_challenge_method")).toBe("S256");
+    });
+
     it("should return empty URLSearchParams when no params exist", () => {
       const params = getCurrentOIDCParams();
       expect(params.toString()).toBe("brandColor=%23124091");

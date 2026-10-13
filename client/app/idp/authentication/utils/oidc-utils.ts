@@ -369,6 +369,15 @@ export const getCurrentOIDCParams = (): URLSearchParams => {
   if (params.returnUrl) searchParams.set("returnUrl", params.returnUrl);
   if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
 
+  // The relying party's own PKCE challenge must reach the consent step unchanged: its verifier
+  // lives on the RP, so any other challenge makes its token exchange fail.
+  const current = new URLSearchParams(window.location.search);
+  const codeChallenge = current.get("code_challenge");
+  if (codeChallenge) {
+    searchParams.set("code_challenge", codeChallenge);
+    searchParams.set("code_challenge_method", current.get("code_challenge_method") || "S256");
+  }
+
   if (params.themeColor) {
     searchParams.set("brandColor", params.themeColor);
   }
