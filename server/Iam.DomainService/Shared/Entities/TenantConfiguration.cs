@@ -29,5 +29,18 @@ namespace Iam.DomainService.Shared.Entities
         /// </para>
         /// </summary>
         public bool IsOrgNameUniquenessEnabled { get; set; }
+
+        /// <summary>
+        /// Whether every new sign-up (email or SSO first login) joins <see cref="SignupAutoJoinOrganizationId"/>.
+        /// Only takes effect while multi-org is on. A document written before this field existed reads as false,
+        /// so no migration is needed.
+        /// </summary>
+        public bool IsSignupAutoJoinEnabled { get; set; }
+
+        /// <summary>
+        /// The organization new sign-ups join while <see cref="IsSignupAutoJoinEnabled"/> is on: <c>"default"</c> or
+        /// an organization ItemId. Kept when auto-join is switched off. Never exposed on the anonymous config read.
+        /// </summary>
+        public string? SignupAutoJoinOrganizationId { get; set; }
     }
 }

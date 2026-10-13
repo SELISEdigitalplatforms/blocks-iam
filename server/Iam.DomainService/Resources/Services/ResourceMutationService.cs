@@ -2616,6 +2616,8 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseResponse> SaveOrganizationConfigAsync(SaveOrganizationConfigRequest request)
         {
+            ArgumentNullException.ThrowIfNull(request);
+
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
             if (tenantConfig == null)
             {
@@ -2625,6 +2627,14 @@ namespace Iam.DomainService.Resources
                     CreatedBy = BlocksContext.GetContext()?.UserId,
                     CreatedDate = DateTime.UtcNow
                 };
+            }
+
+            // Validated before anything is applied: a rejected save must change nothing, including the
+            // other fields in the same request.
+            var autoJoinValidationErrors = await ValidateSignupAutoJoinAsync(request, tenantConfig);
+            if (autoJoinValidationErrors != null)
+            {
+                return new BaseResponse { IsSuccess = false, Errors = autoJoinValidationErrors };
             }
 
             tenantConfig.AllowOrgCreationFromCloud = request.AllowOrgCreationFromCloud;
@@ -2639,6 +2649,18 @@ namespace Iam.DomainService.Resources
             if (request.IsOrgNameUniquenessEnabled.HasValue)
             {
                 tenantConfig.IsOrgNameUniquenessEnabled = request.IsOrgNameUniquenessEnabled.Value;
+            }
+
+            // Same convention for the auto-join pair, so a caller that predates them (the blocks-cli save copies a
+            // fixed field list) leaves the setting exactly as it was.
+            if (request.IsSignupAutoJoinEnabled.HasValue)
+            {
+                tenantConfig.IsSignupAutoJoinEnabled = request.IsSignupAutoJoinEnabled.Value;
+            }
+
+            if (request.SignupAutoJoinOrganizationId != null)
+            {
+                tenantConfig.SignupAutoJoinOrganizationId = NormalizeSignupAutoJoinTarget(request.SignupAutoJoinOrganizationId);
             }
 
             tenantConfig.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
@@ -2656,10 +2678,106 @@ namespace Iam.DomainService.Resources
             return new BaseResponse { IsSuccess = true };
         }
 
+        /// <summary>
+        /// Checks the auto-join pair against the state the save would produce. Runs only when the request turns
+        /// auto-join on or names a target, so an unrelated save never fails because an organization was disabled
+        /// after it was chosen; sign-up time stays the authoritative check. Returns null when the save may proceed.
+        /// </summary>
+        private async Task<Dictionary<string, string>?> ValidateSignupAutoJoinAsync(
+            SaveOrganizationConfigRequest request,
+            TenantConfiguration storedConfig)
+        {
+            // Same rule as the multi-org apply in SaveOrganizationConfigAsync: switched on with consent by this
+            // very save. That save is where a pair stored while multi-org was off starts to take effect, so it is
+            // validated then even if the request does not mention auto-join.
+            var switchesMultiOrgOn = !storedConfig.IsMultiOrgEnabled
+                && !storedConfig.ConsentForMultiOrgEnable
+                && request.IsMultiOrgEnabled
+                && request.ConsentForMultiOrgEnable;
+            var touchesAutoJoin = request.IsSignupAutoJoinEnabled == true || request.SignupAutoJoinOrganizationId != null;
+            if (!touchesAutoJoin && !switchesMultiOrgOn)
+            {
+                return null;
+            }
+
+            // With multi-org off the pair is stored as sent and has no effect, so there is nothing to validate.
+            if (!storedConfig.IsMultiOrgEnabled && !switchesMultiOrgOn)
+            {
+                return null;
+            }
+
+            var resultingEnabled = request.IsSignupAutoJoinEnabled ?? storedConfig.IsSignupAutoJoinEnabled;
+
+            // Switching multi-org on with auto-join off leaves nothing that would take effect.
+            if (!touchesAutoJoin && !resultingEnabled)
+            {
+                return null;
+            }
+
+            var resultingTarget = request.SignupAutoJoinOrganizationId != null
+                ? NormalizeSignupAutoJoinTarget(request.SignupAutoJoinOrganizationId)
+                : storedConfig.SignupAutoJoinOrganizationId;
+
+            if (string.IsNullOrWhiteSpace(resultingTarget))
+            {
+                return resultingEnabled
+                    ? new Dictionary<string, string>
+                    {
+                        { IdpConstants.SignupAutoJoinOrganizationRequiredError, IdpConstants.SignupAutoJoinOrganizationRequiredMessage }
+                    }
+                    : null;
+            }
+
+            // "default" is a scope sentinel, never a stored organization, so it needs no lookup.
+            if (IsDefaultOrgScope(resultingTarget))
+            {
+                return null;
+            }
+
+            var organization = await _resourceRepository.GetOrganizationById(resultingTarget);
+            if (organization == null || organization.IsDisabled)
+            {
+                return new Dictionary<string, string>
+                {
+                    { IdpConstants.SignupOrganizationUnavailableError, IdpConstants.SignupAutoJoinTargetUnavailableMessage }
+                };
+            }
+
+            return null;
+        }
+
+        private static string? NormalizeSignupAutoJoinTarget(string target) =>
+            string.IsNullOrWhiteSpace(target) ? null : target;
+
+        /// <summary>
+        /// The anonymous read used by the public sign-up page. It exposes whether auto-join is on, but never the
+        /// target organization's id or name.
+        /// </summary>
         public async Task<Dictionary<string, object>> GetOrganizationConfigAsync()
         {
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            return BuildOrganizationConfigResponse(tenantConfig);
+        }
 
+        /// <summary>
+        /// The signed-in read for portals: the anonymous keys plus the auto-join target.
+        /// </summary>
+        public async Task<Dictionary<string, object>> GetAdminOrganizationConfigAsync()
+        {
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            var response = BuildOrganizationConfigResponse(tenantConfig);
+            // The key is always present on this read: the target id, or JSON null when none is stored. The null
+            // is intended, so the nullable warning for this one assignment is suppressed rather than hidden by `!`.
+#pragma warning disable CS8601
+            response["signupAutoJoinOrganizationId"] = tenantConfig?.SignupAutoJoinOrganizationId is { } target
+                ? target
+                : (object?)null;
+#pragma warning restore CS8601
+            return response;
+        }
+
+        private static Dictionary<string, object> BuildOrganizationConfigResponse(TenantConfiguration? tenantConfig)
+        {
             return new Dictionary<string, object>
             {
                 { "allowOrgCreationFromCloud", tenantConfig?.AllowOrgCreationFromCloud ?? false },
@@ -2669,6 +2787,7 @@ namespace Iam.DomainService.Resources
                 { "isMultiOrgEnabled", tenantConfig?.IsMultiOrgEnabled ?? false },
                 { "consentForMultiOrgEnable", tenantConfig?.ConsentForMultiOrgEnable ?? false },
                 { "isOrgNameUniquenessEnabled", tenantConfig?.IsOrgNameUniquenessEnabled ?? false },
+                { "isSignupAutoJoinEnabled", tenantConfig?.IsSignupAutoJoinEnabled ?? false },
                 { "itemId", tenantConfig?.ItemId ?? "" }
             };
         }

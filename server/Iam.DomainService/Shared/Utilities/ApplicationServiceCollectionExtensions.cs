@@ -28,6 +28,7 @@ namespace Iam.DomainService.Utilities
             services.AddSingleton<IUserManagementQueryService, UserManagementQueryService>();
             services.AddSingleton<IResourceQueryService, ResourceQueryService>();
 
+            services.AddSingleton<ISignupOrganizationResolver, SignupOrganizationResolver>();
             services.AddSingleton<IAccountService, AccountService>();
             services.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
 

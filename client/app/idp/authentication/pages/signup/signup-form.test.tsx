@@ -47,6 +47,8 @@ const renderForm = (props: Partial<Parameters<typeof SignupForm>[0]> = {}) =>
         ssoSignUpEnabled={props.ssoSignUpEnabled ?? false}
         loginOption={props.loginOption}
         tenantId={props.tenantId ?? "tenant-1"}
+        collectOrganizationName={props.collectOrganizationName}
+        signupAutoJoinEnabled={props.signupAutoJoinEnabled}
       />
     </MemoryRouter>,
   );
@@ -178,5 +180,185 @@ describe("SignupForm", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Create Account/ }));
     await waitFor(() => expect(screen.getByText("Something went wrong")).toBeInTheDocument());
+  });
+
+  // ---------- Join-or-create ----------
+
+  describe("organization choice", () => {
+    const COPY = {
+      legend: "How would you like to start?",
+      join: "Join this project's organization",
+      create: "Create my own organization",
+      unavailable: "This project's organization isn't available right now.",
+    };
+    const submitButton = () => screen.getByRole("button", { name: /Create Account/ });
+    const nameField = () => screen.queryByPlaceholderText("Acme Inc.");
+    const submit = async () => {
+      await waitFor(() => expect(submitButton()).toBeEnabled());
+      fireEvent.click(submitButton());
+    };
+
+    it("H12: offers the choice with Join preselected and no name field when auto-join and creation are on", () => {
+      renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
+
+      const group = screen.getByRole("group", { name: COPY.legend });
+      expect(group.tagName).toBe("FIELDSET");
+      expect(screen.getByRole("radio", { name: COPY.join })).toBeChecked();
+      expect(screen.getByRole("radio", { name: COPY.create })).not.toBeChecked();
+      expect(nameField()).toBeNull();
+    });
+
+    it("H13: Create reveals a required name field; Join hides it and drops its value and errors", async () => {
+      h.mutateAsync.mockResolvedValue({ isSuccess: false, errors: { name_already_exists: "Name taken" } });
+      renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
+      fillForm();
+
+      fireEvent.click(screen.getByRole("radio", { name: COPY.create }));
+      expect(nameField()).toBeInTheDocument();
+      // Required: the form cannot be submitted until a name is typed.
+      await waitFor(() => expect(submitButton()).toBeDisabled());
+
+      fireEvent.input(nameField()!, { target: { value: "Acme" } });
+      await submit();
+      await waitFor(() => expect(nameField()).toHaveAttribute("aria-invalid", "true"));
+
+      fireEvent.click(screen.getByRole("radio", { name: COPY.join }));
+      expect(nameField()).toBeNull();
+      await waitFor(() => expect(submitButton()).toBeEnabled());
+
+      fireEvent.click(screen.getByRole("radio", { name: COPY.create }));
+      expect(nameField()).toHaveValue("");
+      expect(nameField()).toHaveAttribute("aria-invalid", "false");
+    });
+
+    it("H14: Join passes createOrganizationDuringSignup=false and no name to the hook", async () => {
+      h.mutateAsync.mockResolvedValue({ isSuccess: true });
+      renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
+      fillForm();
+
+      await submit();
+
+      await waitFor(() => expect(h.mutateAsync).toHaveBeenCalledTimes(1));
+      const payload = h.mutateAsync.mock.calls[0][0];
+      // The service layer drops a false flag from the wire (auth.service signupByEmail).
+      expect(payload.createOrganizationDuringSignup).toBe(false);
+      expect(payload.organizationName).toBeUndefined();
+      expect(payload).not.toHaveProperty("organizationChoice");
+    });
+
+    it("H14: Create sends the creation flag with the name", async () => {
+      h.mutateAsync.mockResolvedValue({ isSuccess: true });
+      renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
+      fillForm();
+      fireEvent.click(screen.getByRole("radio", { name: COPY.create }));
+      fireEvent.input(nameField()!, { target: { value: "AJ Org 2" } });
+
+      await submit();
+
+      await waitFor(() =>
+        expect(h.mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ createOrganizationDuringSignup: true, organizationName: "AJ Org 2" }),
+        ),
+      );
+    });
+
+    it("H15: auto-join on and creation off renders no organization UI", () => {
+      renderForm({ collectOrganizationName: false, signupAutoJoinEnabled: true });
+
+      expect(screen.queryByRole("group", { name: COPY.legend })).toBeNull();
+      expect(screen.queryByRole("radio")).toBeNull();
+      expect(nameField()).toBeNull();
+    });
+
+    it("H16: auto-join off and creation on renders today's required name field and no choice", async () => {
+      h.mutateAsync.mockResolvedValue({ isSuccess: true });
+      renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: false });
+
+      expect(screen.queryByRole("radio")).toBeNull();
+      expect(screen.getByLabelText("Organization Name")).toBeInTheDocument();
+      fillForm();
+      await waitFor(() => expect(submitButton()).toBeDisabled());
+      fireEvent.input(nameField()!, { target: { value: "Acme" } });
+      await submit();
+
+      await waitFor(() =>
+        expect(h.mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ createOrganizationDuringSignup: true, organizationName: "Acme" }),
+        ),
+      );
+    });
+
+    it("C7: an unavailable organization is announced, switches to Create and focuses the name field", async () => {
+      h.mutateAsync
+        .mockResolvedValueOnce({
+          isSuccess: false,
+          errors: { signup_organization_unavailable: "server sentence" },
+        })
+        .mockResolvedValueOnce({ isSuccess: true });
+      renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
+      fillForm();
+
+      await submit();
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(COPY.unavailable);
+      expect(screen.getByRole("radio", { name: COPY.create })).toBeChecked();
+      await waitFor(() => expect(nameField()).toHaveFocus());
+
+      fireEvent.input(nameField()!, { target: { value: "AJ Org 2" } });
+      await submit();
+
+      await waitFor(() =>
+        expect(h.mutateAsync).toHaveBeenLastCalledWith(
+          expect.objectContaining({ createOrganizationDuringSignup: true, organizationName: "AJ Org 2" }),
+        ),
+      );
+      await waitFor(() =>
+        expect(h.navigate).toHaveBeenCalledWith(expect.stringContaining("/oidc/signup-email-sent")),
+      );
+    });
+
+    it("C7: the same handling applies when the request throws with the error", async () => {
+      h.mutateAsync.mockRejectedValue({ errors: { signup_organization_unavailable: "server sentence" } });
+      renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
+      fillForm();
+
+      await submit();
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(COPY.unavailable);
+      expect(screen.getByRole("radio", { name: COPY.create })).toBeChecked();
+    });
+
+    it("S5: with creation off the unavailable message shows and no organization UI appears", async () => {
+      h.mutateAsync.mockResolvedValue({
+        isSuccess: false,
+        errors: { signup_organization_unavailable: "server sentence" },
+      });
+      renderForm({ collectOrganizationName: false, signupAutoJoinEnabled: true });
+      fillForm();
+
+      await submit();
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(COPY.unavailable);
+      expect(screen.queryByRole("radio")).toBeNull();
+      expect(nameField()).toBeNull();
+    });
+
+    it("disables the radios while the sign-up is submitting", () => {
+      h.isPending = true;
+      renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
+
+      expect(screen.getByRole("radio", { name: COPY.join })).toBeDisabled();
+      expect(screen.getByRole("radio", { name: COPY.create })).toBeDisabled();
+    });
+
+    it("keeps the server-error area announced for other errors too", async () => {
+      h.mutateAsync.mockResolvedValue({ isSuccess: false, errors: { email: "Already exists" } });
+      renderForm();
+      fillForm();
+
+      await submit();
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Already exists");
+    });
   });
 });

@@ -82,7 +82,14 @@ namespace Authentication.DomainService.OAuth.Services
                 return new TokenResponse { Error = "External provider did not provide any user id.", ErrorDescription = "External provider did not provide any user id", StatusCode = 401 };
             }
 
-            (user, string redirectUri) = await GetUser(stateInfo, externalUser);
+            var resolution = await ResolveUserAsync(stateInfo, externalUser);
+            if (resolution.Error != null)
+            {
+                return resolution.Error;
+            }
+
+            user = resolution.User;
+            var redirectUri = resolution.RedirectUrl;
 
             if (user == null)
             {
@@ -146,6 +153,22 @@ namespace Authentication.DomainService.OAuth.Services
         }
 
         public abstract Task<(User? user, string redirectUrl)> GetUser(StateInfo stateInfo, IExternalUserData externalUser);
+
+        /// <summary>
+        /// The outcome of resolving the signing-in user. <see cref="Error"/>, when set, is returned to the caller
+        /// as-is instead of the generic <c>user_not_found</c>.
+        /// </summary>
+        protected sealed record SocialUserResolution(User? User, string? RedirectUrl, TokenResponse? Error = null);
+
+        /// <summary>
+        /// Resolves the signing-in user. The default defers to <see cref="GetUser"/>, which can only say "found" or
+        /// "not found"; a subclass overrides it when a refusal needs its own answer.
+        /// </summary>
+        protected virtual async Task<SocialUserResolution> ResolveUserAsync(StateInfo stateInfo, IExternalUserData externalUser)
+        {
+            var (user, redirectUrl) = await GetUser(stateInfo, externalUser);
+            return new SocialUserResolution(user, redirectUrl);
+        }
 
         protected static string NormalizeEmail(string? email)
         {
