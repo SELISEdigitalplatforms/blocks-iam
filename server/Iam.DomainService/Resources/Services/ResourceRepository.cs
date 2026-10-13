@@ -796,6 +796,8 @@ namespace Iam.DomainService.Resources
                     .Set(c => c.AllowOrgCreationFromPortal, config.AllowOrgCreationFromPortal)
                     .Set(c => c.IsMultiOrgEnabled, config.IsMultiOrgEnabled)
                     .Set(c => c.IsOrgNameUniquenessEnabled, config.IsOrgNameUniquenessEnabled)
+                    .Set(c => c.IsSignupAutoJoinEnabled, config.IsSignupAutoJoinEnabled)
+                    .Set(c => c.SignupAutoJoinOrganizationId, config.SignupAutoJoinOrganizationId)
                     .Set(c=> c.ConsentForMultiOrgEnable, config.ConsentForMultiOrgEnable)
                     .Set(c => c.LastUpdatedBy, config.LastUpdatedBy)
                     .Set(c=> c.DefaultPermissionsForNewUserOnSignUp, config.DefaultPermissionsForNewUserOnSignUp)

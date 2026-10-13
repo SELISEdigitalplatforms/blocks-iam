@@ -918,13 +918,34 @@ namespace XUnitTest.ApiTests
         public async Task GetAdminOrganizationConfig_DelegatesWithoutReResolvingTheTenant()
         {
             var response = new Dictionary<string, object> { { "isMultiOrgEnabled", true } };
-            _resourceMutation.Setup(s => s.GetOrganizationConfigAsync()).ReturnsAsync(response);
+            // H3/C5: the admin read now has its own service call, the only one that carries the
+            // sign-up auto-join target, so the delegation is asserted against that call.
+            _resourceMutation.Setup(s => s.GetAdminOrganizationConfigAsync()).ReturnsAsync(response);
 
             var result = await CreateController().GetAdminOrganizationConfig();
 
             result.Should().BeSameAs(response);
             // The middleware already scoped the request to the token's tenant; nothing to re-resolve.
             _authService.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task H3_C5_OrganizationConfigReads_AnonymousAndAdminUseSeparateServiceCalls()
+        {
+            _authService.Setup(s => s.GetPrincipalFromTokenAsync(It.IsAny<HttpRequest>(), It.IsAny<string>(), false))
+                .ReturnsAsync((System.Security.Claims.ClaimsPrincipal)null!);
+            _resourceMutation.Setup(s => s.GetOrganizationConfigAsync())
+                .ReturnsAsync(new Dictionary<string, object> { { "isSignupAutoJoinEnabled", true } });
+            _resourceMutation.Setup(s => s.GetAdminOrganizationConfigAsync())
+                .ReturnsAsync(new Dictionary<string, object> { { "isSignupAutoJoinEnabled", true }, { "signupAutoJoinOrganizationId", "org-sales" } });
+
+            var anonymous = await CreateController().GetOrganizationConfig();
+            var admin = await CreateController().GetAdminOrganizationConfig();
+
+            anonymous.Should().NotContainKey("signupAutoJoinOrganizationId");
+            admin["signupAutoJoinOrganizationId"].Should().Be("org-sales");
+            _resourceMutation.Verify(s => s.GetOrganizationConfigAsync(), Times.Once);
+            _resourceMutation.Verify(s => s.GetAdminOrganizationConfigAsync(), Times.Once);
         }
 
         [Fact]

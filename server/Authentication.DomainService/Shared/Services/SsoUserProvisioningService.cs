@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using Authentication.DomainService.OAuth;
+using Blocks.Genesis;
+using Iam.DomainService.Accounts;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Shared.Entities;
@@ -24,7 +26,13 @@ namespace Authentication.DomainService.Shared.Services
         SignupDisabled = 2,
 
         /// <summary>The provider gave us nothing usable, or the write failed.</summary>
-        Failed = 3
+        Failed = 3,
+
+        /// <summary>
+        /// No account existed, auto-join applies, and its target organization is deleted or disabled. Nothing was
+        /// written.
+        /// </summary>
+        OrganizationUnavailable = 4
     }
 
     public sealed class SsoProvisioningResult
@@ -47,8 +55,6 @@ namespace Authentication.DomainService.Shared.Services
 
     public sealed class SsoUserProvisioningService : ISsoUserProvisioningService
     {
-        private const string DefaultOrganizationId = "default";
-
         /// <summary>
         /// Appended to a derived organization name when the name is already taken.
         /// Ambiguous characters (0/O, 1/I) are excluded so the suffix stays readable.
@@ -62,17 +68,20 @@ namespace Authentication.DomainService.Shared.Services
         private readonly IUserRepository _userRepository;
         private readonly IResourceMutationService _resourceMutationService;
         private readonly IResourceRepository _resourceRepository;
+        private readonly ISignupOrganizationResolver _signupOrganizationResolver;
 
         public SsoUserProvisioningService(
             ILogger<SsoUserProvisioningService> logger,
             IUserRepository userRepository,
             IResourceMutationService resourceMutationService,
-            IResourceRepository resourceRepository)
+            IResourceRepository resourceRepository,
+            ISignupOrganizationResolver signupOrganizationResolver)
         {
             _logger = logger;
             _userRepository = userRepository;
             _resourceMutationService = resourceMutationService;
             _resourceRepository = resourceRepository;
+            _signupOrganizationResolver = signupOrganizationResolver;
         }
 
         public async Task<SsoProvisioningResult> ResolveOrProvisionAsync(IExternalUserData externalUser, string provider)
@@ -107,9 +116,23 @@ namespace Authentication.DomainService.Shared.Services
                     return SsoProvisioningResult.From(SsoProvisioningOutcome.SignupDisabled);
                 }
 
+                // Placement is shared with the email sign-up. It runs only after the existing-user and
+                // sign-up-switch checks above, so neither of those changes with auto-join.
+                var placement = await _signupOrganizationResolver.ResolveAsync(tenantConfig, SignupRoute.Sso);
+                if (placement.Outcome == SignupOrganizationOutcome.TargetUnavailable)
+                {
+                    _logger.LogWarning(
+                        "SSO signup from {Provider} refused: the auto-join organization {OrganizationId} is unavailable",
+                        provider,
+                        tenantConfig?.SignupAutoJoinOrganizationId ?? "(none)");
+                    return SsoProvisioningResult.From(SsoProvisioningOutcome.OrganizationUnavailable);
+                }
+
                 // Id is needed up front so the organization records this user as creator.
                 var newUserId = Guid.NewGuid().ToString();
-                var organizationId = await ResolveSignupOrganizationAsync(externalUser, tenantConfig, newUserId);
+                var organizationId = placement.Outcome == SignupOrganizationOutcome.CreatePersonal
+                    ? await CreatePersonalOrganizationAsync(externalUser, tenantConfig!, newUserId)
+                    : placement.OrganizationId;
 
                 var createdUser = await CreateUserAsync(
                     newUserId,
@@ -121,6 +144,16 @@ namespace Authentication.DomainService.Shared.Services
                 if (createdUser.user == null)
                 {
                     return SsoProvisioningResult.From(SsoProvisioningOutcome.Failed);
+                }
+
+                if (createdUser.wasCreated)
+                {
+                    _logger.LogInformation(
+                        "Signup in tenant {TenantId} placed user {UserId} by {Outcome} into {OrganizationId}",
+                        BlocksContext.GetContext()?.TenantId,
+                        createdUser.user.ItemId,
+                        placement.Outcome,
+                        organizationId ?? "none");
                 }
 
                 return SsoProvisioningResult.From(
@@ -135,38 +168,21 @@ namespace Authentication.DomainService.Shared.Services
         }
 
         /// <summary>
-        /// Where a brand-new SSO user is placed.
-        /// <list type="bullet">
-        /// <item>Multi-org off: the default organization -- a single-org tenant has only one.</item>
-        /// <item>Multi-org on and creation allowed from signup: a new organization named after them.</item>
-        /// <item>Anything else, creation failure included: <c>null</c>, meaning no organization at all.
-        /// Falling back to the default organization here would hand the user a membership the tenant
-        /// deliberately did not grant.</item>
-        /// </list>
+        /// Creates the personal organization a brand-new SSO user gets when the resolver answers
+        /// <see cref="SignupOrganizationOutcome.CreatePersonal"/> (multi-org on, creation from sign-up on, auto-join
+        /// off). A creation failure returns <c>null</c>, meaning no organization at all: falling back to the default
+        /// organization here would hand the user a membership the tenant deliberately did not grant.
         /// </summary>
-        private async Task<string?> ResolveSignupOrganizationAsync(
+        private async Task<string?> CreatePersonalOrganizationAsync(
             IExternalUserData externalUser,
-            TenantConfiguration? tenantConfig,
+            TenantConfiguration tenantConfig,
             string creatorUserId)
         {
-            if (!(tenantConfig?.IsMultiOrgEnabled ?? false))
-            {
-                return DefaultOrganizationId;
-            }
-
-            if (!tenantConfig!.AllowOrgCreationFromSignup)
-            {
-                _logger.LogInformation(
-                    "Organization creation from signup is disabled; provisioning {Email} with no organization",
-                    NormalizeEmail(externalUser.Email));
-                return null;
-            }
-
             try
             {
                 var organizationName = await ResolveAvailableOrganizationNameAsync(
                     externalUser,
-                    tenantConfig!.IsOrgNameUniquenessEnabled);
+                    tenantConfig.IsOrgNameUniquenessEnabled);
                 if (string.IsNullOrWhiteSpace(organizationName))
                 {
                     _logger.LogWarning("Could not find an available organization name; provisioning with no organization");
@@ -278,12 +294,6 @@ namespace Authentication.DomainService.Shared.Services
                 _logger.LogError("Failed to write provisioned SSO user {Email}", normalizedEmail);
                 return (null, false);
             }
-
-            _logger.LogInformation(
-                "Provisioned SSO user {Email} from {Provider} into organization {OrganizationId}",
-                normalizedEmail,
-                provider,
-                organizationId ?? "(none)");
 
             return (user, true);
         }

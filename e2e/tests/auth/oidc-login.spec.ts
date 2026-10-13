@@ -332,4 +332,35 @@ test.describe("OIDC login form", () => {
       await dialog.getByRole("button", { name: /back to login/i }).click();
     });
   });
+
+  // blocks-iam#609 C8: an unknown SSO email whose auto-join organization is deleted or disabled is
+  // sent back here by the OIDC social callback with error=signup_organization_unavailable and the
+  // readable sentence. The redirect is reproduced directly, so no identity provider or tenant
+  // configuration is needed.
+  test("OIDC login — SSO sign-up refused because the auto-join organization is unavailable", async ({
+    page,
+  }) => {
+    const sentence =
+      "This project's organization isn't available right now. Contact your administrator.";
+
+    await test.step("[Negative] C8: the dialog shows the unavailable sentence from the callback redirect", async () => {
+      setLoginResponse(null);
+
+      await page.goto(
+        OIDC_LOGIN_URL +
+          "&error=signup_organization_unavailable&error_description=" +
+          encodeURIComponent(sentence),
+        { waitUntil: "domcontentloaded" },
+      );
+
+      await expect(page).toHaveURL(/error=signup_organization_unavailable/);
+      const dialog = page.getByRole("alertdialog", { name: /sign-in unavailable/i });
+      await expect(dialog).toBeVisible({ timeout: 15_000 });
+      await expect(dialog.getByText(sentence)).toBeVisible();
+      // The raw error code is never what the user reads.
+      await expect(dialog.getByText("signup_organization_unavailable", { exact: true })).toHaveCount(0);
+
+      await dialog.getByRole("button", { name: /back to login/i }).click();
+    });
+  });
 });

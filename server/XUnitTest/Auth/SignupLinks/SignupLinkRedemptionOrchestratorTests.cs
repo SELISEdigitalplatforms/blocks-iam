@@ -189,6 +189,41 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
             x.Outcome == SignupLinkRedemptionOutcome.UserCreated && x.UserId == "user-new")), Times.Once);
     }
 
+    [Fact]
+    public async Task C15_Redeem_NewUser_UsesTheLinksOrganization_WhileAutoJoinTargetsAnother()
+    {
+        // C15: signup-link redemption never consults the sign-up auto-join setting.
+        _iam.Setup(i => i.GetTenantConfigurationAsync()).ReturnsAsync(new Iam.DomainService.Shared.Entities.TenantConfiguration
+        {
+            IsMultiOrgEnabled = true,
+            IsSignupAutoJoinEnabled = true,
+            SignupAutoJoinOrganizationId = "org-auto-join"
+        });
+        var link = ActivePasswordless();
+        _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
+        _users.Setup(u => u.GetUserByEmailAsync(link.Email)).ReturnsAsync((User)null!);
+        SetupNewUserCreate("user-new", link.Email);
+        CreateUserRequest? mappedFrom = null;
+        _mutation.Setup(m => m.MapUser(It.IsAny<CreateUserRequest>()))
+            .Callback<CreateUserRequest>(r => mappedFrom = r)
+            .Returns(new User { ItemId = "user-new", Email = link.Email });
+        var redeemed = ActivePasswordless();
+        redeemed.RedemptionCount = 1;
+        redeemed.Status = SignupLinkStatus.Redeemed;
+        redeemed.CreatedUserId = "user-new";
+        _links.Setup(l => l.TryIncrementRedemptionAsync("link-1", "t1", "user-new", It.IsAny<DateTime>()))
+            .ReturnsAsync(redeemed);
+
+        var http = Http();
+        await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        mappedFrom.Should().NotBeNull();
+        mappedFrom!.OrganizationId.Should().Be("org-acme");
+        typeof(SignupLinkRedemptionOrchestrator).GetConstructors()
+            .SelectMany(c => c.GetParameters())
+            .Should().NotContain(p => p.ParameterType == typeof(Iam.DomainService.Accounts.ISignupOrganizationResolver));
+    }
+
     /// <summary>
     /// Sets up a redeemable link and returns the cached flow context the redemption wrote,
     /// which is what <c>GET /idp/callback</c> will later read back.

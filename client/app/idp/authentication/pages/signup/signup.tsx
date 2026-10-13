@@ -34,6 +34,11 @@ export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
   const collectOrganizationName =
     (orgConfig?.allowOrgCreationFromSignup ?? false) &&
     (orgConfig?.isMultiOrgEnabled ?? false);
+  // Auto-join only takes effect on multi-org projects. With it on, a new user joins the project's
+  // organization, and the form offers "create my own" only where creation is also allowed.
+  const signupAutoJoinEnabled =
+    (orgConfig?.isSignupAutoJoinEnabled ?? false) &&
+    (orgConfig?.isMultiOrgEnabled ?? false);
 
   const showEmailSignup = isSignUpEnabled && emailSignUpEnabled;
   const showSsoSignup = isSignUpEnabled && ssoSignUpEnabled && hasSsoProviders;
@@ -90,6 +95,7 @@ export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
           ssoSignUpEnabled={showSsoSignup}
           tenantId={tenantId}
           collectOrganizationName={collectOrganizationName}
+          signupAutoJoinEnabled={signupAutoJoinEnabled}
         />
       ) : null}
     </OidcAuthShell>

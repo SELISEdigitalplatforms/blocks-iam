@@ -889,6 +889,349 @@ namespace XUnitTest.IamTests.Resources
             result["itemId"].Should().Be("cfg-1");
         }
 
+        // ---------- Sign-up auto-join ----------
+
+        private void StoredConfig(TenantConfiguration config)
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(config);
+            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>())).Returns(Task.CompletedTask);
+        }
+
+        [Fact]
+        public async Task H1_SaveOrganizationConfig_AutoJoinWithEnabledTarget_PersistsBoth()
+        {
+            StoredConfig(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetOrganizationById("org-sales"))
+                .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = "org-sales"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-sales")), Times.Once);
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task H2_SaveOrganizationConfig_AutoJoinWithDefaultTarget_PersistsWithoutLookup()
+        {
+            StoredConfig(new TenantConfiguration { IsMultiOrgEnabled = true });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = "default"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "default")), Times.Once);
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveOrganizationConfig_TurnOnWithStoredTarget_ValidatesTheStoredTarget()
+        {
+            StoredConfig(new TenantConfiguration { IsMultiOrgEnabled = true, SignupAutoJoinOrganizationId = "org-sales" });
+            _repo.Setup(r => r.GetOrganizationById("org-sales"))
+                .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { IsSignupAutoJoinEnabled = true });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-sales")), Times.Once);
+        }
+
+        [Fact]
+        public async Task SaveOrganizationConfig_TurnOff_KeepsTheStoredTarget()
+        {
+            StoredConfig(new TenantConfiguration { IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = "org-sales" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { IsSignupAutoJoinEnabled = false });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c =>
+                !c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-sales")), Times.Once);
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveOrganizationConfig_BlankTargetWhileOff_ClearsTheTarget()
+        {
+            StoredConfig(new TenantConfiguration { SignupAutoJoinOrganizationId = "org-sales" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { SignupAutoJoinOrganizationId = " " });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c =>
+                !c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == null)), Times.Once);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData(null)]
+        public async Task C1_SaveOrganizationConfig_AutoJoinOnWithBlankTarget_IsRejected_AndChangesNothing(string? target)
+        {
+            StoredConfig(new TenantConfiguration { IsMultiOrgEnabled = true });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = target,
+                // Rides along in the same request and must not be applied either.
+                AllowOrgCreationFromCloud = true,
+                IsOrgNameUniquenessEnabled = true
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainSingle();
+            result.Errors!["signup_auto_join_organization_required"].Should().Be("Choose the organization new sign-ups join.");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task C2_SaveOrganizationConfig_MissingOrDisabledTarget_IsRejected_AndChangesNothing(bool exists)
+        {
+            StoredConfig(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetOrganizationById("org-gone"))
+                .ReturnsAsync(exists ? new Organization { ItemId = "org-gone", Name = "Gone", IsDisabled = true } : null!);
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = "org-gone",
+                AllowOrgCreationFromSignup = true
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainSingle();
+            result.Errors!["signup_organization_unavailable"].Should().Be("The selected organization does not exist or is disabled.");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task C2_SaveOrganizationConfig_UnavailableTargetWhileOff_IsStillRejected()
+        {
+            StoredConfig(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetOrganizationById("org-gone")).ReturnsAsync((Organization)null!);
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { SignupAutoJoinOrganizationId = "org-gone" });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("signup_organization_unavailable");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_MultiOrgOff_NonexistentTarget_IsStoredAsSentWithoutLookup()
+        {
+            StoredConfig(new TenantConfiguration { IsMultiOrgEnabled = false });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = "org-does-not-exist"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-does-not-exist")), Times.Once);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_MultiOrgOff_OnWithBlankTarget_IsStoredNormalized()
+        {
+            StoredConfig(new TenantConfiguration { IsMultiOrgEnabled = false, SignupAutoJoinOrganizationId = "org-old" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = ""
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == null)), Times.Once);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_MultiOrgSwitchedOnBySameSave_IsValidated()
+        {
+            StoredConfig(new TenantConfiguration { IsMultiOrgEnabled = false, ConsentForMultiOrgEnable = false });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsMultiOrgEnabled = true,
+                ConsentForMultiOrgEnable = true,
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = ""
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("signup_auto_join_organization_required");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>()), Times.Never);
+        }
+
+        private static SaveOrganizationConfigRequest SwitchMultiOrgOn() => new()
+        {
+            IsMultiOrgEnabled = true,
+            ConsentForMultiOrgEnable = true
+        };
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_SwitchingMultiOrgOn_StoredAutoJoinOnWithBlankTarget_IsRejected()
+        {
+            StoredConfig(new TenantConfiguration { IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = null });
+
+            var result = await Create().SaveOrganizationConfigAsync(SwitchMultiOrgOn());
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("signup_auto_join_organization_required");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_SwitchingMultiOrgOn_StoredMissingTarget_IsRejected()
+        {
+            StoredConfig(new TenantConfiguration { IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = "org-gone" });
+            _repo.Setup(r => r.GetOrganizationById("org-gone")).ReturnsAsync((Organization)null!);
+
+            var result = await Create().SaveOrganizationConfigAsync(SwitchMultiOrgOn());
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("signup_organization_unavailable");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_SwitchingMultiOrgOn_StoredValidTarget_IsAcceptedWithOneRead()
+        {
+            StoredConfig(new TenantConfiguration { IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = "org-sales" });
+            _repo.Setup(r => r.GetOrganizationById("org-sales"))
+                .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
+
+            var result = await Create().SaveOrganizationConfigAsync(SwitchMultiOrgOn());
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Once);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c =>
+                c.IsMultiOrgEnabled && c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-sales")), Times.Once);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_SwitchingMultiOrgOn_StoredAutoJoinOff_IsAcceptedWithoutLookup()
+        {
+            StoredConfig(new TenantConfiguration { IsSignupAutoJoinEnabled = false, SignupAutoJoinOrganizationId = "org-gone" });
+
+            var result = await Create().SaveOrganizationConfigAsync(SwitchMultiOrgOn());
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c => c.IsMultiOrgEnabled)), Times.Once);
+        }
+
+        [Theory]
+        [InlineData(true, "org-sales")]
+        [InlineData(false, "org-sales")]
+        [InlineData(false, null)]
+        public async Task C3_SaveOrganizationConfig_BothFieldsOmitted_KeepsStoredValues(bool storedEnabled, string? storedTarget)
+        {
+            StoredConfig(new TenantConfiguration { IsMultiOrgEnabled = true, IsSignupAutoJoinEnabled = storedEnabled, SignupAutoJoinOrganizationId = storedTarget });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { AllowOrgCreationFromCloud = true });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled == storedEnabled
+                && c.SignupAutoJoinOrganizationId == storedTarget
+                && c.AllowOrgCreationFromCloud)), Times.Once);
+        }
+
+        [Fact]
+        public async Task C4_SaveOrganizationConfig_BothFieldsOmitted_StoredTargetDisabled_IsAcceptedWithoutLookup()
+        {
+            StoredConfig(new TenantConfiguration { IsMultiOrgEnabled = true, IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = "org-now-disabled" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { AllowOrgCreationFromSignup = true });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-now-disabled")), Times.Once);
+        }
+
+        [Fact]
+        public async Task H3_GetAdminOrganizationConfig_ReturnsStoredAutoJoinValues()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            {
+                ItemId = "cfg-1",
+                IsMultiOrgEnabled = true,
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = "org-sales"
+            });
+
+            var result = await Create().GetAdminOrganizationConfigAsync();
+
+            result["isSignupAutoJoinEnabled"].Should().Be(true);
+            result["signupAutoJoinOrganizationId"].Should().Be("org-sales");
+            result["isMultiOrgEnabled"].Should().Be(true);
+            result["itemId"].Should().Be("cfg-1");
+        }
+
+        [Fact]
+        public async Task H3_GetAdminOrganizationConfig_LegacyDocument_ReadsAsOffAndNull()
+        {
+            // A document written before the fields existed deserializes with their defaults.
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { ItemId = "cfg-legacy" });
+
+            var result = await Create().GetAdminOrganizationConfigAsync();
+
+            result["isSignupAutoJoinEnabled"].Should().Be(false);
+            result.Should().ContainKey("signupAutoJoinOrganizationId");
+            result["signupAutoJoinOrganizationId"].Should().BeNull();
+        }
+
+        [Fact]
+        public async Task H3_GetAdminOrganizationConfig_NoDocument_ReadsAsOffAndNull()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((TenantConfiguration)null!);
+
+            var result = await Create().GetAdminOrganizationConfigAsync();
+
+            result["isSignupAutoJoinEnabled"].Should().Be(false);
+            result["signupAutoJoinOrganizationId"].Should().BeNull();
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task H4_C5_GetOrganizationConfig_Anonymous_ExposesOnlyTheFlag(bool enabled)
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            {
+                ItemId = "cfg-1",
+                IsMultiOrgEnabled = true,
+                IsSignupAutoJoinEnabled = enabled,
+                SignupAutoJoinOrganizationId = "org-sales"
+            });
+
+            var result = await Create().GetOrganizationConfigAsync();
+
+            result["isSignupAutoJoinEnabled"].Should().Be(enabled);
+            result.Should().NotContainKey("signupAutoJoinOrganizationId");
+            result.Values.Should().NotContain("org-sales");
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+        }
+
         // ---------- ExecuteOrganizationProvisioningAsync ----------
 
         [Fact]

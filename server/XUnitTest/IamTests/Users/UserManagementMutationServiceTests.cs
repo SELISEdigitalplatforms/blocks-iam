@@ -12,6 +12,7 @@ using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
+using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -415,6 +416,133 @@ namespace XUnitTest.IamTests.Users
             user.Password.Should().Be("hash:secret");
             user.Status.Should().Be(UserLifecycleStatus.Active);
             user.EmailVerifiedAtUtc.Should().NotBeNull();
+        }
+
+        // ---------- CreateSignupUserWithoutOrganizationAsync ----------
+
+        [Fact]
+        public async Task H8_CreateSignupUserWithoutOrganization_StoresNoMembership_AndTokenIsNoOrg()
+        {
+            BlocksContext.SetContext(null);
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            User? created = null;
+            _userRepo.Setup(r => r.CreateUserAsync(It.IsAny<User>()))
+                .Callback<User>(u => created = u)
+                .ReturnsAsync(true);
+
+            // Whatever organization, roles and permissions arrive are ignored on this path.
+            var result = await Create().CreateSignupUserWithoutOrganizationAsync(new CreateUserRequest
+            {
+                Email = "New@Test.com",
+                VerifiedType = UserVerifiedType.None,
+                OrganizationId = "default",
+                Roles = ["user"],
+                Permissions = ["perm.read"],
+                ClientId = "client-1",
+                RedirectUri = "https://app/cb"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            created.Should().NotBeNull();
+            result.ItemId.Should().Be(created!.ItemId);
+            created.Email.Should().Be("new@test.com");
+            created.OrganizationIds.Should().BeEmpty();
+            created.Roles.Should().BeEmpty();
+            created.Permissions.Should().BeEmpty();
+            created.Status.Should().Be(UserLifecycleStatus.PendingVerification);
+            _message.Verify(m => m.SendToConsumerAsync(It.Is<ConsumerMessage<UserMutationEvent>>(e =>
+                e.Payload.ItemId == created.ItemId && e.Payload.ClientId == "client-1")), Times.Once);
+            _resourceRepo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+
+            OrganizationScopeResolver.Resolve(true, created, null, (u, org) =>
+                    !string.IsNullOrWhiteSpace(org) && (u.OrganizationIds.Contains(org) || u.Roles.ContainsKey(org) || u.Permissions.ContainsKey(org)))
+                .ClaimValue.Should().Be(IdpConstants.NoOrganizationId);
+        }
+
+        [Fact]
+        public async Task CreateSignupUserWithoutOrganization_IgnoresOnlyTheOrganizationRule()
+        {
+            _createValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateUserRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult(new[]
+                {
+                    new ValidationFailure(nameof(CreateUserRequest.OrganizationId), "Organization id is required when multi organization is enabled")
+                }));
+
+            var accepted = await Create().CreateSignupUserWithoutOrganizationAsync(new CreateUserRequest { Email = "a@test.com" });
+
+            accepted.IsSuccess.Should().BeTrue();
+
+            _createValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateUserRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult(new[]
+                {
+                    new ValidationFailure(nameof(CreateUserRequest.OrganizationId), "required"),
+                    new ValidationFailure("Email", "Email invalid")
+                }));
+
+            var rejected = await Create().CreateSignupUserWithoutOrganizationAsync(new CreateUserRequest { Email = "not-an-email" });
+
+            rejected.IsSuccess.Should().BeFalse();
+            rejected.Errors.Should().ContainKey("Email");
+            rejected.Errors.Should().NotContainKey(nameof(CreateUserRequest.OrganizationId));
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Once, "only the accepted request writes a user");
+        }
+
+        [Fact]
+        public async Task C10_CreateSignupUserWithoutOrganization_ExistingEmail_ChangesNothing()
+        {
+            var existing = new User
+            {
+                ItemId = "existing-1",
+                Email = "dupe@test.com",
+                OrganizationIds = ["org-1"],
+                Roles = new Dictionary<string, List<string>> { ["org-1"] = ["admin"] }
+            };
+            _userRepo.Setup(r => r.GetUserByEmailAsync("dupe@test.com")).ReturnsAsync(existing);
+
+            var result = await Create().CreateSignupUserWithoutOrganizationAsync(new CreateUserRequest { Email = "dupe@test.com" });
+
+            result.IsSuccess.Should().BeTrue();
+            result.ItemId.Should().Be("existing-1");
+            existing.OrganizationIds.Should().Equal("org-1");
+            existing.Roles.Keys.Should().Equal("org-1");
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+            _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+            _message.Verify(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<UserMutationEvent>>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        public async Task C14_CreateUser_BlankOrganizationOnMultiOrg_StillLandsInDefault_NeverNoOrganization(string? organizationId)
+        {
+            // The admin, gRPC and queue paths all go through CreateUserAsync; ApplyOrganizationDefaultsAsync keeps
+            // filling a blank organization with "default", so none of them can produce the sign-up-only shape.
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            User? created = null;
+            _userRepo.Setup(r => r.CreateUserAsync(It.IsAny<User>()))
+                .Callback<User>(u => created = u)
+                .ReturnsAsync(true);
+
+            var result = await Create().CreateUserAsync(new CreateUserRequest { Email = "admin-made@test.com", OrganizationId = organizationId });
+
+            result.IsSuccess.Should().BeTrue();
+            created!.OrganizationIds.Should().Equal("default");
+            created.Roles.Keys.Should().Equal("default");
+        }
+
+        [Fact]
+        public void C14_NoOrganizationPath_IsNotSelectableFromTheCreateRequest()
+        {
+            // Nothing on the request body that admin create, gRPC or queue messages bind to can ask for "no
+            // organization": the only way in is the separate sign-up-only method.
+            typeof(CreateUserRequest).GetProperties()
+                .Select(p => p.Name)
+                .Should().NotContain(name => name.Contains("NoOrganization", StringComparison.OrdinalIgnoreCase)
+                    || name.Contains("WithoutOrganization", StringComparison.OrdinalIgnoreCase));
+            typeof(UserManagementMutationService).GetMethod(nameof(UserManagementMutationService.CreateUserAsync))!
+                .GetParameters().Should().ContainSingle();
         }
 
         // ---------- UpdateUserAsync ----------
