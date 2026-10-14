@@ -13,6 +13,7 @@ using Authentication.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.ApiTests
 {
@@ -399,6 +400,22 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().ExecuteLogout(new LogoutRequest { RefreshToken = "rt" });
 
             result.Should().BeOfType<OkObjectResult>();
+            _signupLinkRedemption.Verify(s => s.EndLinkSessionAsync(It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task ExecuteLogout_Fails_DoesNotTouchTheLinkSession()
+        {
+            _authService.Setup(s => s.ExecuteLogoutAsync(It.IsAny<LogoutRequest>(), It.IsAny<HttpContext>()))
+                .ReturnsAsync(new LogoutFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    LogoutResponse = new LogoutResponse { IsSuccess = false }
+                });
+
+            await CreateController().ExecuteLogout(new LogoutRequest { RefreshToken = "rt" });
+
+            _signupLinkRedemption.Verify(s => s.EndLinkSessionAsync(It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>()), Times.Never);
         }
 
         // ---------- SwitchOrganizationContext ----------
@@ -482,6 +499,7 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().ExecuteGlobalLogout(new LogoutAllRequest());
 
             result.Should().BeOfType<BadRequestObjectResult>();
+            _signupLinkRedemption.Verify(s => s.EndLinkSessionAsync(It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>()), Times.Never);
         }
 
         [Fact]
@@ -496,6 +514,7 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().ExecuteGlobalLogout(new LogoutAllRequest { UseBackchannel = false });
 
             result.Should().BeOfType<OkObjectResult>();
+            _signupLinkRedemption.Verify(s => s.EndLinkSessionAsync(It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>()), Times.Once);
             _authService.Verify(s => s.TriggerBackchannelLogoutAllAsync(It.IsAny<HttpRequest>()), Times.Never);
         }
 
@@ -587,7 +606,7 @@ namespace XUnitTest.ApiTests
         public async Task GetAllIdentityProviders_ReturnsOk()
         {
             _authService.Setup(s => s.GetAllIdentityProvidersAsync())
-                .ReturnsAsync(new List<Authentication.DomainService.Entities.IdentityProvider>());
+                .ReturnsAsync(new List<Blocks.Genesis.Entities.Iam.IdentityProvider>());
 
             var result = await CreateController().GetAllIdentityProviders();
 
@@ -600,7 +619,7 @@ namespace XUnitTest.ApiTests
         public async Task GetIdentityProviderById_NotFound_ReturnsNotFound()
         {
             _authService.Setup(s => s.GetIdentityProviderByIdAsync("missing"))
-                .ReturnsAsync((Authentication.DomainService.Entities.IdentityProvider)null);
+                .ReturnsAsync((Blocks.Genesis.Entities.Iam.IdentityProvider)null);
 
             var result = await CreateController().GetIdentityProviderById("missing");
 
@@ -611,7 +630,7 @@ namespace XUnitTest.ApiTests
         public async Task GetIdentityProviderById_Found_ReturnsOk()
         {
             _authService.Setup(s => s.GetIdentityProviderByIdAsync("id-1"))
-                .ReturnsAsync(new Authentication.DomainService.Entities.IdentityProvider
+                .ReturnsAsync(new Blocks.Genesis.Entities.Iam.IdentityProvider
                 {
                     Provider = "google",
                     ProviderType = "social",
@@ -730,30 +749,23 @@ namespace XUnitTest.ApiTests
             result.Should().BeSameAs(response);
         }
 
-        // ---------- User codes ----------
+        // ---------- User codes (removed) ----------
 
         [Fact]
-        public async Task GenerateUserCode_DelegatesAndReturnsResponse()
+        public void UserCodeRoutes_AreGone()
         {
-            var response = new BaseResponse { IsSuccess = true };
-            _domainService.Setup(d => d.GenerateUserCodeByClientAsync(It.IsAny<GenerateUserCodeRequest>()))
-                .ReturnsAsync(response);
+            // H1: GET/POST auth/user-codes answered 404 once nothing maps the route.
+            var templates = typeof(AuthenticationController)
+                .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly)
+                .SelectMany(m => m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute), true)
+                    .Cast<Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute>())
+                .Select(a => a.Template)
+                .ToList();
 
-            var result = await CreateController().GenerateUserCode(new GenerateUserCodeRequest());
-
-            result.Should().BeSameAs(response);
-        }
-
-        [Fact]
-        public async Task GetUserCodes_DelegatesToRepository()
-        {
-            var list = new List<GetUserCodesByUserIdResponse>();
-            _authRepo.Setup(r => r.GetUserCodesByUserIdAsync(ActorUserId)).ReturnsAsync(list);
-
-            var result = await CreateController().GetUserCodes();
-
-            result.Should().BeSameAs(list);
-            _authRepo.Verify(r => r.GetUserCodesByUserIdAsync(ActorUserId), Times.Once);
+            templates.Should().NotBeEmpty();
+            templates.Should().NotContain(t => t != null && t.Contains("user-codes", StringComparison.OrdinalIgnoreCase));
+            typeof(AuthenticationController).GetMethod("GenerateUserCode").Should().BeNull();
+            typeof(AuthenticationController).GetMethod("GetUserCodes").Should().BeNull();
         }
 
         // ---------- Client credentials ----------

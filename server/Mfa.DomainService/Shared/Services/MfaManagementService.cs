@@ -3,6 +3,7 @@ using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Shared;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Mfa.DomainService.Services
 {

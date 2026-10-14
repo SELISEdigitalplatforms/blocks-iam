@@ -2,6 +2,7 @@ using Idp.DomainService.Oidc.Contracts;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {

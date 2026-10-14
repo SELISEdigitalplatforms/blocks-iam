@@ -1,11 +1,12 @@
 ﻿using Blocks.Genesis;
-using Blocks.MailDriver;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Utilities;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Mfa.DomainService.OTP.Services
 {

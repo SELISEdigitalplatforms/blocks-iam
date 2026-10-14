@@ -4,6 +4,7 @@ using Iam.DomainService.Enums;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {

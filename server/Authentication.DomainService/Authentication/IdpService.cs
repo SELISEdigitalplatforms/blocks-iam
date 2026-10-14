@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {

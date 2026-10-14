@@ -11,6 +11,7 @@ using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Shared
 {
@@ -288,18 +289,25 @@ namespace XUnitTest.IamTests.Shared
         }
 
         [Fact]
-        public async Task SaveSignUpSettingAsync_UpdatesOne()
+        public async Task SaveSignUpSettingAsync_UpdatesTheIdentityConfigurationField()
         {
-            var col = Register<TenantConfiguration>();
+            var identity = Register<BsonDocument>();
+            var legacy = Register<TenantConfiguration>();
+
             await Sut().SaveSignUpSettingAsync(new TenantConfiguration { ItemId = "c1", IsEmailPasswordSignUpEnabled = true });
-            col.Verify(c => c.UpdateOneAsync(
-                It.IsAny<FilterDefinition<TenantConfiguration>>(), It.IsAny<UpdateDefinition<TenantConfiguration>>(),
+
+            identity.Verify(c => c.UpdateOneAsync(
+                It.IsAny<FilterDefinition<BsonDocument>>(), It.IsAny<UpdateDefinition<BsonDocument>>(),
                 It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+            legacy.Verify(c => c.UpdateOneAsync(
+                It.IsAny<FilterDefinition<TenantConfiguration>>(), It.IsAny<UpdateDefinition<TenantConfiguration>>(),
+                It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
         [Fact]
-        public async Task GetTenantConfigurationAsync_ReturnsMatch()
+        public async Task GetTenantConfigurationAsync_FieldMissing_ReadsTheOldCollection()
         {
+            Register<BsonDocument>();
             Register(new[] { new TenantConfiguration { ItemId = "c1" } });
             (await Sut().GetTenantConfigurationAsync()).ItemId.Should().Be("c1");
         }

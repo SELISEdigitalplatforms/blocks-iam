@@ -12,6 +12,7 @@ using Iam.DomainService.Users;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Resources
 {

@@ -8,6 +8,7 @@ using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth.Services
 {

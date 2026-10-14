@@ -10,6 +10,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Iam.DomainService.Utilities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth.Services
 {

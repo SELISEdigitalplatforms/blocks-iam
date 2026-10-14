@@ -4,6 +4,7 @@ using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.OAuth.Services;
 using Iam.DomainService.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {

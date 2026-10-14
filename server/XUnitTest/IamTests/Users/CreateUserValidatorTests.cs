@@ -8,6 +8,7 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Users
 {

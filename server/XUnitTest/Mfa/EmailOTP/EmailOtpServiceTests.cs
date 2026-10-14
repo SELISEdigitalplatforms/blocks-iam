@@ -1,5 +1,5 @@
 using Blocks.Genesis;
-using Blocks.MailDriver;
+using Iam.DomainService.Dtos;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Utilities;
@@ -9,6 +9,7 @@ using Mfa.DomainService.OTP.Services;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Mfa.EmailOTP
 {
@@ -60,6 +61,30 @@ namespace XUnitTest.Mfa.EmailOTP
             captured.Should().NotBeNull();
             captured!.Payload.To.Should().ContainSingle().Which.Should().Be("u1@e.com");
             captured.ConsumerName.Should().Be(IdpConstants.MailQueue);
+        }
+
+        [Fact]
+        public async Task GenerateAsync_QueuePayloadJson_HasSendPhoneNumberAsEmail_AndNoProjectKey()
+        {
+            var service = CreateService(out var cache, out _, out var message);
+            var user = new UserInfo { ItemId = "u1", Email = "u1@e.com" };
+            cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+            ConsumerMessage<SendMail>? captured = null;
+            message.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<SendMail>>()))
+                .Callback<ConsumerMessage<SendMail>>(c => captured = c)
+                .Returns(Task.CompletedTask);
+
+            await service.GenerateAsync(user);
+
+            captured!.Payload.Should().BeOfType<Iam.DomainService.Dtos.SendMail>();
+            var json = System.Text.Json.JsonSerializer.Serialize(captured.Payload);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var names = doc.RootElement.EnumerateObject().Select(p => p.Name).ToList();
+            names.Should().Contain("SendPhoneNumberAsEmail");
+            names.Should().NotContain("ProjectKey");
+            // Same fields as the logic consumer's BaseMailRequest reads.
+            names.Should().Contain(new[] { "SubjectDataContext", "To", "Bcc", "Cc", "Purpose", "Language", "ReplyTo", "Attachments", "BodyDataContext" });
+            doc.RootElement.GetProperty("SendPhoneNumberAsEmail").GetBoolean().Should().BeFalse();
         }
 
         [Fact]

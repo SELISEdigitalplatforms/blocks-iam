@@ -7,6 +7,7 @@ using Iam.DomainService.Shared.Entities;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using System.Text.RegularExpressions;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Resources
 {
@@ -417,14 +418,10 @@ namespace Iam.DomainService.Resources
                 return true;
             }
 
-            var collection = _identityAccessManagementRepository.GetCollection<TenantConfiguration>();
-            var update = Builders<TenantConfiguration>.Update.Pull(t => t.DefaultRolesForNewUserOnSignUp, slug);
-            var result = await collection.UpdateOneAsync(Builders<TenantConfiguration>.Filter.Empty, update);
-
-            // IsAcknowledged, not ModifiedCount > 0: a role that was never a signup default -- or a
+            // Acknowledged, not "modified": a role that was never a signup default -- or a
             // tenant with no configuration document at all -- matches nothing, which is an
             // acknowledged write of zero documents and a perfectly normal archive.
-            return result?.IsAcknowledged ?? false;
+            return await _identityAccessManagementRepository.PullSignUpDefaultRoleAsync(slug);
         }
 
         /// <summary>
@@ -443,11 +440,7 @@ namespace Iam.DomainService.Resources
                 return true;
             }
 
-            var collection = _identityAccessManagementRepository.GetCollection<TenantConfiguration>();
-            var update = Builders<TenantConfiguration>.Update.Pull(t => t.DefaultPermissionsForNewUserOnSignUp, resource);
-            var result = await collection.UpdateOneAsync(Builders<TenantConfiguration>.Filter.Empty, update);
-
-            return result?.IsAcknowledged ?? false;
+            return await _identityAccessManagementRepository.PullSignUpDefaultPermissionAsync(resource);
         }
 
         /// <summary>
@@ -783,23 +776,7 @@ namespace Iam.DomainService.Resources
 
         public async Task SaveOrganizationConfig(TenantConfiguration config)
         {
-            var collection = _identityAccessManagementRepository.GetCollection<TenantConfiguration>();
-            await collection.UpdateOneAsync(
-                Builders<TenantConfiguration>.Filter.Empty,
-                Builders<TenantConfiguration>.Update
-                    .SetOnInsert(c => c.ItemId, config.ItemId)
-                    .SetOnInsert(c => c.CreatedBy, config.CreatedBy)
-                    .SetOnInsert(c => c.CreatedDate, config.CreatedDate)
-                    .Set(c => c.AllowOrgCreationFromCloud, config.AllowOrgCreationFromCloud)
-                    .Set(c => c.AllowOrgCreationFromConstruct, config.AllowOrgCreationFromConstruct)
-                    .Set(c => c.AllowOrgCreationFromSignup, config.AllowOrgCreationFromSignup)
-                    .Set(c => c.AllowOrgCreationFromPortal, config.AllowOrgCreationFromPortal)
-                    .Set(c => c.IsMultiOrgEnabled, config.IsMultiOrgEnabled)
-                    .Set(c => c.IsOrgNameUniquenessEnabled, config.IsOrgNameUniquenessEnabled)
-                    .Set(c=> c.ConsentForMultiOrgEnable, config.ConsentForMultiOrgEnable)
-                    .Set(c => c.LastUpdatedBy, config.LastUpdatedBy)
-                    .Set(c=> c.DefaultPermissionsForNewUserOnSignUp, config.DefaultPermissionsForNewUserOnSignUp)
-                    .Set(c => c.LastUpdatedDate, config.LastUpdatedDate), new UpdateOptions { IsUpsert = true });
+            await _identityAccessManagementRepository.SaveOrganizationConfigAsync(config);
         }
 
         private static string ResolveOrganizationId(string? organizationId)

@@ -1,6 +1,7 @@
 using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Services;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Accounts
 {

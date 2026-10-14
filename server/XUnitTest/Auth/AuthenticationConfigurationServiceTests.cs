@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Bson;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {

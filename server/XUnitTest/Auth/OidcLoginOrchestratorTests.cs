@@ -18,6 +18,7 @@ using Mfa.DomainService.Shared;
 using Moq;
 using System.Text.Json;
 using Iam.DomainService.Resources;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {

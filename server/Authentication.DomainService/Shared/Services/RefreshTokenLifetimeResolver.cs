@@ -1,5 +1,6 @@
 using Authentication.DomainService.Entities;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Shared.Services
 {

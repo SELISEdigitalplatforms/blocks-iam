@@ -24,8 +24,6 @@ export const USER_ENDPOINTS = {
   GET_ACCOUNT_ROLES: `/api${IAM_SUBPATH}/account/roles`,
   GET_ACCOUNT_PERMISSIONS: `/api${IAM_SUBPATH}/account/permissions`,
   SAVE_ROLES_AND_PERMISSIONS: `/api${IAM_SUBPATH}/roles-permissions`,
-  GET_USER_CODES: `/api${AUTH_SUBPATH}/GetUserCodes`,
-  GENERATE_USER_CODE: `/api${AUTH_SUBPATH}/GenerateUserCode`,
   GET_USER_ROLES: `/api${IAM_SUBPATH}/user/roles`,
   GET_USER_PERMISSIONS: `/api${IAM_SUBPATH}/user/permissions`,
   IS_EMAIL_AVAILABLE: `/api${IAM_SUBPATH}/email/available`,

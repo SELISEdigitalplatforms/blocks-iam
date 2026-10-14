@@ -1,5 +1,6 @@
 using Iam.DomainService.Services;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.SignupLinks;
 

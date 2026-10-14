@@ -1,6 +1,7 @@
 ﻿using Iam.DomainService.Entities;
 using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Shared.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Resources
 {

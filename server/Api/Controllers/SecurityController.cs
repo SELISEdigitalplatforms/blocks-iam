@@ -5,6 +5,7 @@ using Blocks.Genesis;
 using Iam.DomainService.Activity.RequestModel;
 using Iam.DomainService.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Api.Controllers
 {

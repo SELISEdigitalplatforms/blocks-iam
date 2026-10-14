@@ -1,10 +1,12 @@
 using Api.Controllers;
+using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
 using Iam.DomainService.Users.ResponseModel;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
+using System.Reflection;
 
 namespace XUnitTest.ApiTests;
 
@@ -79,6 +81,32 @@ public class EmailAvailabilityControllerTests
         var result = await Sut().IsUserExistFromQuery(null);
         result.Should().BeOfType<BadRequestObjectResult>();
         _userQuery.Verify(s => s.IsUserExistAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    // users/exists is user enumeration: it needs the same permission as the user list
+    // (owner decision 2026-10-14), not just any signed-in token.
+    [Theory]
+    [InlineData(nameof(EmailAvailabilityController.IsUserExist))]
+    [InlineData(nameof(EmailAvailabilityController.IsUserExistFromQuery))]
+    public void UsersExist_IsProtectedByUsersPermission(string methodName)
+    {
+        var method = typeof(EmailAvailabilityController).GetMethod(methodName)!;
+
+        var guard = method.GetCustomAttribute<ProtectedEndPointAttribute>();
+        guard.Should().NotBeNull();
+        guard!.ResourceName.Should().Be("blocks-iam::iam::users");
+        method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(nameof(EmailAvailabilityController.IsEmailAvailable))]
+    [InlineData(nameof(EmailAvailabilityController.IsEmailAvailableFromQuery))]
+    public void EmailAvailable_StaysAnonymous(string methodName)
+    {
+        var method = typeof(EmailAvailabilityController).GetMethod(methodName)!;
+
+        method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().NotBeNull();
+        method.GetCustomAttribute<ProtectedEndPointAttribute>().Should().BeNull();
     }
 }
 

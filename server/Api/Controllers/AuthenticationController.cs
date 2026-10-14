@@ -12,6 +12,7 @@ using Iam.DomainService.Accounts;
 using Authentication.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Api.Controllers;
 
@@ -305,6 +306,7 @@ public class AuthenticationController : ControllerBase
             return BadRequest(result.LogoutResponse);
         }
 
+        await _signupLinkRedemption.EndLinkSessionAsync(Request, Response);
         return Ok(result.LogoutResponse);
     }
 
@@ -411,6 +413,7 @@ public class AuthenticationController : ControllerBase
             backchannelSuccess = await _authenticationService.TriggerBackchannelLogoutAllAsync(Request);
         }
 
+        await _signupLinkRedemption.EndLinkSessionAsync(Request, Response);
         return Ok(new
         {
             IsSuccess = true,
@@ -549,20 +552,6 @@ public class AuthenticationController : ControllerBase
     public async Task<BaseResponse> UpdateAuthenticationConfiguration([FromBody] UpdateAuthenticationConfigurationRequest configuration)
     {
         return await _configurationService.UpdateAuthenticationConfigAsync(configuration);
-    }
-
-    [HttpPost("user-codes")]
-    [ProtectedEndPoint("blocks-iam::auth::mutate-user-pats")]
-    public async Task<BaseResponse> GenerateUserCode([FromBody] GenerateUserCodeRequest request)
-    {
-        return await _authenticationDomainService.GenerateUserCodeByClientAsync(request);
-    }
-
-    [HttpGet("user-codes")]
-    [ProtectedEndPoint("blocks-iam::auth::user-pats")]
-    public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodes()
-    {
-        return await _authenticationRepository.GetUserCodesByUserIdAsync(BlocksContext.GetContext()?.UserId);
     }
 
     #region Client Credential Management

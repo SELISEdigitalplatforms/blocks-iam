@@ -10,6 +10,7 @@ using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {

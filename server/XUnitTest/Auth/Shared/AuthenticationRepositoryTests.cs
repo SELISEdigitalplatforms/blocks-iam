@@ -11,6 +11,7 @@ using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {
@@ -284,13 +285,25 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
-        public async Task UpdateAuthenticationConfigurationAsync_Replaces()
+        public async Task UpdateAuthenticationConfigurationAsync_SetsTheMappedFields_NeverReplaces()
         {
+            UpdateDefinition<IdentityConfiguration>? captured = null;
             var col = Register<IdentityConfiguration>();
-            await Sut().UpdateAuthenticationConfigurationAsync(new IdentityConfiguration { ItemId = ObjectId.GenerateNewId() });
+            col.Setup(c => c.UpdateOneAsync(It.IsAny<FilterDefinition<IdentityConfiguration>>(), It.IsAny<UpdateDefinition<IdentityConfiguration>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<IdentityConfiguration>, UpdateDefinition<IdentityConfiguration>, UpdateOptions, CancellationToken>((_, u, _, _) => captured = u)
+                .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
+
+            await Sut().UpdateAuthenticationConfigurationAsync(new IdentityConfiguration { ItemId = ObjectId.GenerateNewId(), RefreshTokenValidForNumberMinutes = 99 });
+
             col.Verify(c => c.ReplaceOneAsync(
                 It.IsAny<FilterDefinition<IdentityConfiguration>>(), It.IsAny<IdentityConfiguration>(),
-                It.IsAny<ReplaceOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+                It.IsAny<ReplaceOptions>(), It.IsAny<CancellationToken>()), Times.Never);
+            var registry = MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry;
+            var rendered = captured!.Render(new RenderArgs<IdentityConfiguration>(registry.GetSerializer<IdentityConfiguration>(), registry)).AsBsonDocument;
+            var set = rendered["$set"].AsBsonDocument;
+            set.Contains("_id").Should().BeFalse();
+            set["RefreshTokenValidForNumberMinutes"].AsInt32.Should().Be(99);
+            set.Contains("TenantConfiguration").Should().BeFalse();
         }
 
         [Fact]
@@ -447,42 +460,10 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
-        public async Task GetUserCodeAsync_ReturnsMatch()
-        {
-            Register(new[] { new UserCode { ItemId = "uc1", Code = "123" } });
-            (await Sut().GetUserCodeAsync("123")).ItemId.Should().Be("uc1");
-        }
-
-        [Fact]
         public async Task GetBlocksClientAsync_ReturnsMatch()
         {
             Register(new[] { new BlocksClientConfig { ItemId = "bc1" } });
             (await Sut().GetBlocksClientAsync("bc1")).ItemId.Should().Be("bc1");
-        }
-
-        [Fact]
-        public async Task SaveUserCodeByClientAsync_Upserts()
-        {
-            var col = Register<UserCode>();
-            await Sut().SaveUserCodeByClientAsync(new UserCode { ItemId = "uc1" });
-            col.Verify(c => c.ReplaceOneAsync(
-                It.IsAny<FilterDefinition<UserCode>>(), It.IsAny<UserCode>(),
-                It.Is<ReplaceOptions>(o => o.IsUpsert), It.IsAny<CancellationToken>()), Times.Once);
-        }
-
-        [Fact]
-        public async Task GetUserCodesByUserIdAsync_MapsExpiryFromTtl()
-        {
-            var created = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-            Register(new[]
-            {
-                new UserCode { ItemId = "uc1", UserId = "u1", Code = "c", CodeTtlInMinute = 10, CreatedDate = created },
-                new UserCode { ItemId = "uc2", UserId = "u1", Code = "d", CodeTtlInMinute = null, CreatedDate = created }
-            });
-            var result = await Sut().GetUserCodesByUserIdAsync("u1");
-            result.Should().HaveCount(2);
-            result.Single(r => r.ItemId == "uc1").ExpiryDate.Should().Be(created.AddMinutes(10));
-            result.Single(r => r.ItemId == "uc2").ExpiryDate.Should().Be(created);
         }
 
         [Fact]

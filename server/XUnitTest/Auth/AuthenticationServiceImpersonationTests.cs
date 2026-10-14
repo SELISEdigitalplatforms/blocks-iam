@@ -25,6 +25,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Moq;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {

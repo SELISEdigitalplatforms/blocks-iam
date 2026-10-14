@@ -1,5 +1,6 @@
 using Iam.DomainService.Entities;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Utilities
 {

@@ -8,6 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
+using Blocks.Genesis.Entities.Iam;
 
 
 namespace Authentication.DomainService.OAuth.SocialServices

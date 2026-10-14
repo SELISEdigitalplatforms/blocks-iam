@@ -10,6 +10,7 @@ using FluentValidation.Results;
 using Microsoft.AspNetCore.Http;
 using Moq;
 using System.Net;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {

@@ -10,6 +10,7 @@ using Iam.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth.Services
 {

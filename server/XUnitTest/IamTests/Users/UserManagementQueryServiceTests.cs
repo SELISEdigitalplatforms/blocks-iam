@@ -15,6 +15,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using System.Text.Json;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Users
 {

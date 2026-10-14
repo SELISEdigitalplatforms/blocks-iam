@@ -2,6 +2,7 @@ using Authentication.DomainService.Shared;
 using Authentication.DomainService.Utilities;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Utilities
 {

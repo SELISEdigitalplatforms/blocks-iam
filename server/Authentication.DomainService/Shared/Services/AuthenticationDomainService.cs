@@ -12,6 +12,7 @@ using FluentValidation;
 using Authentication.DomainService.Shared.RequestModel;
 using Iam.DomainService.Dtos;
 using Authentication.DomainService.Authentication;
+using Blocks.Genesis.Entities.Iam;
 
 
 namespace Authentication.DomainService.Services
@@ -418,32 +419,6 @@ namespace Authentication.DomainService.Services
             }
 
             return new BaseResponse { IsSuccess = true };
-        }
-
-        public async Task<BaseResponse> GenerateUserCodeByClientAsync(GenerateUserCodeRequest request)
-        {
-            if (string.IsNullOrWhiteSpace(request.ClientId))
-            {
-                return new BaseResponse { Errors = new Dictionary<string, string> { { "invalid_request", "ClientId is required." } } };
-            }
-
-            var userCode = Guid.NewGuid().ToString("n");
-
-            var clientUserCode = new UserCode
-            {
-                ItemId = Guid.NewGuid().ToString(),
-                ClientId = request.ClientId,
-                UserId = BlocksContext.GetContext()?.UserId,
-                Code = userCode,
-                CreatedBy = BlocksContext.GetContext()?.UserId,
-                LastUpdatedBy = BlocksContext.GetContext()?.UserId,
-                CreatedDate = DateTime.UtcNow,
-                CodeTtlInMinute = request.CodeTtlInMinute,
-                Note = request.Note
-            };
-
-            await _authenticationRepository.SaveUserCodeByClientAsync(clientUserCode);
-            return new BaseResponse { IsSuccess = true, };
         }
 
         public async Task<SaveClientCredentialResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request)

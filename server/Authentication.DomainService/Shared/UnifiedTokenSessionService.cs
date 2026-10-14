@@ -16,6 +16,7 @@ using Authentication.DomainService.Shared.Services;
 using Authentication.DomainService.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Shared
 {
@@ -153,7 +154,7 @@ namespace Authentication.DomainService.Shared
             await _cacheClient.AddStringValueAsync(refreshTokenCache.RefreshToken!, JsonSerializer.Serialize(refreshTokenCache), cacheTtlSeconds);
 
             // Persist to MongoDB. Validation in CreateAsync rejects empty TokenId/UserId/TenantId/ClientId/SessionId.
-            var refreshTokenModel = new Idp.DomainService.Oidc.Contracts.RefreshTokenModel
+            var refreshTokenModel = new Blocks.Genesis.Entities.Iam.RefreshTokenModel
             {
                 TokenId = refreshTokenCache.RefreshToken!,
                 UserId = refreshTokenCache.UserId!,
@@ -250,7 +251,7 @@ namespace Authentication.DomainService.Shared
         /// an otherwise valid login is the worse outcome.
         /// </summary>
         private async Task SupersedePreviousLoginLineagesAsync(
-            Idp.DomainService.Oidc.Contracts.RefreshTokenModel newToken,
+            Blocks.Genesis.Entities.Iam.RefreshTokenModel newToken,
             string refreshTokenSessionId)
         {
             try

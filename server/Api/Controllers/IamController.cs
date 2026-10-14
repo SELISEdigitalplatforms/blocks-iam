@@ -106,7 +106,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("permissions/by-severity")]
-        [Authorize]
+        [ProtectedEndPoint("blocks-iam::iam::permissions")]
         public async Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverity()
         {
             return await _resourceQueryService.GetPermissionsGroupBySeverityAsync();

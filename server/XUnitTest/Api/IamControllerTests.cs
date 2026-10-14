@@ -1011,5 +1011,17 @@ namespace XUnitTest.ApiTests
             method.GetCustomAttribute<ProtectedEndPointAttribute>()
                 .Should().BeNull("organizations/my must not require an administrative permission");
         }
+
+        [Fact]
+        public void GetPermissionsGroupBySeverity_IsProtectedByPermissionsRead()
+        {
+            // Same read permission as POST permissions and GET permissions/{id} (owner decision 2026-10-14).
+            var method = typeof(IamController).GetMethod(nameof(IamController.GetPermissionsGroupBySeverity))!;
+
+            var guard = method.GetCustomAttribute<ProtectedEndPointAttribute>();
+            guard.Should().NotBeNull();
+            guard!.ResourceName.Should().Be("blocks-iam::iam::permissions");
+            method.GetCustomAttribute<HttpGetAttribute>()!.Template.Should().Be("permissions/by-severity");
+        }
     }
 }

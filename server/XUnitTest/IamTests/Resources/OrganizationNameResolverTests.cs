@@ -2,6 +2,7 @@
 using Iam.DomainService.Resources;
 using Iam.DomainService.Shared.Entities;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {

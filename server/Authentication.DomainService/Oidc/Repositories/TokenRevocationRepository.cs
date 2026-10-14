@@ -1,6 +1,7 @@
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -95,17 +96,5 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             return await GetRevokedTokensByUserAsync(userId);
         }
-    }
-
-    public sealed class TokenRevocationModel
-    {
-        public string? Id { get; set; } // MongoDB ObjectId
-        public string? Jti { get; set; } // JWT ID (unique token identifier)
-        public string? UserId { get; set; }
-        public DateTime RevokedAt { get; set; }
-        public string? RevokeReason { get; set; } // "user_revoked", "logout", "reuse_detected", "password_changed"
-        public DateTime ExpiresAt { get; set; } // After this date, can be deleted from DB
-        public bool IsDeleted { get; set; } // Soft delete flag
-        public DateTime DeletedAt { get; set; } // Soft delete timestamp
     }
 }

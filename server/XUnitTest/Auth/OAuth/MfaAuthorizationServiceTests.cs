@@ -11,6 +11,7 @@ using Mfa.DomainService.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Iam.DomainService.Utilities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {

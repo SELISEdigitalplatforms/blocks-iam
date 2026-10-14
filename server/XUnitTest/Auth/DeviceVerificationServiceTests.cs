@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using System.Security.Cryptography;
 using Iam.DomainService.Resources;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {

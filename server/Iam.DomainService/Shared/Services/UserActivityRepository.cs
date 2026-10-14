@@ -2,12 +2,21 @@ using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Activity.RequestModel;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Services
 {
     public class UserActivityRepository : BaseRepository, IUserActivityRepository
     {
+        /// <summary>The <c>Event</c> value of a signup-link redemption.</summary>
+        public const string SignupLinkRedeemEvent = "signup-link-redeem";
+
+        // The old redemption collection. Read only: for the live listCollections check and for
+        // counting rows that are not copied into UserActivitys yet. Nothing writes it any more.
+        private const string LegacyRedemptionCollection = "SignupLinkRedemptions";
+
         private readonly ILogger<UserActivityRepository> _logger;
 
         public UserActivityRepository(IDbContextProvider dbContextProvider, ILogger<UserActivityRepository> logger)
@@ -49,6 +58,73 @@ namespace Iam.DomainService.Services
             var collection = GetCollection<UserActivity>();
             var (_, filter, _) = Build(userId, req);
             return await collection.CountDocumentsAsync(filter, cancellationToken: ct);
+        }
+
+        public async Task<long> CountSignupLinkRejectionsAsync(
+            string tenantId,
+            DateTime fromUtc,
+            DateTime toUtc,
+            IEnumerable<string> linkIds,
+            CancellationToken ct = default)
+        {
+            var ids = linkIds?.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList()
+                ?? new List<string>();
+            if (ids.Count == 0)
+            {
+                return 0;
+            }
+
+            var legacyExists = await LegacyRedemptionCollectionExistsAsync(ct);
+
+            var b = Builders<UserActivity>.Filter;
+            var events = b.Eq(x => x.TenantId, tenantId)
+                & b.Eq(x => x.Event, SignupLinkRedeemEvent)
+                & b.Eq(x => x.Outcome, nameof(Iam.DomainService.SignupLinks.SignupLinkRedemptionOutcome.Rejected))
+                & b.Gte(x => x.CreatedDate, fromUtc)
+                & b.Lt(x => x.CreatedDate, toUtc)
+                & b.In(x => x.EntityId, ids);
+
+            if (legacyExists)
+            {
+                // An event copied from an old row by the migration: that row is counted below. After cleanup
+                // the old collection is gone, so these events are the only record and are counted.
+                events &= b.Exists("MigratedFrom", false);
+            }
+
+            var count = await GetCollection<UserActivity>().CountDocumentsAsync(events, cancellationToken: ct);
+
+            if (legacyExists)
+            {
+                var o = Builders<BsonDocument>.Filter;
+                var rows = o.Eq("TenantId", tenantId)
+                    & o.Eq("Outcome", (int)Iam.DomainService.SignupLinks.SignupLinkRedemptionOutcome.Rejected)
+                    & o.Gte("RedeemedAtUtc", fromUtc)
+                    & o.Lt("RedeemedAtUtc", toUtc)
+                    & o.In("LinkId", ids)
+                    // Written back from an event by a rollback: the event is counted above.
+                    & o.Exists("ReversedFromActivityId", false);
+
+                count += await GetCollectionByName<BsonDocument>(LegacyRedemptionCollection)
+                    .CountDocumentsAsync(rows, cancellationToken: ct);
+            }
+
+            return count;
+        }
+
+        private async Task<bool> LegacyRedemptionCollectionExistsAsync(CancellationToken ct)
+        {
+            var database = _dbContextProvider.GetDatabase();
+            if (database is null)
+            {
+                return false;
+            }
+
+            var options = new ListCollectionNamesOptions
+            {
+                Filter = new BsonDocument("name", LegacyRedemptionCollection)
+            };
+            var cursor = await database.ListCollectionNamesAsync(options, ct);
+            return (await cursor.ToListAsync(ct)).Count > 0;
         }
 
         private static (string userId, FilterDefinition<UserActivity> filter, SortDefinition<UserActivity> sort) Build(string userId, GetActivitiesRequest req)

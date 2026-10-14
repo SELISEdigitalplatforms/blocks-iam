@@ -4,6 +4,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Iam.DomainService.Services

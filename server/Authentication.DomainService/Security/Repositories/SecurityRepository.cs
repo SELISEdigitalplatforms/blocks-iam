@@ -4,6 +4,7 @@ using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Security.Repositories
 {

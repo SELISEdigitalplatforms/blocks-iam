@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Utilities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Shared
 {

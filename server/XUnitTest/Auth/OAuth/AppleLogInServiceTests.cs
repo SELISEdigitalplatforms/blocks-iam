@@ -11,6 +11,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {

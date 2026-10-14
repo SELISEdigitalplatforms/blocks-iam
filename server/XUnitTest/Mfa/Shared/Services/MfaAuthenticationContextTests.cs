@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Services;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Mfa.Shared.Services
 {

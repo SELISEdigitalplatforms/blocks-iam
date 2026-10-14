@@ -3,6 +3,7 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Mvc;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {

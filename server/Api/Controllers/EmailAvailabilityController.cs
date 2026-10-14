@@ -66,7 +66,7 @@ public class EmailAvailabilityController : ControllerBase
     // the SPA fallback and got 200 + index.html instead of a usable status code.
     [Obsolete("Use POST iam/users/exists. Scheduled for removal once callers have migrated.")]
     [HttpGet("users/exists")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::iam::users")]
     public async Task<IActionResult> IsUserExistFromQuery([FromQuery] string? email)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -80,7 +80,7 @@ public class EmailAvailabilityController : ControllerBase
 
     // POST body so addresses are not placed in the URL (ZAP 10024 / CWE-598).
     [HttpPost("users/exists")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::iam::users")]
     public async Task<IActionResult> IsUserExist([FromBody] IsEmailAvailableRequest? body)
     {
         var email = body?.Email;

@@ -3,6 +3,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users.RequestModel;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Services
 {
@@ -41,6 +42,11 @@ namespace Iam.DomainService.Services
         Task<UserKeyMap?> GetUserKeyMapByKeyAsync(string key);
         Task SaveSignUpSettingAsync(TenantConfiguration tenantConfiguration);
         Task<TenantConfiguration> GetTenantConfigurationAsync();
+        /// <summary>Removes a role slug from the tenant's signup default roles.</summary>
+        Task<bool> PullSignUpDefaultRoleAsync(string slug);
+        /// <summary>Removes a permission resource from the tenant's signup default permissions.</summary>
+        Task<bool> PullSignUpDefaultPermissionAsync(string resource);
+        Task SaveOrganizationConfigAsync(TenantConfiguration tenantConfiguration);
     }
 }
 

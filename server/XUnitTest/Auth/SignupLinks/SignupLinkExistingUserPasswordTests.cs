@@ -21,6 +21,7 @@ using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using StackExchange.Redis;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.SignupLinks;
 
@@ -34,7 +35,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
     private const string AuthPrefix = "signup_link_auth:";
 
     private readonly Mock<ISignupLinkRepository> _links = new();
-    private readonly Mock<ISignupLinkRedemptionRepository> _redemptions = new();
+    private readonly Mock<IUserActivityRepository> _redemptions = new();
     private readonly Mock<ILinkSessionRepository> _sessions = new();
     private readonly Mock<IOidcClientRegistrationLookup> _oidc = new();
     private readonly Mock<IAuthenticationRepository> _authentication = new();
@@ -53,7 +54,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
     private readonly Dictionary<string, string> _store = new();
     private readonly Dictionary<string, long> _ttl = new();
     private readonly HashSet<string> _claims = new();
-    private readonly List<SignupLinkRedemption> _rows = new();
+    private readonly List<UserActivity> _rows = new();
     private readonly List<LinkSessionModel> _createdSessions = new();
 
     public SignupLinkExistingUserPasswordTests()
@@ -101,8 +102,8 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
                 It.IsAny<bool>(), When.NotExists, It.IsAny<CommandFlags>()))
             .ReturnsAsync((RedisKey k, RedisValue _, TimeSpan? _, bool _, When _, CommandFlags _) => _claims.Add(k.ToString()));
 
-        _redemptions.Setup(r => r.InsertAsync(It.IsAny<SignupLinkRedemption>()))
-            .Callback<SignupLinkRedemption>(_rows.Add)
+        _redemptions.Setup(r => r.InsertAsync(It.IsAny<UserActivity>(), It.IsAny<CancellationToken>()))
+            .Callback<UserActivity, CancellationToken>((a, _) => _rows.Add(a))
             .Returns(Task.CompletedTask);
         _sessions.Setup(s => s.CreateAsync(It.IsAny<LinkSessionModel>()))
             .Callback<LinkSessionModel>(_createdSessions.Add)
@@ -113,7 +114,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
         _oidc.Setup(o => o.GetByClientIdAsync("construct-web"))
             .ReturnsAsync(new OidcClientRegistrationInfo("construct-web", ["https://construct.example.com/callback"], true, "Construct"));
         _authentication.Setup(a => a.GetIdentityProviderByClientIdAsync("construct-web"))
-            .ReturnsAsync(new Authentication.DomainService.Entities.IdentityProvider
+            .ReturnsAsync(new Blocks.Genesis.Entities.Iam.IdentityProvider
             {
                 Provider = "construct",
                 ProviderType = Iam.DomainService.Utilities.IdpConstants.BlocksOidcProviderType,
@@ -287,10 +288,10 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
         await RedeemToPasswordStepAsync(Sut());
 
         _rows.Should().ContainSingle();
-        _rows[0].Outcome.Should().Be(SignupLinkRedemptionOutcome.AuthenticationRequired);
-        _rows[0].RedemptionOrdinal.Should().Be(0);
-        _rows[0].RejectionReason.Should().BeNull();
-        _rows[0].GrantedRoles.Should().BeEmpty();
+        _rows[0].Outcome.Should().Be("AuthenticationRequired");
+        _rows[0].Metadata!["RedemptionOrdinal"].Should().Be("0");
+        _rows[0].ReasonCode.Should().BeNull();
+        _rows[0].Metadata!["GrantedRoles"].Should().Be("[]");
     }
 
     [Fact]
@@ -308,7 +309,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
         result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>()
             .Which.AuthorizeUrl.Should().StartWith("https://iam.example.com/api/oidc/authorize?");
         user.OrganizationIds.Should().Contain("org-acme");
-        _rows.Should().Contain(r => r.Outcome == SignupLinkRedemptionOutcome.OrganizationJoined);
+        _rows.Should().Contain(r => r.Outcome == "OrganizationJoined");
         _store.Keys.Should().NotContain(k => k.StartsWith(AuthPrefix, StringComparison.Ordinal));
     }
 
@@ -344,7 +345,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
         Prop(result, "error").Should().Be("password_not_set");
         _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
         _links.Verify(l => l.TryIncrementRedemptionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
-        _rows.Should().ContainSingle(r => r.Outcome == SignupLinkRedemptionOutcome.Rejected && r.RejectionReason == "password_not_set");
+        _rows.Should().ContainSingle(r => r.Outcome == "Rejected" && r.ReasonCode == "password_not_set");
     }
 
     [Fact]
@@ -391,7 +392,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
 
         result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>()
             .Which.AuthorizeUrl.Should().NotBeNullOrEmpty();
-        _rows.Should().ContainSingle(r => r.Outcome == SignupLinkRedemptionOutcome.LinkUserReturned);
+        _rows.Should().ContainSingle(r => r.Outcome == "LinkUserReturned");
     }
 
     [Fact]
@@ -408,7 +409,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
 
         result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().BeOfType<RedeemSignupLinkErrorResponse>();
         http.Response.Headers.SetCookie.ToString().Should().NotContain("blocks-link-session");
-        _rows.Should().ContainSingle(r => r.RejectionReason == "exhausted");
+        _rows.Should().ContainSingle(r => r.ReasonCode == "exhausted");
     }
 
     // ---------------- authenticate ----------------
@@ -500,7 +501,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
         user.Roles["org-acme"].Should().Equal("r1");
         user.Roles["org-other"].Should().Equal("admin");
         _createdSessions.Should().ContainSingle().Which.Amr.Should().Equal("link", "pwd");
-        _rows.Should().Contain(r => r.Outcome == SignupLinkRedemptionOutcome.OrganizationJoined && r.RedemptionOrdinal == 1);
+        _rows.Should().Contain(r => r.Outcome == "OrganizationJoined" && r.Metadata!["RedemptionOrdinal"] == "1");
         _store.Should().NotContainKey(AuthPrefix + step.RedemptionId);
         _claims.Should().Contain("signup_link_auth_claim:" + step.RedemptionId);
         _verifier.Verify(v => v.VerifyAsync(user, "Correct#1", null, It.IsAny<HttpRequest?>(), "t1"), Times.Once);
@@ -521,7 +522,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
 
         _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
         user.Roles["org-acme"].Should().Equal("old");
-        _rows.Should().Contain(r => r.Outcome == SignupLinkRedemptionOutcome.ExistingUserRedirected);
+        _rows.Should().Contain(r => r.Outcome == "ExistingUserRedirected");
     }
 
     [Fact]
@@ -566,7 +567,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
             .Which.AuthorizeUrl.Should().NotBeNullOrEmpty();
         _links.Verify(l => l.TryIncrementRedemptionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
         _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
-        _rows.Should().Contain(r => r.Outcome == SignupLinkRedemptionOutcome.LinkUserReturned);
+        _rows.Should().Contain(r => r.Outcome == "LinkUserReturned");
     }
 
     [Fact]
@@ -591,7 +592,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
         _ttl[key].Should().BeInRange(1, 300);
         _links.Verify(l => l.TryIncrementRedemptionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
         _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
-        _rows.Should().Contain(r => r.RejectionReason == "invalid_password");
+        _rows.Should().Contain(r => r.ReasonCode == "invalid_password");
 
         // Still usable: the next (correct) attempt goes through.
         AllowConsume(link);
@@ -616,7 +617,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
         }
 
         _store.Should().NotContainKey(AuthPrefix + step.RedemptionId);
-        _rows.Should().ContainSingle(r => r.RejectionReason == "redemption_attempts_exceeded");
+        _rows.Should().ContainSingle(r => r.ReasonCode == "redemption_attempts_exceeded");
 
         Verifier(PasswordVerificationResult.Success());
         var after = await sut.AuthenticateAsync(step.RedemptionId, "Correct#1", null, "t1", Http().Request, Http().Response);
@@ -636,7 +637,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
 
         result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(423);
         Prop(result, "error").Should().Be("account_locked");
-        _rows.Should().Contain(r => r.RejectionReason == "account_locked");
+        _rows.Should().Contain(r => r.ReasonCode == "account_locked");
     }
 
     [Fact]
@@ -689,7 +690,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
         Prop(result, "error").Should().Be(error);
         Prop(result, "captcha_required").Should().Be("True");
         Prop(result, "captcha_site_key").Should().Be("site-key");
-        _rows.Any(r => r.RejectionReason == "captcha_invalid").Should().Be(recorded);
+        _rows.Any(r => r.ReasonCode == "captcha_invalid").Should().Be(recorded);
     }
 
     [Fact]
@@ -756,7 +757,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
 
         result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().BeOfType<RedeemSignupLinkErrorResponse>();
         _store.Should().NotContainKey(AuthPrefix + step.RedemptionId);
-        _rows.Should().Contain(r => r.RejectionReason == "revoked");
+        _rows.Should().Contain(r => r.ReasonCode == "revoked");
         _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
         _verifier.Verify(v => v.VerifyAsync(It.IsAny<User>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<HttpRequest?>(), It.IsAny<string?>()), Times.Never);
     }
@@ -774,7 +775,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
         var result = await sut.AuthenticateAsync(step.RedemptionId, "Correct#1", null, "t1", Http().Request, Http().Response);
 
         result.Should().BeOfType<BadRequestObjectResult>().Which.Value.Should().BeOfType<RedeemSignupLinkErrorResponse>();
-        _rows.Should().Contain(r => r.RejectionReason == "exhausted");
+        _rows.Should().Contain(r => r.ReasonCode == "exhausted");
     }
 
     [Fact]

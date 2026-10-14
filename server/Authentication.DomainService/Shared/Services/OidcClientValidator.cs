@@ -3,6 +3,7 @@ using Authentication.DomainService.OAuth;
 using Idp.DomainService.Oidc.Contracts;
 using System.Security.Cryptography;
 using System.Text;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Shared.Services
 {

@@ -1,5 +1,6 @@
 using Blocks.CaptchaDriver;
 using FluentAssertions;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Captcha
 {

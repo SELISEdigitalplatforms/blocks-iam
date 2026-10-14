@@ -2,6 +2,7 @@ using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Accounts.TestHelpers
 {

@@ -7,6 +7,7 @@ using Iam.DomainService.Shared.Entities;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using System.Text.RegularExpressions;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Users
 {

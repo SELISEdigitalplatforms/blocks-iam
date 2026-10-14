@@ -3,6 +3,7 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users.RequestModel;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Users
 {

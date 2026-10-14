@@ -6,6 +6,7 @@ using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Mfa.Shared.Services
 {

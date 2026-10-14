@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Shared.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Oidc
 {
@@ -36,6 +37,7 @@ namespace XUnitTest.Auth.Oidc
         private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<ICacheClient> _cache = new();
         private readonly Mock<IResourceRepository> _resourceRepo = new();
+        private readonly Mock<ILinkSessionRepository> _linkSessions = new();
 
         private readonly OidcAuthorizationEndpoint _endpoint;
 
@@ -68,7 +70,7 @@ namespace XUnitTest.Auth.Oidc
                     _sessionRepo.Object,
                     _sessionService.Object,
                     _pkce.Object,
-                    new Mock<ILinkSessionRepository>().Object),
+                    _linkSessions.Object),
                 new OidcAuthorizationIdentityStores(
                     _userRepo.Object,
                     _authRepo.Object,
@@ -151,6 +153,97 @@ namespace XUnitTest.Auth.Oidc
             IdleExpiry = DateTime.UtcNow.AddHours(1),
             AbsoluteExpiry = DateTime.UtcNow.AddHours(5)
         };
+
+        // ================= SPEC2: link sessions (Redis, per tenant) =================
+
+        private static LinkSessionModel LinkSession(string clientId = "client-1", string tenantId = "t1") => new()
+        {
+            SessionId = "LS",
+            UserId = "link-user",
+            TenantId = tenantId,
+            ClientId = clientId,
+            OrganizationId = "org-1",
+            Roles = new() { "r1" },
+            Amr = new() { "link" },
+            IssuedAtUtc = DateTime.UtcNow,
+            ExpiresAtUtc = DateTime.UtcNow.AddMinutes(20)
+        };
+
+        [Fact]
+        public async Task AuthorizeAsync_LinkCookie_ReadsTheTenantsSession_ManyTimes_NeverDeletes()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser("link-user"));
+            _linkSessions.Setup(l => l.GetBySessionIdAsync("t1", "LS")).ReturnsAsync(LinkSession());
+
+            for (var i = 0; i < 3; i++)
+            {
+                var result = await Authorize(tenant_id: "t1", ctx: Ctx("blocks-link-session-t1=LS"));
+                result.Should().BeOfType<RedirectResult>().Subject.Url.Should().Contain("code=authcode123");
+            }
+
+            _linkSessions.Verify(l => l.GetBySessionIdAsync("t1", "LS"), Times.Exactly(3));
+            _linkSessions.Verify(l => l.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.IsLinkAuthentication && m.UserId == "link-user")), Times.Exactly(3));
+        }
+
+        [Theory]
+        [InlineData("other-client", "t1")]
+        [InlineData("client-1", "other-tenant")]
+        public async Task AuthorizeAsync_LinkSessionOfAnotherClientOrTenant_IsIgnored_NotDeleted(string clientId, string tenantId)
+        {
+            ClientExists();
+            _linkSessions.Setup(l => l.GetBySessionIdAsync("t1", "LS")).ReturnsAsync(LinkSession(clientId, tenantId));
+
+            var result = await Authorize(tenant_id: "t1", ctx: Ctx("blocks-link-session-t1=LS"));
+
+            result.Should().BeOfType<RedirectResult>().Subject.Url.Should().StartWith("/oidc/login?");
+            _linkSessions.Verify(l => l.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_PasswordLogin_DeletesTheLinkSession_AndClearsTheCookie()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            var ctx = Ctx("blocks-link-session-t1=LS");
+
+            var result = await Authorize(tenant_id: "t1", ctx: ctx, blocksUserId: "user-1");
+
+            result.Should().BeOfType<RedirectResult>();
+            _linkSessions.Verify(l => l.DeleteAsync("t1", "LS"), Times.Once);
+            _linkSessions.Verify(l => l.GetBySessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            ctx.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1=;");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => !m.IsLinkAuthentication && m.UserId == "user-1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_BlankTenant_WithLinkCookie_NoLinkSessionReadOrDelete()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var silent = await Authorize(tenant_id: "", ctx: Ctx("blocks-link-session=LS"));
+            var password = await Authorize(tenant_id: null, ctx: Ctx("blocks-link-session=LS"), blocksUserId: "user-1");
+
+            silent.Should().BeOfType<RedirectResult>().Subject.Url.Should().StartWith("/oidc/login?");
+            password.Should().BeOfType<RedirectResult>().Subject.Url.Should().Contain("code=authcode123");
+            _linkSessions.Verify(l => l.GetBySessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _linkSessions.Verify(l => l.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_LinkSessionStoreDown_FailsTheRequest_NoCode()
+        {
+            ClientExists();
+            _linkSessions.Setup(l => l.GetBySessionIdAsync("t1", "LS")).ThrowsAsync(new TimeoutException("redis down"));
+
+            var result = await Authorize(tenant_id: "t1", ctx: Ctx("blocks-link-session-t1=LS"), returnRedirectResponse: false);
+
+            result.Should().NotBeOfType<RedirectResult>();
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
 
         // ================= validation branches =================
 

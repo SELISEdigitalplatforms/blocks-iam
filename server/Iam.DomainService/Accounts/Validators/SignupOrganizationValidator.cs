@@ -1,6 +1,7 @@
 using FluentValidation;
 using Iam.DomainService.Shared.Entities;
 using System.Text.RegularExpressions;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Accounts
 {

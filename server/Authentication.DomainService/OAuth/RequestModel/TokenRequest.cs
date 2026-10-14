@@ -1,5 +1,6 @@
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth.RequestModel
 {
@@ -35,7 +36,6 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? BiometricKey { get; set; }
         public string? ClientId { get; set; }
         public string? ClientSecret { get; set; }
-        public string? UserCode { get; set; }
         public string? OrganizationId { get; set; }
         public bool IsImpersonation { get; set; }
         public string? ImpersonatorUserId { get; set; }

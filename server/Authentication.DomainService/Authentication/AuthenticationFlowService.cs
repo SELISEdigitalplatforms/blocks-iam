@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using System.Security.Claims;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {

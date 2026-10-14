@@ -8,6 +8,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Authentication.DomainService.Authentication

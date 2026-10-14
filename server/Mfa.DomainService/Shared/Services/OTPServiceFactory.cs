@@ -2,6 +2,7 @@
 using Mfa.DomainService.OTP.Services;
 using Mfa.DomainService.TOTP;
 using Microsoft.Extensions.DependencyInjection;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Mfa.DomainService.Services
 {

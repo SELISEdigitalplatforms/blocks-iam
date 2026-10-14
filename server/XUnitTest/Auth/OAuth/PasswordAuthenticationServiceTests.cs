@@ -13,6 +13,7 @@ using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {

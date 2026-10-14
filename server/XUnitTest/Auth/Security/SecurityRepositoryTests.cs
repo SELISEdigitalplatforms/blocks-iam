@@ -8,6 +8,7 @@ using Iam.DomainService.Dtos;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Security
 {

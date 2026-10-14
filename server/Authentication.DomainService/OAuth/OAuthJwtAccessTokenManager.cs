@@ -16,6 +16,7 @@ using System.Text.Json;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Oidc.Services;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth
 {

@@ -4,6 +4,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Services
 {
@@ -16,6 +17,7 @@ namespace Iam.DomainService.Services
 
         private readonly IBlocksSecret _blocksSecret;
         private readonly ILogger<IdentityAccessManagementRepository> _logger;
+        private readonly TenantConfigurationStore _tenantConfigurationStore;
 
         public IdentityAccessManagementRepository(
             IDbContextProvider dbContextProvider,
@@ -24,6 +26,7 @@ namespace Iam.DomainService.Services
         {
             _blocksSecret = blocksSecret;
             _logger = logger;
+            _tenantConfigurationStore = new TenantConfigurationStore(dbContextProvider);
         }
 
         /// <summary>
@@ -229,10 +232,7 @@ namespace Iam.DomainService.Services
 
         public async Task SaveSignUpSettingAsync(TenantConfiguration tenantConfiguration)
         {
-            var collection = GetCollection<TenantConfiguration>();
-
-            var result = await collection.UpdateOneAsync(
-                Builders<TenantConfiguration>.Filter.Empty,
+            await _tenantConfigurationStore.UpdateAsync(
                 Builders<TenantConfiguration>.Update
                     .Set(t => t.IsEmailPasswordSignUpEnabled, tenantConfiguration.IsEmailPasswordSignUpEnabled)
                     .Set(t => t.IsSSoSignUpEnabled, tenantConfiguration.IsSSoSignUpEnabled)
@@ -244,10 +244,35 @@ namespace Iam.DomainService.Services
 
         public async Task<TenantConfiguration> GetTenantConfigurationAsync()
         {
-            var collection = GetCollection<TenantConfiguration>();
-            var tenantConfiguration = await collection.Find(_ => true).FirstOrDefaultAsync();
-            return tenantConfiguration;
+            return (await _tenantConfigurationStore.ReadAsync())!;
         }
+
+        public Task<bool> PullSignUpDefaultRoleAsync(string slug) =>
+            PullSignUpDefaultAsync(Builders<TenantConfiguration>.Update.Pull(t => t.DefaultRolesForNewUserOnSignUp, slug));
+
+        public Task<bool> PullSignUpDefaultPermissionAsync(string resource) =>
+            PullSignUpDefaultAsync(Builders<TenantConfiguration>.Update.Pull(t => t.DefaultPermissionsForNewUserOnSignUp, resource));
+
+        private Task<bool> PullSignUpDefaultAsync(UpdateDefinition<TenantConfiguration> update) =>
+            _tenantConfigurationStore.UpdateAsync(update);
+
+        public Task SaveOrganizationConfigAsync(TenantConfiguration config) =>
+            _tenantConfigurationStore.UpdateAsync(
+                Builders<TenantConfiguration>.Update
+                    .SetOnInsert(c => c.ItemId, config.ItemId)
+                    .SetOnInsert(c => c.CreatedBy, config.CreatedBy)
+                    .SetOnInsert(c => c.CreatedDate, config.CreatedDate)
+                    .Set(c => c.AllowOrgCreationFromCloud, config.AllowOrgCreationFromCloud)
+                    .Set(c => c.AllowOrgCreationFromConstruct, config.AllowOrgCreationFromConstruct)
+                    .Set(c => c.AllowOrgCreationFromSignup, config.AllowOrgCreationFromSignup)
+                    .Set(c => c.AllowOrgCreationFromPortal, config.AllowOrgCreationFromPortal)
+                    .Set(c => c.IsMultiOrgEnabled, config.IsMultiOrgEnabled)
+                    .Set(c => c.IsOrgNameUniquenessEnabled, config.IsOrgNameUniquenessEnabled)
+                    .Set(c => c.ConsentForMultiOrgEnable, config.ConsentForMultiOrgEnable)
+                    .Set(c => c.LastUpdatedBy, config.LastUpdatedBy)
+                    .Set(c => c.DefaultPermissionsForNewUserOnSignUp, config.DefaultPermissionsForNewUserOnSignUp)
+                    .Set(c => c.LastUpdatedDate, config.LastUpdatedDate),
+                upsertLegacy: true);
 
         private static void NormalizeUserIdentity(User user)
         {
