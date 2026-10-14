@@ -98,15 +98,20 @@ public class EmailAvailabilityControllerTests
         method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().BeNull();
     }
 
+    // email/available leaks whether an address is registered, so it needs its own permission
+    // (owner decision 2026-10-14), not anonymous access and not just any signed-in token.
     [Theory]
     [InlineData(nameof(EmailAvailabilityController.IsEmailAvailable))]
     [InlineData(nameof(EmailAvailabilityController.IsEmailAvailableFromQuery))]
-    public void EmailAvailable_StaysAnonymous(string methodName)
+    public void EmailAvailable_IsProtectedByEmailAvailablePermission(string methodName)
     {
         var method = typeof(EmailAvailabilityController).GetMethod(methodName)!;
 
-        method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().NotBeNull();
-        method.GetCustomAttribute<ProtectedEndPointAttribute>().Should().BeNull();
+        var guard = method.GetCustomAttribute<ProtectedEndPointAttribute>();
+        guard.Should().NotBeNull();
+        guard!.ResourceName.Should().Be("blocks-iam::iam::email-available");
+        method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().BeNull();
+        method.GetCustomAttributes(true).Any(a => a.GetType() == typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute)).Should().BeFalse();
     }
 }
 

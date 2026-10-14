@@ -1,6 +1,5 @@
 using Blocks.Genesis;
 using Iam.DomainService.Users;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers;
@@ -26,7 +25,7 @@ public class EmailAvailabilityController : ControllerBase
     // blocks-os is the last known one (client/app/cross-modules/idp/iam/services).
     [Obsolete("Use POST iam/email/available. Scheduled for removal once callers have migrated.")]
     [HttpGet("email/available")]
-    [AllowAnonymous]
+    [ProtectedEndPoint("blocks-iam::iam::email-available")]
     public async Task<IActionResult> IsEmailAvailableFromQuery([FromQuery] string? email)
     {
         // Bound as an optional string, so a missing address reaches the check below and gets the
@@ -46,7 +45,7 @@ public class EmailAvailabilityController : ControllerBase
 
     // POST body so the address is not reflected in the URL (CWE-598 / ZAP 10024).
     [HttpPost("email/available")]
-    [AllowAnonymous]
+    [ProtectedEndPoint("blocks-iam::iam::email-available")]
     public async Task<IActionResult> IsEmailAvailable([FromBody] IsEmailAvailableRequest query)
     {
         if (query == null || string.IsNullOrWhiteSpace(query.Email))
