@@ -1,5 +1,6 @@
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Mvc;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -52,8 +53,6 @@ namespace Authentication.DomainService.OAuth
 
         [FromForm(Name = "client_secret")]
         public string ClientSecret { get; set; } = string.Empty;
-        [FromForm(Name = "user_code")]
-        public string UserSecret { get; set; } = string.Empty;
 
         [FromForm(Name = "org_id")]
         public string OrganizationId { get; set; } = string.Empty;

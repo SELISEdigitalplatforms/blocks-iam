@@ -12,6 +12,7 @@ using Moq;
 using StackExchange.Redis;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Utilities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {

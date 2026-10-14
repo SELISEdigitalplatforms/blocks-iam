@@ -8,6 +8,7 @@ using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {

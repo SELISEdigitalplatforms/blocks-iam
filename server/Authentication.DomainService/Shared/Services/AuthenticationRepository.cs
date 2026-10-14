@@ -6,7 +6,9 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Entities;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using MongoDB.Bson;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Services
 {
@@ -445,7 +447,14 @@ namespace Authentication.DomainService.Services
         {
             var collection = GetCollection<IdentityConfiguration>();
             var filter = Builders<IdentityConfiguration>.Filter.Eq("_id", authenticationConfiguration.ItemId);
-            await collection.ReplaceOneAsync(filter, authenticationConfiguration);
+
+            // $set of every mapped field, not a whole-document replace: a replace deletes each field the class
+            // does not map -- the merged TenantConfiguration field, and on the root tenant AllowedApis.
+            var fields = authenticationConfiguration.ToBsonDocument();
+            fields.Remove("_id");
+            await collection.UpdateOneAsync(
+                filter,
+                new BsonDocumentUpdateDefinition<IdentityConfiguration>(new BsonDocument("$set", fields)));
         }
 
         public async Task<OidcClientRegistration> GetOidcClientRegistrationAsync(string clientId)
@@ -515,47 +524,11 @@ namespace Authentication.DomainService.Services
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 
-        public async Task<UserCode> GetUserCodeAsync(string code)
-        {
-            var collection = GetCollection<UserCode>();
-            var filter = Builders<UserCode>.Filter.Eq(it => it.Code, code);
-            return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
-        }
-
         public async Task<BlocksClientConfig> GetBlocksClientAsync(string clientId)
         {
             var collection = GetCollection<BlocksClientConfig>();
             var filter = Builders<BlocksClientConfig>.Filter.Eq(it => it.ItemId, clientId);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
-        }
-
-        public async Task SaveUserCodeByClientAsync(UserCode userCode)
-        {
-            var collection = GetCollection<UserCode>();
-            var result = await collection.ReplaceOneAsync(x => x.ItemId == userCode.ItemId, userCode, new ReplaceOptions { IsUpsert = true });
-        }
-
-        public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodesByUserIdAsync(string userId)
-        {
-            var collection = GetCollection<UserCode>();
-            var filter = Builders<UserCode>.Filter.Eq(it => it.UserId, userId);
-            var userCodes = await (await collection.FindAsync(filter)).ToListAsync();
-            return GetUserCodesByUserIdResponse(userCodes);
-        }
-
-        private List<GetUserCodesByUserIdResponse> GetUserCodesByUserIdResponse(List<UserCode> userCodes)
-        {
-            return userCodes.Select(x => new GetUserCodesByUserIdResponse
-            {
-                ItemId = x.ItemId,
-                CreatedDate = x.CreatedDate,
-                UserId = x.UserId,
-                Code = x.Code,
-                ExpiryDate = x.CodeTtlInMinute.HasValue ? x.CreatedDate.AddMinutes(x.CodeTtlInMinute.Value) : x.CreatedDate,
-                CodeTtlInMinute = x.CodeTtlInMinute,
-                ClientId = x.ClientId,
-                Note = x.Note,
-            }).ToList();
         }
 
         public async Task<BaseResponse> SaveClientCredentialAsync(ClientCredential clientCredential)

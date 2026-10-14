@@ -16,7 +16,6 @@ namespace Authentication.DomainService.OAuth
         public const string AuthCode = "authorization_code";
         public const string BiometricAuthorization = "biometric_authorization";
         public const string ClientCredential = "client_credentials";
-        public const string ClientUserCode = "client_user_code";
         public const string SwitchOrganization = "switch_organization";
         public const string SsoConsentCode = "sso_consent";
         public const string ImpersonationCloud = "impersonation_cloud";

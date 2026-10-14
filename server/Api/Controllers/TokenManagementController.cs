@@ -6,6 +6,7 @@ using Iam.DomainService.Utilities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Blocks.Api.Controllers
 {

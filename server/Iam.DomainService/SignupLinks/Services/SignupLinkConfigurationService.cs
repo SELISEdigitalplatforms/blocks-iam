@@ -2,6 +2,7 @@ using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.SignupLinks;
 

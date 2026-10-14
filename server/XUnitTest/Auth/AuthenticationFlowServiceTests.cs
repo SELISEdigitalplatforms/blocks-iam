@@ -21,6 +21,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using System.Security.Claims;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {

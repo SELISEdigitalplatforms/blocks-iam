@@ -5,6 +5,7 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Shared.Services
 {

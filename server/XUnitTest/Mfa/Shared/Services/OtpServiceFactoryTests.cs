@@ -12,6 +12,7 @@ using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Moq;
 using StorageDriver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Mfa.Shared.Services
 {

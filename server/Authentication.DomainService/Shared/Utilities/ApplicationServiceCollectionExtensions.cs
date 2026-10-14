@@ -74,7 +74,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IOidcCallbackHandler, OidcCallbackHandler>();
             serviceCollection.AddSingleton<ISsoUserProvisioningService, SsoUserProvisioningService>();
 
-            serviceCollection.AddSingleton<IAuthorizationCodeRepository, AuthorizationCodeRepository>();
+            serviceCollection.AddSingleton<AuthorizationCodeRepository>();
+            serviceCollection.AddSingleton<IAuthorizationCodeRepository, RedisAuthorizationCodeStore>();
             serviceCollection.AddSingleton<IRefreshTokenRepository, RefreshTokenRepository>();
             serviceCollection.AddSingleton<IIdpSessionRepository, IdpSessionRepository>();
             serviceCollection.AddSingleton<ITokenRevocationRepository, TokenRevocationRepository>();
@@ -92,7 +93,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<BiometricAuthorizationService>();
             serviceCollection.AddSingleton<ClientCredentialAuthorizationService>();
             serviceCollection.AddSingleton<IClientAccessTokenIssuer>(sp => sp.GetRequiredService<ClientCredentialAuthorizationService>());
-            serviceCollection.AddSingleton<ClientUserCodeAuthorizationService>();
             serviceCollection.AddSingleton<SSOConsentAuthenticationService>();
             serviceCollection.AddSingleton<IAuthorizationClaimsResolver, AuthorizationClaimsResolver>();
             serviceCollection.AddSingleton<ClientCredentialsTokenIssuer>();
@@ -191,9 +191,9 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();
             serviceCollection.AddSingleton<ISignupLinkConfigurationService, SignupLinkConfigurationService>();
             serviceCollection.AddSingleton<ISignupLinkRepository, SignupLinkRepository>();
-            serviceCollection.AddSingleton<ISignupLinkRedemptionRepository, SignupLinkRedemptionRepository>();
             serviceCollection.AddSingleton<ISignupLinkContextService, SignupLinkContextService>();
-            serviceCollection.AddSingleton<ILinkSessionRepository, LinkSessionRepository>();
+            serviceCollection.AddSingleton<LinkSessionRepository>();
+            serviceCollection.AddSingleton<ILinkSessionRepository, RedisLinkSessionStore>();
             serviceCollection.AddSingleton<SignupLinkRedemptionStores>();
             serviceCollection.AddSingleton<SignupLinkRedemptionServices>();
             serviceCollection.AddSingleton<SignupLinkRedemptionCollaborators>();
@@ -238,7 +238,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IOtpServiceFactory, OtpServiceFactory>();
             serviceCollection.AddSingleton<IMfaManagementRepository, MfaManagementRepository>();
             serviceCollection.AddSingleton<IMfaConfigurationService, MfaConfigurationService>();
-            serviceCollection.AddSingleton<IMfaBackupCodeService, MfaBackupCodeService>();
             serviceCollection.AddSingleton<TotpService>();
             serviceCollection.AddSingleton<EmailOtpService>();
             serviceCollection.AddHttpContextAccessor();
@@ -248,8 +247,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<MfaAuditService>();
             serviceCollection.AddSingleton<IMfaAuditService>(sp => sp.GetRequiredService<MfaAuditService>());
 
-
-            serviceCollection.RegisterBlocksMailService();
 
             #endregion
 

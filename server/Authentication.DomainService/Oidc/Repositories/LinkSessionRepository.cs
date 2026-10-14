@@ -1,23 +1,23 @@
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
-using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
 namespace Authentication.DomainService.Oidc.Repositories;
 
-public sealed class LinkSessionRepository : ILinkSessionRepository
+/// <summary>
+/// MongoDB fallback for link sessions written by older pods during a rolling deploy: read, and delete
+/// on logout / password login. New sessions live in Redis (<see cref="RedisLinkSessionStore"/>).
+/// A delete on a dropped collection does not create it.
+/// </summary>
+public sealed class LinkSessionRepository
 {
     public const string CollectionName = "LinkSessions";
 
     private readonly IDbContextProvider _dbContextProvider;
-    private readonly ILogger<LinkSessionRepository> _logger;
 
-    public LinkSessionRepository(
-        IDbContextProvider dbContextProvider,
-        ILogger<LinkSessionRepository> logger)
+    public LinkSessionRepository(IDbContextProvider dbContextProvider)
     {
         _dbContextProvider = dbContextProvider;
-        _logger = logger;
     }
 
     private IMongoDatabase GetDatabase() =>
@@ -26,29 +26,6 @@ public sealed class LinkSessionRepository : ILinkSessionRepository
 
     private IMongoCollection<LinkSessionModel> Collection =>
         GetDatabase().GetCollection<LinkSessionModel>(CollectionName);
-
-    public async Task EnsureIndexesAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            var keys = Builders<LinkSessionModel>.IndexKeys;
-            await Collection.Indexes.CreateOneAsync(
-                new CreateIndexModel<LinkSessionModel>(
-                    keys.Ascending(x => x.ExpiresAtUtc),
-                    new CreateIndexOptions { Name = "ix_expires", ExpireAfter = TimeSpan.Zero }),
-                cancellationToken: ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "LinkSessionRepository.EnsureIndexesAsync failed");
-        }
-    }
-
-    public async Task CreateAsync(LinkSessionModel session)
-    {
-        await Collection.InsertOneAsync(session);
-        _logger.LogInformation("Link session created");
-    }
 
     public async Task<LinkSessionModel?> GetBySessionIdAsync(string sessionId)
     {
@@ -59,5 +36,15 @@ public sealed class LinkSessionRepository : ILinkSessionRepository
 
         var filter = Builders<LinkSessionModel>.Filter.Eq(x => x.SessionId, sessionId);
         return await Collection.Find(filter).FirstOrDefaultAsync();
+    }
+
+    public async Task DeleteAsync(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            return;
+        }
+
+        await Collection.DeleteOneAsync(Builders<LinkSessionModel>.Filter.Eq(x => x.SessionId, sessionId));
     }
 }

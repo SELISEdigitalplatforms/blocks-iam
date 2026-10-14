@@ -7,6 +7,7 @@ using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth.Services
 {

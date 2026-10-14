@@ -13,6 +13,8 @@ using Idp.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using System.IdentityModel.Tokens.Jwt;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -24,8 +26,13 @@ namespace Authentication.DomainService.Authentication
     /// </summary>
     public sealed class AuthorizationCodeExchangeService
     {
+        /// <summary>Revoke reason for the tokens of a code that was used a second time.</summary>
+        public const string AuthorizationCodeReuseReason = "authorization_code_reuse";
+
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
+        private readonly ITokenRevocationRepository _tokenRevocationRepo;
+        private readonly ICacheClient _cacheClient;
         private readonly ITokenGenerationService _tokenService;
         private readonly IPkceService _pkceService;
         private readonly IUserRepository _userRepository;
@@ -43,10 +50,14 @@ namespace Authentication.DomainService.Authentication
             IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
             ITenants tenants,
+            ITokenRevocationRepository tokenRevocationRepo,
+            ICacheClient cacheClient,
             ILogger<AuthorizationCodeExchangeService> logger)
         {
             _authCodeRepo = authCodeRepo;
             _refreshTokenRepo = refreshTokenRepo;
+            _tokenRevocationRepo = tokenRevocationRepo;
+            _cacheClient = cacheClient;
             _tokenService = tokenService;
             _pkceService = pkceService;
             _userRepository = userRepository;
@@ -240,6 +251,24 @@ namespace Authentication.DomainService.Authentication
             var idToken = await _tokenService.GenerateIdTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer, false, idpSessionId);
+            var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
+
+            // Record what this code minted before any cookie or answer leaves, so a reuse can revoke it.
+            // If the code was reused (or is gone) meanwhile, these tokens are revoked and never handed out.
+            var mint = new AuthorizationCodeMint
+            {
+                LineageId = refreshTokenModel.EffectiveRefreshTokenSessionId,
+                Jti = ReadJti(accessToken),
+                UserId = authCode.UserId,
+                AccessExpiresAt = accessExpiry
+            };
+            if (!await _authCodeRepo.RecordMintAsync(authCode, mint))
+            {
+                _logger.LogWarning("Authorization code reuse refused for client {ClientId}", clientId);
+                await _cacheClient.RemoveKeyAsync(refreshTokenModel.TokenId);
+                await RevokeMintAsync(mint);
+                return OidcExchangeResult.FromError(InvalidCode());
+            }
 
             // UnifiedTokenSessionService.CreateOrRotateRefreshToken (called inside GenerateRefreshTokenAsync)
             // already persisted this refresh token to MongoDB with full SessionId/ClientId metadata.
@@ -249,7 +278,6 @@ namespace Authentication.DomainService.Authentication
             _logger.LogInformation("Tokens issued for user {UserId}, client {ClientId}", authCode.UserId, clientId);
 
             var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request);
-            var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
             var refreshExpiry = refreshTokenModel.AbsoluteExpiry == default
                 ? DateTime.UtcNow.AddMinutes(absoluteRefreshTokenLifetimeMinutes)
                 : refreshTokenModel.AbsoluteExpiry;
@@ -366,15 +394,49 @@ namespace Authentication.DomainService.Authentication
 
             // Last check before tokens are minted, so a code is only spent by a request that passed
             // every other check. A second redemption of the same code is refused.
-            if (!await _authCodeRepo.TryConsumeAsync(code))
+            var consumed = await _authCodeRepo.TryConsumeAsync(authCode);
+            if (consumed != AuthorizationCodeConsumeResult.Consumed)
             {
                 _logger.LogWarning("Authorization code reuse refused for client {ClientId}", clientId);
-                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" })), null, null, null);
+                if (consumed == AuthorizationCodeConsumeResult.Reused)
+                {
+                    // Only the tokens minted from this code; other sessions of the user stay.
+                    var minted = await _authCodeRepo.MarkReusedAsync(authCode);
+                    if (minted != null)
+                    {
+                        await RevokeMintAsync(minted);
+                    }
+                }
+                return (OidcExchangeResult.FromError(InvalidCode()), null, null, null);
             }
 
             var effectiveTenantId = authCode.TenantId ?? tenantId ?? "default";
             return (null, authCode, user, effectiveTenantId);
         }
+        private static BadRequestObjectResult InvalidCode() =>
+            new(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" });
+
+        /// <summary>
+        /// Revokes the refresh-token lineage (MongoDB + Redis refresh cache) and the access token's jti.
+        /// The access token itself still works at the APIs until it expires; only introspection sees it.
+        /// </summary>
+        private async Task RevokeMintAsync(AuthorizationCodeMint mint)
+        {
+            await _refreshTokenRepo.RevokeLineageAndEvictAsync(mint.LineageId, AuthorizationCodeReuseReason);
+            if (!string.IsNullOrWhiteSpace(mint.Jti))
+            {
+                await _tokenRevocationRepo.RevokeTokenAsync(mint.Jti, mint.UserId, AuthorizationCodeReuseReason, mint.AccessExpiresAt);
+            }
+        }
+
+        private static string ReadJti(string accessToken)
+        {
+            var handler = new JwtSecurityTokenHandler();
+            return !string.IsNullOrWhiteSpace(accessToken) && handler.CanReadToken(accessToken)
+                ? handler.ReadJwtToken(accessToken).Id
+                : string.Empty;
+        }
+
         private static bool AppendAccessAndRefreshTokenCookies(
             HttpResponse response,
             string tokenDomain,

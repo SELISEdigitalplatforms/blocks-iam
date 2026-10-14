@@ -15,6 +15,7 @@ using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Moq;
 using StorageDriver;
+using Blocks.Genesis.Entities.Iam;
 using MfaConfiguration = Mfa.DomainService.Configuration.Configuration;
 using UserActivityEvent = Iam.DomainService.Dtos.UserActivityEvent;
 
@@ -33,7 +34,6 @@ namespace XUnitTest.ApiTests
 
         private readonly Mock<IMfaManagementService> _mfaManagement = new();
         private readonly Mock<IMfaConfigurationService> _mfaConfig = new();
-        private readonly Mock<IMfaBackupCodeService> _backupCodes = new();
         private readonly Mock<IMfaAuditService> _audit = new();
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
         private readonly Mock<IUserActivityDispatcher> _dispatcher = new();
@@ -80,7 +80,6 @@ namespace XUnitTest.ApiTests
             var controller = new MfaController(
                 _mfaManagement.Object,
                 _mfaConfig.Object,
-                _backupCodes.Object,
                 _audit.Object,
                 _authRepo.Object,
                 BuildTotpService(),
@@ -452,142 +451,19 @@ namespace XUnitTest.ApiTests
             _dispatcher.Verify(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
         }
 
-        // ---------- GetBackupCodesStatus ----------
+        // ---------- backup codes removed (owner decision 2026-10-14) ----------
 
         [Fact]
-        public async Task GetBackupCodesStatus_NoUser_ReturnsUnauthorized()
+        public void BackupCodeRoutes_AreGone()
         {
-            BlocksContext.SetContext(null);
+            var templates = typeof(MfaController).GetMethods()
+                .SelectMany(m => m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute), false)
+                    .Cast<Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute>())
+                .Select(a => a.Template ?? string.Empty)
+                .ToList();
 
-            var result = await CreateController().GetBackupCodesStatus();
-
-            result.Should().BeOfType<UnauthorizedResult>();
-        }
-
-        [Fact]
-        public async Task GetBackupCodesStatus_ReturnsOkWithRemaining()
-        {
-            _backupCodes.Setup(b => b.GetRemainingCountAsync(ActorUserId, It.IsAny<CancellationToken>())).ReturnsAsync(4);
-
-            var result = await CreateController().GetBackupCodesStatus();
-
-            result.Should().BeOfType<OkObjectResult>();
-        }
-
-        // ---------- GenerateBackupCodes ----------
-
-        [Fact]
-        public async Task GenerateBackupCodes_NoUser_ReturnsUnauthorized()
-        {
-            BlocksContext.SetContext(null);
-
-            var result = await CreateController().GenerateBackupCodes();
-
-            result.Should().BeOfType<UnauthorizedResult>();
-        }
-
-        [Fact]
-        public async Task GenerateBackupCodes_BackupDisabled_ReturnsBadRequest()
-        {
-            _mfaConfig.Setup(c => c.GetAsync()).ReturnsAsync(new MfaConfiguration { AllowBackupCodes = false });
-
-            var result = await CreateController().GenerateBackupCodes();
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task GenerateBackupCodes_NotEnrolled_ReturnsBadRequest()
-        {
-            _mfaConfig.Setup(c => c.GetAsync()).ReturnsAsync(new MfaConfiguration { AllowBackupCodes = true, BackupCodesCount = 5 });
-            _authRepo.Setup(r => r.GetUserByIdAsync(ActorUserId))
-                .ReturnsAsync(new User { ItemId = ActorUserId, MfaEnabled = false });
-
-            var result = await CreateController().GenerateBackupCodes();
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task GenerateBackupCodes_GenerateFails_ReturnsBadRequest()
-        {
-            _mfaConfig.Setup(c => c.GetAsync()).ReturnsAsync(new MfaConfiguration { AllowBackupCodes = true, BackupCodesCount = 5 });
-            _authRepo.Setup(r => r.GetUserByIdAsync(ActorUserId))
-                .ReturnsAsync(new User { ItemId = ActorUserId, MfaEnabled = true });
-            _backupCodes.Setup(b => b.GenerateAsync(ActorUserId, 5, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new MfaBackupCodeGenerationResult { IsSuccess = false, Errors = new Dictionary<string, string> { { "e", "x" } } });
-
-            var result = await CreateController().GenerateBackupCodes();
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task GenerateBackupCodes_Success_ReturnsOkWithCodes()
-        {
-            _mfaConfig.Setup(c => c.GetAsync()).ReturnsAsync(new MfaConfiguration { AllowBackupCodes = true, BackupCodesCount = 3 });
-            _authRepo.Setup(r => r.GetUserByIdAsync(ActorUserId))
-                .ReturnsAsync(new User { ItemId = ActorUserId, MfaEnabled = true });
-            _backupCodes.Setup(b => b.GenerateAsync(ActorUserId, 3, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new MfaBackupCodeGenerationResult { IsSuccess = true, PlainCodes = new List<string> { "a", "b", "c" } });
-
-            var result = await CreateController().GenerateBackupCodes();
-
-            result.Should().BeOfType<OkObjectResult>();
-            _backupCodes.Verify(b => b.GenerateAsync(ActorUserId, 3, It.IsAny<CancellationToken>()), Times.Once);
-        }
-
-        // ---------- ConsumeBackupCode ----------
-
-        [Fact]
-        public async Task ConsumeBackupCode_MissingFields_ReturnsBadRequest()
-        {
-            var result = await CreateController().ConsumeBackupCode(new ConsumeBackupCodeRequest { UserId = "", Code = "" });
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task ConsumeBackupCode_Invalid_ReturnsBadRequest()
-        {
-            _backupCodes.Setup(b => b.ConsumeAsync("u-1", "code-1", It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new MfaBackupCodeConsumeResult { IsValid = false, Errors = new Dictionary<string, string> { { "e", "x" } } });
-
-            var result = await CreateController().ConsumeBackupCode(new ConsumeBackupCodeRequest { UserId = "u-1", Code = "code-1" });
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task ConsumeBackupCode_Valid_ReturnsOk()
-        {
-            _backupCodes.Setup(b => b.ConsumeAsync("u-1", "code-1", It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new MfaBackupCodeConsumeResult { IsValid = true, UserId = "u-1" });
-
-            var result = await CreateController().ConsumeBackupCode(new ConsumeBackupCodeRequest { UserId = "u-1", Code = "code-1" });
-
-            result.Should().BeOfType<OkObjectResult>();
-            _backupCodes.Verify(b => b.ConsumeAsync("u-1", "code-1", It.IsAny<CancellationToken>()), Times.Once);
-        }
-
-        [Fact]
-        public async Task ConsumeBackupCode_ServiceThrows_ReturnsBadRequestNot500()
-        {
-            _backupCodes.Setup(b => b.ConsumeAsync("u-1", "code-1", It.IsAny<CancellationToken>()))
-                .ThrowsAsync(new InvalidOperationException("db unavailable"));
-
-            var result = await CreateController().ConsumeBackupCode(new ConsumeBackupCodeRequest { UserId = "u-1", Code = "code-1" });
-
-            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
-            bad.StatusCode.Should().Be(400);
-        }
-
-        [Fact]
-        public async Task ConsumeBackupCode_NullBody_ReturnsBadRequest()
-        {
-            var result = await CreateController().ConsumeBackupCode(null);
-
-            result.Should().BeOfType<BadRequestObjectResult>();
+            templates.Should().NotBeEmpty();
+            templates.Should().NotContain(t => t.Contains("backup", StringComparison.OrdinalIgnoreCase));
         }
     }
 }

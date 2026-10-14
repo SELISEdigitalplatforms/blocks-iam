@@ -5,6 +5,7 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Services
 {
@@ -47,10 +48,7 @@ namespace Authentication.DomainService.Services
         /// behalf of an administrator must check <c>OrganizationAccessScope.Allows</c> themselves.
         /// </remarks>
         Task<ClientCredential> GetClientCredentialByIdAsync(string clientId);
-        Task<UserCode> GetUserCodeAsync(string code);
         Task<BlocksClientConfig> GetBlocksClientAsync(string clientId);
-        Task SaveUserCodeByClientAsync(UserCode userCode);
-        Task<List<GetUserCodesByUserIdResponse>> GetUserCodesByUserIdAsync(string userId);
         Task<BaseResponse> SaveClientCredentialAsync(ClientCredential clientCredential);
         Task DeleteClientCredentialAsync(DeleteClientCredentialRequest request);
         Task<List<ClientCredential>> GetClientCredentialsAsync(string? organizationId);

@@ -4,6 +4,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -199,6 +200,39 @@ namespace Authentication.DomainService.Oidc.Repositories
 
             var result = await collection.UpdateManyAsync(filter, update);
             return (int)result.ModifiedCount;
+        }
+
+        public async Task<int> RevokeLineageAndEvictAsync(string refreshTokenSessionId, string reason)
+        {
+            if (string.IsNullOrWhiteSpace(refreshTokenSessionId))
+            {
+                return 0;
+            }
+
+            var revoked = await RevokeAllByRefreshTokenSessionIdAsync(refreshTokenSessionId, reason);
+
+            // Every refresh token is cached from the moment it is made, and a cache hit is not checked
+            // against IsRevoked, so the revoke only stops the lineage once its keys are gone. All tokens
+            // of the lineage, revoked or not: that covers a token rotated since the mint.
+            var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+            var b = Builders<RefreshTokenModel>.Filter;
+            var lineage = b.Or(
+                b.Eq(t => t.RefreshTokenSessionId, refreshTokenSessionId),
+                b.And(
+                    b.Eq(t => t.TokenId, refreshTokenSessionId),
+                    b.Or(
+                        b.Eq(t => t.RefreshTokenSessionId, null),
+                        b.Exists(t => t.RefreshTokenSessionId, false))));
+            var tokenIds = await collection.Find(lineage)
+                .Project(t => t.TokenId)
+                .ToListAsync();
+
+            foreach (var tokenId in tokenIds.Where(id => !string.IsNullOrWhiteSpace(id)))
+            {
+                await _cacheClient.RemoveKeyAsync(tokenId);
+            }
+
+            return revoked;
         }
 
         public async Task<int> RevokeSupersededLoginLineagesAsync(

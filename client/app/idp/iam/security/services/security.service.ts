@@ -3,8 +3,6 @@ import { SECURITY_ENDPOINTS } from "../constants/security-endpoints";
 import type {
   IActivityPageResponseApi,
   IGetActivitiesPayload,
-  IGeneratePATPayload,
-  IPATApi,
   IRevokeSessionResponseApi,
   ISecuritySummaryApi,
   ISessionDetailsApi,
@@ -68,14 +66,6 @@ export class SecurityService {
         ...(payload.filter ? { filter: payload.filter } : {}),
       },
     );
-  }
-
-  getPats(): Promise<IPATApi[]> {
-    return serviceInstances.idpService.get(SECURITY_ENDPOINTS.GET_USER_CODES);
-  }
-
-  generatePats(payload: IGeneratePATPayload): Promise<IPATApi[]> {
-    return serviceInstances.idpService.post(SECURITY_ENDPOINTS.GENERATE_USER_CODE, payload);
   }
 }
 

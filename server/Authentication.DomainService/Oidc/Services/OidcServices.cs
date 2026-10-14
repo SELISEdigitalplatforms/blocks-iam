@@ -14,6 +14,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Iam.DomainService.Entities;
 using Authentication.DomainService.Shared;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Idp.DomainService.Oidc.Services;
 
@@ -21,7 +22,7 @@ public interface ITokenGenerationService
 {
     Task<string> GenerateIdTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
     Task<string> GenerateAccessTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
-    Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null);
+    Task<RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null);
 }
 
 public interface IPkceService
@@ -100,7 +101,7 @@ public sealed class OidcSigningKeyMaterial
         return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: false);
     }
 
-        public async Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null)
+        public async Task<RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null)
         {
             // UnifiedTokenSessionService handles all logic. This method is now a thin adapter only.
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
@@ -132,7 +133,7 @@ public sealed class OidcSigningKeyMaterial
                 visitorsIpAddresses,
                 isImpersonation
             );
-            return new Contracts.RefreshTokenModel
+            return new RefreshTokenModel
             {
                 TokenId = refreshToken,
                 UserId = claims.Sub,

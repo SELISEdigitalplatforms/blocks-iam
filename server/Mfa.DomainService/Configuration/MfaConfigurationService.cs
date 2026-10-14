@@ -1,4 +1,6 @@
-﻿using Mfa.DomainService.Services;
+﻿using Blocks.Genesis;
+using Mfa.DomainService.Services;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Mfa.DomainService.Configuration
 {
@@ -7,16 +9,24 @@ namespace Mfa.DomainService.Configuration
         private const string DefaultConfigName = "Default";
         private const int DefaultBackupCodesCount = 10;
 
-        private readonly IMfaManagementRepository _repository;
+        /// <summary>The key of the MFA policy row in the tenant database's <c>KeyValueStores</c>.</summary>
+        public const string StoreKey = "mfa-config";
 
-        public MfaConfigurationService(IMfaManagementRepository repository)
+        private readonly IMfaManagementRepository _repository;
+        private readonly IKeyValueStore _keyValueStore;
+
+        public MfaConfigurationService(IMfaManagementRepository repository, IKeyValueStore keyValueStore)
         {
             _repository = repository;
+            _keyValueStore = keyValueStore;
         }
 
         public async Task<Configuration?> GetAsync()
         {
-            var repoConfiguration = await _repository.GetItemAsync<MfaConfiguration>(m => m.Name == DefaultConfigName);
+            // A read error throws, as it always did. It never turns into "MFA off".
+            var repoConfiguration = await _keyValueStore.GetAsync<MfaConfiguration>(StoreKey)
+                // Not saved to the store yet (before the migration): the old document.
+                ?? await _repository.GetItemAsync<MfaConfiguration>(m => m.Name == DefaultConfigName);
 
             if (repoConfiguration == null)
             {
@@ -44,7 +54,8 @@ namespace Mfa.DomainService.Configuration
 
         public async Task SaveAsync(Configuration configuration)
         {
-            var existing = await _repository.GetItemAsync<MfaConfiguration>(m => m.Name == DefaultConfigName);
+            var existing = await _keyValueStore.GetAsync<MfaConfiguration>(StoreKey)
+                ?? await _repository.GetItemAsync<MfaConfiguration>(m => m.Name == DefaultConfigName);
 
             if (existing == null)
             {
@@ -68,7 +79,8 @@ namespace Mfa.DomainService.Configuration
             existing.BackupCodesCount = configuration.BackupCodesCount;
             existing.LastUpdatedDate = DateTime.UtcNow;
 
-            await _repository.UpsertAsync(existing, m => m.Name == DefaultConfigName);
+            // The tenant database of the context (never the root database), and never the old collection.
+            await _keyValueStore.SetAsync(StoreKey, existing);
         }
     }
 }

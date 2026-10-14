@@ -16,6 +16,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {

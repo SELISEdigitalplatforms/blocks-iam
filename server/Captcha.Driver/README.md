@@ -33,7 +33,7 @@ MongoDB-backed secret storage; all in a single NuGet package.
 - **Two-source configuration**: reads from the blocks-os `keyValueStores` collection,
   falling back to the legacy shared `Secrets` document.
 - **Key Vault backed secrets**: follows the stored `SecretId` into Azure Key Vault,
-  with a 30-minute cache and fail-closed behaviour.
+  reads the value from Blocks Secrets on every call; never caches it; fails closed.
 - **DI-friendly**: single extension method registers every dependency.
 - **Validated inputs**: `FluentValidation` rules for submit requests.
 - **Strongly-typed**: `System.Text.Json` deserialization for provider responses.
@@ -137,7 +137,7 @@ Written by **blocks-os**. One entry per configuration in the **tenant** database
 
 The secret itself is **not** here. `SecretId` points at an entry in the secret store, whose
 value lives in Azure Key Vault and is read through `ICaptchaSecretResolver` at verification
-time. That resolver caches the plaintext for 30 minutes and fails closed — returning `null`,
+time. That resolver reads the value from Blocks Secrets on every call, never caches it, and fails closed — returning `null`,
 never an exception — when the value cannot be obtained.
 
 blocks-os enforces no single-enabled constraint, so when several records are enabled the driver

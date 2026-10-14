@@ -3,6 +3,7 @@ using FluentAssertions;
 using Iam.DomainService.Dtos;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {

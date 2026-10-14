@@ -10,6 +10,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {
@@ -171,29 +172,138 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
-        public async Task PropagateAsync_Create_MultiOrgEnabledWithOrganizations_RecordsFailureFromDuplicateId()
+        public async Task PropagateAsync_Create_MultiOrgEnabledWithOrganizations_InsertsOneRowPerOrganization()
         {
-            // The multi-org branch reuses source.ItemId as the Bson _id for every per-org document, so the
-            // InsertMany collides with the base document just inserted and MongoDB rejects the batch. The
-            // per-org "succeeded" path is therefore not reachable against a real Mongo; this asserts the
-            // real observed behavior (a recorded tenant failure) rather than the intended one.
             var dbName = NewDatabaseName();
             SetupSourcePermission();
             SetupSingleTarget(dbName);
 
             await _client.GetDatabase(dbName).GetCollection<BsonDocument>("TenantConfigurations")
                 .InsertOneAsync(new BsonDocument { { "_id", "cfg-1" }, { "IsMultiOrgEnabled", true } });
-            await _client.GetDatabase(dbName).GetCollection<BsonDocument>("Organizations").InsertManyAsync(new[]
+            await SeedOrganizationsAsync(dbName);
+
+            var summary = await CreateSut().PropagateAsync(Event(MutationEventType.Create));
+
+            summary.TenantsSucceeded.Should().Be(1);
+            summary.Results[0].DocumentsAffected.Should().Be(2);
+            var rows = await PermissionRowsAsync(dbName);
+            rows.Should().HaveCount(3);
+            rows.Select(r => r["_id"].AsString).Distinct().Should().HaveCount(3);
+            rows.Single(r => r["OrganizationId"] == "default")["_id"].AsString.Should().Be("perm-1");
+            foreach (var org in new[] { "org-1", "org-2" })
+            {
+                var row = rows.Single(r => r["OrganizationId"] == org);
+                row["ItemId"].AsString.Should().Be(row["_id"].AsString);
+            }
+        }
+
+        [Fact]
+        public async Task PropagateAsync_Create_MultiOrgEnabledWithOrganizations_RerunAddsNoDuplicates()
+        {
+            var dbName = NewDatabaseName();
+            SetupSourcePermission();
+            SetupSingleTarget(dbName);
+
+            await _client.GetDatabase(dbName).GetCollection<BsonDocument>("TenantConfigurations")
+                .InsertOneAsync(new BsonDocument { { "_id", "cfg-1" }, { "IsMultiOrgEnabled", true } });
+            await SeedOrganizationsAsync(dbName);
+
+            await CreateSut().PropagateAsync(Event(MutationEventType.Create));
+            var second = await CreateSut().PropagateAsync(Event(MutationEventType.Create));
+
+            second.TenantsSucceeded.Should().Be(1);
+            second.Results[0].DocumentsAffected.Should().Be(0);
+            (await PermissionRowsAsync(dbName)).Should().HaveCount(3);
+        }
+
+        private Task<List<BsonDocument>> PermissionRowsAsync(string dbName) =>
+            _client.GetDatabase(dbName).GetCollection<BsonDocument>("Permissions")
+                .Find(Builders<BsonDocument>.Filter.Eq("Resource", Resource)).ToListAsync();
+
+        // ---------- IsMultiOrgEnabled read through TenantConfigurationStore (SPEC1 3.3, C16 / I8) ----------
+
+        private Task SeedOrganizationsAsync(string dbName) =>
+            _client.GetDatabase(dbName).GetCollection<BsonDocument>("Organizations").InsertManyAsync(new[]
             {
                 new BsonDocument { { "_id", "org-1" }, { "ItemId", "org-1" }, { "Name", "Org 1" } },
                 new BsonDocument { { "_id", "org-2" }, { "ItemId", "org-2" }, { "Name", "Org 2" } }
             });
 
+        [Fact]
+        public async Task PropagateAsync_Create_MultiOrgFlagOnlyInTheIdentityField_ReachesTheOrganizationBranch()
+        {
+            // After seed/tenant cleanup the old TenantConfigurations collection is gone and only the field
+            // exists. The propagator must still see IsMultiOrgEnabled and go on to the organizations (the
+            // same branch as the old-collection test above).
+            var dbName = NewDatabaseName();
+            SetupSourcePermission();
+            SetupSingleTarget(dbName);
+            await _client.GetDatabase(dbName).GetCollection<BsonDocument>("IdentityConfigurations")
+                .InsertOneAsync(new BsonDocument
+                {
+                    { "_id", ObjectId.GenerateNewId() },
+                    { "TenantConfiguration", new BsonDocument { { "_id", "cfg-1" }, { "IsMultiOrgEnabled", true } } }
+                });
+            await SeedOrganizationsAsync(dbName);
+
             var summary = await CreateSut().PropagateAsync(Event(MutationEventType.Create));
 
-            summary.TenantsAttempted.Should().Be(1);
-            summary.TenantsFailed.Should().Be(1);
-            summary.Results[0].Success.Should().BeFalse();
+            summary.TenantsSucceeded.Should().Be(1);   // org branch reached: one row per org
+            summary.Results[0].DocumentsAffected.Should().Be(2);
+            (await _client.GetDatabase(dbName).ListCollectionNames().ToListAsync()).Should().NotContain("TenantConfigurations");
+        }
+
+        [Fact]
+        public async Task PropagateAsync_Create_FieldMissing_ReadsTheOldCollection()
+        {
+            var dbName = NewDatabaseName();
+            SetupSourcePermission();
+            SetupSingleTarget(dbName);
+            await _client.GetDatabase(dbName).GetCollection<BsonDocument>("IdentityConfigurations")
+                .InsertOneAsync(new BsonDocument { { "_id", ObjectId.GenerateNewId() }, { "Other", 1 } });
+            await _client.GetDatabase(dbName).GetCollection<BsonDocument>("TenantConfigurations")
+                .InsertOneAsync(new BsonDocument { { "_id", "cfg-1" }, { "IsMultiOrgEnabled", true } });
+            await SeedOrganizationsAsync(dbName);
+
+            var summary = await CreateSut().PropagateAsync(Event(MutationEventType.Create));
+
+            summary.TenantsSucceeded.Should().Be(1);   // org branch reached via the fallback read
+            summary.Results[0].DocumentsAffected.Should().Be(2);
+        }
+
+        [Fact]
+        public async Task PropagateAsync_Create_FieldSaysSingleOrg_DoesNotPropagateToOrganizations()
+        {
+            var dbName = NewDatabaseName();
+            SetupSourcePermission();
+            SetupSingleTarget(dbName);
+            await _client.GetDatabase(dbName).GetCollection<BsonDocument>("IdentityConfigurations")
+                .InsertOneAsync(new BsonDocument
+                {
+                    { "_id", ObjectId.GenerateNewId() },
+                    { "TenantConfiguration", new BsonDocument { { "_id", "cfg-1" }, { "IsMultiOrgEnabled", false } } }
+                });
+            await SeedOrganizationsAsync(dbName);
+
+            var summary = await CreateSut().PropagateAsync(Event(MutationEventType.Create));
+
+            summary.TenantsSucceeded.Should().Be(1);
+            summary.Results[0].DocumentsAffected.Should().Be(1);
+        }
+
+        [Fact]
+        public async Task PropagateAsync_Create_NoConfigurationAnywhere_DoesNotPropagateToOrganizations_AsToday()
+        {
+            var dbName = NewDatabaseName();
+            SetupSourcePermission();
+            SetupSingleTarget(dbName);
+            await SeedOrganizationsAsync(dbName);
+
+            var summary = await CreateSut().PropagateAsync(Event(MutationEventType.Create));
+
+            summary.TenantsSucceeded.Should().Be(1);
+            summary.Results[0].DocumentsAffected.Should().Be(1);
+            (await _client.GetDatabase(dbName).ListCollectionNames().ToListAsync()).Should().NotContain("TenantConfigurations");
         }
 
         // ---------- Update ----------

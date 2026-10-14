@@ -8,6 +8,7 @@ using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Entities;
 using Idp.DomainService.Oidc.Contracts;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Shared
 {

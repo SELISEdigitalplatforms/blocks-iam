@@ -7,6 +7,7 @@ using Iam.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.SignupLinks;
 

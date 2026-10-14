@@ -1,4 +1,5 @@
 ﻿using Iam.DomainService.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Mfa.DomainService.Services
 {

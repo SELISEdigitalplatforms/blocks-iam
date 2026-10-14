@@ -8,6 +8,7 @@ using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {
@@ -145,6 +146,22 @@ namespace XUnitTest.Auth.Shared
 
             result.Should().NotBeNull();
             ttl.Should().BeInRange(1, 45);
+        }
+
+        [Fact]
+        public async Task CacheEvictedAfterAuthorizationCodeReuse_GoesToMongo_AndIsRejected_WithoutReuseHandling()
+        {
+            // iam SPEC2: the reuse revoke evicts the cache entry, so the next refresh reads MongoDB and
+            // finds the token revoked for a reason other than rotation.
+            CacheMiss();
+            Persisted(Token("rt-1", isRevoked: true, revokeReason: "authorization_code_reuse", revokedAt: DateTime.UtcNow));
+
+            var result = await Sut().TryResolveRefreshSessionAsync("rt-1", Config());
+
+            result.Should().BeNull();
+            _repo.Verify(r => r.GetByTokenIdAsync("rt-1"), Times.Once);
+            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
         }
 
         [Fact]

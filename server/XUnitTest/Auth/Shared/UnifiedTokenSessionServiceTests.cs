@@ -13,6 +13,7 @@ using Moq;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {
@@ -29,7 +30,7 @@ namespace XUnitTest.Auth.Shared
             var userRepo = new Mock<IUserRepository>();
             var httpContextAccessor = new Mock<IHttpContextAccessor>();
 
-            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()))
+            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()))
                 .ReturnsAsync("new-token");
             refreshRepo.Setup(r => r.RevokeByTokenIdAsync("old-token", "superseded_by_rotation"))
                 .ReturnsAsync(true);
@@ -90,7 +91,7 @@ namespace XUnitTest.Auth.Shared
                 AbsoluteRefreshTokenValidForNumberMinutes = 10080
             };
 
-            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Iam.DomainService.Dtos.DeviceInformation { Device = "Test" });
+            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Blocks.Genesis.Entities.Iam.DeviceInformation { Device = "Test" });
 
             var result = await service.CreateOrRotateRefreshToken(
                 "old-token",
@@ -119,7 +120,7 @@ namespace XUnitTest.Auth.Shared
             var userRepo = new Mock<IUserRepository>();
             var httpContextAccessor = new Mock<IHttpContextAccessor>();
 
-            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()))
+            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()))
                 .ReturnsAsync("new-token");
 
             idpSessionService.Setup(s => s.ResolveOrCreateAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
@@ -163,7 +164,7 @@ namespace XUnitTest.Auth.Shared
                 AbsoluteRefreshTokenValidForNumberMinutes = 10080
             };
 
-            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Iam.DomainService.Dtos.DeviceInformation { Device = "Test" });
+            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Blocks.Genesis.Entities.Iam.DeviceInformation { Device = "Test" });
 
             await service.CreateOrRotateRefreshToken(
                 null,
@@ -192,7 +193,7 @@ namespace XUnitTest.Auth.Shared
             var userRepo = new Mock<IUserRepository>();
             var httpContextAccessor = new Mock<IHttpContextAccessor>();
 
-            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()))
+            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()))
                 .ReturnsAsync("new-token");
             refreshRepo.Setup(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(true);
@@ -247,7 +248,7 @@ namespace XUnitTest.Auth.Shared
                 AbsoluteRefreshTokenValidForNumberMinutes = 10080
             };
 
-            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Iam.DomainService.Dtos.DeviceInformation { Device = "Test" });
+            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Blocks.Genesis.Entities.Iam.DeviceInformation { Device = "Test" });
 
             await service.CreateOrRotateRefreshToken(
                 "old-token",

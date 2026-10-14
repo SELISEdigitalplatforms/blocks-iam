@@ -19,7 +19,6 @@ namespace Mfa.DomainService.Utilities
             serviceCollection.AddSingleton<IOtpServiceFactory, OtpServiceFactory>();
             serviceCollection.AddSingleton<IMfaManagementRepository, MfaManagementRepository>();
             serviceCollection.AddSingleton<IMfaConfigurationService, MfaConfigurationService>();
-            serviceCollection.AddSingleton<IMfaBackupCodeService, MfaBackupCodeService>();
             serviceCollection.AddSingleton<TotpService>();
             serviceCollection.AddSingleton<EmailOtpService>();
             serviceCollection.AddHttpContextAccessor();
@@ -28,8 +27,6 @@ namespace Mfa.DomainService.Utilities
             #region Validators
             serviceCollection.AddTransient<IValidator<VerifyOtpRequest>, VerifyOtpRequestValidator>();
             #endregion
-
-            serviceCollection.RegisterBlocksMailService();
         }
     }
 }

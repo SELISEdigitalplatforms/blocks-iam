@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Primitives;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {
@@ -27,6 +28,8 @@ namespace XUnitTest.Auth
         private readonly Mock<IAuthorizationClaimsResolver> _claimsResolver = new();
         private readonly Mock<IAuthenticationRepository> _repo = new();
         private readonly Mock<ITenants> _tenants = new();
+        private readonly Mock<ITokenRevocationRepository> _tokenRevocation = new();
+        private readonly Mock<ICacheClient> _cache = new();
 
         public AuthorizationCodeExchangeServiceTests()
         {
@@ -48,19 +51,181 @@ namespace XUnitTest.Auth
                 .ReturnsAsync("access-token");
             _tokenService.Setup(t => t.GenerateRefreshTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>()))
                 .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-1", AbsoluteExpiry = DateTime.UtcNow.AddDays(30) });
-            _authCodeRepo.Setup(r => r.TryConsumeAsync(It.IsAny<string>())).ReturnsAsync(true);
+            _authCodeRepo.Setup(r => r.TryConsumeAsync(It.IsAny<AuthorizationCodeModel>())).ReturnsAsync(AuthorizationCodeConsumeResult.Consumed);
+            _authCodeRepo.Setup(r => r.RecordMintAsync(It.IsAny<AuthorizationCodeModel>(), It.IsAny<AuthorizationCodeMint>())).ReturnsAsync(true);
         }
 
         [Fact]
         public async Task Exchange_CodeAlreadyUsed_ReturnsInvalidGrantAndMintsNothing()
         {
             SetupValidExchange();
-            _authCodeRepo.Setup(r => r.TryConsumeAsync("auth-code")).ReturnsAsync(false);
+            _authCodeRepo.Setup(r => r.TryConsumeAsync(It.Is<AuthorizationCodeModel>(c => c.Code == "auth-code"))).ReturnsAsync(AuthorizationCodeConsumeResult.Refused);
 
             var result = await Create().ExchangeAsync(BuildContext().Request);
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error").Should().Be("invalid_grant");
+            _tokenService.Verify(t => t.GenerateAccessTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        }
+
+        // ---------- SPEC2: single use, reuse revoke, mint record ----------
+
+        private const string Jti = "jti-1";
+
+        private static string SignedAccessToken()
+        {
+            var token = new System.IdentityModel.Tokens.Jwt.JwtSecurityToken(
+                claims: new[] { new System.Security.Claims.Claim("jti", Jti), new System.Security.Claims.Claim("sub", "user-1") },
+                expires: DateTime.UtcNow.AddMinutes(5));
+            return new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        private void MintRealAccessToken() =>
+            _tokenService.Setup(t => t.GenerateAccessTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<int>()))
+                .ReturnsAsync(SignedAccessToken());
+
+        [Fact]
+        public async Task Exchange_FirstUse_RecordsMintWithLineageJtiAndUser_BeforeAnswer()
+        {
+            SetupValidExchange();
+            MintRealAccessToken();
+            _tokenService.Setup(t => t.GenerateRefreshTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>()))
+                .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-1", RefreshTokenSessionId = "lineage-1", AbsoluteExpiry = DateTime.UtcNow.AddDays(30) });
+            AuthorizationCodeMint? recorded = null;
+            _authCodeRepo.Setup(r => r.RecordMintAsync(It.IsAny<AuthorizationCodeModel>(), It.IsAny<AuthorizationCodeMint>()))
+                .Callback<AuthorizationCodeModel, AuthorizationCodeMint>((_, m) => recorded = m)
+                .ReturnsAsync(true);
+
+            var result = await Create().ExchangeAsync(BuildContext().Request);
+
+            result.Should().BeOfType<OkObjectResult>();
+            recorded.Should().NotBeNull();
+            recorded!.LineageId.Should().Be("lineage-1");
+            recorded.Jti.Should().Be(Jti);
+            recorded.UserId.Should().Be("user-1");
+            recorded.AccessExpiresAt.Should().BeAfter(DateTime.UtcNow);
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Exchange_ReadAndConsume_UseTheSameModel_SoOneStorePerRequest()
+        {
+            SetupValidExchange();
+            var mongoCode = ValidAuthCode();
+            mongoCode.Source = AuthorizationCodeSource.Mongo;
+            _authCodeRepo.Setup(r => r.GetByCodeAsync("auth-code")).ReturnsAsync(mongoCode);
+
+            await Create().ExchangeAsync(BuildContext().Request);
+
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.Is<AuthorizationCodeModel>(c => ReferenceEquals(c, mongoCode))), Times.Once);
+            _authCodeRepo.Verify(r => r.RecordMintAsync(It.Is<AuthorizationCodeModel>(c => ReferenceEquals(c, mongoCode)), It.IsAny<AuthorizationCodeMint>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Exchange_Reuse_RevokesOnlyThatCodesLineageAndJti_ReturnsTodaysInvalidGrant()
+        {
+            SetupValidExchange();
+            var expires = DateTime.UtcNow.AddMinutes(4);
+            _authCodeRepo.Setup(r => r.TryConsumeAsync(It.IsAny<AuthorizationCodeModel>())).ReturnsAsync(AuthorizationCodeConsumeResult.Reused);
+            _authCodeRepo.Setup(r => r.MarkReusedAsync(It.IsAny<AuthorizationCodeModel>()))
+                .ReturnsAsync(new AuthorizationCodeMint { LineageId = "lineage-1", Jti = Jti, UserId = "user-1", AccessExpiresAt = expires });
+
+            var result = await Create().ExchangeAsync(BuildContext().Request);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_grant");
+            Prop(bad.Value, "error_description").Should().Be("Authorization code is invalid or expired");
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "authorization_code_reuse"), Times.Once);
+            _tokenRevocation.Verify(r => r.RevokeTokenAsync(Jti, "user-1", "authorization_code_reuse", expires), Times.Once);
+            _tokenService.Verify(t => t.GenerateAccessTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+            // Other sessions of the user / IdP session are not touched.
+            _refreshTokenRepo.Verify(r => r.RevokeAllBySessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _refreshTokenRepo.Verify(r => r.RevokeSupersededLoginLineagesAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Exchange_Reuse_BeforeAnythingWasMinted_RevokesNothing()
+        {
+            SetupValidExchange();
+            _authCodeRepo.Setup(r => r.TryConsumeAsync(It.IsAny<AuthorizationCodeModel>())).ReturnsAsync(AuthorizationCodeConsumeResult.Reused);
+            _authCodeRepo.Setup(r => r.MarkReusedAsync(It.IsAny<AuthorizationCodeModel>())).ReturnsAsync((AuthorizationCodeMint?)null);
+
+            var result = await Create().ExchangeAsync(BuildContext().Request);
+
+            Prop(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value, "error").Should().Be("invalid_grant");
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _tokenRevocation.Verify(r => r.RevokeTokenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Exchange_RefusedConsume_MongoCodeOrKeyGone_OnlyInvalidGrant_NoReuseRule()
+        {
+            SetupValidExchange();
+            _authCodeRepo.Setup(r => r.TryConsumeAsync(It.IsAny<AuthorizationCodeModel>())).ReturnsAsync(AuthorizationCodeConsumeResult.Refused);
+
+            var result = await Create().ExchangeAsync(BuildContext().Request);
+
+            Prop(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value, "error").Should().Be("invalid_grant");
+            _authCodeRepo.Verify(r => r.MarkReusedAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Exchange_ReuseWonTheRaceAgainstTheMint_RevokesAndEvictsTheNewTokens_SetsNoCookie()
+        {
+            SetupValidExchange();
+            MintRealAccessToken();
+            _tokenService.Setup(t => t.GenerateRefreshTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>()))
+                .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-1", RefreshTokenSessionId = "lineage-1", AbsoluteExpiry = DateTime.UtcNow.AddDays(30) });
+            _authCodeRepo.Setup(r => r.RecordMintAsync(It.IsAny<AuthorizationCodeModel>(), It.IsAny<AuthorizationCodeMint>())).ReturnsAsync(false);
+            var tenant = new Tenant
+            {
+                TenantId = "tenant-1",
+                DbConnectionString = "",
+                Applications = new List<Applications>
+                {
+                    new() { Domain = "app.example.com", CookieDomain = ".example.com", IsDomainVerified = true }
+                },
+                JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = "", IssueDate = DateTime.UtcNow }
+            };
+            _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(tenant);
+            var ctx = BuildContext(origin: "https://app.example.com");
+
+            var result = await Create().ExchangeAsync(ctx.Request);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_grant");
+            ctx.Response.Headers.Should().NotContainKey("Set-Cookie");
+            _cache.Verify(c => c.RemoveKeyAsync("rt-1"), Times.Once);
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "authorization_code_reuse"), Times.Once);
+            _tokenRevocation.Verify(r => r.RevokeTokenAsync(Jti, "user-1", "authorization_code_reuse", It.IsAny<DateTime>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Exchange_RevokeFails_FailsTheRequest_NoRetry()
+        {
+            SetupValidExchange();
+            _authCodeRepo.Setup(r => r.TryConsumeAsync(It.IsAny<AuthorizationCodeModel>())).ReturnsAsync(AuthorizationCodeConsumeResult.Reused);
+            _authCodeRepo.Setup(r => r.MarkReusedAsync(It.IsAny<AuthorizationCodeModel>()))
+                .ReturnsAsync(new AuthorizationCodeMint { LineageId = "lineage-1", Jti = Jti, UserId = "user-1" });
+            _refreshTokenRepo.Setup(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ThrowsAsync(new TimeoutException("store down"));
+
+            var act = () => Create().ExchangeAsync(BuildContext().Request);
+
+            await act.Should().ThrowAsync<TimeoutException>();
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Exchange_StoreError_FailsTheRequest_NoTokens()
+        {
+            SetupValidExchange();
+            _authCodeRepo.Setup(r => r.GetByCodeAsync("auth-code")).ThrowsAsync(new TimeoutException("redis down"));
+
+            var act = () => Create().ExchangeAsync(BuildContext().Request);
+
+            await act.Should().ThrowAsync<TimeoutException>();
             _tokenService.Verify(t => t.GenerateAccessTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
         }
 
@@ -76,7 +241,7 @@ namespace XUnitTest.Auth
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error_description").Should().Be("PKCE code_verifier is required");
-            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<string>()), Times.Never);
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
         }
 
         private static OidcClientRegistration ConfidentialClient() => new()
@@ -96,7 +261,7 @@ namespace XUnitTest.Auth
 
             var unauthorized = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
             Prop(unauthorized.Value, "error").Should().Be("invalid_client");
-            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<string>()), Times.Never);
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
         }
 
         [Fact]
@@ -107,7 +272,7 @@ namespace XUnitTest.Auth
             var result = await Create().ExchangeAsync(BuildContext(clientSecret: "s3cret").Request);
 
             result.Should().NotBeOfType<UnauthorizedObjectResult>();
-            _authCodeRepo.Verify(r => r.TryConsumeAsync("auth-code"), Times.Once);
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.Is<AuthorizationCodeModel>(c => c.Code == "auth-code")), Times.Once);
         }
 
         [Fact]
@@ -118,7 +283,7 @@ namespace XUnitTest.Auth
             var result = await Create().ExchangeAsync(BuildContext(clientId: "", basicAuth: "cid:s3cret").Request);
 
             result.Should().NotBeOfType<UnauthorizedObjectResult>();
-            _authCodeRepo.Verify(r => r.TryConsumeAsync("auth-code"), Times.Once);
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.Is<AuthorizationCodeModel>(c => c.Code == "auth-code")), Times.Once);
         }
 
         [Fact]
@@ -130,7 +295,7 @@ namespace XUnitTest.Auth
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error_description").Should().Be("PKCE is required for public clients");
-            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<string>()), Times.Never);
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
         }
 
         public void Dispose()
@@ -141,7 +306,8 @@ namespace XUnitTest.Auth
 
         private AuthorizationCodeExchangeService Create() =>
             new(_authCodeRepo.Object, _refreshTokenRepo.Object, _tokenService.Object, _pkce.Object,
-                _userRepo.Object, _claimsResolver.Object, _repo.Object, _tenants.Object, NullLogger<AuthorizationCodeExchangeService>.Instance);
+                _userRepo.Object, _claimsResolver.Object, _repo.Object, _tenants.Object, _tokenRevocation.Object, _cache.Object,
+                NullLogger<AuthorizationCodeExchangeService>.Instance);
 
         private static DefaultHttpContext BuildContext(
             string code = "auth-code", string codeVerifier = "", string clientId = "cid",

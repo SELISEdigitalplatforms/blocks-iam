@@ -8,6 +8,7 @@ using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {

@@ -10,6 +10,7 @@ using FluentAssertions;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {

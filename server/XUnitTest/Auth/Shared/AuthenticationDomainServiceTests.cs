@@ -9,6 +9,7 @@ using FluentValidation;
 using FluentValidation.Results;
 using Moq;
 using System.Net.Http;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {
@@ -338,24 +339,6 @@ namespace XUnitTest.Auth.Shared
             result.IsSuccess.Should().BeTrue();
             result.ClientSecret.Should().NotBe("old");
             result.ClientSecret.Should().StartWith("blxsk_");
-        }
-
-        // ---------- GenerateUserCodeByClientAsync ----------
-
-        [Fact]
-        public async Task GenerateUserCode_EmptyClientId_ReturnsError()
-        {
-            var result = await Create().GenerateUserCodeByClientAsync(new GenerateUserCodeRequest { ClientId = "" });
-            result.Errors.Should().ContainKey("invalid_request");
-        }
-
-        [Fact]
-        public async Task GenerateUserCode_HappyPath_Saves()
-        {
-            _repo.Setup(r => r.SaveUserCodeByClientAsync(It.IsAny<UserCode>())).Returns(Task.CompletedTask);
-            var result = await Create().GenerateUserCodeByClientAsync(new GenerateUserCodeRequest { ClientId = "c1", Note = "n" });
-            result.IsSuccess.Should().BeTrue();
-            _repo.Verify(r => r.SaveUserCodeByClientAsync(It.Is<UserCode>(u => u.ClientId == "c1")), Times.Once);
         }
 
         // ---------- SaveClientCredentialAsync ----------

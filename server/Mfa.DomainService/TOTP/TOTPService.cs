@@ -14,6 +14,7 @@ using StorageDriver;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Mfa.DomainService.TOTP
 {

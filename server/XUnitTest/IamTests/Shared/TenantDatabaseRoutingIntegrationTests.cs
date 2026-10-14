@@ -14,6 +14,7 @@ using Mfa.DomainService.TOTP;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Shared;
 

@@ -5,6 +5,7 @@ using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.SignupLinks;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Resources
 {

@@ -12,6 +12,7 @@ using System.Text;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Resources;
 using Authentication.DomainService.OAuth.RequestModel;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth
 {

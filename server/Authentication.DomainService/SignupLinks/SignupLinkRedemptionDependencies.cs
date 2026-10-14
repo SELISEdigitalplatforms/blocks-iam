@@ -13,14 +13,14 @@ namespace Authentication.DomainService.SignupLinks;
 public sealed class SignupLinkRedemptionStores
 {
     public ISignupLinkRepository Links { get; }
-    public ISignupLinkRedemptionRepository Redemptions { get; }
+    public IUserActivityRepository Redemptions { get; }
     public ILinkSessionRepository LinkSessions { get; }
     public IUserRepository Users { get; }
     public IIdentityAccessManagementRepository Iam { get; }
 
     public SignupLinkRedemptionStores(
         ISignupLinkRepository links,
-        ISignupLinkRedemptionRepository redemptions,
+        IUserActivityRepository redemptions,
         ILinkSessionRepository linkSessions,
         IUserRepository users,
         IIdentityAccessManagementRepository iam)

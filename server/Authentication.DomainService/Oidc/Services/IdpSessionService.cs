@@ -11,6 +11,7 @@ using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Services
 {

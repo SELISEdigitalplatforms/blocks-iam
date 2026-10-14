@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Oidc
 {
@@ -301,7 +302,7 @@ namespace XUnitTest.Auth.Oidc
             };
             repo.Setup(r => r.GetByDeviceCodeHashAsync(hash, It.IsAny<CancellationToken>())).ReturnsAsync(entity);
             repo.Setup(r => r.MarkConsumedAsync("id1", It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-            userRepo.Setup(u => u.GetUserByIdAsync("user-1")).ReturnsAsync(new Iam.DomainService.Entities.User { ItemId = "user-1", Email = "x@y.z" });
+            userRepo.Setup(u => u.GetUserByIdAsync("user-1")).ReturnsAsync(new Blocks.Genesis.Entities.Iam.User { ItemId = "user-1", Email = "x@y.z" });
             authRepo.Setup(a => a.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(DeviceClient());
 
             var result = await svc.ExchangeAsync(BuildRequest(DeviceCode, "c1"));
@@ -324,7 +325,7 @@ namespace XUnitTest.Auth.Oidc
             };
             repo.Setup(r => r.GetByDeviceCodeHashAsync(hash, It.IsAny<CancellationToken>())).ReturnsAsync(entity);
             repo.Setup(r => r.MarkConsumedAsync("id2", It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-            userRepo.Setup(u => u.GetUserByIdAsync("user-2")).ReturnsAsync(new Iam.DomainService.Entities.User { ItemId = "user-2" });
+            userRepo.Setup(u => u.GetUserByIdAsync("user-2")).ReturnsAsync(new Blocks.Genesis.Entities.Iam.User { ItemId = "user-2" });
             authRepo.Setup(a => a.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(DeviceClient());
 
             var result = await svc.ExchangeAsync(BuildRequest(DeviceCode, "c1"));

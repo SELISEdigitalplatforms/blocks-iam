@@ -7,6 +7,7 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.SignupLinks;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.SignupLinks;
 

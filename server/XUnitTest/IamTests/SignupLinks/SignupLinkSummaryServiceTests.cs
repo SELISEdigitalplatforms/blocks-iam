@@ -2,8 +2,10 @@ using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
+using Iam.DomainService.Services;
 using Iam.DomainService.SignupLinks;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.SignupLinks;
 
@@ -11,7 +13,7 @@ public class SignupLinkSummaryServiceTests : IDisposable
 {
     private readonly Mock<ISignupLinkRepository> _links = new();
     private readonly Mock<ISignupLinkConfigurationRepository> _configs = new();
-    private readonly Mock<ISignupLinkRedemptionRepository> _redemptions = new();
+    private readonly Mock<IUserActivityRepository> _redemptions = new();
     private readonly Mock<IValidator<SignupLinkSummaryRequest>> _validator = new();
 
     private const string TenantId = "tenant-a";
@@ -103,8 +105,8 @@ public class SignupLinkSummaryServiceTests : IDisposable
         _links.Setup(l => l.FindForSummaryAsync(
                 TenantId, CfgId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
             .ReturnsAsync(new List<SignupLink>());
-        _redemptions.Setup(r => r.CountRejectedForLinksAsync(
-                It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<IEnumerable<string>>()))
+        _redemptions.Setup(r => r.CountSignupLinkRejectionsAsync(
+                It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(0);
 
         var before = DateTime.UtcNow;
@@ -140,9 +142,9 @@ public class SignupLinkSummaryServiceTests : IDisposable
         });
         _links.Setup(l => l.FindForSummaryAsync(TenantId, CfgId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
             .ReturnsAsync(links);
-        _redemptions.Setup(r => r.CountRejectedForLinksAsync(
+        _redemptions.Setup(r => r.CountSignupLinkRejectionsAsync(
                 TenantId, It.IsAny<DateTime>(), It.IsAny<DateTime>(),
-                It.IsAny<IEnumerable<string>>()))
+                It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(2);
 
         var (response, errors) = await Sut().SummarizeAsync(new SignupLinkSummaryRequest { ConfigurationId = CfgId });
@@ -294,8 +296,8 @@ public class SignupLinkSummaryServiceTests : IDisposable
             {
                 Link("secret-link", 0, SignupLinkStatus.Active, DateTime.UtcNow.AddDays(1))
             });
-        _redemptions.Setup(r => r.CountRejectedForLinksAsync(
-                It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<IEnumerable<string>>()))
+        _redemptions.Setup(r => r.CountSignupLinkRejectionsAsync(
+                It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(0);
 
         var (response, _) = await Sut().SummarizeAsync(new SignupLinkSummaryRequest { ConfigurationId = CfgId });
@@ -322,8 +324,8 @@ public class SignupLinkSummaryServiceTests : IDisposable
             {
                 Link("l1", 0, SignupLinkStatus.Active, DateTime.UtcNow.AddDays(1))
             });
-        _redemptions.Setup(r => r.CountRejectedForLinksAsync(
-                It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<IEnumerable<string>>()))
+        _redemptions.Setup(r => r.CountSignupLinkRejectionsAsync(
+                It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(0);
 
         var (response, errors) = await Sut().SummarizeAsync(new SignupLinkSummaryRequest { ConfigurationId = CfgId });

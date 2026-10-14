@@ -7,6 +7,7 @@ using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using Authentication.DomainService.Authentication;
+using Blocks.Genesis.Entities.Iam;
 using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Authentication.DomainService.OAuth

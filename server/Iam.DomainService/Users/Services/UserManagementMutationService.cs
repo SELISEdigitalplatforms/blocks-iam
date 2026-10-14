@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Users
 {
