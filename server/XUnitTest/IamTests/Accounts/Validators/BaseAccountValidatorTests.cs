@@ -29,7 +29,9 @@ namespace XUnitTest.IamTests.Accounts.Validators
                 originalTenantId: "tenant-1", impersonationSessionId: null, applicationDomain: "test"));
 
             // Defaults: code registered, no password regex, not blacklisted, empty secrets collection.
-            _cache.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
+            // "valid-code" is user-1's latest reset code: the code key and the per-user pointer.
+            _cache.Setup(c => c.GetStringValueAsync("valid-code")).ReturnsAsync("user-1");
+            _cache.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, "user-1"))).ReturnsAsync("valid-code");
             _configRepo.Setup(c => c.GetConfigurationAsync())
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = string.Empty });
             _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))
@@ -53,14 +55,14 @@ namespace XUnitTest.IamTests.Accounts.Validators
         [Fact]
         public async Task Valid_Code_NoPassword_NoCaptcha_Passes()
         {
-            var result = await Create().ValidateAsync(new BaseAccountRequest { Code = "valid-code" });
+            var result = await Create().ValidateAsync(new ResetPasswordRequest { Code = "valid-code" });
             result.IsValid.Should().BeTrue();
         }
 
         [Fact]
         public async Task Code_Empty_Fails()
         {
-            var result = await Create().ValidateAsync(new BaseAccountRequest { Code = "" });
+            var result = await Create().ValidateAsync(new ResetPasswordRequest { Code = "" });
 
             result.IsValid.Should().BeFalse();
             result.Errors.Should().Contain(e => e.PropertyName == "Code");
@@ -69,9 +71,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
         [Fact]
         public async Task Code_NotRegistered_Fails_WithExpiredMessage()
         {
-            _cache.Setup(c => c.KeyExistsAsync("stale-code")).ReturnsAsync(false);
-
-            var result = await Create().ValidateAsync(new BaseAccountRequest { Code = "stale-code" });
+            var result = await Create().ValidateAsync(new ResetPasswordRequest { Code = "stale-code" });
 
             result.IsValid.Should().BeFalse();
             result.Errors.Should().Contain(e =>
@@ -85,7 +85,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
             _configRepo.Setup(c => c.GetConfigurationAsync())
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = "^.{8,}$" });
 
-            var result = await Create().ValidateAsync(new BaseAccountRequest { Code = "valid-code", Password = "short" });
+            var result = await Create().ValidateAsync(new ResetPasswordRequest { Code = "valid-code", Password = "short" });
 
             result.IsValid.Should().BeFalse();
             result.Errors.Should().Contain(e => e.ErrorMessage == "Does not meet project's password requirements");
@@ -97,7 +97,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
             _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))
                 .ReturnsAsync(true);
 
-            var result = await Create().ValidateAsync(new BaseAccountRequest { Code = "valid-code", Password = "Str0ng!Passw0rd" });
+            var result = await Create().ValidateAsync(new ResetPasswordRequest { Code = "valid-code", Password = "Str0ng!Passw0rd" });
 
             result.IsValid.Should().BeFalse();
             result.Errors.Should().Contain(e => e.ErrorMessage == "This password can not be used.");
@@ -112,7 +112,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
                 .ThrowsAsync(new TimeoutException("root database unreachable"));
 
             var act = async () => await Create().ValidateAsync(
-                new BaseAccountRequest { Code = "valid-code", Password = "Str0ng!Passw0rd" });
+                new ResetPasswordRequest { Code = "valid-code", Password = "Str0ng!Passw0rd" });
 
             await act.Should().ThrowAsync<TimeoutException>();
         }
@@ -120,7 +120,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
         [Fact]
         public async Task Password_Strong_AndNotBlacklisted_Passes()
         {
-            var result = await Create().ValidateAsync(new BaseAccountRequest { Code = "valid-code", Password = "Str0ng!Passw0rd" });
+            var result = await Create().ValidateAsync(new ResetPasswordRequest { Code = "valid-code", Password = "Str0ng!Passw0rd" });
             result.IsValid.Should().BeTrue();
         }
 
@@ -130,7 +130,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
             _captcha.Setup(c => c.VerifyCaptchaAsync(It.IsAny<VerifyCaptchaRequest>()))
                 .ReturnsAsync(new VerifyCaptchaRequestResponse { Verified = false });
 
-            var result = await Create().ValidateAsync(new BaseAccountRequest { Code = "valid-code", CaptchaCode = "abc" });
+            var result = await Create().ValidateAsync(new ResetPasswordRequest { Code = "valid-code", CaptchaCode = "abc" });
 
             result.IsValid.Should().BeFalse();
             result.Errors.Should().Contain(e => e.ErrorMessage == "Captcha doesn't match");
@@ -142,7 +142,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
             _captcha.Setup(c => c.VerifyCaptchaAsync(It.IsAny<VerifyCaptchaRequest>()))
                 .ReturnsAsync(new VerifyCaptchaRequestResponse { Verified = true });
 
-            var result = await Create().ValidateAsync(new BaseAccountRequest { Code = "valid-code", CaptchaCode = "abc" });
+            var result = await Create().ValidateAsync(new ResetPasswordRequest { Code = "valid-code", CaptchaCode = "abc" });
 
             result.IsValid.Should().BeTrue();
         }
@@ -167,7 +167,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = TenantRegex });
 
             var result = await Create().ValidateAsync(
-                new BaseAccountRequest { Code = "valid-code", Password = password });
+                new ResetPasswordRequest { Code = "valid-code", Password = password });
 
             result.IsValid.Should().BeFalse(because: $"'{password}' does not satisfy the tenant rule");
             result.Errors.Should().Contain(e =>
@@ -189,7 +189,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = TenantRegex });
 
             var result = await Create().ValidateAsync(
-                new BaseAccountRequest { Code = "valid-code", Password = password });
+                new ResetPasswordRequest { Code = "valid-code", Password = password });
 
             result.IsValid.Should().BeTrue();
         }
@@ -203,7 +203,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = TenantRegex });
 
             var result = await Create().ValidateAsync(
-                new BaseAccountRequest { Code = "valid-code", Password = password });
+                new ResetPasswordRequest { Code = "valid-code", Password = password });
 
             result.IsValid.Should().BeTrue();
         }

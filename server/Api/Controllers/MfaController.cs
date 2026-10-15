@@ -1,5 +1,6 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using Authentication.DomainService.Authentication;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Dtos;
@@ -225,6 +226,31 @@ public class MfaController : ControllerBase
             return BadRequest(new { error = InvalidRequestError, error_description = "mfaId and verificationCode are required" });
         }
 
+        var callerId = GetCurrentUserId();
+        if (string.IsNullOrWhiteSpace(callerId))
+        {
+            return Unauthorized();
+        }
+
+        // A caller may only verify a challenge issued to themselves. Someone else's id gets the
+        // same answer as an unknown id, so ids cannot be probed.
+        var owner = await _mfaManagementService.GetChallengeOwnerAsync(request.MfaId);
+        if (!string.Equals(owner, callerId, StringComparison.Ordinal))
+        {
+            return BadRequest(new { valid = false, errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } } });
+        }
+
+        var caller = await _authenticationRepository.GetUserByIdAsync(callerId);
+        if (caller == null)
+        {
+            return Unauthorized();
+        }
+
+        if (IsLocked(caller))
+        {
+            return LockedResult();
+        }
+
         var result = await _mfaManagementService.VerifyOTPAsync(new VerifyOtpRequest
         {
             MfaId = request.MfaId,
@@ -235,6 +261,19 @@ public class MfaController : ControllerBase
 
         if (!result.IsValid)
         {
+            // Same counter and lockout settings the login mfa step uses.
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
+            var updated = await _authenticationRepository.IncrementFailedMfaAndApplyLockoutAsync(
+                callerId,
+                authConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
+                authConfiguration.AccountLockDurationInMinutes,
+                DateTime.UtcNow);
+
+            if (updated != null && IsLocked(updated))
+            {
+                return LockedResult();
+            }
+
             return BadRequest(new { valid = false, errors = result.Errors });
         }
 
@@ -371,6 +410,15 @@ public class MfaController : ControllerBase
         });
         return Ok(new { disabled = true });
     }
+
+    private static bool IsLocked(UserEntity user) =>
+        user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow;
+
+    private static ObjectResult LockedResult() =>
+        new(new { error = OAuthError.AccountLocked, error_description = "Account is temporarily locked due to failed authentication attempts" })
+        {
+            StatusCode = StatusCodes.Status423Locked
+        };
 
     private string? GetCurrentUserId()
     {

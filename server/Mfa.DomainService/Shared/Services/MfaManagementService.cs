@@ -54,6 +54,30 @@ namespace Mfa.DomainService.Services
             return await otpService.GenerateAsync(userInfo, request.SendPhoneNumberAsEmailDomain ?? string.Empty);
         }
 
+        // Who a live mfa challenge belongs to, read without consuming it: the JSON context of a
+        // code challenge (email/SMS) or the bare user id a TOTP login session stores. Null for an
+        // unknown, expired or unreadable id.
+        public async Task<string?> GetChallengeOwnerAsync(string mfaId)
+        {
+            if (string.IsNullOrWhiteSpace(mfaId))
+            {
+                return null;
+            }
+
+            var raw = await _cacheClient.GetStringValueAsync(mfaId);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return null;
+            }
+
+            if (MfaAuthenticationContext.TryDeserialize(raw, out var context))
+            {
+                return string.IsNullOrWhiteSpace(context.UserId) ? null : context.UserId;
+            }
+
+            return raw.TrimStart().StartsWith('{') ? null : raw;
+        }
+
         public async Task<OtpVerificationResponse> VerifyOTPAsync(VerifyOtpRequest request)
         {
             var otpService = _otpServiceFactory.GetOTPService(request.AuthType);

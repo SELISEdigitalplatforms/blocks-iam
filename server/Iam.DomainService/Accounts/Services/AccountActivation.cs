@@ -26,6 +26,8 @@ namespace Iam.DomainService.Accounts
 
             var keys = (await repository.GetActiveUserKeyMapAsync(userId))?.Select(x => x.Key) ?? [];
             await Task.WhenAll(keys.Select(key => cacheClient.RemoveKeyAsync(key)));
+            // Also drops the latest-code pointer, so no activation code of this user works any more.
+            await cacheClient.RemoveKeyAsync(AccountCodes.LatestKey(AccountCodes.Activation, userId));
 
             await repository.UpdateUserKeyMapActivationAsync(userId);
         }

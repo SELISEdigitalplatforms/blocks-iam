@@ -35,10 +35,9 @@ const CustomInputOTPSlot = ({ index }: { index: number }) => {
     />
   );
 };
-const getFormSchema = (type: number) =>
-  z.object({
-    code: z.string().min(type === 2 ? 5 : 6),
-  });
+const formSchema = z.object({
+  code: z.string().min(6),
+});
 export const MfaCheckFrom = () => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
@@ -57,7 +56,7 @@ export const MfaCheckFrom = () => {
   const { remainingTime, resend } = useResendOtp({ mfaId });
 
   const form = useForm<{ code: string }>({
-    resolver: zodResolver(getFormSchema(mfaType)),
+    resolver: zodResolver(formSchema),
     defaultValues: {
       code: "",
     },
@@ -170,14 +169,14 @@ export const MfaCheckFrom = () => {
           render={({ field }) => (
             <FormItem>
               <FormControl>
-                <InputOTP maxLength={mfaType === 1 ? 6 : 5} {...field}>
+                <InputOTP maxLength={6} {...field}>
                   <InputOTPGroup className="w-full justify-between gap-6">
                     <CustomInputOTPSlot index={0} />
                     <CustomInputOTPSlot index={1} />
                     <CustomInputOTPSlot index={2} />
                     <CustomInputOTPSlot index={3} />
                     <CustomInputOTPSlot index={4} />
-                    {mfaType === 1 && <CustomInputOTPSlot index={5} />}
+                    <CustomInputOTPSlot index={5} />
                   </InputOTPGroup>
                 </InputOTP>
               </FormControl>

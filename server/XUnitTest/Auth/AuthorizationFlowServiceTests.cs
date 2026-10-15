@@ -92,7 +92,7 @@ namespace XUnitTest.Auth
             // Real OidcLoginOrchestrator; the social path uses only the cache + auth service.
             var orchestrator = new OidcLoginOrchestrator(
                 null!, null!, authService.Object, null!, cache.Object, null!, null!, null!, null!, null!,
-                NullLogger<OidcLoginOrchestrator>.Instance);
+                NullLogger<OidcLoginOrchestrator>.Instance, null!);
             var flow = new AuthorizationFlowService(orchestrator, null!, null!);
 
             var request = new OidcLoginRequest { ProviderClientId = "provider-1", ProviderRedirectUri = "https://cb" };

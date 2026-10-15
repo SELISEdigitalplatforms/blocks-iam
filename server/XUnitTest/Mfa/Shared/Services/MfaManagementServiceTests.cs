@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Configuration;
@@ -341,6 +341,50 @@ namespace XUnitTest.Mfa.Shared.Services
             var result = await service.ResendOtpAsync("mfa-1", "");
 
             result.Errors.Should().ContainKey("user_not_found");
+        }
+
+        [Fact]
+        public async Task GetChallengeOwnerAsync_ReadsOwnerFromEmailContext_TotpSession_AndRejectsUnknownOrGarbage()
+        {
+            var service = CreateService(out _, out _, out _, out var cache, out _);
+            var email = MfaAuthenticationContext.Create("m-email", "u-email", UserMfaType.Email);
+            cache.Setup(c => c.GetStringValueAsync("m-email")).ReturnsAsync(email.Sterilize());
+            cache.Setup(c => c.GetStringValueAsync("m-totp")).ReturnsAsync("u-totp");
+            cache.Setup(c => c.GetStringValueAsync("m-garbage")).ReturnsAsync("{not json");
+            cache.Setup(c => c.GetStringValueAsync("m-empty")).ReturnsAsync("");
+
+            (await service.GetChallengeOwnerAsync("m-email")).Should().Be("u-email");
+            (await service.GetChallengeOwnerAsync("m-totp")).Should().Be("u-totp");
+            (await service.GetChallengeOwnerAsync("m-garbage")).Should().BeNull();
+            (await service.GetChallengeOwnerAsync("m-empty")).Should().BeNull();
+            (await service.GetChallengeOwnerAsync("missing")).Should().BeNull();
+            (await service.GetChallengeOwnerAsync("  ")).Should().BeNull();
+            (await service.GetChallengeOwnerAsync(null!)).Should().BeNull();
+        }
+
+        [Fact]
+        public async Task EnableMfaFlow_OwnEmailChallenge_StillWorksEndToEnd()
+        {
+            // Real EmailOtpService + real management service; only the cache/repo are fakes.
+            var service = CreateService(out var factory, out var repo, out _, out var cache, out _);
+            var challenge = MfaAuthenticationContext.Create("m1", "u1", UserMfaType.Email);
+            cache.Setup(c => c.KeyExistsAsync("m1")).ReturnsAsync(true);
+            cache.Setup(c => c.GetStringValueAsync("m1")).ReturnsAsync(challenge.Sterilize());
+            cache.Setup(c => c.RemoveKeyAsync("m1")).ReturnsAsync(true);
+            var email = new global::Mfa.DomainService.OTP.Services.EmailOtpService(
+                cache.Object, new Mock<IMfaConfigurationService>().Object, new Mock<IMessageClient>().Object);
+            factory.Setup(f => f.GetOTPService(UserMfaType.Email)).Returns(email);
+            Dictionary<string, object>? updates = null;
+            repo.Setup(r => r.UpdatePartialAsync<UserMfaInfo>("u1", It.IsAny<Dictionary<string, object>>(), "Users"))
+                .Callback<string, Dictionary<string, object>, string>((_, u, _) => updates = u)
+                .Returns(Task.CompletedTask);
+
+            (await service.GetChallengeOwnerAsync("m1")).Should().Be("u1");
+            var result = await service.VerifyOTPAsync(new VerifyOtpRequest { AuthType = UserMfaType.Email, MfaId = "m1", VerificationCode = challenge.MfaCode });
+
+            result.IsValid.Should().BeTrue();
+            updates!["MfaEnabled"].Should().Be(true);
+            updates["IsMfaVerified"].Should().Be(true);
         }
     }
 }

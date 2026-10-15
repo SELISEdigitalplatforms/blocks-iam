@@ -184,6 +184,102 @@ namespace Authentication.DomainService.Services
             return userAfterLock ?? userAfterIncrement;
         }
 
+        /// <summary>
+        /// How long the last free slot stays taken by one reservation once the threshold is reached. Shorter than
+        /// any lock (minimum 1 minute) and longer than any request, so a crashed request frees the slot again.
+        /// </summary>
+        public static readonly TimeSpan LoginAttemptLease = TimeSpan.FromSeconds(60);
+
+        public async Task<User?> TryReserveLoginAttemptAsync(string userId, int lockThreshold, DateTime nowUtc)
+        {
+            var f = Builders<User>.Filter;
+            var filter = f.And(
+                f.Eq(x => x.ItemId, userId),
+                NotLockedFilter(nowUtc),
+                f.Or(
+                    f.Lt(x => x.FailedLoginCount, lockThreshold),
+                    f.Exists(x => x.FailedLoginCount, false),
+                    f.Eq(x => x.LastFailedLoginUtc, null),
+                    f.Lte(x => x.LastFailedLoginUtc, nowUtc - LoginAttemptLease)));
+
+            var update = Builders<User>.Update
+                .Inc(x => x.FailedLoginCount, 1)
+                .Set(x => x.LastFailedLoginUtc, nowUtc)
+                .Set(x => x.LastUpdatedDate, nowUtc)
+                .Set(x => x.LastUpdatedBy, userId);
+
+            return await GetCollection<User>().FindOneAndUpdateAsync(
+                filter,
+                update,
+                new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After });
+        }
+
+        public async Task<bool> ReleaseLoginAttemptAsync(string userId, DateTime nowUtc)
+        {
+            var collection = GetCollection<User>();
+            var f = Builders<User>.Filter;
+            var released = await collection.FindOneAndUpdateAsync(
+                f.And(f.Eq(x => x.ItemId, userId), NotLockedFilter(nowUtc), f.Gt(x => x.FailedLoginCount, 0)),
+                Builders<User>.Update
+                    .Inc(x => x.FailedLoginCount, -1)
+                    .Set(x => x.LastUpdatedDate, nowUtc)
+                    .Set(x => x.LastUpdatedBy, userId));
+            if (released != null)
+            {
+                return true;
+            }
+
+            // Nothing to give back (a concurrent sign-in already reset the counter) or the account is locked.
+            var current = await collection.Find(x => x.ItemId == userId).FirstOrDefaultAsync();
+            return current != null && !(current.LockoutUntilUtc.HasValue && current.LockoutUntilUtc.Value > nowUtc);
+        }
+
+        public async Task<User?> LockAccountIfLoginThresholdReachedAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc)
+        {
+            var collection = GetCollection<User>();
+            var current = await collection.Find(x => x.ItemId == userId).FirstOrDefaultAsync();
+            if (current == null
+                || current.FailedLoginCount < lockThreshold
+                || (current.LockoutUntilUtc.HasValue && current.LockoutUntilUtc.Value > nowUtc))
+            {
+                return null;
+            }
+
+            var actualLockoutDurationInMinutes = CalculateExponentialBackoffLockoutDuration(
+                current.LockoutCount,
+                current.LastLockoutUtc,
+                lockDurationInMinutes,
+                7); // 7-day reset window
+
+            // LockoutCount must still be the value the duration was computed from: no double lock, exact escalation.
+            var f = Builders<User>.Filter;
+            var sameLockoutCount = current.LockoutCount == 0
+                ? f.Or(f.Eq(x => x.LockoutCount, 0), f.Exists(x => x.LockoutCount, false))
+                : f.Eq(x => x.LockoutCount, current.LockoutCount);
+            var lockFilter = f.And(
+                f.Eq(x => x.ItemId, userId),
+                f.Gte(x => x.FailedLoginCount, lockThreshold),
+                NotLockedFilter(nowUtc),
+                sameLockoutCount);
+
+            var lockUpdate = Builders<User>.Update
+                .Set(x => x.LockoutUntilUtc, nowUtc.AddMinutes(actualLockoutDurationInMinutes))
+                .Inc(x => x.LockoutCount, 1)
+                .Set(x => x.LastLockoutUtc, nowUtc)
+                .Set(x => x.LastUpdatedDate, nowUtc)
+                .Set(x => x.LastUpdatedBy, userId);
+
+            return await collection.FindOneAndUpdateAsync(
+                lockFilter,
+                lockUpdate,
+                new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After });
+        }
+
+        private static FilterDefinition<User> NotLockedFilter(DateTime nowUtc) =>
+            Builders<User>.Filter.Or(
+                Builders<User>.Filter.Eq(x => x.LockoutUntilUtc, null),
+                Builders<User>.Filter.Lte(x => x.LockoutUntilUtc, nowUtc));
+
         public async Task<User?> IncrementFailedMfaAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc)
         {
             var collection = GetCollection<User>();

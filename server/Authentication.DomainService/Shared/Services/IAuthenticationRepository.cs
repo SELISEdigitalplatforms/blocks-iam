@@ -20,6 +20,28 @@ namespace Authentication.DomainService.Services
         Task<User> GetUserByIdAsync(string itemId);
         Task<T> GetUserByIdAsync<T>(string itemId);
         Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
+
+        /// <summary>
+        /// Atomically reserves one password check BEFORE the password is verified: counts it as a failed
+        /// attempt up front. Refused (null) while the account is locked or when the lock threshold is already
+        /// taken by earlier or in-flight attempts, so parallel requests cannot run more checks than the threshold.
+        /// Once the threshold is reached, one attempt per <see cref="AuthenticationRepository.LoginAttemptLease"/>
+        /// is allowed again (after a lock expires, or when a reserved attempt never finished).
+        /// </summary>
+        Task<User?> TryReserveLoginAttemptAsync(string userId, int lockThreshold, DateTime nowUtc);
+
+        /// <summary>
+        /// Gives back a reservation whose password was correct. False when the account is locked now (locked by
+        /// concurrent failures, or the user is gone): the caller must not sign the user in.
+        /// </summary>
+        Task<bool> ReleaseLoginAttemptAsync(string userId, DateTime nowUtc);
+
+        /// <summary>
+        /// Locks the account after a wrong password whose reservation reached the threshold (the attempt is already
+        /// counted). Same exponential backoff as <see cref="IncrementFailedLoginAndApplyLockoutAsync"/>. Returns the
+        /// locked user when this call applied the lock, otherwise null.
+        /// </summary>
+        Task<User?> LockAccountIfLoginThresholdReachedAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
         Task<User?> IncrementFailedMfaAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
         Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "");
         Task<List<IdentityProvider>> GetIdentityProvidersAsync();

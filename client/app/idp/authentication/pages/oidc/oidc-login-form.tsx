@@ -52,7 +52,7 @@ const generatePkcePair = async () => {
 
 // Maps the backend's `user_mfa` channel string to the integer `mfa_type` the
 // /mfa-check form expects: 1 = authenticator (6 digits, no resend), 2 = email
-// / SMS / OTP-with-resend (5 digits). Unknown values fall back to 2.
+// / SMS / OTP-with-resend (6 digits). Unknown values fall back to 2.
 const mapUserMfaToType = (channel: string | undefined): number => {
   if (!channel) return 2;
   const c = channel.toLowerCase();

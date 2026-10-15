@@ -21,6 +21,11 @@ namespace Mfa.DomainService.Services
         // When the current code was last delivered. Drives the resend cooldown.
         public DateTime LastSentUtc { get; set; }
 
+        // When the challenge itself dies. Set once at creation and never moved by a resend, so
+        // resending cannot keep a challenge alive past its original window. Default (unset) on a
+        // challenge written before this field existed; the resend path then derives it.
+        public DateTime ExpiresAtUtc { get; set; }
+
         // Non-empty only when the code is delivered as an SMS via the phone->email gateway.
         // Persisted so a resend re-routes to SMS without the caller re-supplying the domain.
         public string? SendPhoneNumberAsEmailDomain { get; set; }
@@ -44,11 +49,8 @@ namespace Mfa.DomainService.Services
 
         public static string GenerateSecureRandomNumber()
         {
-            using var rng = RandomNumberGenerator.Create();
-            var bytes = new byte[2];
-            rng.GetBytes(bytes);
-            int number = BitConverter.ToUInt16(bytes, 0) % 88889 + 11111;
-            return number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            // GetInt32 is uniform over the range (no modulo bias); "D6" keeps leading zeros.
+            return RandomNumberGenerator.GetInt32(1_000_000).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         public string Sterilize()

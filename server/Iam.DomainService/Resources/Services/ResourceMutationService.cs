@@ -1900,14 +1900,15 @@ namespace Iam.DomainService.Resources
             return Task.CompletedTask;
         }
 
-        public async Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, string? creatorId = null)
+        public async Task<BaseMutationResponse?> CheckOrganizationCreationAsync(CreateOrganizationRequest request)
         {
-            // Read once and reuse: the AllowOrgCreationFrom* flags below need the object itself.
-            // The guard below is what keeps those dereferences safe -- a tenant with no
-            // configuration document returns here and never reaches them.
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            ArgumentNullException.ThrowIfNull(request);
+            return await CheckOrganizationCreationAsync(request, await _resourceRepository.GetTenantConfigurationAsync());
+        }
 
-            if (!IsMultiOrgEnabled(tenantConfig))
+        private async Task<BaseMutationResponse?> CheckOrganizationCreationAsync(CreateOrganizationRequest request, TenantConfiguration? tenantConfig)
+        {
+            if (!IsMultiOrgEnabled(tenantConfig, nameof(CreateOrganizationAsync)))
             {
                 return new BaseMutationResponse
                 {
@@ -1973,6 +1974,22 @@ namespace Iam.DomainService.Resources
                         }
                     };
                 }
+            }
+
+            return null;
+        }
+
+        public async Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, string? creatorId = null)
+        {
+            // Read once and reuse: the AllowOrgCreationFrom* flags below need the object itself.
+            // The guard below is what keeps those dereferences safe -- a tenant with no
+            // configuration document returns here and never reaches them.
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+
+            var refusal = await CheckOrganizationCreationAsync(request, tenantConfig);
+            if (refusal != null)
+            {
+                return refusal;
             }
 
             // Create organization

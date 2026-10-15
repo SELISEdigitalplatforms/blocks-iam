@@ -123,3 +123,15 @@ public sealed class RealRedisAndMongoFactAttribute : FactAttribute
         }
     }
 }
+
+/// <summary>A theory that needs both the local test Redis and the local test Mongo.</summary>
+public sealed class RealRedisAndMongoTheoryAttribute : TheoryAttribute
+{
+    public RealRedisAndMongoTheoryAttribute()
+    {
+        if (!RealRedis.IsAvailable || !RealMongo.IsAvailable)
+        {
+            Skip = $"Needs test Redis at {RealRedis.Endpoint} and test Mongo at {RealMongo.ConnectionString}.";
+        }
+    }
+}

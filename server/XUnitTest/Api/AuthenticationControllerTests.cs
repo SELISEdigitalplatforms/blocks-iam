@@ -223,6 +223,20 @@ namespace XUnitTest.ApiTests
             result.Should().BeOfType<BadRequestObjectResult>();
         }
 
+        [Fact]
+        public async Task UpdatePassword_Locked_Returns423()
+        {
+            _accountService.Setup(s => s.ChangePasswordAsync(It.IsAny<ChangePasswordRequest>()))
+                .ReturnsAsync(new BaseAccountResponse
+                {
+                    Errors = new Dictionary<string, string> { { Iam.DomainService.Accounts.AccountService.AccountLockedErrorKey, "locked" } }
+                });
+
+            var result = await CreateController().UpdatePassword(new ChangePasswordRequest());
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(423);
+        }
+
         // ---------- Activate ----------
 
         [Fact]

@@ -99,7 +99,7 @@ describe("MfaCheckFrom", () => {
 
     const { container } = render(<MfaCheckFrom />);
     const otp = container.querySelector("input") as HTMLInputElement;
-    fireEvent.change(otp, { target: { value: "12345" } });
+    fireEvent.change(otp, { target: { value: "123456" } });
 
     const verify = screen.getByRole("button", { name: /verify/i });
     await waitFor(() => expect(verify).not.toBeDisabled());
@@ -110,7 +110,7 @@ describe("MfaCheckFrom", () => {
     expect(url).toBe("/api/oidc/login");
     const body = JSON.parse(options.body as string);
     expect(body.mfa_id).toBe("mfa-1");
-    expect(body.mfa_code).toBe("12345");
+    expect(body.mfa_code).toBe("123456");
 
     expect(
       await screen.findByText("Invalid verification code. Please try again."),
@@ -121,7 +121,7 @@ describe("MfaCheckFrom", () => {
 
   const submitCode = async (container: HTMLElement) => {
     const otp = container.querySelector("input") as HTMLInputElement;
-    fireEvent.change(otp, { target: { value: "12345" } });
+    fireEvent.change(otp, { target: { value: "123456" } });
     const verify = screen.getByRole("button", { name: /verify/i });
     await waitFor(() => expect(verify).not.toBeDisabled());
     fireEvent.click(verify);

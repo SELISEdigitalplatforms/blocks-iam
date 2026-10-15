@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Blocks.Genesis;
 using DomainService.Storage;
 using FluentAssertions;
@@ -424,6 +424,120 @@ namespace XUnitTest.Mfa.TOTP
             var result = await service.GenerateTotpImageByUserAsync("u1");
 
             result.IsSuccess.Should().BeFalse();
+        }
+
+        // ---------- single use: mfa_id consumption and time-step replay ----------
+
+        private const string TotpSecret = "JBSWY3DPEHPK3PXP";
+
+        /// <summary>A TotpService over stateful fakes: mfa ids live in a dictionary whose removal
+        /// reports whether THIS call removed it, and the used-step marker behaves like SET NX.</summary>
+        private static TotpService CreateStatefulService(out System.Collections.Concurrent.ConcurrentDictionary<string, string> sessions)
+        {
+            var service = CreateService(out var repo, out var cache, out var validator, out _, out _, out _, out _);
+            var store = sessions = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
+            var usedSteps = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>();
+            validator.Setup(v => v.ValidateAsync(It.IsAny<VerifyOtpRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
+            cache.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync((string k) => store.ContainsKey(k));
+            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync((string k) => store.TryGetValue(k, out var v) ? v : null!);
+            cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>())).ReturnsAsync((string k) => store.TryRemove(k, out _));
+            var db = new Mock<StackExchange.Redis.IDatabase>();
+            db.Setup(d => d.StringSetAsync(It.IsAny<StackExchange.Redis.RedisKey>(), It.IsAny<StackExchange.Redis.RedisValue>(), It.IsAny<TimeSpan?>(), StackExchange.Redis.When.NotExists))
+                .ReturnsAsync((StackExchange.Redis.RedisKey k, StackExchange.Redis.RedisValue _, TimeSpan? _, StackExchange.Redis.When _) => usedSteps.TryAdd(k.ToString(), true));
+            cache.Setup(c => c.CacheDatabase()).Returns(db.Object);
+            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync(new UserTotpDetail { Secret = TotpSecret, CreatedBy = "u1" });
+            return service;
+        }
+
+        private static string CodeAt(DateTime utc) =>
+            new OtpNet.Totp(OtpNet.Base32Encoding.ToBytes(TotpSecret)).ComputeTotp(utc);
+
+        [Fact]
+        public async Task VerifyAsync_SameMfaIdAndCodeTwice_SecondIsRefused()
+        {
+            var service = CreateStatefulService(out var sessions);
+            sessions["m1"] = "u1";
+            var code = CodeAt(DateTime.UtcNow);
+
+            var first = await service.VerifyAsync(new VerifyOtpRequest { VerificationCode = code, MfaId = "m1" });
+            var second = await service.VerifyAsync(new VerifyOtpRequest { VerificationCode = code, MfaId = "m1" });
+
+            first.IsValid.Should().BeTrue();
+            sessions.Should().NotContainKey("m1");
+            second.IsValid.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task VerifyAsync_SameCodeUnderANewMfaId_InTheSameTimeStep_IsRefused()
+        {
+            var service = CreateStatefulService(out var sessions);
+            sessions["m1"] = "u1";
+            sessions["m2"] = "u1";
+            var code = CodeAt(DateTime.UtcNow);
+
+            (await service.VerifyAsync(new VerifyOtpRequest { VerificationCode = code, MfaId = "m1" })).IsValid.Should().BeTrue();
+            var replay = await service.VerifyAsync(new VerifyOtpRequest { VerificationCode = code, MfaId = "m2" });
+
+            replay.IsValid.Should().BeFalse();
+            replay.UserId.Should().Be("u1");   // returned so the replay is counted as a failure
+        }
+
+        [Fact]
+        public async Task VerifyAsync_ADifferentTimeStep_StillWorks()
+        {
+            var service = CreateStatefulService(out var sessions);
+            sessions["m1"] = "u1";
+            sessions["m2"] = "u1";
+            // Previous step is inside the accepted drift window; it is a different step from "now".
+            var previous = CodeAt(DateTime.UtcNow.AddSeconds(-30));
+            var current = CodeAt(DateTime.UtcNow);
+            previous.Should().NotBe(current);
+
+            (await service.VerifyAsync(new VerifyOtpRequest { VerificationCode = current, MfaId = "m1" })).IsValid.Should().BeTrue();
+            (await service.VerifyAsync(new VerifyOtpRequest { VerificationCode = previous, MfaId = "m2" })).IsValid.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task VerifyAsync_ParallelDoubleSubmit_OnlyOneSucceeds()
+        {
+            for (var round = 0; round < 25; round++)
+            {
+                var service = CreateStatefulService(out var sessions);
+                sessions["m1"] = "u1";
+                var code = CodeAt(DateTime.UtcNow);
+
+                var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ =>
+                    Task.Run(() => service.VerifyAsync(new VerifyOtpRequest { VerificationCode = code, MfaId = "m1" }))));
+
+                results.Count(r => r.IsValid).Should().Be(1);
+            }
+        }
+
+        [Fact]
+        public async Task VerifyAsync_ParallelSameCodeUnderDifferentMfaIds_OnlyOneSucceeds()
+        {
+            var service = CreateStatefulService(out var sessions);
+            for (var i = 0; i < 8; i++) sessions["m" + i] = "u1";
+            var code = CodeAt(DateTime.UtcNow);
+
+            var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(i =>
+                Task.Run(() => service.VerifyAsync(new VerifyOtpRequest { VerificationCode = code, MfaId = "m" + i }))));
+
+            results.Count(r => r.IsValid).Should().Be(1);
+        }
+
+        [Fact]
+        public async Task VerifyAsync_WrongCode_DoesNotConsumeTheSession()
+        {
+            var service = CreateStatefulService(out var sessions);
+            sessions["m1"] = "u1";
+            var wrong = CodeAt(DateTime.UtcNow) == "000000" ? "000001" : "000000";
+
+            (await service.VerifyAsync(new VerifyOtpRequest { VerificationCode = wrong, MfaId = "m1" })).IsValid.Should().BeFalse();
+
+            sessions.Should().ContainKey("m1");
+            (await service.VerifyAsync(new VerifyOtpRequest { VerificationCode = CodeAt(DateTime.UtcNow), MfaId = "m1" })).IsValid.Should().BeTrue();
         }
     }
 }

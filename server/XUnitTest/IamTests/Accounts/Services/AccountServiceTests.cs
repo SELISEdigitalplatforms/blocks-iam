@@ -23,7 +23,7 @@ using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Accounts.Services
 {
-    public class AccountServiceTests : IDisposable
+    public partial class AccountServiceTests : IDisposable
     {
         private readonly Mock<ILogger<AccountService>> _loggerMock = new();
         private readonly Mock<IIdentityAccessManagementRepository> _repositoryMock = new();
@@ -93,7 +93,7 @@ namespace XUnitTest.IamTests.Accounts.Services
 
         private readonly Mock<IUserSessionTerminator> _sessionTerminatorMock = new();
 
-        private AccountService CreateService(IHttpContextAccessor? http = null, IUserSessionTerminator? sessionTerminator = null) =>
+        private AccountService CreateService(IHttpContextAccessor? http = null, IUserSessionTerminator? sessionTerminator = null, IFailedLoginTracker? failedLoginTracker = null) =>
             new(
                 _loggerMock.Object,
                 _repositoryMock.Object,
@@ -114,7 +114,8 @@ namespace XUnitTest.IamTests.Accounts.Services
                 _signupOrganizationValidator,
                 _organizationNameResolverMock.Object,
                 null,
-                sessionTerminator);
+                sessionTerminator,
+                failedLoginTracker);
 
         private static Mock<IMongoCollection<T>> MockMongoCollection<T>(IEnumerable<T> items)
         {
@@ -277,11 +278,12 @@ namespace XUnitTest.IamTests.Accounts.Services
             var result = await service.SignupAccountAsync(new SignupUserRequest { Email = "u@example.com" });
 
             result.IsSuccess.Should().BeTrue();
-            result.ItemId.Should().Be("u-new");
+            result.ItemId.Should().BeNull("signup never returns a user id (pentest M6)");
+            _userMutationMock.Verify(m => m.CreateUserAsync(It.IsAny<CreateUserRequest>()), Times.Once);
         }
 
         [Fact]
-        public async Task Signup_ExistingActiveVerifiedUser_ReturnsAlreadySignedUp()
+        public async Task Signup_ExistingActiveVerifiedUser_ReturnsTheNewSignupSuccess()
         {
             var service = CreateService();
             _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
@@ -291,8 +293,10 @@ namespace XUnitTest.IamTests.Accounts.Services
 
             var result = await service.SignupAccountAsync(new SignupUserRequest { Email = "u@example.com" });
 
-            result.IsSuccess.Should().BeFalse();
-            result.Errors.Should().ContainKey("already_signed_up");
+            // Pentest M6: no "already registered" answer; the owner gets a password-reset mail instead.
+            result.IsSuccess.Should().BeTrue();
+            result.Errors.Should().BeEmpty();
+            result.ItemId.Should().BeNull();
         }
 
         [Fact]
@@ -312,7 +316,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
-        public async Task Signup_ExistingInactiveUser_ReactivationMailFails_ReturnsError()
+        public async Task Signup_ExistingInactiveUser_ReactivationMailFails_StillSameSuccess()
         {
             var service = CreateService();
             _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
@@ -324,12 +328,13 @@ namespace XUnitTest.IamTests.Accounts.Services
 
             var result = await service.SignupAccountAsync(new SignupUserRequest { Email = "u@example.com" });
 
-            result.IsSuccess.Should().BeFalse();
-            result.Errors.Should().ContainKey("reactivation_failed");
+            // Pentest M6: a send failure is logged, never shown (it would only happen for a real account).
+            result.IsSuccess.Should().BeTrue();
+            result.Errors.Should().BeEmpty();
         }
 
         [Fact]
-        public async Task Signup_Email_NewUser_CreationSucceeds_ReturnsSuccessWithItemId()
+        public async Task Signup_Email_NewUser_CreationSucceeds_ReturnsSuccessWithoutItemId()
         {
             var service = CreateService();
             _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
@@ -342,8 +347,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             var result = await service.SignupAccountAsync(new SignupUserRequest { Email = "u@example.com" });
 
             result.IsSuccess.Should().BeTrue();
-            result.ItemId.Should().Be("u-new");
-            result.Errors.Should().BeNull();
+            result.ItemId.Should().BeNull("an existing account must not be told apart by an id (pentest M6)");
+            result.Errors.Should().BeEmpty();
         }
 
         [Fact]
@@ -381,7 +386,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             });
 
             result.IsSuccess.Should().BeTrue();
-            result.ItemId.Should().Be("u-sso");
+            result.ItemId.Should().BeNull();
+            _userMutationMock.Verify(m => m.CreateUserFromSsoAsync(It.IsAny<CreateUserViaSsoRequest>()), Times.Once);
         }
 
         [Fact]
@@ -457,7 +463,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
-        public async Task Signup_ExistingDisabledUser_ReturnsAccountDisabled()
+        public async Task Signup_ExistingDisabledUser_SameSuccess_NoMail()
         {
             var service = CreateService();
             _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
@@ -468,8 +474,11 @@ namespace XUnitTest.IamTests.Accounts.Services
 
             var result = await service.SignupAccountAsync(new SignupUserRequest { Email = "u@example.com" });
 
-            result.IsSuccess.Should().BeFalse();
-            result.Errors.Should().ContainKey("account_disabled");
+            // Pentest M6: same answer as a new email; a blocked account gets no mail.
+            result.IsSuccess.Should().BeTrue();
+            result.Errors.Should().BeEmpty();
+            _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _iamServiceMock.Verify(s => s.SendEmailAsync(It.IsAny<SendMail>()), Times.Never);
         }
 
         [Fact]
@@ -492,7 +501,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             });
 
             result.IsSuccess.Should().BeTrue();
-            result.ItemId.Should().Be("u-existing");
+            result.ItemId.Should().BeNull();
+            _userMutationMock.Verify(m => m.ActivateAndLinkSocialIdentityAsync(It.Is<ActivateAndLinkSocialIdentityRequest>(r => r.UserId == "u-existing")), Times.Once);
         }
 
         [Fact]
@@ -643,6 +653,7 @@ namespace XUnitTest.IamTests.Accounts.Services
             var service = CreateService();
             var user = TestDataBuilder.CreateUser(active: false, isVerified: false);
             _cacheClientMock.Setup(c => c.GetStringValueAsync("code-1")).ReturnsAsync(user.ItemId);
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Activation, user.ItemId))).ReturnsAsync("code-1");
             _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
             _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
             _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
@@ -676,6 +687,7 @@ namespace XUnitTest.IamTests.Accounts.Services
             user.SecurityStamp = "old-stamp";
             user.FailedLoginCount = 3;
             _cacheClientMock.Setup(c => c.GetStringValueAsync("code-1")).ReturnsAsync(user.ItemId);
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Activation, user.ItemId))).ReturnsAsync("code-1");
             _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
             _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
             _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
@@ -702,6 +714,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         {
             var service = CreateService();
             _cacheClientMock.Setup(c => c.GetStringValueAsync("code-1")).ReturnsAsync("u-missing");
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Activation, "u-missing"))).ReturnsAsync("code-1");
             _repositoryMock.Setup(r => r.GetUserByIdAsync("u-missing")).ReturnsAsync((User?)null);
             _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
@@ -718,6 +731,7 @@ namespace XUnitTest.IamTests.Accounts.Services
             var service = CreateService();
             var user = TestDataBuilder.CreateUser(active: false);
             _cacheClientMock.Setup(c => c.GetStringValueAsync("code-1")).ReturnsAsync(user.ItemId);
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Activation, user.ItemId))).ReturnsAsync("code-1");
             _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
             _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(false);
             _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
@@ -887,6 +901,7 @@ namespace XUnitTest.IamTests.Accounts.Services
             _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             _cacheClientMock.Setup(c => c.GetStringValueAsync("x")).ReturnsAsync("u-gone");
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, "u-gone"))).ReturnsAsync("x");
             _repositoryMock.Setup(r => r.GetUserByIdAsync("u-gone")).ReturnsAsync((User?)null);
 
             var result = await service.ResetAccountPasswordAsync(new ResetPasswordRequest { Code = "x", Password = "p", LogoutFromAllDevices = true });
@@ -903,6 +918,7 @@ namespace XUnitTest.IamTests.Accounts.Services
             _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             _cacheClientMock.Setup(c => c.GetStringValueAsync("x")).ReturnsAsync(user.ItemId);
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, user.ItemId))).ReturnsAsync("x");
             _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
             _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
 
@@ -981,6 +997,7 @@ namespace XUnitTest.IamTests.Accounts.Services
             _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             _cacheClientMock.Setup(c => c.GetStringValueAsync("x")).ReturnsAsync(user.ItemId);
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, user.ItemId))).ReturnsAsync("x");
             _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
             _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
             return user;
@@ -1096,6 +1113,124 @@ namespace XUnitTest.IamTests.Accounts.Services
                 IdpConstants.AuthenticationQueue,
                 It.IsAny<LogoutAllEvent>()),
                 Times.Never);
+        }
+
+        // Stands in for the login counter: increments on the user and locks at the threshold.
+        private sealed class FakeFailedLoginTracker : IFailedLoginTracker
+        {
+            private readonly User _user;
+            private readonly int _threshold;
+            public int Calls { get; private set; }
+
+            public FakeFailedLoginTracker(User user, int threshold)
+            {
+                _user = user;
+                _threshold = threshold;
+            }
+
+            public Task<User?> RecordFailedAttemptAsync(string userId)
+            {
+                Calls++;
+                _user.FailedLoginCount++;
+                if (_user.FailedLoginCount >= _threshold)
+                {
+                    _user.LockoutUntilUtc = DateTime.UtcNow.AddMinutes(5);
+                }
+                return Task.FromResult<User?>(_user);
+            }
+        }
+
+        private User SetUpChangePasswordUser()
+        {
+            var user = TestDataBuilder.CreateUser();
+            user.Password = "h:OldP@ss";
+            _changePasswordValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<ChangePasswordRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult());
+            _repositoryMock.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
+            _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration(logoutOnPasswordChange: false));
+            return user;
+        }
+
+        private static ChangePasswordRequest WrongOld() => new() { OldPassword = "Wrong", NewPassword = "NewP@ss1" };
+        private static ChangePasswordRequest RightOld() => new() { OldPassword = "OldP@ss", NewPassword = "NewP@ss1" };
+
+        [Fact]
+        public async Task Change_WrongOldPassword_CountsAndLocksAtThreshold()
+        {
+            var user = SetUpChangePasswordUser();
+            var tracker = new FakeFailedLoginTracker(user, 3);
+            var service = CreateService(failedLoginTracker: tracker);
+
+            (await service.ChangePasswordAsync(WrongOld())).IsSuccess.Should().BeFalse();
+            (await service.ChangePasswordAsync(WrongOld())).IsSuccess.Should().BeFalse();
+            user.LockoutUntilUtc.Should().BeNull();
+            var third = await service.ChangePasswordAsync(WrongOld());
+
+            tracker.Calls.Should().Be(3);
+            user.LockoutUntilUtc.Should().NotBeNull();
+            third.IsSuccess.Should().BeFalse();
+            third.Errors.Should().ContainKey(AccountService.AccountLockedErrorKey);
+        }
+
+        [Fact]
+        public async Task Change_WhileLocked_RightAndWrongOldPassword_GetSameLockedAnswer_AndPasswordUntouched()
+        {
+            var user = SetUpChangePasswordUser();
+            user.LockoutUntilUtc = DateTime.UtcNow.AddMinutes(5);
+            var tracker = new FakeFailedLoginTracker(user, 3);
+            var service = CreateService(failedLoginTracker: tracker);
+
+            var right = await service.ChangePasswordAsync(RightOld());
+            var wrong = await service.ChangePasswordAsync(WrongOld());
+
+            right.IsSuccess.Should().BeFalse();
+            wrong.IsSuccess.Should().BeFalse();
+            right.Errors.Should().BeEquivalentTo(wrong.Errors);
+            right.Errors.Should().ContainKey(AccountService.AccountLockedErrorKey);
+            tracker.Calls.Should().Be(0);
+            user.Password.Should().Be("h:OldP@ss");
+            _repositoryMock.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Change_AfterLockExpires_RightOldPasswordWorks()
+        {
+            var user = SetUpChangePasswordUser();
+            user.LockoutUntilUtc = DateTime.UtcNow.AddMinutes(-1);
+            var service = CreateService(failedLoginTracker: new FakeFailedLoginTracker(user, 3));
+
+            var result = await service.ChangePasswordAsync(RightOld());
+
+            result.IsSuccess.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task Change_Success_ResetsFailureCounters()
+        {
+            var user = SetUpChangePasswordUser();
+            var service = CreateService(failedLoginTracker: new FakeFailedLoginTracker(user, 3));
+
+            await service.ChangePasswordAsync(WrongOld());
+            await service.ChangePasswordAsync(WrongOld());
+            user.FailedLoginCount.Should().Be(2);
+            var result = await service.ChangePasswordAsync(RightOld());
+
+            result.IsSuccess.Should().BeTrue();
+            user.FailedLoginCount.Should().Be(0);
+            user.LockoutUntilUtc.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task Change_Normal_DoesNotCallTracker()
+        {
+            var user = SetUpChangePasswordUser();
+            var tracker = new FakeFailedLoginTracker(user, 3);
+
+            var result = await CreateService(failedLoginTracker: tracker).ChangePasswordAsync(RightOld());
+
+            result.IsSuccess.Should().BeTrue();
+            tracker.Calls.Should().Be(0);
         }
 
         #endregion
@@ -1214,7 +1349,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             _repositoryMock.Setup(r => r.GetUserIdFromKeyMapByKeyAsync("xyz")).ReturnsAsync("u-99");
             _repositoryMock.Setup(r => r.GetUserByIdAsync("u-99"))
                 .ReturnsAsync(TestDataBuilder.CreateUser(itemId: "u-99", active: false));
-            _cacheClientMock.Setup(c => c.KeyExistsAsync("xyz")).ReturnsAsync(true);
+            _cacheClientMock.Setup(c => c.GetStringValueAsync("xyz")).ReturnsAsync("u-99");
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Activation, "u-99"))).ReturnsAsync("xyz");
 
             var result = await service.ValidateAccountActivationCodeAsync(new ValidateActivationCodeRequest { ActivationCode = "xyz" });
 
@@ -1256,11 +1392,14 @@ namespace XUnitTest.IamTests.Accounts.Services
 
             result.Status.Should().Be(ActivationCodeStatus.AlreadyActivated);
             result.IsSuccess.Should().BeFalse();
-            result.UserId.Should().Be("u-99");
+            // A spent code hands out no account data: the key map row never expires.
+            result.UserId.Should().BeEmpty();
+            result.FirstName.Should().BeEmpty();
+            result.LastName.Should().BeEmpty();
         }
 
         [Fact]
-        public async Task Validate_LapsedCodeForInactiveAccount_ReturnsExpired_WithUserIdForResend()
+        public async Task Validate_LapsedCodeForInactiveAccount_ReturnsExpired_WithoutUserData()
         {
             var service = CreateService();
             _repositoryMock.Setup(r => r.GetUserIdFromKeyMapByKeyAsync("xyz")).ReturnsAsync("u-99");
@@ -1272,7 +1411,8 @@ namespace XUnitTest.IamTests.Accounts.Services
 
             result.Status.Should().Be(ActivationCodeStatus.Expired);
             result.IsSuccess.Should().BeFalse();
-            result.UserId.Should().Be("u-99");
+            result.UserId.Should().BeEmpty();
+            result.FirstName.Should().BeEmpty();
             result.Errors.Should().BeNull();
         }
 
@@ -1823,7 +1963,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
-        public async Task Signup_Success_ReportsOrganizationIdSeparatelyFromUserId()
+        public async Task Signup_Success_CreatesTheOrganization_ButReportsNoIds()
         {
             var service = CreateService();
             ArrangeOrgSignup("org-xyz");
@@ -1835,9 +1975,11 @@ namespace XUnitTest.IamTests.Accounts.Services
                 Organization = new SignupOrganizationInfo { Name = "Acme" }
             });
 
+            // Pentest M6: an existing account could not return these, so nobody does.
             result.IsSuccess.Should().BeTrue();
-            result.OrganizationId.Should().Be("org-xyz");
-            result.ItemId.Should().Be("u-new", "ItemId stays the user id");
+            result.OrganizationId.Should().BeNull();
+            result.ItemId.Should().BeNull();
+            _resourceMutationMock.Verify(r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string?>()), Times.Once);
         }
 
         [Fact]

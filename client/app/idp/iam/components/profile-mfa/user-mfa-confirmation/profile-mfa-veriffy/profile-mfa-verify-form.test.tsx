@@ -57,7 +57,7 @@ const renderFormWith = (value: Record<string, unknown>) =>
     </profileMfaContext.Provider>,
   );
 
-const enterCode = () => fireEvent.change(screen.getByLabelText("otp"), { target: { value: "12345" } });
+const enterCode = () => fireEvent.change(screen.getByLabelText("otp"), { target: { value: "123456" } });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -73,7 +73,7 @@ describe("ProfileMfaVerifyForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Verify" }));
     await waitFor(() =>
       expect(h.verifyOtp).toHaveBeenCalledWith(
-        expect.objectContaining({ mfaId: "mfa-1", verificationCode: "12345", authType: 2 }),
+        expect.objectContaining({ mfaId: "mfa-1", verificationCode: "123456", authType: 2 }),
       ),
     );
     await waitFor(() => expect(h.showSuccess).toHaveBeenCalled());

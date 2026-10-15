@@ -1,4 +1,4 @@
-using Api.Controllers;
+﻿using Api.Controllers;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using FluentAssertions;
@@ -282,26 +282,120 @@ namespace XUnitTest.ApiTests
             result.Should().BeOfType<BadRequestObjectResult>();
         }
 
+        private void OwnerIs(string? owner) =>
+            _mfaManagement.Setup(m => m.GetChallengeOwnerAsync(It.IsAny<string>())).ReturnsAsync(owner);
+
+        private void CallerIs(Blocks.Genesis.Entities.Iam.User user) =>
+            _authRepo.Setup(r => r.GetUserByIdAsync(ActorUserId)).ReturnsAsync(user);
+
         [Fact]
-        public async Task VerifyOtp_InvalidCode_ReturnsBadRequest()
+        public async Task VerifyOtp_InvalidCode_ReturnsBadRequest_AndCountsTheFailureForTheCaller()
         {
+            OwnerIs(ActorUserId);
+            CallerIs(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId });
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync())
+                .ReturnsAsync(new IdentityConfiguration { GetNumberOfWrongAttemptsToLockTheAccount = 4, AccountLockDurationInMinutes = 11 });
+            _authRepo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync(ActorUserId, 4, 11, It.IsAny<DateTime>()))
+                .ReturnsAsync(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId, FailedMfaCount = 1 });
             _mfaManagement.Setup(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()))
                 .ReturnsAsync(new OtpVerificationResponse { IsValid = false, Errors = new Dictionary<string, string> { { "e", "x" } } });
 
             var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
 
             result.Should().BeOfType<BadRequestObjectResult>();
+            _authRepo.Verify(r => r.IncrementFailedMfaAndApplyLockoutAsync(ActorUserId, 4, 11, It.IsAny<DateTime>()), Times.Once);
         }
 
         [Fact]
-        public async Task VerifyOtp_Valid_ReturnsOk()
+        public async Task VerifyOtp_Valid_ReturnsOk_AndDoesNotCountAFailure()
         {
+            OwnerIs(ActorUserId);
+            CallerIs(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId });
             _mfaManagement.Setup(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()))
-                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "u-9" });
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = ActorUserId });
 
             var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
 
             result.Should().BeOfType<OkObjectResult>();
+            _authRepo.Verify(r => r.IncrementFailedMfaAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("someone-else")]   // another user's mfa id
+        [InlineData(null)]             // unknown / expired id
+        [InlineData("")]
+        public async Task VerifyOtp_AnotherUsersOrUnknownMfaId_GetsTheSameInvalidAnswer_AndNeverVerifies(string? owner)
+        {
+            OwnerIs(owner);
+
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            System.Text.Json.JsonSerializer.Serialize(bad.Value).Should().Contain("invalid_two_factor_id");
+            _mfaManagement.Verify(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task VerifyOtp_OwnerCheckIsCaseSensitive()
+        {
+            OwnerIs(ActorUserId.ToUpperInvariant());
+
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+            _mfaManagement.Verify(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task VerifyOtp_LockedCaller_IsRefusedWith423_EvenForTheRightCode()
+        {
+            OwnerIs(ActorUserId);
+            CallerIs(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId, LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) });
+
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(423);
+            _mfaManagement.Verify(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task VerifyOtp_WrongCodeThatTriggersLock_Returns423()
+        {
+            OwnerIs(ActorUserId);
+            CallerIs(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId });
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
+            _authRepo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync(ActorUserId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId, LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15) });
+            _mfaManagement.Setup(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = false, Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_code" } } });
+
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "000000" });
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(423);
+        }
+
+        [Fact]
+        public async Task VerifyOtp_NoCurrentUser_ReturnsUnauthorized()
+        {
+            BlocksContext.SetContext(null);
+
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
+
+            result.Should().BeOfType<UnauthorizedResult>();
+        }
+
+        [Theory]
+        [InlineData(null, "123456")]
+        [InlineData("", "123456")]
+        [InlineData("   ", "123456")]
+        [InlineData("mfa-1", "")]
+        [InlineData("mfa-1", "   ")]
+        public async Task VerifyOtp_EmptyOrBlankInputs_AreBadRequest_BeforeAnyLookup(string? mfaId, string code)
+        {
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = mfaId!, VerificationCode = code });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+            _mfaManagement.Verify(m => m.GetChallengeOwnerAsync(It.IsAny<string>()), Times.Never);
         }
 
         // ---------- SetMfaMethod ----------

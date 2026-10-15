@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Utilities;
 using Iam.DomainService.Dtos;
@@ -1119,6 +1119,61 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
         Prop(result, "error").Should().Be("invalid_mfa_code");
         _links.Verify(l => l.TryIncrementRedemptionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
         user.OrganizationIds.Should().NotContain("org-acme");
+    }
+
+    private async Task<(SignupLinkRedemptionOrchestrator Sut, User User)> ReachMfaStepAsync(string mfaId, bool valid)
+    {
+        var link = Link();
+        var user = Active();
+        user.MfaEnabled = true;
+        Arrange(link, user);
+        AllowConsume(link);
+        Verifier(PasswordVerificationResult.Success());
+        SetupMfa(user, mfaId, valid);
+        var sut = Sut();
+        var step = await RedeemToPasswordStepAsync(sut);
+        await sut.AuthenticateAsync(step.RedemptionId, "Correct#1", null, "t1", Http().Request, Http().Response);
+        return (sut, user);
+    }
+
+    [Theory]
+    [InlineData("000000")]
+    [InlineData("12345")]
+    [InlineData("   ")]
+    public async Task FailedMfaCode_IsCountedTowardLockout_WithTheConfiguredSettings(string code)
+    {
+        var (sut, user) = await ReachMfaStepAsync("mfa-c1", valid: false);
+        _authentication.Setup(a => a.GetAuthenticationConfigurationAsync())
+            .ReturnsAsync(new IdentityConfiguration { GetNumberOfWrongAttemptsToLockTheAccount = 6, AccountLockDurationInMinutes = 13 });
+
+        var result = await sut.CompleteRedeemMfaAsync("mfa-c1", code, Http().Request, Http().Response);
+
+        Prop(result, "error").Should().Be(string.IsNullOrWhiteSpace(code) ? "invalid_request" : "invalid_mfa_code");
+        var expected = string.IsNullOrWhiteSpace(code) ? Times.Never() : Times.Once();
+        _authentication.Verify(a => a.IncrementFailedMfaAndApplyLockoutAsync(user.ItemId, 6, 13, It.IsAny<DateTime>()), expected);
+    }
+
+    [Fact]
+    public async Task SuccessfulMfaCode_IsNotCountedAsAFailure()
+    {
+        var (sut, _) = await ReachMfaStepAsync("mfa-c2", valid: true);
+
+        await sut.CompleteRedeemMfaAsync("mfa-c2", "123456", Http().Request, Http().Response);
+
+        _authentication.Verify(a => a.IncrementFailedMfaAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task LockedAccount_IsRefusedBeforeAnyCodeIsChecked_EvenForTheRightCode()
+    {
+        var (sut, user) = await ReachMfaStepAsync("mfa-c3", valid: true);
+        user.LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10);
+
+        var result = await sut.CompleteRedeemMfaAsync("mfa-c3", "123456", Http().Request, Http().Response);
+
+        result.Should().NotBeOfType<OkObjectResult>();
+        _mfa.Verify(m => m.GetOtpServiceAsync(It.IsAny<User>()), Times.Once);   // only the earlier challenge, no verify
+        _authentication.Verify(a => a.IncrementFailedMfaAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
     }
 
     [Fact]

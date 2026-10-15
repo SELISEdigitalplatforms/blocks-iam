@@ -30,6 +30,13 @@ namespace Iam.DomainService.Resources
         Task ExecuteResourceMutationCommandAsync(ResourceMutationEvent command);
         Task<bool> ProcessPermissionAsync(ResourceSetToPermissionMutationEvent command);
         Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, string? creatorId = null);
+
+        /// <summary>
+        /// The refusals <see cref="CreateOrganizationAsync"/> would give for this request (multi-org
+        /// off, creation turned off for its source, name taken), without creating anything. Null
+        /// when it would be accepted.
+        /// </summary>
+        Task<BaseMutationResponse?> CheckOrganizationCreationAsync(CreateOrganizationRequest request);
         Task<BaseResponse> UpdateOrganizationAsync(string id, SaveOrganizationRequest request);
 
         /// <summary>

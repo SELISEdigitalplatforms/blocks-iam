@@ -144,6 +144,10 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> UpdatePassword([FromBody] ChangePasswordRequest request)
     {
         var result = await _accountService.ChangePasswordAsync(request);
+        if (result.Errors.ContainsKey(Iam.DomainService.Accounts.AccountService.AccountLockedErrorKey))
+        {
+            return StatusCode(StatusCodes.Status423Locked, result);
+        }
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

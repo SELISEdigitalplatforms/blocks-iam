@@ -36,7 +36,8 @@ namespace XUnitTest.Auth.OAuth
                     repository,
                     new Mock<IAccountService>().Object,
                     new Mock<IUserActivityDispatcher>().Object,
-                    new Mock<IAuthenticationDomainService>().Object));
+                    new Mock<IAuthenticationDomainService>().Object),
+                XUnitTest.TestSupport.UnknownLoginGuardStub.Create().Object);
         }
 
         private static TokenRequest BuildRequest() => new()

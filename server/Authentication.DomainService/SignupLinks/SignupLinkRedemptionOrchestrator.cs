@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Authentication.DomainService.Authentication;
@@ -722,6 +722,15 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         if (!verification.IsValid)
         {
+            // Count the wrong code toward the account's lockout, with the same settings the login
+            // mfa step uses. A locked account is refused above, before any code is checked.
+            var authConfiguration = await _authentication.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
+            await _authentication.IncrementFailedMfaAndApplyLockoutAsync(
+                user.ItemId,
+                authConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
+                authConfiguration.AccountLockDurationInMinutes,
+                DateTime.UtcNow);
+
             return new BadRequestObjectResult(new { error = "invalid_mfa_code", error_description = "Invalid mfa code" });
         }
 
@@ -1280,7 +1289,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var key = Guid.NewGuid().ToString("n");
         var expires = DateTime.UtcNow.AddMinutes(minutes);
 
-        await _cacheClient.AddStringValueAsync(key, user.ItemId, minutes * 60);
+        await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Activation, key, user.ItemId, minutes * 60);
         await _userRepository.InsertUserKeyMapAsync(new UserKeyMap
         {
             ItemId = Guid.NewGuid().ToString(),

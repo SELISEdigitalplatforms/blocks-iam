@@ -55,6 +55,7 @@ namespace Authentication.DomainService.Utilities
             // tenant's default OIDC client but cannot reference this assembly.
             serviceCollection.AddSingleton<IDefaultOidcClientResolver, DefaultOidcClientResolver>();
             serviceCollection.AddSingleton<IUserSessionTerminator, UserSessionTerminator>();
+            serviceCollection.AddSingleton<IFailedLoginTracker, FailedLoginTracker>();
             serviceCollection.AddSingleton<IOidcClientRegistrationLookup, OidcClientRegistrationLookup>();
 
             serviceCollection.AddSingleton<IOAuthJwtAccessTokenManager, OAuthJwtAccessTokenManager>();
@@ -83,6 +84,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IIdpSessionService, IdpSessionService>();
 
             serviceCollection.AddSingleton<IPasswordCredentialVerifier, PasswordCredentialVerifier>();
+            serviceCollection.AddSingleton<IUnknownUserLoginGuard, UnknownUserLoginGuard>();
             serviceCollection.AddSingleton<PasswordAuthenticationService>();
             serviceCollection.AddSingleton<MfaAuthorizationService>();
             serviceCollection.AddSingleton<IMfaPolicyService, MfaPolicyService>();

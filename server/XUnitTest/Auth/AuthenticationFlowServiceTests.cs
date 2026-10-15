@@ -36,6 +36,7 @@ namespace XUnitTest.Auth
         private readonly Mock<IRefreshSessionResolver> _sessionResolver = new();
         private readonly Mock<IAuthenticationDomainService> _authDomain = new();
         private readonly Mock<IUserActivityDispatcher> _activity = new();
+        private readonly Mock<IUnknownUserLoginGuard> _guard = XUnitTest.TestSupport.UnknownLoginGuardStub.Create();
         private readonly OidcLoginAuditWriter _auditWriter;
 
         private const string TenantId = "tenant-1";
@@ -65,7 +66,7 @@ namespace XUnitTest.Auth
 
         private AuthenticationFlowService Create() =>
             new(_repo.Object, _strategy.Object, _refresher.Object, _authService.Object, _captcha.Object,
-                _auditWriter, NullLogger<AuthenticationFlowService>.Instance, _refreshRepo.Object, _sessionResolver.Object);
+                _auditWriter, NullLogger<AuthenticationFlowService>.Instance, _refreshRepo.Object, _sessionResolver.Object, _guard.Object);
 
         private static HttpRequest Req() => new DefaultHttpContext().Request;
 
@@ -96,7 +97,7 @@ namespace XUnitTest.Auth
         public async Task EmbeddedLogin_AccountLocked_Returns423_AndAudits()
         {
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) });
+                .ReturnsAsync(new User { ItemId = "user-1", Active = true, IsVerified = true, LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) });
 
             var result = await Create().ExecuteEmbeddedLoginAsync(new EmbeddedLoginRequest { Username = "u", Password = "p" }, Req());
 
@@ -134,7 +135,7 @@ namespace XUnitTest.Auth
         public async Task EmbeddedLogin_CaptchaRequired_NoCode_ReturnsCaptchaEnabled()
         {
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync(new User { ItemId = "user-1", FailedLoginCount = CaptchaGate.FailedAttemptsBeforeCaptcha });
+                .ReturnsAsync(new User { ItemId = "user-1", Active = true, IsVerified = true, FailedLoginCount = CaptchaGate.FailedAttemptsBeforeCaptcha });
             _captcha.Setup(c => c.GetConfigurationAsync()).ReturnsAsync(new CaptchaConfiguration { IsEnable = true, CaptchaKey = "site-key" });
 
             var result = await Create().ExecuteEmbeddedLoginAsync(new EmbeddedLoginRequest { Username = "u", Password = "p" }, Req());
@@ -148,7 +149,7 @@ namespace XUnitTest.Auth
         public async Task EmbeddedLogin_CaptchaInvalid_ReturnsCaptchaInvalid_AndAudits()
         {
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync(new User { ItemId = "user-1", FailedLoginCount = CaptchaGate.FailedAttemptsBeforeCaptcha });
+                .ReturnsAsync(new User { ItemId = "user-1", Active = true, IsVerified = true, FailedLoginCount = CaptchaGate.FailedAttemptsBeforeCaptcha });
             _captcha.Setup(c => c.GetConfigurationAsync()).ReturnsAsync(new CaptchaConfiguration { IsEnable = true, CaptchaKey = "site-key" });
             _captcha.Setup(c => c.VerifyAsync("wrong", It.IsAny<string>())).ReturnsAsync((object)new { Verified = false });
 
@@ -644,7 +645,7 @@ namespace XUnitTest.Auth
         public async Task Refresh_UserLocked_Returns423()
         {
             Resolves(Session());
-            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) });
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1", Active = true, IsVerified = true, LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) });
             var ctx = new DefaultHttpContext();
 
             var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
