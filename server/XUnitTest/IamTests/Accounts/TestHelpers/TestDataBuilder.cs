@@ -71,13 +71,13 @@ namespace XUnitTest.IamTests.Accounts.TestHelpers
             };
         }
 
-        public static TenantConfiguration CreateTenantConfiguration(
+        public static IamTenantConfiguration CreateTenantConfiguration(
             bool isEmailPasswordSignUpEnabled = true,
             bool isSsoSignUpEnabled = false,
             List<string>? defaultRoles = null,
             List<string>? defaultPermissions = null)
         {
-            return new TenantConfiguration
+            return new IamTenantConfiguration
             {
                 ItemId = "tenantConfig-1",
                 IsEmailPasswordSignUpEnabled = isEmailPasswordSignUpEnabled,

@@ -474,7 +474,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetTenantConfigurationAsync_Delegates()
         {
-            var config = new TenantConfiguration { ItemId = "c1" };
+            var config = new IamTenantConfiguration { ItemId = "c1" };
             _iam.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(config);
             (await Sut().GetTenantConfigurationAsync()).ItemId.Should().Be("c1");
         }
@@ -482,7 +482,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task SaveOrganizationConfig_DelegatesToTheStore()
         {
-            var config = new TenantConfiguration { ItemId = "c1" };
+            var config = new IamTenantConfiguration { ItemId = "c1" };
             await Sut().SaveOrganizationConfig(config);
             _iam.Verify(r => r.SaveOrganizationConfigAsync(config), Times.Once);
         }
@@ -929,7 +929,7 @@ namespace XUnitTest.IamTests.Resources
         [InlineData("   ")]
         public async Task RemoveFromSignUpDefaultsAsync_IgnoresBlankArguments(string value)
         {
-            Register<TenantConfiguration>();
+            Register<IamTenantConfiguration>();
 
             (await Sut().RemoveRoleFromSignUpDefaultsAsync(value)).Should().BeTrue();
             (await Sut().RemovePermissionFromSignUpDefaultsAsync(value)).Should().BeTrue();

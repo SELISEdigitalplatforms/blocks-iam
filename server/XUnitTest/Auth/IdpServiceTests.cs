@@ -580,7 +580,7 @@ namespace XUnitTest.Auth
 
         private void SignupEnabled(bool email = true, bool sso = false)
         {
-            _iamRepo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            _iamRepo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
             {
                 IsEmailPasswordSignUpEnabled = email,
                 IsSSoSignUpEnabled = sso
