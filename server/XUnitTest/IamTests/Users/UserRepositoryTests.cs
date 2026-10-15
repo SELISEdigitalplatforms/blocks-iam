@@ -41,7 +41,7 @@ namespace XUnitTest.IamTests.Users
             BlocksContext.IsTestMode = false;
         }
 
-        private UserRepository Sut() => new(_iam.Object);
+        private UserRepository Sut() => new(_iam.Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         private static UserListScope Scope(params string[] organizationIds) =>
             new(UserListScopeKind.Organizations, organizationIds);

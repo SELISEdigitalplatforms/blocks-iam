@@ -31,7 +31,7 @@ namespace XUnitTest.Auth.Oidc
         }
 
         private IdpSessionRepository Sut() =>
-            new(_db.Object, NullLogger<IdpSessionRepository>.Instance);
+            new(_db.Object, NullLogger<IdpSessionRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         [Fact]
         public async Task CreateAsync_InsertsAndReturnsSessionId()

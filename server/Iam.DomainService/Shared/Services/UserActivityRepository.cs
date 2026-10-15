@@ -19,8 +19,8 @@ namespace Iam.DomainService.Services
 
         private readonly ILogger<UserActivityRepository> _logger;
 
-        public UserActivityRepository(IDbContextProvider dbContextProvider, ILogger<UserActivityRepository> logger)
-            : base(dbContextProvider)
+        public UserActivityRepository(IDbContextProvider dbContextProvider, ILogger<UserActivityRepository> logger, IIamDataAccess dataAccess)
+            : base(dbContextProvider, dataAccess)
         {
             _logger = logger;
         }
@@ -28,6 +28,7 @@ namespace Iam.DomainService.Services
         public async Task InsertAsync(UserActivity activity, CancellationToken ct)
         {
             var collection = GetCollection<UserActivity>();
+            await _dataAccess.EnsureInsertAllowedAsync(IamSchemas.UserActivity, "UserActivityRepository.InsertAsync");
             try
             {
                 await collection.InsertOneAsync(activity, cancellationToken: ct);
@@ -49,7 +50,9 @@ namespace Iam.DomainService.Services
                 Skip = skip,
                 Limit = req.PageSize
             };
-            var cursor = await collection.FindAsync(filter, options, ct);
+            var scope = await _dataAccess.ReadAsync(IamSchemas.UserActivity, filter, "UserActivityRepository.GetAsync", useProjection: false);
+            if (!scope.Granted) return [];
+            var cursor = await collection.FindAsync(scope.Filter, options, ct);
             return await cursor.ToListAsync(ct);
         }
 
@@ -57,7 +60,9 @@ namespace Iam.DomainService.Services
         {
             var collection = GetCollection<UserActivity>();
             var (_, filter, _) = Build(userId, req);
-            return await collection.CountDocumentsAsync(filter, cancellationToken: ct);
+            var scope = await _dataAccess.ReadAsync(IamSchemas.UserActivity, filter, "UserActivityRepository.CountAsync", useProjection: false);
+            if (!scope.Granted) return 0;
+            return await collection.CountDocumentsAsync(scope.Filter, cancellationToken: ct);
         }
 
         public async Task<long> CountSignupLinkRejectionsAsync(
@@ -91,7 +96,10 @@ namespace Iam.DomainService.Services
                 events &= b.Exists("MigratedFrom", false);
             }
 
-            var count = await GetCollection<UserActivity>().CountDocumentsAsync(events, cancellationToken: ct);
+            var eventScope = await _dataAccess.ReadAsync(IamSchemas.UserActivity, events, "UserActivityRepository.CountSignupLinkRejectionsAsync", useProjection: false);
+            var count = eventScope.Granted
+                ? await GetCollection<UserActivity>().CountDocumentsAsync(eventScope.Filter, cancellationToken: ct)
+                : 0;
 
             if (legacyExists)
             {

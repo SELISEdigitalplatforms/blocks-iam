@@ -74,8 +74,8 @@ public sealed class AuthorizationCodeReuseIntegrationTests : IDisposable
         _cache = _redis.CacheClient();
         var provider = _mongo.ProviderFor();
         _codes = new RedisAuthorizationCodeStore(_cache, new AuthorizationCodeRepository(provider), NullLogger<RedisAuthorizationCodeStore>.Instance);
-        _refresh = new RefreshTokenRepository(provider, _cache, NullLogger<RefreshTokenRepository>.Instance);
-        _revocations = new TokenRevocationRepository(provider, NullLogger<TokenRevocationRepository>.Instance);
+        _refresh = new RefreshTokenRepository(provider, _cache, NullLogger<RefreshTokenRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
+        _revocations = new TokenRevocationRepository(provider, NullLogger<TokenRevocationRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant)null!);
         _auth.Setup(a => a.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);

@@ -1,3 +1,4 @@
+using Blocks.Genesis.DataAccess;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
@@ -46,6 +47,11 @@ namespace Authentication.DomainService.Utilities
         public static void RegisterAllServices(this IServiceCollection serviceCollection)
         {
             
+            // Genesis data access resolver (row filter gate). One registration for Api and Worker; pre-login
+            // flows have no authenticated user, so IamDataAccess.ShouldSkipResolver passes them through.
+            serviceCollection.AddBlocksDataAccess();
+            serviceCollection.AddSingleton<IIamDataAccess, IamDataAccess>();
+
             #region Authentication
             serviceCollection.AddHttpClient(OidcDiscoveryClient.HttpClientName);
             serviceCollection.AddSingleton<OidcDiscoveryClient>();

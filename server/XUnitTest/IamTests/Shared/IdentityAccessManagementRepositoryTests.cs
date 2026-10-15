@@ -57,7 +57,7 @@ namespace XUnitTest.IamTests.Shared
         }
 
         private IdentityAccessManagementRepository Sut() =>
-            new(_db.Object, _secret.Object, NullLogger<IdentityAccessManagementRepository>.Instance);
+            new(_db.Object, _secret.Object, NullLogger<IdentityAccessManagementRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         [Fact]
         public async Task GetIamConfigurationAsync_ReturnsMatch()
@@ -204,7 +204,7 @@ namespace XUnitTest.IamTests.Shared
                 .ThrowsAsync(new InvalidOperationException("no permission"));
 
             var logger = new Mock<ILogger<IdentityAccessManagementRepository>>();
-            var sut = new IdentityAccessManagementRepository(_db.Object, _secret.Object, logger.Object);
+            var sut = new IdentityAccessManagementRepository(_db.Object, _secret.Object, logger.Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
             // A missing index costs speed, never correctness, so startup must survive this - but it
             // must not vanish silently either, or a permanently missing index goes unnoticed.

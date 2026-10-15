@@ -25,10 +25,18 @@ namespace Iam.DomainService.Services
         private const string LastUpdatedDate = "LastUpdatedDate";
 
         private readonly IDbContextProvider _dbContextProvider;
+        private readonly IIamDataAccess? _dataAccess;
 
+        /// <summary>No data access gate: only for the cross-database read (another tenant's DB; the resolver loads the caller's tenant policies only).</summary>
         public TenantConfigurationStore(IDbContextProvider dbContextProvider)
         {
             _dbContextProvider = dbContextProvider;
+        }
+
+        public TenantConfigurationStore(IDbContextProvider dbContextProvider, IIamDataAccess dataAccess)
+        {
+            _dbContextProvider = dbContextProvider;
+            _dataAccess = dataAccess;
         }
 
         /// <summary>Reads the configuration of the context tenant's database.</summary>
@@ -36,6 +44,7 @@ namespace Iam.DomainService.Services
             ReadAsync(
                 _dbContextProvider.GetCollection<BsonDocument>(IdentityConfigurationCollection),
                 _dbContextProvider.GetCollection<TenantConfiguration>(LegacyCollection),
+                _dataAccess,
                 ct);
 
         /// <summary>Reads the configuration of another tenant's database (cross-database read).</summary>
@@ -43,6 +52,7 @@ namespace Iam.DomainService.Services
             ReadAsync(
                 database.GetCollection<BsonDocument>(IdentityConfigurationCollection),
                 database.GetCollection<TenantConfiguration>(LegacyCollection),
+                null, // skip-other-db: the database is not the caller's tenant DB
                 ct);
 
         /// <summary>
@@ -60,15 +70,25 @@ namespace Iam.DomainService.Services
                 _dbContextProvider.GetCollection<TenantConfiguration>(LegacyCollection),
                 update,
                 upsertLegacy,
+                _dataAccess,
                 ct);
 
         private static async Task<TenantConfiguration?> ReadAsync(
             IMongoCollection<BsonDocument> identity,
             IMongoCollection<TenantConfiguration> legacy,
+            IIamDataAccess? dataAccess,
             CancellationToken ct)
         {
+            FilterDefinition<BsonDocument> filter = Builders<BsonDocument>.Filter.Empty;
+            if (dataAccess is not null)
+            {
+                var scope = await dataAccess.ReadAsync(IamSchemas.IdentityConfiguration, filter, "TenantConfigurationStore.ReadAsync", useProjection: false);
+                if (!scope.Granted) return null;
+                filter = scope.Filter;
+            }
+
             var first = await identity
-                .Find(Builders<BsonDocument>.Filter.Empty)
+                .Find(filter)
                 .Project<BsonDocument>(Builders<BsonDocument>.Projection.Include(FieldName).Exclude("_id"))
                 .FirstOrDefaultAsync(ct);
 
@@ -87,10 +107,19 @@ namespace Iam.DomainService.Services
             IMongoCollection<TenantConfiguration> legacy,
             UpdateDefinition<TenantConfiguration> update,
             bool upsertLegacy,
+            IIamDataAccess? dataAccess,
             CancellationToken ct)
         {
+            FilterDefinition<BsonDocument> identityFilter = Builders<BsonDocument>.Filter.Type(FieldName, BsonType.Document);
+            if (dataAccess is not null)
+            {
+                var edit = await dataAccess.EditFilterAsync(IamSchemas.IdentityConfiguration, identityFilter, "TenantConfigurationStore.UpdateAsync");
+                if (edit is null) return false;
+                identityFilter = edit;
+            }
+
             var result = await identity.UpdateOneAsync(
-                Builders<BsonDocument>.Filter.Type(FieldName, BsonType.Document),
+                identityFilter,
                 ToFieldUpdate(update),
                 cancellationToken: ct);
 

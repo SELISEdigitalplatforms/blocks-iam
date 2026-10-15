@@ -42,7 +42,7 @@ namespace XUnitTest.IamTests.Resources
             BlocksContext.IsTestMode = false;
         }
 
-        private ResourceRepository Sut() => new(_iam.Object);
+        private ResourceRepository Sut() => new(_iam.Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         private Mock<IMongoCollection<T>> Register<T>(IEnumerable<T>? items = null)
         {

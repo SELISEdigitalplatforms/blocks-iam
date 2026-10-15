@@ -25,7 +25,7 @@ namespace XUnitTest.Auth.Security
         private SecurityRepository Sut()
         {
             _db.Setup(d => d.GetDatabase()).Returns(_database.Object);
-            return new SecurityRepository(_db.Object);
+            return new SecurityRepository(_db.Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
         }
 
         private Mock<IMongoCollection<RefreshTokenModel>> RegisterRefresh(IEnumerable<RefreshTokenModel>? items = null)

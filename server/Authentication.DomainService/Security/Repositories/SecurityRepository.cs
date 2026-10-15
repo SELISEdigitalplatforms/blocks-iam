@@ -1,8 +1,10 @@
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Security.Models;
 using Blocks.Genesis;
+using Iam.DomainService.Services;
 using Idp.DomainService.Oidc.Contracts;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Blocks.Genesis.Entities.Iam;
 
@@ -12,9 +14,12 @@ namespace Authentication.DomainService.Security.Repositories
     {
         private readonly IDbContextProvider _dbContextProvider;
 
-        public SecurityRepository(IDbContextProvider dbContextProvider)
+        private readonly IIamDataAccess _dataAccess;
+
+        public SecurityRepository(IDbContextProvider dbContextProvider, IIamDataAccess dataAccess)
         {
             _dbContextProvider = dbContextProvider;
+            _dataAccess = dataAccess;
         }
 
         private IMongoDatabase GetDatabase() =>
@@ -57,6 +62,20 @@ namespace Authentication.DomainService.Security.Repositories
                 match.Add("ClientId", clientId);
             }
 
+            // Aggregation: the resolved READ filter becomes the first $match; the resolver projection is not applied.
+            var matchScope = await _dataAccess.ReadAsync(
+                IamSchemas.RefreshTokenModel,
+                new BsonDocumentFilterDefinition<RefreshTokenModel>(match),
+                "SecurityRepository.GetUserSessionsAsync",
+                useProjection: false);
+            if (!matchScope.Granted)
+            {
+                return [];
+            }
+
+            match = matchScope.Filter.Render(new RenderArgs<RefreshTokenModel>(
+                BsonSerializer.LookupSerializer<RefreshTokenModel>(), BsonSerializer.SerializerRegistry));
+
             var groupPipeline = new BsonDocument[]
             {
                 new BsonDocument("$match", match),
@@ -88,9 +107,14 @@ namespace Authentication.DomainService.Security.Repositories
             var idpSessionLookup = new Dictionary<string, IdpSessionModel>(StringComparer.Ordinal);
             if (sessionIds.Count > 0)
             {
-                var idpSessions = await IdpSessions()
-                    .Find(Builders<IdpSessionModel>.Filter.In(s => s.SessionId, sessionIds))
-                    .ToListAsync(ct);
+                var idpSessionScope = await _dataAccess.ReadAsync(
+                    IamSchemas.IdpSessionModel,
+                    Builders<IdpSessionModel>.Filter.In(s => s.SessionId, sessionIds),
+                    "SecurityRepository.GetUserSessionsAsync.IdpSessions",
+                    useProjection: false);
+                var idpSessions = idpSessionScope.Granted
+                    ? await idpSessionScope.Apply(IdpSessions()).ToListAsync(ct)
+                    : [];
                 foreach (var s in idpSessions)
                 {
                     idpSessionLookup[s.SessionId] = s;
@@ -153,15 +177,26 @@ namespace Authentication.DomainService.Security.Repositories
                 b.Eq(x => x.SessionId, sessionId)
             };
 
-            var rows = await RefreshTokens().Find(b.And(filters)).ToListAsync(ct);
+            var rowScope = await _dataAccess.ReadAsync(IamSchemas.RefreshTokenModel, b.And(filters), "SecurityRepository.GetUserSessionAsync", useProjection: false);
+            if (!rowScope.Granted)
+            {
+                return null;
+            }
+
+            var rows = await rowScope.Apply(RefreshTokens()).ToListAsync(ct);
             if (rows.Count == 0)
             {
                 return null;
             }
 
-            var idpSession = await IdpSessions()
-                .Find(Builders<IdpSessionModel>.Filter.Eq(x => x.SessionId, sessionId))
-                .FirstOrDefaultAsync(ct);
+            var idpSessionOneScope = await _dataAccess.ReadAsync(
+                IamSchemas.IdpSessionModel,
+                Builders<IdpSessionModel>.Filter.Eq(x => x.SessionId, sessionId),
+                "SecurityRepository.GetUserSessionAsync.IdpSession",
+                useProjection: false);
+            var idpSession = idpSessionOneScope.Granted
+                ? await idpSessionOneScope.Apply(IdpSessions()).FirstOrDefaultAsync(ct)
+                : null;
 
             var now = DateTime.UtcNow;
             var firstApp = rows.First();
@@ -201,7 +236,13 @@ namespace Authentication.DomainService.Security.Repositories
 
             var b = Builders<RefreshTokenModel>.Filter;
             var filter = b.Eq(x => x.SessionId, sessionId);
-            var rows = await RefreshTokens().Find(filter).SortBy(x => x.AbsoluteExpiry).ToListAsync(ct);
+            var historyScope = await _dataAccess.ReadAsync(IamSchemas.RefreshTokenModel, filter, "SecurityRepository.GetRotationHistoryAsync", useProjection: false);
+            if (!historyScope.Granted)
+            {
+                return [];
+            }
+
+            var rows = await historyScope.Apply(RefreshTokens()).SortBy(x => x.AbsoluteExpiry).ToListAsync(ct);
             var count = rows.Count;
             return rows.Select((r, idx) => new SessionRotationRecord
             {

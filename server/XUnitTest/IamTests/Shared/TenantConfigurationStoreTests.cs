@@ -28,7 +28,7 @@ public class TenantConfigurationStoreTests : IDisposable
     private TenantConfigurationStore Store() => new(_mongo.ProviderFor());
 
     private IdentityAccessManagementRepository Iam() =>
-        new(_mongo.ProviderFor(), new Mock<IBlocksSecret>().Object, NullLogger<IdentityAccessManagementRepository>.Instance);
+        new(_mongo.ProviderFor(), new Mock<IBlocksSecret>().Object, NullLogger<IdentityAccessManagementRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
     private IMongoCollection<BsonDocument> Identity => _mongo.Database.GetCollection<BsonDocument>("IdentityConfigurations");
     private IMongoCollection<BsonDocument> Legacy => _mongo.Database.GetCollection<BsonDocument>("TenantConfigurations");
@@ -337,7 +337,7 @@ public class TenantConfigurationStoreTests : IDisposable
             { "AllowedApis", new BsonArray(new[] { "/iam/*", "/idp/*" }) },   // read by Genesis onboarding, not mapped by the class
             { "TenantConfiguration", FieldValue(multiOrg: true) },
         });
-        var auth = new AuthenticationRepository(_mongo.ProviderFor(), new OidcDiscoveryClient(new Mock<IHttpClientFactory>().Object), new Mock<IKeyValueStore>().Object);
+        var auth = new AuthenticationRepository(_mongo.ProviderFor(), new OidcDiscoveryClient(new Mock<IHttpClientFactory>().Object), new Mock<IKeyValueStore>().Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         var config = await auth.GetAuthenticationConfigurationAsync();
         config.RefreshTokenValidForNumberMinutes = 45;
@@ -359,7 +359,7 @@ public class TenantConfigurationStoreTests : IDisposable
     {
         var id = ObjectId.GenerateNewId();
         await Identity.InsertOneAsync(new BsonDocument { { "_id", id } });
-        var auth = new AuthenticationRepository(_mongo.ProviderFor(), new OidcDiscoveryClient(new Mock<IHttpClientFactory>().Object), new Mock<IKeyValueStore>().Object);
+        var auth = new AuthenticationRepository(_mongo.ProviderFor(), new OidcDiscoveryClient(new Mock<IHttpClientFactory>().Object), new Mock<IKeyValueStore>().Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
         var config = new IdentityConfiguration
         {
             ItemId = id,

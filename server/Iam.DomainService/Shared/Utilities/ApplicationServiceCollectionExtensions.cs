@@ -6,6 +6,7 @@ using Iam.DomainService.SignupLinks;
 using Iam.DomainService.Users;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Iam.DomainService.Utilities
 {
@@ -15,6 +16,7 @@ namespace Iam.DomainService.Utilities
         public static void RegisterSharedServices(this IServiceCollection services)
         {
             #region Services
+            services.TryAddSingleton<IIamDataAccess, IamDataAccess>();
             services.AddSingleton<IUserManagementMutationService, UserManagementMutationService>();
             services.AddSingleton<IUserRepository, UserRepository>();
 

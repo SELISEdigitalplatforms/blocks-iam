@@ -57,7 +57,7 @@ namespace XUnitTest.Auth
                 userName: null, phoneNumber: null, displayName: null, oauthToken: null,
                 originalTenantId: tenant, impersonationSessionId: null, applicationDomain: "test"));
             _users = _mongo.Database.GetCollection<User>("Users");
-            _repo = new AuthenticationRepository(_mongo.ProviderFor(), new OidcDiscoveryClient(new Mock<IHttpClientFactory>().Object), new Mock<IKeyValueStore>().Object);
+            _repo = new AuthenticationRepository(_mongo.ProviderFor(), new OidcDiscoveryClient(new Mock<IHttpClientFactory>().Object), new Mock<IKeyValueStore>().Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
             _captcha.Setup(c => c.GetConfigurationAsync()).ReturnsAsync(new CaptchaConfiguration { IsEnable = true, CaptchaKey = "site-key", Provider = "recaptcha" });
             _captcha.Setup(c => c.VerifyAsync("good", It.IsAny<string>())).ReturnsAsync((object)new { Verified = true });

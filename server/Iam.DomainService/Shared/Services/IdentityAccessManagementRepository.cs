@@ -22,11 +22,12 @@ namespace Iam.DomainService.Services
         public IdentityAccessManagementRepository(
             IDbContextProvider dbContextProvider,
             IBlocksSecret blocksSecret,
-            ILogger<IdentityAccessManagementRepository> logger) : base(dbContextProvider)
+            ILogger<IdentityAccessManagementRepository> logger,
+            IIamDataAccess dataAccess) : base(dbContextProvider, dataAccess)
         {
             _blocksSecret = blocksSecret;
             _logger = logger;
-            _tenantConfigurationStore = new TenantConfigurationStore(dbContextProvider);
+            _tenantConfigurationStore = new TenantConfigurationStore(dbContextProvider, dataAccess);
         }
 
         /// <summary>
@@ -44,7 +45,7 @@ namespace Iam.DomainService.Services
         {
             var collection = GetCollectionByName<IamConfiguration>(IdentityConfigurationCollectionName);
 
-            return await collection.Find(_ => true).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.IdentityConfiguration, Builders<IamConfiguration>.Filter.Empty, "IdentityAccessManagementRepository.GetIamConfigurationAsync");
         }
 
         public async Task<User> GetUserByEmailAsync(string email)
@@ -56,14 +57,16 @@ namespace Iam.DomainService.Services
             };
             var filter = Builders<User>.Filter.Eq(x => x.Email, NormalizeEmail(email));
 
-            return await (await collection.FindAsync(filter, options)).FirstOrDefaultAsync();
+            var scope = await _dataAccess.ReadAsync(IamSchemas.User, filter, "IdentityAccessManagementRepository.GetUserByEmailAsync", useProjection: false);
+            if (!scope.Granted) return null!;
+            return await (await collection.FindAsync(scope.Filter, options)).FirstOrDefaultAsync();
         }
 
         public async Task<User> GetUserByIdAsync(string itemId)
         {
             var collection = GetCollection<User>();
 
-            return await collection.Find(x => x.ItemId == itemId).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.User, Builders<User>.Filter.Eq(x => x.ItemId, itemId), "IdentityAccessManagementRepository.GetUserByIdAsync") ?? null!;
         }
 
         public async Task<T> GetUserByIdAsync<T>(string itemId)
@@ -72,7 +75,10 @@ namespace Iam.DomainService.Services
             var filter = Builders<User>.Filter.Eq(x => x.ItemId, itemId);
             var project = Builders<User>.Projection.As<T>();
 
-            var cursor = await collection.FindAsync(filter, new FindOptions<User, T>
+            // Own projection (As<T>): only the row filter is applied, not the resolver projection.
+            var scope = await _dataAccess.ReadAsync(IamSchemas.User, filter, "IdentityAccessManagementRepository.GetUserByIdAsync<T>", useProjection: false);
+            if (!scope.Granted) return default!;
+            var cursor = await collection.FindAsync(scope.Filter, new FindOptions<User, T>
             {
                 Projection = project
             });
@@ -112,7 +118,7 @@ namespace Iam.DomainService.Services
         public async Task<bool> InsertUserKeyMapAsync(UserKeyMap userKeyMap)
         {
             var collection = GetCollection<UserKeyMap>();
-            await collection.InsertOneAsync(userKeyMap);
+            await _dataAccess.InsertOneAsync(collection, IamSchemas.UserKeyMap, userKeyMap, "IdentityAccessManagementRepository.InsertUserKeyMapAsync");
 
             return true;
         }
@@ -121,9 +127,9 @@ namespace Iam.DomainService.Services
         {
             NormalizeUserIdentity(user);
             var collection = GetCollection<User>();
-            var result = await collection.ReplaceOneAsync(x => x.ItemId == user.ItemId, user);
+            var result = await _dataAccess.ReplaceOneAsync(collection, IamSchemas.User, Builders<User>.Filter.Eq(x => x.ItemId, user.ItemId), user, "IdentityAccessManagementRepository.UpdateUserAsync");
 
-            return result.IsAcknowledged;
+            return result?.IsAcknowledged ?? false;
         }
 
         public async Task<bool> RecordSuccessfulLoginAsync(string userId, string deviceInformationJson, DateTime nowUtc)
@@ -140,9 +146,12 @@ namespace Iam.DomainService.Services
                 .Set(x => x.LastLoggedInTime, nowUtc)
                 .Set(x => x.LastLoggedInDeviceInfo, deviceInformationJson);
 
-            var updated = await collection.FindOneAndUpdateAsync(
+            var updated = await _dataAccess.FindOneAndUpdateAsync(
+                collection,
+                IamSchemas.User,
                 filter,
                 update,
+                "IdentityAccessManagementRepository.RecordSuccessfulLoginAsync",
                 new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After });
 
             if (updated == null)
@@ -156,11 +165,14 @@ namespace Iam.DomainService.Services
             // already-recorded FirstLoggedInTime with a later one.
             if (updated.LogInCount == 1)
             {
-                await collection.UpdateOneAsync(
+                await _dataAccess.UpdateOneAsync(
+                    collection,
+                    IamSchemas.User,
                     Builders<User>.Filter.And(
                         filter,
                         Builders<User>.Filter.Eq(x => x.FirstLoggedInTime, default(DateTime))),
-                    Builders<User>.Update.Set(x => x.FirstLoggedInTime, nowUtc));
+                    Builders<User>.Update.Set(x => x.FirstLoggedInTime, nowUtc),
+                    "IdentityAccessManagementRepository.RecordSuccessfulLoginAsync.FirstLogin");
             }
 
             return true;
@@ -174,15 +186,15 @@ namespace Iam.DomainService.Services
             // Every outstanding code for the user, not one of them: the cache side of this
             // invalidation drops them all, and leaving rows behind would let a resent link still
             // look unused.
-            var result = await collection.UpdateManyAsync(u => u.UserId == userId && !u.Activated, update);
+            var result = await _dataAccess.UpdateManyAsync(collection, IamSchemas.UserKeyMap, Builders<UserKeyMap>.Filter.Where(u => u.UserId == userId && !u.Activated), update, "IdentityAccessManagementRepository.UpdateUserKeyMapActivationAsync");
 
-            return result.IsAcknowledged;
+            return result?.IsAcknowledged ?? false;
         }
 
         public async Task<List<UserKeyMap>> GetActiveUserKeyMapAsync(string userId)
         {
             var collection = GetCollection<UserKeyMap>();
-            return await collection.Find(u => u.UserId == userId && !u.Activated).ToListAsync();
+            return await _dataAccess.FindListAsync(collection, IamSchemas.UserKeyMap, Builders<UserKeyMap>.Filter.Where(u => u.UserId == userId && !u.Activated), "IdentityAccessManagementRepository.GetActiveUserKeyMapAsync");
         }
 
 
@@ -194,7 +206,7 @@ namespace Iam.DomainService.Services
             }
 
             var collection = GetCollection<UserKeyMap>();
-            return await collection.Find(u => u.Key == key).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.UserKeyMap, Builders<UserKeyMap>.Filter.Eq(u => u.Key, key), "IdentityAccessManagementRepository.GetUserKeyMapByKeyAsync");
         }
 
         public async Task<string> GetUserIdFromKeyMapByKeyAsync(string key)
@@ -208,7 +220,9 @@ namespace Iam.DomainService.Services
             var projection = Builders<UserKeyMap>.Projection.Expression(u => u.UserId);
 
             // Execute FindAsync with filter + projection
-            using var cursor = await collection.FindAsync(filter, new FindOptions<UserKeyMap, string>
+            var scope = await _dataAccess.ReadAsync(IamSchemas.UserKeyMap, filter, "IdentityAccessManagementRepository.GetUserIdFromKeyMapByKeyAsync", useProjection: false);
+            if (!scope.Granted) return string.Empty;
+            using var cursor = await collection.FindAsync(scope.Filter, new FindOptions<UserKeyMap, string>
             {
                 Projection = projection
             });

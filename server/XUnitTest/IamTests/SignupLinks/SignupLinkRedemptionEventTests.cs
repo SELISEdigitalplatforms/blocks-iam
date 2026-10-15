@@ -30,7 +30,7 @@ public class SignupLinkRedemptionEventTests : IDisposable
     public void Dispose() => _mongo.Dispose();
 
     private UserActivityRepository Repo() =>
-        new(_mongo.ProviderFor(), NullLogger<UserActivityRepository>.Instance);
+        new(_mongo.ProviderFor(), NullLogger<UserActivityRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
     private static SignupLink Link(string id = "link-1", string tenant = "t1") => new()
     {

@@ -23,7 +23,7 @@ public class SignupLinkConfigurationRepositoryTests
     }
 
     private SignupLinkConfigurationRepository Sut() =>
-        new(_iam.Object, NullLogger<SignupLinkConfigurationRepository>.Instance);
+        new(_iam.Object, NullLogger<SignupLinkConfigurationRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
     [Fact]
     public async Task EnsureIndexesAsync_CreatesIndexes()

@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Blocks.Genesis;
+using Iam.DomainService.Services;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
 using Blocks.Genesis.Entities.Iam;
@@ -12,13 +13,29 @@ namespace Authentication.DomainService.Oidc.Repositories
 
         private readonly IDbContextProvider _dbContextProvider;
         private readonly ILogger<DeviceAuthorizationRepository> _logger;
+        private readonly IIamDataAccess _dataAccess;
 
         public DeviceAuthorizationRepository(
             IDbContextProvider dbContextProvider,
-            ILogger<DeviceAuthorizationRepository> logger)
+            ILogger<DeviceAuthorizationRepository> logger,
+            IIamDataAccess dataAccess)
         {
             _dbContextProvider = dbContextProvider;
             _logger = logger;
+            _dataAccess = dataAccess;
+        }
+
+        /// <summary>UpdateOne through the resolver's EDIT filter (keeps the cancellation token). Null = denied, nothing written.</summary>
+        private async Task<UpdateResult?> UpdateOneScopedAsync(
+            IMongoCollection<DeviceAuthorizationRequestModel> collection,
+            FilterDefinition<DeviceAuthorizationRequestModel> filter,
+            UpdateDefinition<DeviceAuthorizationRequestModel> update,
+            string callSite,
+            CancellationToken ct,
+            string? tenantId = null)
+        {
+            var edit = await _dataAccess.EditFilterAsync(IamSchemas.DeviceAuthorizationRequestModel, filter, callSite, tenantId);
+            return edit is null ? null : await collection.UpdateOneAsync(edit, update, cancellationToken: ct);
         }
 
         private IMongoDatabase GetDatabase() =>
@@ -68,6 +85,7 @@ namespace Authentication.DomainService.Oidc.Repositories
 
         public async Task CreateAsync(DeviceAuthorizationRequestModel entity, CancellationToken ct = default)
         {
+            await _dataAccess.EnsureInsertAllowedAsync(IamSchemas.DeviceAuthorizationRequestModel, "DeviceAuthorizationRepository.CreateAsync");
             await Collection().InsertOneAsync(entity, cancellationToken: ct);
             _logger.LogInformation("Device authorization request persisted {Id} for client {ClientId}", entity.Id, entity.ClientId);
         }
@@ -75,7 +93,9 @@ namespace Authentication.DomainService.Oidc.Repositories
         public async Task<DeviceAuthorizationRequestModel?> GetByDeviceCodeHashAsync(string hash, CancellationToken ct = default)
         {
             var filter = Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.DeviceCodeHash, hash);
-            return await Collection().Find(filter).FirstOrDefaultAsync(ct);
+            var scope = await _dataAccess.ReadAsync(IamSchemas.DeviceAuthorizationRequestModel, filter, "DeviceAuthorizationRepository.GetByDeviceCodeHashAsync", useProjection: false);
+            if (!scope.Granted) return null;
+            return await scope.Apply(Collection()).FirstOrDefaultAsync(ct);
         }
 
         public async Task<DeviceAuthorizationRequestModel?> GetByUserCodeAsync(string userCode, CancellationToken ct = default)
@@ -86,13 +106,17 @@ namespace Authentication.DomainService.Oidc.Repositories
             // is the one picked.
             var filter = Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.UserCode, userCode);
             var sort = Builders<DeviceAuthorizationRequestModel>.Sort.Descending(x => x.CreatedAt);
-            return await Collection().Find(filter).Sort(sort).FirstOrDefaultAsync(ct);
+            var scope = await _dataAccess.ReadAsync(IamSchemas.DeviceAuthorizationRequestModel, filter, "DeviceAuthorizationRepository.GetByUserCodeAsync", useProjection: false);
+            if (!scope.Granted) return null;
+            return await scope.Apply(Collection()).Sort(sort).FirstOrDefaultAsync(ct);
         }
 
         public async Task<DeviceAuthorizationRequestModel?> GetByIdAsync(string id, CancellationToken ct = default)
         {
             var filter = Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id);
-            return await Collection().Find(filter).FirstOrDefaultAsync(ct);
+            var scope = await _dataAccess.ReadAsync(IamSchemas.DeviceAuthorizationRequestModel, filter, "DeviceAuthorizationRepository.GetByIdAsync", useProjection: false);
+            if (!scope.Granted) return null;
+            return await scope.Apply(Collection()).FirstOrDefaultAsync(ct);
         }
 
         public async Task<bool> MarkApprovedAsync(string id, string userId, DateTime at, CancellationToken ct = default, string? organizationId = null)
@@ -107,8 +131,8 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Set(x => x.ApprovedAt, at)
                 .Set(x => x.OrganizationId, organizationId);
 
-            var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
-            return result.ModifiedCount > 0;
+            var result = await UpdateOneScopedAsync(Collection(), filter, update, "DeviceAuthorizationRepository.MarkApprovedAsync", ct);
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<bool> MarkDeniedAsync(string id, DateTime at, CancellationToken ct = default)
@@ -121,8 +145,8 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Set(x => x.Status, DeviceAuthorizationStatus.Denied)
                 .Set(x => x.DeniedAt, at);
 
-            var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
-            return result.ModifiedCount > 0;
+            var result = await UpdateOneScopedAsync(Collection(), filter, update, "DeviceAuthorizationRepository.MarkDeniedAsync", ct);
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<bool> MarkConsumedAsync(string id, DateTime at, CancellationToken ct = default)
@@ -136,18 +160,18 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Set(x => x.Status, DeviceAuthorizationStatus.Consumed)
                 .Set(x => x.ConsumedAt, at);
 
-            var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
-            return result.ModifiedCount > 0;
+            var result = await UpdateOneScopedAsync(Collection(), filter, update, "DeviceAuthorizationRepository.MarkConsumedAsync", ct);
+            return result?.ModifiedCount > 0;
         }
 
         public Task<bool> MarkExpiredAsync(IEnumerable<string> ids, CancellationToken ct = default) =>
-            MarkExpiredAsync(Collection(), ids, ct);
+            MarkExpiredAsync(Collection(), ids, null, ct);
 
         public Task<bool> MarkExpiredAsync(string tenantId, IEnumerable<string> ids, CancellationToken ct = default) =>
-            MarkExpiredAsync(Collection(tenantId), ids, ct);
+            MarkExpiredAsync(Collection(tenantId), ids, tenantId, ct);
 
-        private static async Task<bool> MarkExpiredAsync(
-            IMongoCollection<DeviceAuthorizationRequestModel> collection, IEnumerable<string> ids, CancellationToken ct)
+        private async Task<bool> MarkExpiredAsync(
+            IMongoCollection<DeviceAuthorizationRequestModel> collection, IEnumerable<string> ids, string? tenantId, CancellationToken ct)
         {
             var idList = ids?.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList() ?? new List<string>();
             if (idList.Count == 0)
@@ -162,8 +186,10 @@ namespace Authentication.DomainService.Oidc.Repositories
 
             var update = Builders<DeviceAuthorizationRequestModel>.Update.Set(x => x.Status, DeviceAuthorizationStatus.Expired);
 
-            var result = await collection.UpdateManyAsync(filter, update, cancellationToken: ct);
-            return result.ModifiedCount > 0;
+            var edit = await _dataAccess.EditFilterAsync(IamSchemas.DeviceAuthorizationRequestModel, filter, "DeviceAuthorizationRepository.MarkExpiredAsync", tenantId);
+            if (edit is null) return false;
+            var result = await collection.UpdateManyAsync(edit, update, cancellationToken: ct);
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<bool> SetApprovalTokenHashAsync(string id, string approvalTokenHash, CancellationToken ct = default)
@@ -173,8 +199,8 @@ namespace Authentication.DomainService.Oidc.Repositories
                 Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Status, DeviceAuthorizationStatus.Pending));
 
             var update = Builders<DeviceAuthorizationRequestModel>.Update.Set(x => x.ApprovalTokenHash, approvalTokenHash);
-            var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
-            return result.ModifiedCount > 0;
+            var result = await UpdateOneScopedAsync(Collection(), filter, update, "DeviceAuthorizationRepository.SetApprovalTokenHashAsync", ct);
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<bool> UpdatePollAsync(string id, DateTime lastPollAt, int pollsObserved, CancellationToken ct = default)
@@ -184,8 +210,8 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Set(x => x.LastPollAt, lastPollAt)
                 .Set(x => x.PollsObserved, pollsObserved);
 
-            var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
-            return result.ModifiedCount > 0;
+            var result = await UpdateOneScopedAsync(Collection(), filter, update, "DeviceAuthorizationRepository.UpdatePollAsync", ct);
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<bool> TryRecordPollAsync(string id, DateTime previousLastPollAt, DateTime newLastPollAt, int pollsObserved, CancellationToken ct = default)
@@ -199,8 +225,8 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Set(x => x.LastPollAt, newLastPollAt)
                 .Set(x => x.PollsObserved, pollsObserved);
 
-            var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
-            return result.ModifiedCount > 0;
+            var result = await UpdateOneScopedAsync(Collection(), filter, update, "DeviceAuthorizationRepository.TryRecordPollAsync", ct);
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<int> BumpPollIntervalAsync(string id, int currentInterval, CancellationToken ct = default)
@@ -214,19 +240,19 @@ namespace Authentication.DomainService.Oidc.Repositories
                 Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Status, DeviceAuthorizationStatus.Pending),
                 Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.PollIntervalSeconds, currentInterval));
             var update = Builders<DeviceAuthorizationRequestModel>.Update.Set(x => x.PollIntervalSeconds, newInterval);
-            var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
-            return result.ModifiedCount > 0 ? newInterval : currentInterval;
+            var result = await UpdateOneScopedAsync(Collection(), filter, update, "DeviceAuthorizationRepository.BumpPollIntervalAsync", ct);
+            return result?.ModifiedCount > 0 ? newInterval : currentInterval;
         }
 
         public Task<IReadOnlyList<string>> GetExpiredIdsAsync(DateTime olderThanUtc, int limit, CancellationToken ct = default) =>
-            GetExpiredIdsAsync(Collection(), olderThanUtc, limit, ct);
+            GetExpiredIdsAsync(Collection(), olderThanUtc, limit, null, ct);
 
         public Task<IReadOnlyList<string>> GetExpiredIdsAsync(
             string tenantId, DateTime olderThanUtc, int limit, CancellationToken ct = default) =>
-            GetExpiredIdsAsync(Collection(tenantId), olderThanUtc, limit, ct);
+            GetExpiredIdsAsync(Collection(tenantId), olderThanUtc, limit, tenantId, ct);
 
-        private static async Task<IReadOnlyList<string>> GetExpiredIdsAsync(
-            IMongoCollection<DeviceAuthorizationRequestModel> collection, DateTime olderThanUtc, int limit, CancellationToken ct)
+        private async Task<IReadOnlyList<string>> GetExpiredIdsAsync(
+            IMongoCollection<DeviceAuthorizationRequestModel> collection, DateTime olderThanUtc, int limit, string? tenantId, CancellationToken ct)
         {
             var filter = Builders<DeviceAuthorizationRequestModel>.Filter.And(
                 Builders<DeviceAuthorizationRequestModel>.Filter.Lt(x => x.ExpiresAt, olderThanUtc),
@@ -235,8 +261,12 @@ namespace Authentication.DomainService.Oidc.Repositories
 
             var projection = Builders<DeviceAuthorizationRequestModel>.Projection.Include(x => x.Id);
 
+            // Own projection (Id only): only the row filter is applied, not the resolver projection.
+            var scope = await _dataAccess.ReadAsync(IamSchemas.DeviceAuthorizationRequestModel, filter, "DeviceAuthorizationRepository.GetExpiredIdsAsync", tenantId, useProjection: false);
+            if (!scope.Granted) return [];
+
             var docs = await collection
-                .Find(filter)
+                .Find(scope.Filter)
                 .Limit(limit)
                 .Project<DeviceAuthorizationRequestModel>(projection)
                 .ToListAsync(ct);

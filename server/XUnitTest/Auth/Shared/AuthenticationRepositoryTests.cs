@@ -44,7 +44,7 @@ namespace XUnitTest.Auth.Shared
         }
 
         private AuthenticationRepository Sut() =>
-            new(_db.Object, new OidcDiscoveryClient(_httpFactory.Object), _keyValueStore.Object);
+            new(_db.Object, new OidcDiscoveryClient(_httpFactory.Object), _keyValueStore.Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         private Mock<IMongoCollection<T>> Register<T>(IEnumerable<T>? items = null)
         {

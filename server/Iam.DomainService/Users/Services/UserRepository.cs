@@ -14,10 +14,12 @@ namespace Iam.DomainService.Users
     public class UserRepository : IUserRepository
     {
         private readonly IIdentityAccessManagementRepository _identityAccessManagementRepository;
+        private readonly IIamDataAccess _dataAccess;
 
-        public UserRepository(IIdentityAccessManagementRepository identityAccessManagementRepository)
+        public UserRepository(IIdentityAccessManagementRepository identityAccessManagementRepository, IIamDataAccess dataAccess)
         {
             _identityAccessManagementRepository = identityAccessManagementRepository;
+            _dataAccess = dataAccess;
         }
 
         public async Task<bool> CheckPasswordBlackListedAsync(string password)
@@ -29,7 +31,7 @@ namespace Iam.DomainService.Users
         {
             NormalizeUserIdentity(user);
             var collection = _identityAccessManagementRepository.GetCollection<User>();
-            await collection.InsertOneAsync(user);
+            await _dataAccess.InsertOneAsync(collection, IamSchemas.User, user, "UserRepository.CreateUserAsync");
 
             return true;
         }
@@ -131,11 +133,14 @@ namespace Iam.DomainService.Users
                 Collation = new Collation("en", strength: CollationStrength.Secondary)
             };
 
-            var user = !string.IsNullOrWhiteSpace(organizatoinId)
-                ? await collection.Find(x => x.UserName == userName && x.OrganizationIds.Any(o => o == organizatoinId), options).FirstOrDefaultAsync()
-                : await collection.Find(x => x.UserName == userName, options).FirstOrDefaultAsync();
+            var filter = !string.IsNullOrWhiteSpace(organizatoinId)
+                ? Builders<User>.Filter.Where(x => x.UserName == userName && x.OrganizationIds.Any(o => o == organizatoinId))
+                : Builders<User>.Filter.Where(x => x.UserName == userName);
 
-            return user;
+            var scope = await _dataAccess.ReadAsync(IamSchemas.User, filter, "UserRepository.GetUserByUserNameOrgIdAsync", useProjection: false);
+            if (!scope.Granted) return null!;
+
+            return await collection.Find(scope.Filter, options).FirstOrDefaultAsync();
         }
 
         public async Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter>
@@ -145,6 +150,11 @@ namespace Iam.DomainService.Users
             var filter = BuildUserFilter(query.Filter, scope);
             var sort = BuildSortDefinition(query.Sort);
             var projection = Builders<User>.Projection.As<T>();
+
+            // Own projection (As<T>): only the row filter is applied, not the resolver projection.
+            var scoped = await _dataAccess.ReadAsync(IamSchemas.User, filter, "UserRepository.GetUsersAsync", useProjection: false);
+            if (!scoped.Granted) return (new List<T>().AsQueryable(), 0);
+            filter = scoped.Filter;
 
             var totalCount = await collection.CountDocumentsAsync(filter);
 

@@ -50,7 +50,7 @@ namespace XUnitTest.Auth
             BlocksContext.SetContext(null);
             _mongo = new RealMongo();
             _users = _mongo.Database.GetCollection<User>("Users");
-            _repo = new AuthenticationRepository(_mongo.ProviderFor(), new OidcDiscoveryClient(new Mock<IHttpClientFactory>().Object), new Mock<IKeyValueStore>().Object);
+            _repo = new AuthenticationRepository(_mongo.ProviderFor(), new OidcDiscoveryClient(new Mock<IHttpClientFactory>().Object), new Mock<IKeyValueStore>().Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
         }
 
         public void Dispose()

@@ -15,13 +15,16 @@ public class SignupLinkRepository : ISignupLinkRepository
 
     private readonly IIdentityAccessManagementRepository _iamRepository;
     private readonly ILogger<SignupLinkRepository> _logger;
+    private readonly IIamDataAccess _dataAccess;
 
     public SignupLinkRepository(
         IIdentityAccessManagementRepository iamRepository,
-        ILogger<SignupLinkRepository> logger)
+        ILogger<SignupLinkRepository> logger,
+        IIamDataAccess dataAccess)
     {
         _iamRepository = iamRepository;
         _logger = logger;
+        _dataAccess = dataAccess;
     }
 
     private IMongoCollection<SignupLink> Collection =>
@@ -65,21 +68,24 @@ public class SignupLinkRepository : ISignupLinkRepository
     }
 
     public Task InsertAsync(SignupLink entity) =>
-        Collection.InsertOneAsync(entity);
+        _dataAccess.InsertOneAsync(Collection, IamSchemas.SignupLink, entity, "SignupLinkRepository.InsertAsync");
 
     public async Task<bool> ReplaceAsync(SignupLink entity)
     {
-        var result = await Collection.ReplaceOneAsync(
-            x => x.ItemId == entity.ItemId && x.TenantId == entity.TenantId,
-            entity);
-        return result.IsAcknowledged && result.MatchedCount > 0;
+        var result = await _dataAccess.ReplaceOneAsync(
+            Collection,
+            IamSchemas.SignupLink,
+            Builders<SignupLink>.Filter.Where(x => x.ItemId == entity.ItemId && x.TenantId == entity.TenantId),
+            entity,
+            "SignupLinkRepository.ReplaceAsync");
+        return result is not null && result.IsAcknowledged && result.MatchedCount > 0;
     }
 
     public async Task<SignupLink?> GetByIdAsync(string itemId, string tenantId)
     {
         var filter = Builders<SignupLink>.Filter.Eq(x => x.ItemId, itemId)
             & Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId);
-        return await Collection.Find(filter).FirstOrDefaultAsync();
+        return await _dataAccess.FindFirstAsync(Collection, IamSchemas.SignupLink, filter, "SignupLinkRepository.GetByIdAsync");
     }
 
 
@@ -92,7 +98,7 @@ public class SignupLinkRepository : ISignupLinkRepository
         }
 
         var filter = Builders<SignupLink>.Filter.Eq(x => x.ItemId, itemId);
-        return await Collection.Find(filter).FirstOrDefaultAsync();
+        return await _dataAccess.FindFirstAsync(Collection, IamSchemas.SignupLink, filter, "SignupLinkRepository.GetByItemIdAsync");
     }
 
     public async Task<SignupLink?> GetByCodeHashAsync(string codeHash)
@@ -103,7 +109,7 @@ public class SignupLinkRepository : ISignupLinkRepository
         }
 
         var filter = Builders<SignupLink>.Filter.Eq(x => x.CodeHash, codeHash);
-        return await Collection.Find(filter).FirstOrDefaultAsync();
+        return await _dataAccess.FindFirstAsync(Collection, IamSchemas.SignupLink, filter, "SignupLinkRepository.GetByCodeHashAsync");
     }
 
     public async Task<SignupLink?> TryIncrementRedemptionAsync(
@@ -134,9 +140,12 @@ public class SignupLinkRepository : ISignupLinkRepository
             update = update.Set(x => x.CreatedUserId, createdUserId);
         }
 
-        var redeemed = await Collection.FindOneAndUpdateAsync(
+        var redeemed = await _dataAccess.FindOneAndUpdateAsync(
+            Collection,
+            IamSchemas.SignupLink,
             filter,
             update,
+            "SignupLinkRepository.TryIncrementRedemptionAsync",
             new FindOneAndUpdateOptions<SignupLink>
             {
                 ReturnDocument = ReturnDocument.After
@@ -151,11 +160,14 @@ public class SignupLinkRepository : ISignupLinkRepository
             && !SignupLink.HasRedemptionBudget(
                 redeemed.RedemptionCount, redeemed.MaxRedemptions))
         {
-            await Collection.UpdateOneAsync(
+            await _dataAccess.UpdateOneAsync(
+                Collection,
+                IamSchemas.SignupLink,
                 Builders<SignupLink>.Filter.Eq(x => x.ItemId, redeemed.ItemId)
                     & Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId)
                     & Builders<SignupLink>.Filter.Eq(x => x.Status, SignupLinkStatus.Active),
-                Builders<SignupLink>.Update.Set(x => x.Status, SignupLinkStatus.Redeemed));
+                Builders<SignupLink>.Update.Set(x => x.Status, SignupLinkStatus.Redeemed),
+                "SignupLinkRepository.TryIncrementRedemptionAsync.Status");
 
             redeemed.Status = SignupLinkStatus.Redeemed;
         }
@@ -173,8 +185,10 @@ public class SignupLinkRepository : ISignupLinkRepository
             filter &= Builders<SignupLink>.Filter.Eq(x => x.ConfigurationId, request.ConfigurationId);
         }
 
-        var total = await Collection.CountDocumentsAsync(filter);
-        var items = await Collection.Find(filter)
+        var scope = await _dataAccess.ReadAsync(IamSchemas.SignupLink, filter, "SignupLinkRepository.QueryAsync", useProjection: false);
+        if (!scope.Granted) return ([], 0);
+        var total = await Collection.CountDocumentsAsync(scope.Filter);
+        var items = await scope.Apply(Collection)
             .Sort(Builders<SignupLink>.Sort.Descending(x => x.CreatedDate))
             .Skip(request.Page * request.PageSize)
             .Limit(request.PageSize)
@@ -199,8 +213,8 @@ public class SignupLinkRepository : ISignupLinkRepository
             .Set(x => x.LastUpdatedDate, revokedAtUtc)
             .Set(x => x.LastUpdatedBy, revokedBy);
 
-        var result = await Collection.UpdateManyAsync(filter, update);
-        return result.ModifiedCount;
+        var result = await _dataAccess.UpdateManyAsync(Collection, IamSchemas.SignupLink, filter, update, "SignupLinkRepository.RevokeActiveByConfigurationAsync");
+        return result?.ModifiedCount ?? 0;
     }
 
     public async Task<List<SignupLink>> FindForSummaryAsync(
@@ -214,6 +228,6 @@ public class SignupLinkRepository : ISignupLinkRepository
             & Builders<SignupLink>.Filter.Gte(x => x.CreatedDate, fromUtc)
             & Builders<SignupLink>.Filter.Lt(x => x.CreatedDate, toUtc);
 
-        return await Collection.Find(filter).ToListAsync();
+        return await _dataAccess.FindListAsync(Collection, IamSchemas.SignupLink, filter, "SignupLinkRepository.FindForSummaryAsync");
     }
 }
