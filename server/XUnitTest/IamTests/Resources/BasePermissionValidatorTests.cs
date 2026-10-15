@@ -87,6 +87,18 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
+        public async Task Type_RemovedDataProtectionValue3_Fails()
+        {
+            var req = ValidCreateRequest();
+            req.Type = (ResourceType)3;
+
+            var result = await CreateValidator().ValidateAsync(req);
+
+            result.IsValid.Should().BeFalse();
+            result.Errors.Should().Contain(e => e.PropertyName == nameof(req.Type));
+        }
+
+        [Fact]
         public async Task Resource_Empty_Fails()
         {
             var req = ValidCreateRequest();
