@@ -41,12 +41,12 @@ namespace Iam.DomainService.Services
         Task<string> GetUserIdFromKeyMapByKeyAsync(string key);
         Task<UserKeyMap?> GetUserKeyMapByKeyAsync(string key);
         Task SaveSignUpSettingAsync(TenantConfiguration tenantConfiguration);
-        Task<TenantConfiguration> GetTenantConfigurationAsync();
+        Task<IamTenantConfiguration> GetTenantConfigurationAsync();
         /// <summary>Removes a role slug from the tenant's signup default roles.</summary>
         Task<bool> PullSignUpDefaultRoleAsync(string slug);
         /// <summary>Removes a permission resource from the tenant's signup default permissions.</summary>
         Task<bool> PullSignUpDefaultPermissionAsync(string resource);
-        Task SaveOrganizationConfigAsync(TenantConfiguration tenantConfiguration);
+        Task SaveOrganizationConfigAsync(IamTenantConfiguration tenantConfiguration);
     }
 }
 

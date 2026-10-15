@@ -95,6 +95,46 @@ public class TenantConfigurationStoreTests : IDisposable
     }
 
     [RealMongoFact]
+    public async Task Read_FieldPresent_ReturnsTheSignupAutoJoinPair()
+    {
+        var field = FieldValue(multiOrg: true);
+        field["IsSignupAutoJoinEnabled"] = true;
+        field["SignupAutoJoinOrganizationId"] = "org-sales";
+        await SeedIdentityAsync(field);
+
+        var config = await Store().ReadAsync();
+
+        config!.IsSignupAutoJoinEnabled.Should().BeTrue();
+        config.SignupAutoJoinOrganizationId.Should().Be("org-sales");
+    }
+
+    [RealMongoFact]
+    public async Task Read_FieldMissing_ReturnsTheSignupAutoJoinPairOfTheOldDoc()
+    {
+        await SeedIdentityAsync(null);
+        var legacy = LegacyDoc(multiOrg: true);
+        legacy["IsSignupAutoJoinEnabled"] = true;
+        legacy["SignupAutoJoinOrganizationId"] = "default";
+        await Legacy.InsertOneAsync(legacy);
+
+        var config = await Store().ReadAsync();
+
+        config!.IsSignupAutoJoinEnabled.Should().BeTrue();
+        config.SignupAutoJoinOrganizationId.Should().Be("default");
+    }
+
+    [RealMongoFact]
+    public async Task Read_DocumentWrittenBeforeAutoJoin_ReadsAutoJoinOff()
+    {
+        await SeedIdentityAsync(FieldValue(multiOrg: true));
+
+        var config = await Store().ReadAsync();
+
+        config!.IsSignupAutoJoinEnabled.Should().BeFalse();
+        config.SignupAutoJoinOrganizationId.Should().BeNull();
+    }
+
+    [RealMongoFact]
     public async Task Read_NoIdentityConfigurationsDoc_FallsBackToTheOldCollection()
     {
         await Legacy.InsertOneAsync(LegacyDoc());
@@ -156,7 +196,7 @@ public class TenantConfigurationStoreTests : IDisposable
         await Legacy.InsertOneAsync(LegacyDoc());
         var before = DateTime.UtcNow.AddSeconds(-1);
 
-        await Iam().SaveSignUpSettingAsync(new TenantConfiguration
+        await Iam().SaveSignUpSettingAsync(new IamTenantConfiguration
         {
             IsEmailPasswordSignUpEnabled = false,
             IsSSoSignUpEnabled = true,
@@ -188,7 +228,7 @@ public class TenantConfigurationStoreTests : IDisposable
         await SeedIdentityAsync(null);
         await Legacy.InsertOneAsync(LegacyDoc());
 
-        await Iam().SaveSignUpSettingAsync(new TenantConfiguration
+        await Iam().SaveSignUpSettingAsync(new IamTenantConfiguration
         {
             IsEmailPasswordSignUpEnabled = true,
             DefaultRolesForNewUserOnSignUp = ["x"],
@@ -209,7 +249,7 @@ public class TenantConfigurationStoreTests : IDisposable
         await Identity.InsertOneAsync(new BsonDocument { { "_id", ObjectId.GenerateNewId() }, { "TenantConfiguration", BsonNull.Value } });
         await Legacy.InsertOneAsync(LegacyDoc());
 
-        await Iam().SaveSignUpSettingAsync(new TenantConfiguration { IsEmailPasswordSignUpEnabled = true });
+        await Iam().SaveSignUpSettingAsync(new IamTenantConfiguration { IsEmailPasswordSignUpEnabled = true });
 
         (await Legacy.Find(Builders<BsonDocument>.Filter.Empty).FirstAsync())["IsEmailPasswordSignUpEnabled"].AsBoolean.Should().BeTrue();
         (await Identity.Find(Builders<BsonDocument>.Filter.Empty).FirstAsync())["TenantConfiguration"].IsBsonNull.Should().BeTrue();
@@ -220,7 +260,7 @@ public class TenantConfigurationStoreTests : IDisposable
     {
         await Legacy.InsertOneAsync(LegacyDoc());
 
-        await Iam().SaveSignUpSettingAsync(new TenantConfiguration { IsEmailPasswordSignUpEnabled = true });
+        await Iam().SaveSignUpSettingAsync(new IamTenantConfiguration { IsEmailPasswordSignUpEnabled = true });
 
         (await Legacy.Find(Builders<BsonDocument>.Filter.Empty).FirstAsync())["IsEmailPasswordSignUpEnabled"].AsBoolean.Should().BeTrue();
         (await Identity.CountDocumentsAsync(Builders<BsonDocument>.Filter.Empty)).Should().Be(0);
@@ -231,7 +271,7 @@ public class TenantConfigurationStoreTests : IDisposable
     {
         await SeedIdentityAsync(FieldValue());
 
-        await Iam().SaveOrganizationConfigAsync(new TenantConfiguration
+        await Iam().SaveOrganizationConfigAsync(new IamTenantConfiguration
         {
             ItemId = "ignored-on-update",
             IsMultiOrgEnabled = true,
@@ -253,9 +293,66 @@ public class TenantConfigurationStoreTests : IDisposable
     }
 
     [RealMongoFact]
+    public async Task SaveOrganizationConfig_WritesTheSignupAutoJoinPairIntoTheField_WhichTheGenesisEntityStillReads()
+    {
+        await SeedIdentityAsync(FieldValue(multiOrg: true));
+
+        await Iam().SaveOrganizationConfigAsync(new IamTenantConfiguration
+        {
+            IsMultiOrgEnabled = true,
+            ConsentForMultiOrgEnable = true,
+            IsSignupAutoJoinEnabled = true,
+            SignupAutoJoinOrganizationId = "org-sales",
+        });
+
+        var tc = (await Identity.Find(Builders<BsonDocument>.Filter.Empty).FirstAsync())["TenantConfiguration"].AsBsonDocument;
+        tc["IsSignupAutoJoinEnabled"].AsBoolean.Should().BeTrue();
+        tc["SignupAutoJoinOrganizationId"].AsString.Should().Be("org-sales");
+        (await Legacy.CountDocumentsAsync(Builders<BsonDocument>.Filter.Empty)).Should().Be(0);
+
+        // Other readers use the shared Genesis entity, which ignores the IAM-only pair.
+        var shared = MongoDB.Bson.Serialization.BsonSerializer.Deserialize<TenantConfiguration>(tc);
+        shared.IsMultiOrgEnabled.Should().BeTrue();
+    }
+
+    [RealMongoFact]
+    public async Task SaveOrganizationConfig_SwitchingAutoJoinOff_KeepsTheTarget()
+    {
+        var field = FieldValue(multiOrg: true);
+        field["IsSignupAutoJoinEnabled"] = true;
+        field["SignupAutoJoinOrganizationId"] = "org-sales";
+        await SeedIdentityAsync(field);
+        var stored = await Store().ReadAsync();
+        stored!.IsSignupAutoJoinEnabled = false;
+
+        await Iam().SaveOrganizationConfigAsync(stored);
+
+        var config = await Store().ReadAsync();
+        config!.IsSignupAutoJoinEnabled.Should().BeFalse();
+        config.SignupAutoJoinOrganizationId.Should().Be("org-sales");
+    }
+
+    [RealMongoFact]
+    public async Task SaveOrganizationConfig_FieldMissing_WritesTheSignupAutoJoinPairToTheOldCollection()
+    {
+        await Legacy.InsertOneAsync(LegacyDoc(multiOrg: true));
+
+        await Iam().SaveOrganizationConfigAsync(new IamTenantConfiguration
+        {
+            IsMultiOrgEnabled = true,
+            IsSignupAutoJoinEnabled = true,
+            SignupAutoJoinOrganizationId = "org-sales",
+        });
+
+        var legacy = await Legacy.Find(Builders<BsonDocument>.Filter.Empty).SingleAsync();
+        legacy["IsSignupAutoJoinEnabled"].AsBoolean.Should().BeTrue();
+        legacy["SignupAutoJoinOrganizationId"].AsString.Should().Be("org-sales");
+    }
+
+    [RealMongoFact]
     public async Task SaveOrganizationConfig_NothingAnywhere_UpsertsTheOldCollection_AsToday()
     {
-        await Iam().SaveOrganizationConfigAsync(new TenantConfiguration { ItemId = "new-1", IsMultiOrgEnabled = true });
+        await Iam().SaveOrganizationConfigAsync(new IamTenantConfiguration { ItemId = "new-1", IsMultiOrgEnabled = true });
 
         var legacy = await Legacy.Find(Builders<BsonDocument>.Filter.Empty).SingleAsync();
         legacy["_id"].AsString.Should().Be("new-1");

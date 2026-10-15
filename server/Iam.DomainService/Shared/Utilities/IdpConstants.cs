@@ -81,6 +81,24 @@ namespace Iam.DomainService.Utilities
 
         #endregion
 
+        #region Signup auto-join
+
+        /// <summary>
+        /// Error key when a new sign-up's auto-join organization is deleted or disabled, and when a config save
+        /// names such a target. Shared by the email sign-up, both SSO first-login routes and the config save.
+        /// </summary>
+        public const string SignupOrganizationUnavailableError = "signup_organization_unavailable";
+
+        /// <summary>Error key when a config save would leave auto-join on without a target.</summary>
+        public const string SignupAutoJoinOrganizationRequiredError = "signup_auto_join_organization_required";
+
+        public const string SignupOrganizationUnavailableMessage = "This project's organization isn't available right now.";
+        public const string SignupOrganizationUnavailableOidcMessage = "This project's organization isn't available right now. Contact your administrator.";
+        public const string SignupAutoJoinTargetUnavailableMessage = "The selected organization does not exist or is disabled.";
+        public const string SignupAutoJoinOrganizationRequiredMessage = "Choose the organization new sign-ups join.";
+
+        #endregion
+
         #region Severity
 
         public const string SeverityInfo = "INFO";

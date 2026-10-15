@@ -417,7 +417,7 @@ namespace XUnitTest.IamTests.Resources
 
         private void MultiOrg(bool enabled) =>
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(enabled ? new TenantConfiguration { IsMultiOrgEnabled = true } : null!);
+                .ReturnsAsync(enabled ? new IamTenantConfiguration { IsMultiOrgEnabled = true } : null!);
 
         [Fact]
         public async Task RoleArchiveImpact_NotFound_ReturnsErrorAndCountsNothing()
@@ -457,7 +457,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task RoleArchiveImpact_ReportsWhetherTheRoleIsASignUpDefault()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
             {
                 DefaultRolesForNewUserOnSignUp = new List<string> { "viewer", "MANAGER" }
             });
@@ -473,7 +473,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task RoleArchiveImpact_NotASignUpDefault_ReportsFalse()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
             {
                 DefaultRolesForNewUserOnSignUp = new List<string> { "viewer" },
                 // The permission list must never answer the role question.
@@ -615,7 +615,7 @@ namespace XUnitTest.IamTests.Resources
         {
             var permission = new Permission { ItemId = "p1", Name = "Export", Resource = "reports::export", OrganizationId = "default" };
             _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(permission);
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
             {
                 DefaultPermissionsForNewUserOnSignUp = new List<string> { "reports::export" },
                 // The role list must never answer the permission question.

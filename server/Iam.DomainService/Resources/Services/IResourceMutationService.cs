@@ -48,7 +48,11 @@ namespace Iam.DomainService.Resources
         Task<GetOrganizationResponse> GetOrganizationAsync(string id);
         Task<GetMyOrganizationsResponse> GetMyOrganizationAsync();
         Task<BaseResponse> SaveOrganizationConfigAsync(SaveOrganizationConfigRequest request);
+        /// <summary>Anonymous organization-config read. Never contains the sign-up auto-join target.</summary>
         Task<Dictionary<string, object>> GetOrganizationConfigAsync();
+
+        /// <summary>Signed-in organization-config read: the anonymous keys plus <c>signupAutoJoinOrganizationId</c>.</summary>
+        Task<Dictionary<string, object>> GetAdminOrganizationConfigAsync();
         Task ExecuteOrganizationProvisioningAsync(OrganizationProvisioningEvent command);
         Task ExecutePropagationRolePermissionUpdateAsync(PropagationRolePermissionUpdateEvent command);
         Task ExecutePermissionMutationForTenantsAsync(PermissionMutationForTenantsEvent context);

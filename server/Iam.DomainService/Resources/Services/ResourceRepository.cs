@@ -789,12 +789,12 @@ namespace Iam.DomainService.Resources
             return new GetOrganizationsResponse { IsSuccess = true, Organizations = organizations, TotalCount = totalCount };
         }
 
-        public async Task<TenantConfiguration> GetTenantConfigurationAsync()
+        public async Task<IamTenantConfiguration> GetTenantConfigurationAsync()
         {
             return await _identityAccessManagementRepository.GetTenantConfigurationAsync();
         }
 
-        public async Task SaveOrganizationConfig(TenantConfiguration config)
+        public async Task SaveOrganizationConfig(IamTenantConfiguration config)
         {
             await _identityAccessManagementRepository.SaveOrganizationConfigAsync(config);
         }

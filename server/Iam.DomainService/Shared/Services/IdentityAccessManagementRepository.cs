@@ -256,7 +256,7 @@ namespace Iam.DomainService.Services
                     .Set(t => t.LastUpdatedDate, tenantConfiguration.LastUpdatedDate));
         }
 
-        public async Task<TenantConfiguration> GetTenantConfigurationAsync()
+        public async Task<IamTenantConfiguration> GetTenantConfigurationAsync()
         {
             return (await _tenantConfigurationStore.ReadAsync())!;
         }
@@ -270,9 +270,9 @@ namespace Iam.DomainService.Services
         private Task<bool> PullSignUpDefaultAsync(UpdateDefinition<TenantConfiguration> update) =>
             _tenantConfigurationStore.UpdateAsync(update);
 
-        public Task SaveOrganizationConfigAsync(TenantConfiguration config) =>
+        public Task SaveOrganizationConfigAsync(IamTenantConfiguration config) =>
             _tenantConfigurationStore.UpdateAsync(
-                Builders<TenantConfiguration>.Update
+                Builders<IamTenantConfiguration>.Update
                     .SetOnInsert(c => c.ItemId, config.ItemId)
                     .SetOnInsert(c => c.CreatedBy, config.CreatedBy)
                     .SetOnInsert(c => c.CreatedDate, config.CreatedDate)
@@ -282,6 +282,8 @@ namespace Iam.DomainService.Services
                     .Set(c => c.AllowOrgCreationFromPortal, config.AllowOrgCreationFromPortal)
                     .Set(c => c.IsMultiOrgEnabled, config.IsMultiOrgEnabled)
                     .Set(c => c.IsOrgNameUniquenessEnabled, config.IsOrgNameUniquenessEnabled)
+                    .Set(c => c.IsSignupAutoJoinEnabled, config.IsSignupAutoJoinEnabled)
+                    .Set(c => c.SignupAutoJoinOrganizationId, config.SignupAutoJoinOrganizationId)
                     .Set(c => c.ConsentForMultiOrgEnable, config.ConsentForMultiOrgEnable)
                     .Set(c => c.LastUpdatedBy, config.LastUpdatedBy)
                     .Set(c => c.DefaultPermissionsForNewUserOnSignUp, config.DefaultPermissionsForNewUserOnSignUp)
