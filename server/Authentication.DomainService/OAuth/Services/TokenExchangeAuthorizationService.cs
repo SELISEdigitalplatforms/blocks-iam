@@ -138,9 +138,15 @@ namespace Authentication.DomainService.OAuth.Services
             }
 
             // ---- 4. nonce replay: SETNX. A nonce that already exists is a replay.
-            if (!await TryClaimNonceAsync(exchange.SubjectToken!, exchange.Nonce!).ConfigureAwait(false))
+            //         A store failure still fails closed with the same status and error code (callers see
+            //         no contract change); only the description differs, so a store outage is not read as
+            //         a replay when debugging. Event 8004 carries the exception.
+            switch (await TryClaimNonceAsync(exchange.SubjectToken!, exchange.Nonce!).ConfigureAwait(false))
             {
-                return Failure("invalid_request", "Nonce replay detected");
+                case NonceClaim.Replay:
+                    return Failure("invalid_request", "Nonce replay detected");
+                case NonceClaim.Unavailable:
+                    return Failure("invalid_request", "Nonce check unavailable");
             }
 
             // ---- 5. signature, constant-time. No Redis *read* has happened yet.
@@ -503,14 +509,17 @@ namespace Authentication.DomainService.OAuth.Services
             return Math.Abs(now - ts) <= DelegationConstants.ClockWindowSeconds;
         }
 
+        private enum NonceClaim { Claimed, Replay, Unavailable }
+
         /// <summary>
-        /// Claims the nonce with a SETNX. Returns false when it already exists, which is a replay.
+        /// Claims the nonce with a SETNX. <see cref="NonceClaim.Replay"/> when it already exists;
+        /// <see cref="NonceClaim.Unavailable"/> when the store could not answer.
         /// </summary>
-        private async Task<bool> TryClaimNonceAsync(string delegationId, string nonce)
+        private async Task<NonceClaim> TryClaimNonceAsync(string delegationId, string nonce)
         {
             try
             {
-                return await _cacheClient.CacheDatabase()
+                var claimed = await _cacheClient.CacheDatabase()
                     .StringSetAsync(
                         key: DelegationPolicy.NonceKey(delegationId, nonce),
                         value: "1",
@@ -519,12 +528,13 @@ namespace Authentication.DomainService.OAuth.Services
                         when: When.NotExists,
                         flags: CommandFlags.None)
                     .ConfigureAwait(false);
+                return claimed ? NonceClaim.Claimed : NonceClaim.Replay;
             }
             catch (Exception ex)
             {
                 // Failing closed: without a working replay guard the exchange must not proceed.
                 TokenExchangeLog.NonceStoreUnavailable(_logger, ex);
-                return false;
+                return NonceClaim.Unavailable;
             }
         }
 

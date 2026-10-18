@@ -397,6 +397,24 @@ namespace XUnitTest.Auth.OAuth
         }
 
         [Fact]
+        public async Task NonceStoreFailure_ShouldFailClosed_WithTheSameCodeButItsOwnDescription()
+        {
+            _cacheDb
+                .Setup(db => db.StringSetAsync(
+                    It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<TimeSpan?>(),
+                    It.IsAny<bool>(), When.NotExists, It.IsAny<CommandFlags>()))
+                .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("invalid_request");
+            result.StatusCode.Should().Be(400);
+            result.ErrorDescription.Should().Be("Nonce check unavailable");
+            result.ErrorDescription.Should().NotContain("replay");
+            _cache.Verify(c => c.GetStringValueAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
         public async Task MissingNonce_ShouldReturnInvalidRequest()
         {
             var result = await Create().AuthenticateAsync(Request(nonce: ""), new IdentityConfiguration());
