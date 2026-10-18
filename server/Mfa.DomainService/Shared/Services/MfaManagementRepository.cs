@@ -54,7 +54,11 @@ namespace Mfa.DomainService.Services
         {
             IMongoCollection<T> collection = _dbContextProvider.GetCollection<T>(string.IsNullOrWhiteSpace(collectionName) ? (typeof(T).Name + "s") : collectionName);
             var schema = IamSchemas.For(typeof(T));
-            if (schema is not null) await _dataAccess.EnsureInsertAllowedAsync(schema, "MfaManagementRepository.SaveAsync");
+            if (schema is not null)
+            {
+                await _dataAccess.EnsureInsertAllowedAsync(schema, "MfaManagementRepository.SaveAsync");
+                await _dataAccess.PrepareWriteAsync(schema, data, isInsert: true, "MfaManagementRepository.SaveAsync");
+            }
             await collection.InsertOneAsync(data);
         }
 
@@ -62,7 +66,12 @@ namespace Mfa.DomainService.Services
         {
             IMongoCollection<T> collection = _dbContextProvider.GetCollection<T>(typeof(T).Name + "s");
             var schema = IamSchemas.For(typeof(T));
-            if (schema is not null) await _dataAccess.EnsureInsertAllowedAsync(schema, "MfaManagementRepository.SaveAsync.List");
+            if (schema is not null)
+            {
+                await _dataAccess.EnsureInsertAllowedAsync(schema, "MfaManagementRepository.SaveAsync.List");
+                foreach (var data in listOfData)
+                    await _dataAccess.PrepareWriteAsync(schema, data, isInsert: true, "MfaManagementRepository.SaveAsync.List");
+            }
             await collection.InsertManyAsync(listOfData);
         }
 

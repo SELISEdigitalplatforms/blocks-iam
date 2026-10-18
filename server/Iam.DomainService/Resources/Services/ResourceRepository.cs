@@ -1051,6 +1051,8 @@ var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, resolvedOrgId
             // One EDIT resolve with an empty base filter, AND-ed into each model; denied = no write.
             var editScope = await _dataAccess.EditFilterAsync(IamSchemas.Permission, Builders<Permission>.Filter.Empty, "ResourceRepository.UpdatePermissionsAsync");
             if (editScope is null) return false;
+            foreach (var permission in permissions)
+                await _dataAccess.PrepareWriteAsync(IamSchemas.Permission, permission, isInsert: false, "ResourceRepository.UpdatePermissionsAsync");
             operations = operations
                 .Select(op => (WriteModel<Permission>)new ReplaceOneModel<Permission>(
                     Builders<Permission>.Filter.And(((ReplaceOneModel<Permission>)op).Filter, editScope),
@@ -1152,6 +1154,8 @@ var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, resolvedOrgId
             // One EDIT resolve with an empty base filter, AND-ed into each model; denied = no write.
             var editScope = await _dataAccess.EditFilterAsync(IamSchemas.Role, Builders<Role>.Filter.Empty, "ResourceRepository.UpdateRolesAsync");
             if (editScope is null) return false;
+            foreach (var role in roles)
+                await _dataAccess.PrepareWriteAsync(IamSchemas.Role, role, isInsert: false, "ResourceRepository.UpdateRolesAsync");
             operations = operations
                 .Select(op => (WriteModel<Role>)new ReplaceOneModel<Role>(
                     Builders<Role>.Filter.And(((ReplaceOneModel<Role>)op).Filter, editScope),

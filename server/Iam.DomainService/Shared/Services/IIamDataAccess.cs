@@ -76,4 +76,24 @@ public interface IIamDataAccess
 
     /// <summary>WRITE gate for an insert. Input fields are never dropped. False = denied.</summary>
     Task<bool> InsertAllowedAsync(string schema, string callSite, string? tenantId = null);
+
+    /// <summary>
+    /// Default values and validation rules for an insert or a whole-document replace. On insert, defaults
+    /// fill the entity's null properties, in the instance passed in (which is also returned). Schemas the
+    /// Genesis allow-list keeps closed return at once. Throws <see cref="Blocks.Genesis.DataAccess.Rules.DataValidationException"/> when a rule fails.
+    /// </summary>
+    Task<T> PrepareWriteAsync<T>(string schema, T entity, bool isInsert, string callSite, string? tenantId = null);
+
+    /// <summary>
+    /// As <see cref="PrepareWriteAsync{T}"/> for an upsert: it is an insert when nothing matches
+    /// <paramref name="filter"/> in <paramref name="collection"/>.
+    /// </summary>
+    Task<T> PrepareUpsertAsync<T>(string schema, T entity, IMongoCollection<T> collection, FilterDefinition<T> filter, string callSite, string? tenantId = null);
+
+    /// <summary>
+    /// Validation rules for a partial update: only the <c>$set</c> fields are checked, the same "only what is
+    /// sent" rule as the Data Gateway; defaults never apply. Throws
+    /// <see cref="Blocks.Genesis.DataAccess.Rules.DataValidationException"/> when a rule fails.
+    /// </summary>
+    Task CheckUpdateAsync<T>(string schema, UpdateDefinition<T> update, string callSite, string? tenantId = null);
 }
