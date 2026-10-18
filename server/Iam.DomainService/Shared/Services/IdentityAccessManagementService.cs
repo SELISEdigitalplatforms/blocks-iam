@@ -91,6 +91,12 @@ namespace Iam.DomainService.Services
         {
             _logger.LogInformation("Sending Activation for {Id} by email: {MPurpose}", user.ItemId, emailPurpose);
 
+            // A resend reuses the purpose stored on the user, which predates the template rename.
+            if (emailPurpose == IdpConstants.LegacyProjectInvitationMailPurpose)
+            {
+                emailPurpose = IdpConstants.ProjectInvitationMailPurpose;
+            }
+
             var bodyContext = await GetBodyContextAsync(user, emailPurpose, accountActivationUri);
 
             var sendMailCommand = new SendMail
@@ -111,7 +117,7 @@ namespace Iam.DomainService.Services
         private async Task<Dictionary<string, string>> GetBodyContextAsync(User user, string mailPurpose, string link)
         {
 
-            if (mailPurpose == "project_invitation")
+            if (mailPurpose == IdpConstants.ProjectInvitationMailPurpose)
             {
                 var projectId = await _userRepository.GetProjectIdFromProjectPeopleAsync(user.ItemId);
                 var projectName = _tenants.GetTenantByID(projectId)?.Name;
