@@ -21,6 +21,7 @@ using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Blocks.Genesis.Entities.Iam;
+using Iam.DomainService.Shared.Entities;
 
 namespace XUnitTest.Auth.SignupLinks;
 
@@ -227,6 +228,41 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         http.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1");
         _redemptions.Verify(r => r.InsertAsync(It.Is<UserActivity>(x =>
             x.Outcome == "UserCreated" && x.Metadata!["UserId"] == "user-new"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task C15_Redeem_NewUser_UsesTheLinksOrganization_WhileAutoJoinTargetsAnother()
+    {
+        // C15: signup-link redemption never consults the sign-up auto-join setting.
+        _iam.Setup(i => i.GetTenantConfigurationAsync()).ReturnsAsync(new Iam.DomainService.Shared.Entities.IamTenantConfiguration
+        {
+            IsMultiOrgEnabled = true,
+            IsSignupAutoJoinEnabled = true,
+            SignupAutoJoinOrganizationId = "org-auto-join"
+        });
+        var link = ActivePasswordless();
+        _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
+        _users.Setup(u => u.GetUserByEmailAsync(link.Email)).ReturnsAsync((User)null!);
+        SetupNewUserCreate("user-new", link.Email);
+        CreateUserRequest? mappedFrom = null;
+        _mutation.Setup(m => m.MapUser(It.IsAny<CreateUserRequest>()))
+            .Callback<CreateUserRequest>(r => mappedFrom = r)
+            .Returns(new User { ItemId = "user-new", Email = link.Email });
+        var redeemed = ActivePasswordless();
+        redeemed.RedemptionCount = 1;
+        redeemed.Status = SignupLinkStatus.Redeemed;
+        redeemed.CreatedUserId = "user-new";
+        _links.Setup(l => l.TryIncrementRedemptionAsync("link-1", "t1", "user-new", It.IsAny<DateTime>()))
+            .ReturnsAsync(redeemed);
+
+        var http = Http();
+        await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        mappedFrom.Should().NotBeNull();
+        mappedFrom!.OrganizationId.Should().Be("org-acme");
+        typeof(SignupLinkRedemptionOrchestrator).GetConstructors()
+            .SelectMany(c => c.GetParameters())
+            .Should().NotContain(p => p.ParameterType == typeof(Iam.DomainService.Accounts.ISignupOrganizationResolver));
     }
 
     /// <summary>

@@ -10,6 +10,15 @@ namespace Iam.DomainService.Users
     public interface IUserManagementMutationService
     {
         Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command);
+
+        /// <summary>
+        /// Sign-up only: creates a new account that belongs to no organization (empty <c>OrganizationIds</c>,
+        /// <c>Roles</c> and <c>Permissions</c>), so its tokens carry <c>"no-org"</c>. Ignores any organization, roles
+        /// or permissions on <paramref name="command"/>. Called only by <c>AccountService.SignupAccountAsync</c>;
+        /// admin creation, gRPC and queue consumers go through <see cref="CreateUserAsync"/>, which cannot produce
+        /// this shape.
+        /// </summary>
+        Task<BaseMutationResponse> CreateSignupUserWithoutOrganizationAsync(CreateUserRequest command);
         User MapUser(CreateUserRequest command);
         Task<BaseMutationResponse> UpdateUserAsync(UpdateUserRequest command);
 

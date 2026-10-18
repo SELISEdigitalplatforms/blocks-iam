@@ -49,6 +49,11 @@ namespace XUnitTest.Auth.Shared
             services.Should().Contain(d => d.ServiceType == typeof(IIdentityAccessManagementRepository));
             services.Should().Contain(d => d.ServiceType == typeof(IResourceRepository));
             services.Should().Contain(d => d.ServiceType == typeof(IMfaManagementRepository));
+            // Shared by AccountService and SsoUserProvisioningService, both singletons.
+            services.Should().Contain(d =>
+                d.ServiceType == typeof(Iam.DomainService.Accounts.ISignupOrganizationResolver)
+                && d.ImplementationType == typeof(Iam.DomainService.Accounts.SignupOrganizationResolver)
+                && d.Lifetime == ServiceLifetime.Singleton);
         }
 
         [Fact]

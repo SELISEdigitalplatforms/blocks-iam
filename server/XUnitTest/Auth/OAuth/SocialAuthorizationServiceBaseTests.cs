@@ -5,6 +5,7 @@ using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Entities;
@@ -243,6 +244,91 @@ namespace XUnitTest.Auth.OAuth
             result.AccessToken.Should().Be("tok");
             _repo.Verify(r => r.UpdatePartialAsync<User>(
                 It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()), Times.Never);
+        }
+
+        // ---------- Direct social grant, sign-up auto-join ----------
+
+        private readonly Mock<ISsoUserProvisioningService> _provisioning = new();
+
+        private SocialAuthorizationService CreateSocial() => new(
+            NullLogger<SocialAuthorizationService>.Instance,
+            _tokenManager.Object,
+            _repo.Object,
+            _cache.Object,
+            _provider.Object,
+            _provisioning.Object);
+
+        private void ProvisioningAnswers(SsoProvisioningResult result) =>
+            _provisioning.Setup(p => p.ResolveOrProvisionAsync(It.IsAny<IExternalUserData>(), "google")).ReturnsAsync(result);
+
+        [Fact]
+        public async Task C9_SocialGrant_TargetUnavailable_Returns400SignupOrganizationUnavailable_NotUserNotFound()
+        {
+            SetupCallback(ExternalUser());
+            ProvisioningAnswers(SsoProvisioningResult.From(SsoProvisioningOutcome.OrganizationUnavailable));
+
+            var result = await CreateSocial().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("signup_organization_unavailable");
+            result.ErrorDescription.Should().Be("This project's organization isn't available right now.");
+            result.StatusCode.Should().Be(400);
+            result.Error.Should().NotBe("user_not_found");
+            _tokenManager.Verify(t => t.ManageTokenAsync(
+                It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData(SsoProvisioningOutcome.SignupDisabled)]
+        [InlineData(SsoProvisioningOutcome.Failed)]
+        public async Task SocialGrant_RefusedOrFailedSignup_StillReadsAsUserNotFound(SsoProvisioningOutcome outcome)
+        {
+            SetupCallback(ExternalUser());
+            ProvisioningAnswers(SsoProvisioningResult.From(outcome));
+
+            var result = await CreateSocial().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("user_not_found");
+            result.StatusCode.Should().Be(401);
+        }
+
+        [Fact]
+        public async Task H10_SocialGrant_AutoJoinedUser_GetsATokenForTheTarget()
+        {
+            SetupCallback(ExternalUser());
+            SetupTokenSuccess();
+            var provisioned = new User
+            {
+                ItemId = "u-new",
+                Active = true,
+                IsVerified = true,
+                OrganizationIds = ["org-sales"],
+                Roles = new Dictionary<string, List<string>> { ["org-sales"] = ["idp-role"] }
+            };
+            ProvisioningAnswers(SsoProvisioningResult.From(SsoProvisioningOutcome.Provisioned, provisioned));
+            TokenRequest? issuedFor = null;
+            _tokenManager.Setup(t => t.ManageTokenAsync(
+                    It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()))
+                .Callback<TokenRequest, IdentityConfiguration, User, StateInfo>((r, _, _, _) => issuedFor = r)
+                .ReturnsAsync(new TokenResponse { AccessToken = "tok" });
+
+            var result = await CreateSocial().AuthenticateAsync(
+                new TokenRequest { Code = "auth-code", State = "state-1" }, new IdentityConfiguration());
+
+            result.AccessToken.Should().Be("tok");
+            issuedFor!.OrganizationId.Should().Be("org-sales");
+        }
+
+        [Fact]
+        public async Task SocialGrant_GetUser_DelegatesToTheSharedResolution()
+        {
+            var user = new User { ItemId = "u1" };
+            ProvisioningAnswers(SsoProvisioningResult.From(SsoProvisioningOutcome.ExistingUser, user));
+
+            var (resolved, redirect) = await CreateSocial().GetUser(new StateInfo { ClientId = "client-1", Audience = "aud-1", Provider = "google" }, ExternalUser());
+
+            resolved.Should().BeSameAs(user);
+            redirect.Should().BeEmpty();
+            _provisioning.Verify(p => p.ResolveOrProvisionAsync(It.IsAny<IExternalUserData>(), "google"), Times.Once);
         }
     }
 }

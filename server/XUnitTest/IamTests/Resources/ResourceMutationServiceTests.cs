@@ -37,7 +37,7 @@ namespace XUnitTest.IamTests.Resources
             _permValidator.Setup(v => v.ValidateAsync(It.IsAny<CreatePermissionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
             _updatePermValidator.Setup(v => v.ValidateAsync(It.IsAny<UpdatePermissionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
             _roleValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateRoleRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration());
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration());
             _repo.Setup(r => r.InsertPermissionAsync(It.IsAny<Permission>())).ReturnsAsync(true);
             _repo.Setup(r => r.InsertRoleAsync(It.IsAny<Role>())).ReturnsAsync(true);
             _repo.Setup(r => r.UpdatePermissionAsync(It.IsAny<Permission>())).ReturnsAsync(true);
@@ -142,7 +142,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task CreatePermission_MultiOrg_QueuesPropagation()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             await Create().CreatePermissionAsync(PermReq());
             _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<PropagationRolePermissionUpdateEvent>()), Times.Once);
         }
@@ -257,7 +257,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task UpdatePermission_PropagatesAsUpdateNeverAsDelete()
         {
             _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(new Permission { ItemId = "p1", Name = "old", Resource = "old" });
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
 
             var result = await Create().UpdatePermissionAsync("p1", new UpdatePermissionRequest { Name = "n", Resource = "r", ResourceGroup = "g" });
 
@@ -330,7 +330,7 @@ namespace XUnitTest.IamTests.Resources
             _repo.Setup(r => r.GetRoleBySlugAsync("parent", It.IsAny<string>()))
                 .ReturnsAsync(new Role { ItemId = "p1", Name = "Parent", Slug = "parent", OrganizationId = "default", ParentRoleSlug = null });
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
 
             var result = await Create().UpdateRoleAsync(
                 new UpdateRoleRequest { ItemId = "r1", Name = "New", ParentRoleSlug = "Parent", CanCreateOwn = true });
@@ -405,7 +405,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task CreateOrganization_CloudDisabled_ReturnsError()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = false });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = false });
             var result = await Create().CreateOrganizationAsync(new CreateOrganizationRequest { Name = "Org", CreatedFrom = CreatedFrom.Cloud });
             result.Errors.Should().ContainKey("org_creation_disabled");
         }
@@ -413,7 +413,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task CreateOrganization_NameExists_UniquenessEnabled_ReturnsError()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true, IsOrgNameUniquenessEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true, IsOrgNameUniquenessEnabled = true });
             _repo.Setup(r => r.GetOrganizationByNameAsync("Org")).ReturnsAsync(new Organization { Name = "Org" });
             var result = await Create().CreateOrganizationAsync(new CreateOrganizationRequest { Name = "Org", CreatedFrom = CreatedFrom.Cloud });
             result.Errors.Should().ContainKey("name_already_exists");
@@ -428,7 +428,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task CreateOrganization_NameExists_UniquenessDisabled_CreatesWithoutLookup()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true });
             _repo.Setup(r => r.GetOrganizationByNameAsync("Org")).ReturnsAsync(new Organization { Name = "Org" });
             _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
 
@@ -442,7 +442,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task CreateOrganization_Cloud_HappyPath_SavesAndProvisions()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true });
             _repo.Setup(r => r.GetOrganizationByNameAsync("Org")).ReturnsAsync((Organization)null!);
             _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
 
@@ -464,7 +464,7 @@ namespace XUnitTest.IamTests.Resources
             List<string>? creatorRoles = null,
             List<string>? creatorPermissions = null)
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromPortal = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromPortal = true });
             _repo.Setup(r => r.GetOrganizationByNameAsync("Org")).ReturnsAsync((Organization)null!);
             _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
 
@@ -582,7 +582,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task CreateOrganization_Cloud_DoesNotAddTheCreator()
         {
             // The blocks-os portal sends Cloud; its behaviour must not change.
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true, AllowOrgCreationFromCloud = true });
             _repo.Setup(r => r.GetOrganizationByNameAsync("Org")).ReturnsAsync((Organization)null!);
             _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
 
@@ -605,7 +605,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task UpdateOrganization_EmptyId_ReturnsError()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             var result = await Create().UpdateOrganizationAsync("", new SaveOrganizationRequest { Name = "N" });
             result.Errors.Should().ContainKey("invalid_request");
         }
@@ -613,7 +613,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task UpdateOrganization_NotFound_ReturnsError()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationById("id1")).ReturnsAsync((Organization)null!);
             var result = await Create().UpdateOrganizationAsync("id1", new SaveOrganizationRequest { Name = "N" });
             result.Errors.Should().ContainKey("not_found");
@@ -622,7 +622,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task UpdateOrganization_HappyPath_AppliesChanges()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             var org = new Organization { ItemId = "id1", Name = "Old" };
             _repo.Setup(r => r.GetOrganizationById("id1")).ReturnsAsync(org);
             _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
@@ -644,7 +644,7 @@ namespace XUnitTest.IamTests.Resources
             string currentName = "Old",
             Organization? nameHolder = null)
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
             {
                 IsMultiOrgEnabled = true,
                 IsOrgNameUniquenessEnabled = uniquenessEnabled
@@ -746,7 +746,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetOrganizations_HappyPath()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
                 .ReturnsAsync(new GetOrganizationsResponse { IsSuccess = true, Organizations = new List<Organization>(), TotalCount = 0 });
             var result = await Create().GetOrganizationsAsync(new GetOrganizationsRequest());
@@ -756,7 +756,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetOrganization_EmptyId_ReturnsError()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             var result = await Create().GetOrganizationAsync("");
             result.Errors.Should().ContainKey("invalid_request");
         }
@@ -764,7 +764,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetOrganization_HappyPath()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationById("id1")).ReturnsAsync(new Organization { ItemId = "id1", Name = "N" });
             var result = await Create().GetOrganizationAsync("id1");
             result.IsSuccess.Should().BeTrue();
@@ -781,7 +781,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetMyOrganization_NoOrgs_ReturnsEmptySuccess()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string>());
             var result = await Create().GetMyOrganizationAsync();
             result.IsSuccess.Should().BeTrue();
@@ -791,7 +791,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetMyOrganization_HappyPath_MapsAndOrders()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "o1", "o2" });
             _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>()))
                 .ReturnsAsync(new List<Organization> { new() { ItemId = "o2", Name = "Two" }, new() { ItemId = "o1", Name = "One" } });
@@ -804,31 +804,31 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task SaveOrganizationConfig_NullExisting_CreatesNew()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((TenantConfiguration)null!);
-            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((IamTenantConfiguration)null!);
+            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>())).Returns(Task.CompletedTask);
             var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { AllowOrgCreationFromCloud = true });
             result.IsSuccess.Should().BeTrue();
-            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c => c.AllowOrgCreationFromCloud)), Times.Once);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c => c.AllowOrgCreationFromCloud)), Times.Once);
         }
 
         [Fact]
         public async Task SaveOrganizationConfig_ConsentEnablesMultiOrg()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { ConsentForMultiOrgEnable = false });
-            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { ConsentForMultiOrgEnable = false });
+            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>())).Returns(Task.CompletedTask);
             await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { IsMultiOrgEnabled = true, ConsentForMultiOrgEnable = true });
-            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c => c.IsMultiOrgEnabled && c.ConsentForMultiOrgEnable)), Times.Once);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c => c.IsMultiOrgEnabled && c.ConsentForMultiOrgEnable)), Times.Once);
         }
 
         [Fact]
         public async Task SaveOrganizationConfig_UniquenessFlagSent_IsPersisted()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration());
-            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration());
+            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>())).Returns(Task.CompletedTask);
 
             await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { IsOrgNameUniquenessEnabled = true });
 
-            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c => c.IsOrgNameUniquenessEnabled)), Times.Once);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c => c.IsOrgNameUniquenessEnabled)), Times.Once);
         }
 
         /// <summary>
@@ -841,31 +841,31 @@ namespace XUnitTest.IamTests.Resources
         public async Task SaveOrganizationConfig_UniquenessFlagOmitted_LeavesStoredValueAlone(bool stored)
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsOrgNameUniquenessEnabled = stored });
-            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>())).Returns(Task.CompletedTask);
+                .ReturnsAsync(new IamTenantConfiguration { IsOrgNameUniquenessEnabled = stored });
+            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>())).Returns(Task.CompletedTask);
 
             await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { AllowOrgCreationFromCloud = true });
 
             _repo.Verify(r => r.SaveOrganizationConfig(
-                It.Is<TenantConfiguration>(c => c.IsOrgNameUniquenessEnabled == stored && c.AllowOrgCreationFromCloud)), Times.Once);
+                It.Is<IamTenantConfiguration>(c => c.IsOrgNameUniquenessEnabled == stored && c.AllowOrgCreationFromCloud)), Times.Once);
         }
 
         [Fact]
         public async Task SaveOrganizationConfig_UniquenessFlagSentFalse_TurnsItOff()
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsOrgNameUniquenessEnabled = true });
-            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<TenantConfiguration>())).Returns(Task.CompletedTask);
+                .ReturnsAsync(new IamTenantConfiguration { IsOrgNameUniquenessEnabled = true });
+            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>())).Returns(Task.CompletedTask);
 
             await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { IsOrgNameUniquenessEnabled = false });
 
-            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<TenantConfiguration>(c => !c.IsOrgNameUniquenessEnabled)), Times.Once);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c => !c.IsOrgNameUniquenessEnabled)), Times.Once);
         }
 
         [Fact]
         public async Task GetOrganizationConfig_NullConfig_ReturnsDefaults()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((TenantConfiguration)null!);
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((IamTenantConfiguration)null!);
             var result = await Create().GetOrganizationConfigAsync();
             result["isMultiOrgEnabled"].Should().Be(false);
             result["isOrgNameUniquenessEnabled"].Should().Be(false);
@@ -876,7 +876,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task GetOrganizationConfig_ReportsTheUniquenessFlag()
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { ItemId = "cfg-1", IsOrgNameUniquenessEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { ItemId = "cfg-1", IsOrgNameUniquenessEnabled = true });
 
             (await Create().GetOrganizationConfigAsync())["isOrgNameUniquenessEnabled"].Should().Be(true);
         }
@@ -884,10 +884,353 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetOrganizationConfig_WithConfig_ReturnsValues()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { ItemId = "cfg-1", IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { ItemId = "cfg-1", IsMultiOrgEnabled = true });
             var result = await Create().GetOrganizationConfigAsync();
             result["isMultiOrgEnabled"].Should().Be(true);
             result["itemId"].Should().Be("cfg-1");
+        }
+
+        // ---------- Sign-up auto-join ----------
+
+        private void StoredConfig(IamTenantConfiguration config)
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(config);
+            _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>())).Returns(Task.CompletedTask);
+        }
+
+        [Fact]
+        public async Task H1_SaveOrganizationConfig_AutoJoinWithEnabledTarget_PersistsBoth()
+        {
+            StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetOrganizationById("org-sales"))
+                .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = "org-sales"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-sales")), Times.Once);
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task H2_SaveOrganizationConfig_AutoJoinWithDefaultTarget_PersistsWithoutLookup()
+        {
+            StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = "default"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "default")), Times.Once);
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveOrganizationConfig_TurnOnWithStoredTarget_ValidatesTheStoredTarget()
+        {
+            StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true, SignupAutoJoinOrganizationId = "org-sales" });
+            _repo.Setup(r => r.GetOrganizationById("org-sales"))
+                .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { IsSignupAutoJoinEnabled = true });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-sales")), Times.Once);
+        }
+
+        [Fact]
+        public async Task SaveOrganizationConfig_TurnOff_KeepsTheStoredTarget()
+        {
+            StoredConfig(new IamTenantConfiguration { IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = "org-sales" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { IsSignupAutoJoinEnabled = false });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c =>
+                !c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-sales")), Times.Once);
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveOrganizationConfig_BlankTargetWhileOff_ClearsTheTarget()
+        {
+            StoredConfig(new IamTenantConfiguration { SignupAutoJoinOrganizationId = "org-sales" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { SignupAutoJoinOrganizationId = " " });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c =>
+                !c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == null)), Times.Once);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData(null)]
+        public async Task C1_SaveOrganizationConfig_AutoJoinOnWithBlankTarget_IsRejected_AndChangesNothing(string? target)
+        {
+            StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = target,
+                // Rides along in the same request and must not be applied either.
+                AllowOrgCreationFromCloud = true,
+                IsOrgNameUniquenessEnabled = true
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainSingle();
+            result.Errors!["signup_auto_join_organization_required"].Should().Be("Choose the organization new sign-ups join.");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task C2_SaveOrganizationConfig_MissingOrDisabledTarget_IsRejected_AndChangesNothing(bool exists)
+        {
+            StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetOrganizationById("org-gone"))
+                .ReturnsAsync(exists ? new Organization { ItemId = "org-gone", Name = "Gone", IsDisabled = true } : null!);
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = "org-gone",
+                AllowOrgCreationFromSignup = true
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainSingle();
+            result.Errors!["signup_organization_unavailable"].Should().Be("The selected organization does not exist or is disabled.");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task C2_SaveOrganizationConfig_UnavailableTargetWhileOff_IsStillRejected()
+        {
+            StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetOrganizationById("org-gone")).ReturnsAsync((Organization)null!);
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { SignupAutoJoinOrganizationId = "org-gone" });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("signup_organization_unavailable");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_MultiOrgOff_NonexistentTarget_IsStoredAsSentWithoutLookup()
+        {
+            StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = false });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = "org-does-not-exist"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-does-not-exist")), Times.Once);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_MultiOrgOff_OnWithBlankTarget_IsStoredNormalized()
+        {
+            StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = false, SignupAutoJoinOrganizationId = "org-old" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = ""
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == null)), Times.Once);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_MultiOrgSwitchedOnBySameSave_IsValidated()
+        {
+            StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = false, ConsentForMultiOrgEnable = false });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
+            {
+                IsMultiOrgEnabled = true,
+                ConsentForMultiOrgEnable = true,
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = ""
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("signup_auto_join_organization_required");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>()), Times.Never);
+        }
+
+        private static SaveOrganizationConfigRequest SwitchMultiOrgOn() => new()
+        {
+            IsMultiOrgEnabled = true,
+            ConsentForMultiOrgEnable = true
+        };
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_SwitchingMultiOrgOn_StoredAutoJoinOnWithBlankTarget_IsRejected()
+        {
+            StoredConfig(new IamTenantConfiguration { IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = null });
+
+            var result = await Create().SaveOrganizationConfigAsync(SwitchMultiOrgOn());
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("signup_auto_join_organization_required");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_SwitchingMultiOrgOn_StoredMissingTarget_IsRejected()
+        {
+            StoredConfig(new IamTenantConfiguration { IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = "org-gone" });
+            _repo.Setup(r => r.GetOrganizationById("org-gone")).ReturnsAsync((Organization)null!);
+
+            var result = await Create().SaveOrganizationConfigAsync(SwitchMultiOrgOn());
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("signup_organization_unavailable");
+            _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_SwitchingMultiOrgOn_StoredValidTarget_IsAcceptedWithOneRead()
+        {
+            StoredConfig(new IamTenantConfiguration { IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = "org-sales" });
+            _repo.Setup(r => r.GetOrganizationById("org-sales"))
+                .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
+
+            var result = await Create().SaveOrganizationConfigAsync(SwitchMultiOrgOn());
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Once);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c =>
+                c.IsMultiOrgEnabled && c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-sales")), Times.Once);
+        }
+
+        [Fact]
+        public async Task D9_SaveOrganizationConfig_SwitchingMultiOrgOn_StoredAutoJoinOff_IsAcceptedWithoutLookup()
+        {
+            StoredConfig(new IamTenantConfiguration { IsSignupAutoJoinEnabled = false, SignupAutoJoinOrganizationId = "org-gone" });
+
+            var result = await Create().SaveOrganizationConfigAsync(SwitchMultiOrgOn());
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c => c.IsMultiOrgEnabled)), Times.Once);
+        }
+
+        [Theory]
+        [InlineData(true, "org-sales")]
+        [InlineData(false, "org-sales")]
+        [InlineData(false, null)]
+        public async Task C3_SaveOrganizationConfig_BothFieldsOmitted_KeepsStoredValues(bool storedEnabled, string? storedTarget)
+        {
+            StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true, IsSignupAutoJoinEnabled = storedEnabled, SignupAutoJoinOrganizationId = storedTarget });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { AllowOrgCreationFromCloud = true });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled == storedEnabled
+                && c.SignupAutoJoinOrganizationId == storedTarget
+                && c.AllowOrgCreationFromCloud)), Times.Once);
+        }
+
+        [Fact]
+        public async Task C4_SaveOrganizationConfig_BothFieldsOmitted_StoredTargetDisabled_IsAcceptedWithoutLookup()
+        {
+            StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true, IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = "org-now-disabled" });
+
+            var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { AllowOrgCreationFromSignup = true });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.SaveOrganizationConfig(It.Is<IamTenantConfiguration>(c =>
+                c.IsSignupAutoJoinEnabled && c.SignupAutoJoinOrganizationId == "org-now-disabled")), Times.Once);
+        }
+
+        [Fact]
+        public async Task H3_GetAdminOrganizationConfig_ReturnsStoredAutoJoinValues()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
+            {
+                ItemId = "cfg-1",
+                IsMultiOrgEnabled = true,
+                IsSignupAutoJoinEnabled = true,
+                SignupAutoJoinOrganizationId = "org-sales"
+            });
+
+            var result = await Create().GetAdminOrganizationConfigAsync();
+
+            result["isSignupAutoJoinEnabled"].Should().Be(true);
+            result["signupAutoJoinOrganizationId"].Should().Be("org-sales");
+            result["isMultiOrgEnabled"].Should().Be(true);
+            result["itemId"].Should().Be("cfg-1");
+        }
+
+        [Fact]
+        public async Task H3_GetAdminOrganizationConfig_LegacyDocument_ReadsAsOffAndNull()
+        {
+            // A document written before the fields existed deserializes with their defaults.
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { ItemId = "cfg-legacy" });
+
+            var result = await Create().GetAdminOrganizationConfigAsync();
+
+            result["isSignupAutoJoinEnabled"].Should().Be(false);
+            result.Should().ContainKey("signupAutoJoinOrganizationId");
+            result["signupAutoJoinOrganizationId"].Should().BeNull();
+        }
+
+        [Fact]
+        public async Task H3_GetAdminOrganizationConfig_NoDocument_ReadsAsOffAndNull()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((IamTenantConfiguration)null!);
+
+            var result = await Create().GetAdminOrganizationConfigAsync();
+
+            result["isSignupAutoJoinEnabled"].Should().Be(false);
+            result["signupAutoJoinOrganizationId"].Should().BeNull();
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task H4_C5_GetOrganizationConfig_Anonymous_ExposesOnlyTheFlag(bool enabled)
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
+            {
+                ItemId = "cfg-1",
+                IsMultiOrgEnabled = true,
+                IsSignupAutoJoinEnabled = enabled,
+                SignupAutoJoinOrganizationId = "org-sales"
+            });
+
+            var result = await Create().GetOrganizationConfigAsync();
+
+            result["isSignupAutoJoinEnabled"].Should().Be(enabled);
+            result.Should().NotContainKey("signupAutoJoinOrganizationId");
+            result.Values.Should().NotContain("org-sales");
+            _repo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
         }
 
         // ---------- ExecuteOrganizationProvisioningAsync ----------
@@ -1180,7 +1523,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task ArchivePermission_MultiOrgEnabled_QueuesPropagationEvent()
         {
             GivenPermission(ArchiveTarget());
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
 
             await Create().ArchivePermissionAsync("p1");
 
@@ -1194,7 +1537,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task ArchivePermission_MultiOrgDisabled_StillWritesCrossOrgButQueuesNoPropagationEvent()
         {
             GivenPermission(ArchiveTarget());
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = false });
 
             await Create().ArchivePermissionAsync("p1");
 
@@ -1208,7 +1551,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task ArchivePermission_NoTenantConfiguration_StillSucceeds()
         {
             GivenPermission(ArchiveTarget());
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((TenantConfiguration)null!);
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((IamTenantConfiguration)null!);
 
             var result = await Create().ArchivePermissionAsync("p1");
 
@@ -1300,7 +1643,7 @@ namespace XUnitTest.IamTests.Resources
         {
             GivenPermission(ArchiveTarget());
             _repo.Setup(r => r.UpdatePermissionAsync(It.IsAny<Permission>())).ReturnsAsync(false);
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
 
             var result = await Create().ArchivePermissionAsync("p1");
 
@@ -1506,7 +1849,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task ArchiveRole_MultiOrgEnabled_QueuesRolePropagationEvent()
         {
             GivenRole(ArchiveRoleTarget());
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
 
             await Create().ArchiveRoleAsync("r1");
 
@@ -1520,7 +1863,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task ArchiveRole_MultiOrgDisabled_QueuesNoPropagationEvent()
         {
             GivenRole(ArchiveRoleTarget());
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = false });
 
             await Create().ArchiveRoleAsync("r1");
 
@@ -1538,7 +1881,7 @@ namespace XUnitTest.IamTests.Resources
         {
             InstallContext(orgId: "");
             GivenRole(ArchiveRoleTarget());
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
 
             var result = await Create().ArchiveRoleAsync("r1");
 
@@ -1552,7 +1895,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task ArchiveRole_NoTenantConfiguration_StillSucceeds()
         {
             GivenRole(ArchiveRoleTarget());
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((TenantConfiguration)null!);
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((IamTenantConfiguration)null!);
 
             var result = await Create().ArchiveRoleAsync("r1");
 
@@ -1755,7 +2098,7 @@ namespace XUnitTest.IamTests.Resources
             InstallContext(orgId: "default");
             GivenRole(ArchiveRoleTarget());
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
 
             await Create().ArchiveRoleAsync("r1", confirmRevokeFromUsers: true);
 
@@ -1773,7 +2116,7 @@ namespace XUnitTest.IamTests.Resources
             InstallContext(orgId: "default");
             GivenRole(ArchiveRoleTarget());
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
 
             await Create().ArchiveRoleAsync("r1");
 

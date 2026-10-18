@@ -8,7 +8,8 @@ using Blocks.Genesis.Entities.Iam;
 namespace Iam.DomainService.Services
 {
     /// <summary>
-    /// Reads and writes the tenant configuration (signup and organization settings).
+    /// Reads and writes the tenant configuration (signup and organization settings). Reads always return an
+    /// <see cref="IamTenantConfiguration"/>, which carries the IAM-only settings next to the Genesis entity's.
     /// </summary>
     /// <remarks>
     /// The configuration lives in the field <c>TenantConfiguration</c> of the one
@@ -40,42 +41,43 @@ namespace Iam.DomainService.Services
         }
 
         /// <summary>Reads the configuration of the context tenant's database.</summary>
-        public Task<TenantConfiguration?> ReadAsync(CancellationToken ct = default) =>
+        public Task<IamTenantConfiguration?> ReadAsync(CancellationToken ct = default) =>
             ReadAsync(
                 _dbContextProvider.GetCollection<BsonDocument>(IdentityConfigurationCollection),
-                _dbContextProvider.GetCollection<TenantConfiguration>(LegacyCollection),
+                _dbContextProvider.GetCollection<IamTenantConfiguration>(LegacyCollection),
                 _dataAccess,
                 ct);
 
         /// <summary>Reads the configuration of another tenant's database (cross-database read).</summary>
-        public Task<TenantConfiguration?> ReadAsync(IMongoDatabase database, CancellationToken ct = default) =>
+        public Task<IamTenantConfiguration?> ReadAsync(IMongoDatabase database, CancellationToken ct = default) =>
             ReadAsync(
                 database.GetCollection<BsonDocument>(IdentityConfigurationCollection),
-                database.GetCollection<TenantConfiguration>(LegacyCollection),
+                database.GetCollection<IamTenantConfiguration>(LegacyCollection),
                 null, // skip-other-db: the database is not the caller's tenant DB
                 ct);
 
         /// <summary>
-        /// Applies <paramref name="update"/> (written against <see cref="TenantConfiguration"/>, as it was for the
-        /// old collection) to the field <c>TenantConfiguration</c> and sets its <c>LastUpdatedDate</c>. When the
-        /// database has no such field, runs the same update on the old collection, unchanged. Returns whether the
-        /// write was acknowledged.
+        /// Applies <paramref name="update"/> (written against <see cref="TenantConfiguration"/> or
+        /// <see cref="IamTenantConfiguration"/>, as it was for the old collection) to the field
+        /// <c>TenantConfiguration</c> and sets its <c>LastUpdatedDate</c>. When the database has no such field, runs
+        /// the same update on the old collection, unchanged. Returns whether the write was acknowledged.
         /// </summary>
-        public Task<bool> UpdateAsync(
-            UpdateDefinition<TenantConfiguration> update,
+        public Task<bool> UpdateAsync<TConfiguration>(
+            UpdateDefinition<TConfiguration> update,
             bool upsertLegacy = false,
-            CancellationToken ct = default) =>
+            CancellationToken ct = default)
+            where TConfiguration : TenantConfiguration =>
             UpdateAsync(
                 _dbContextProvider.GetCollection<BsonDocument>(IdentityConfigurationCollection),
-                _dbContextProvider.GetCollection<TenantConfiguration>(LegacyCollection),
+                _dbContextProvider.GetCollection<TConfiguration>(LegacyCollection),
                 update,
                 upsertLegacy,
                 _dataAccess,
                 ct);
 
-        private static async Task<TenantConfiguration?> ReadAsync(
+        private static async Task<IamTenantConfiguration?> ReadAsync(
             IMongoCollection<BsonDocument> identity,
-            IMongoCollection<TenantConfiguration> legacy,
+            IMongoCollection<IamTenantConfiguration> legacy,
             IIamDataAccess? dataAccess,
             CancellationToken ct)
         {
@@ -96,16 +98,16 @@ namespace Iam.DomainService.Services
                 && first.TryGetValue(FieldName, out var value)
                 && value.IsBsonDocument)
             {
-                return BsonSerializer.Deserialize<TenantConfiguration>(value.AsBsonDocument);
+                return BsonSerializer.Deserialize<IamTenantConfiguration>(value.AsBsonDocument);
             }
 
             return await legacy.Find(_ => true).FirstOrDefaultAsync(ct);
         }
 
-        private static async Task<bool> UpdateAsync(
+        private static async Task<bool> UpdateAsync<TConfiguration>(
             IMongoCollection<BsonDocument> identity,
-            IMongoCollection<TenantConfiguration> legacy,
-            UpdateDefinition<TenantConfiguration> update,
+            IMongoCollection<TConfiguration> legacy,
+            UpdateDefinition<TConfiguration> update,
             bool upsertLegacy,
             IIamDataAccess? dataAccess,
             CancellationToken ct)
@@ -129,7 +131,7 @@ namespace Iam.DomainService.Services
             }
 
             var legacyResult = await legacy.UpdateOneAsync(
-                Builders<TenantConfiguration>.Filter.Empty,
+                Builders<TConfiguration>.Filter.Empty,
                 update,
                 upsertLegacy ? new UpdateOptions { IsUpsert = true } : null,
                 ct);
@@ -141,11 +143,11 @@ namespace Iam.DomainService.Services
         /// moves every path under <c>TenantConfiguration.</c>, and sets <c>LastUpdatedDate</c> to now.
         /// <c>$setOnInsert</c> is dropped: the field exists (the filter), so nothing is inserted.
         /// </summary>
-        private static UpdateDefinition<BsonDocument> ToFieldUpdate(UpdateDefinition<TenantConfiguration> update)
+        private static UpdateDefinition<BsonDocument> ToFieldUpdate<TConfiguration>(UpdateDefinition<TConfiguration> update)
         {
             var rendered = update
-                .Render(new RenderArgs<TenantConfiguration>(
-                    BsonSerializer.SerializerRegistry.GetSerializer<TenantConfiguration>(),
+                .Render(new RenderArgs<TConfiguration>(
+                    BsonSerializer.SerializerRegistry.GetSerializer<TConfiguration>(),
                     BsonSerializer.SerializerRegistry))
                 .AsBsonDocument;
 

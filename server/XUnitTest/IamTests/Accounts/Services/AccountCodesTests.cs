@@ -108,6 +108,7 @@ namespace XUnitTest.IamTests.Accounts.Services
                 _captchaConfig.Object,
                 new Mock<IDbContextProvider>().Object,
                 new Mock<IUserActivityDispatcher>().Object,
+                new Mock<ISignupOrganizationResolver>().Object,
                 null,
                 null,
                 new SignupOrganizationValidator(),

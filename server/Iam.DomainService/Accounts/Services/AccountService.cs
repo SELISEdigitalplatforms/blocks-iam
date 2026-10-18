@@ -73,6 +73,7 @@ namespace Iam.DomainService.Accounts
         private readonly IValidator<SignupOrganizationInfo>? _signupOrganizationValidator;
         private readonly IOrganizationNameResolver? _organizationNameResolver;
         private readonly IConfiguration? _configuration;
+        private readonly ISignupOrganizationResolver _signupOrganizationResolver;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -89,6 +90,8 @@ namespace Iam.DomainService.Accounts
             ICaptchaConfigurationService captchaConfigurationService,
             IDbContextProvider dbContextProvider,
             IUserActivityDispatcher userActivityDispatcher,
+            // Required, unlike the optional trailing dependencies: without it a sign-up cannot be placed.
+            ISignupOrganizationResolver signupOrganizationResolver,
             IHttpContextAccessor? httpContextAccessor = null,
             IDefaultOidcClientResolver? defaultOidcClientResolver = null,
             // Trailing and optional, matching the two above, so the many existing call sites and
@@ -113,6 +116,7 @@ namespace Iam.DomainService.Accounts
             _captchaConfigurationService = captchaConfigurationService;
             _dbContextProvider = dbContextProvider;
             _userActivityDispatcher = userActivityDispatcher;
+            _signupOrganizationResolver = signupOrganizationResolver;
             _httpContextAccessor = httpContextAccessor;
             _defaultOidcClientResolver = defaultOidcClientResolver;
             _signupOrganizationValidator = signupOrganizationValidator;
@@ -164,7 +168,8 @@ namespace Iam.DomainService.Accounts
             var normalizedEmail = signupUserRequest.Email.Trim().ToLowerInvariant();
 
             // Organization checks run for every email, before the account lookup, so a refusal
-            // (name taken, creation turned off, bad profile) cannot tell whether the email has an account.
+            // (name taken, creation turned off, bad profile, auto-join organization unavailable) cannot
+            // tell whether the email has an account.
             if (signupUserRequest.CreateOrganizationDuringSignup)
             {
                 var organizationRefusal = await CheckSignupOrganizationAsync(signupUserRequest);
@@ -172,6 +177,23 @@ namespace Iam.DomainService.Accounts
                 {
                     return organizationRefusal;
                 }
+            }
+
+            var placement = await ResolveSignupPlacementAsync(signupUserRequest, tenantConfiguration);
+            if (placement.Outcome == SignupOrganizationOutcome.TargetUnavailable)
+            {
+                // Nothing has been written yet: no user, no organization, no mail.
+                _logger.LogWarning(
+                    "Signup refused: the auto-join organization {OrganizationId} is unavailable",
+                    tenantConfiguration.SignupAutoJoinOrganizationId ?? "(none)");
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { IdpConstants.SignupOrganizationUnavailableError, IdpConstants.SignupOrganizationUnavailableMessage }
+                    }
+                };
             }
 
             var existingHandlingResult = await HandleExistingSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail);
@@ -183,8 +205,14 @@ namespace Iam.DomainService.Accounts
             // Generate user id first so org creation can receive creator id in the same signup flow.
             var signupUserId = Guid.NewGuid().ToString();
 
-            var organizationId = DefaultOrganizationId;
-            if (signupUserRequest.CreateOrganizationDuringSignup)
+            // Null means "no organization" (NoOrganization); otherwise "default", the auto-join target, or the
+            // organization created just below.
+            var organizationId = placement.OrganizationId;
+
+            // Only an organization this sign-up created is ever rolled back. The auto-join target and "default"
+            // are shared and must survive a failed sign-up.
+            string? createdOrganizationId = null;
+            if (placement.Outcome == SignupOrganizationOutcome.CreateOwn)
             {
                 var orgResult = await CreateOrganizationForSignupAsync(signupUserRequest, signupUserId);
                 if (!orgResult.IsSuccess)
@@ -193,12 +221,11 @@ namespace Iam.DomainService.Accounts
                 }
 
                 organizationId = orgResult.ItemId ?? DefaultOrganizationId;
+                createdOrganizationId = organizationId == DefaultOrganizationId ? null : organizationId;
             }
 
-            var createdOrganizationId = organizationId == DefaultOrganizationId ? null : organizationId;
-
             var result = signupUserRequest.IsSsoSignup
-                ? await CreateSsoSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId)
+                ? await CreateSsoSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId ?? DefaultOrganizationId)
                 : await CreateEmailSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId);
 
             // Compensate a failed user creation: without this the org survives with no
@@ -207,6 +234,16 @@ namespace Iam.DomainService.Accounts
             if (!result.IsSuccess && createdOrganizationId != null)
             {
                 await RollbackSignupOrganizationAsync(createdOrganizationId, normalizedEmail);
+            }
+
+            if (result.IsSuccess)
+            {
+                _logger.LogInformation(
+                    "Signup in tenant {TenantId} placed user {UserId} by {Outcome} into {OrganizationId}",
+                    BlocksContext.GetContext()?.TenantId,
+                    signupUserId,
+                    placement.Outcome,
+                    organizationId ?? "none");
             }
 
             return result.IsSuccess ? SignupAccepted() : result;
@@ -259,6 +296,31 @@ namespace Iam.DomainService.Accounts
                     ? await SuggestOrganizationNamesAsync(organizationName)
                     : new List<string>()
             };
+        }
+
+        /// <summary>
+        /// Where a new email sign-up lands, decided by the shared <see cref="ISignupOrganizationResolver"/> so
+        /// the email and SSO routes cannot drift apart.
+        /// <para>
+        /// The <c>IsSsoSignup</c> branch is unreachable -- <c>POST auth/signup</c> forces it off -- and keeps its
+        /// original placement: <c>default</c>, or the organization the caller asked to create.
+        /// </para>
+        /// </summary>
+        private async Task<SignupOrganizationDecision> ResolveSignupPlacementAsync(
+            SignupUserRequest signupUserRequest,
+            IamTenantConfiguration tenantConfiguration)
+        {
+            if (signupUserRequest.IsSsoSignup)
+            {
+                return signupUserRequest.CreateOrganizationDuringSignup
+                    ? new SignupOrganizationDecision(SignupOrganizationOutcome.CreateOwn)
+                    : new SignupOrganizationDecision(SignupOrganizationOutcome.Default, DefaultOrganizationId);
+            }
+
+            return await _signupOrganizationResolver.ResolveAsync(
+                tenantConfiguration,
+                SignupRoute.Email,
+                signupUserRequest.CreateOrganizationDuringSignup);
         }
 
         private async Task RollbackSignupOrganizationAsync(string organizationId, string email)
@@ -644,12 +706,13 @@ namespace Iam.DomainService.Accounts
             return request;
         }
 
+        /// <param name="organizationId">The organization to join, or null for a user with no organization.</param>
         private async Task<BaseAccountResponse> CreateEmailSignupUserAsync(
             SignupUserRequest signupUserRequest,
             TenantConfiguration tenantConfiguration,
             string normalizedEmail,
             string signupUserId,
-            string organizationId)
+            string? organizationId)
         {
             var createUserRequest = new CreateUserRequest
             {
@@ -670,7 +733,9 @@ namespace Iam.DomainService.Accounts
                 RedirectUri = signupUserRequest.RedirectUri
             };
 
-            var result = await _userManagementMutationService.CreateUserAsync(createUserRequest);
+            var result = organizationId == null
+                ? await _userManagementMutationService.CreateSignupUserWithoutOrganizationAsync(createUserRequest)
+                : await _userManagementMutationService.CreateUserAsync(createUserRequest);
             if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.ItemId))
             {
                 _logger.LogWarning("Signup user creation failed for email: {Email}", normalizedEmail);

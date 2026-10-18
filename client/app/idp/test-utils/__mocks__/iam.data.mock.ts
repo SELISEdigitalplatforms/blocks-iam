@@ -299,6 +299,7 @@ export const mockOrganizationConfigResponse: IOrganizationConfigResponse = {
   consentForMultiOrgEnable: false,
   defaultRoleOnOrgCreation: [],
   itemId: "mock-config-id",
+  isSignupAutoJoinEnabled: false,
 };
 
 export const mockSaveOrganizationConfigPayload: IOrganizationConfigPayload = {

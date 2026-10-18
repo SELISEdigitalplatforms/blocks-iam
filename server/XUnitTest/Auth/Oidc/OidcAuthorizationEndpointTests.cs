@@ -803,7 +803,7 @@ namespace XUnitTest.Auth.Oidc
             // Only a real organization is worth remembering, and only multi-org tenants have any:
             // with the mode off the scope is "default", a sentinel, which is never persisted here.
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
 
             var result = await Authorize(blocksUserId: "user-1");
 
