@@ -565,6 +565,7 @@ namespace Authentication.DomainService.Services
             {
                 var edit = await _dataAccess.EditFilterAsync(schema, filter, "AuthenticationRepository.UpdatePartialAsync");
                 if (edit is null) return;
+                await _dataAccess.CheckUpdateAsync(schema, combinedUpdate, "AuthenticationRepository.UpdatePartialAsync");
                 filter = edit;
             }
             await collection.UpdateOneAsync(filter, combinedUpdate);

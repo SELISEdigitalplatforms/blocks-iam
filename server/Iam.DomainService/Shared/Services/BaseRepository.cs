@@ -47,6 +47,7 @@ namespace Iam.DomainService.Services
             {
                 var edit = await _dataAccess.EditFilterAsync(schema, filter, "BaseRepository.UpdatePartialAsync");
                 if (edit is null) return;
+                await _dataAccess.CheckUpdateAsync(schema, combinedUpdate, "BaseRepository.UpdatePartialAsync");
                 filter = edit;
             }
             await collection.UpdateOneAsync(filter, combinedUpdate);

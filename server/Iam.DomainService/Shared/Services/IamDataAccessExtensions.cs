@@ -7,6 +7,8 @@ namespace Iam.DomainService.Services;
 /// "not found / empty / 0"; denied updates and deletes do not write (null result); a denied insert throws
 /// <see cref="UnauthorizedAccessException"/> because dropping it silently would return an unsaved entity.
 /// Upserts are gated by the EDIT check but keep their own filter (an AND-ed row filter on an upsert would insert a duplicate).
+/// Writes then get the schema's validation rules, and inserts its default values (<see cref="IIamDataAccess.PrepareWriteAsync{T}"/>);
+/// a failed rule throws <see cref="Blocks.Genesis.DataAccess.Rules.DataValidationException"/> and nothing is written.
 /// </summary>
 public static class IamDataAccessExtensions
 {
@@ -40,6 +42,9 @@ public static class IamDataAccessExtensions
     {
         var edit = await access.EditFilterAsync(schema, filter, callSite, tenantId);
         if (edit is null) return null;
+        replacement = options?.IsUpsert == true
+            ? await access.PrepareUpsertAsync(schema, replacement, collection, filter, callSite, tenantId)
+            : await access.PrepareWriteAsync(schema, replacement, isInsert: false, callSite, tenantId);
         return await collection.ReplaceOneAsync(options?.IsUpsert == true ? filter : edit, replacement, options ?? new ReplaceOptions());
     }
 
@@ -48,6 +53,7 @@ public static class IamDataAccessExtensions
     {
         var edit = await access.EditFilterAsync(schema, filter, callSite, tenantId);
         if (edit is null) return null;
+        await access.CheckUpdateAsync(schema, update, callSite, tenantId);
         return await collection.UpdateOneAsync(options?.IsUpsert == true ? filter : edit, update, options);
     }
 
@@ -55,14 +61,18 @@ public static class IamDataAccessExtensions
         FilterDefinition<T> filter, UpdateDefinition<T> update, string callSite, string? tenantId = null)
     {
         var edit = await access.EditFilterAsync(schema, filter, callSite, tenantId);
-        return edit is null ? null : await collection.UpdateManyAsync(edit, update);
+        if (edit is null) return null;
+        await access.CheckUpdateAsync(schema, update, callSite, tenantId);
+        return await collection.UpdateManyAsync(edit, update);
     }
 
     public static async Task<T?> FindOneAndUpdateAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
         FilterDefinition<T> filter, UpdateDefinition<T> update, string callSite, FindOneAndUpdateOptions<T>? options = null, string? tenantId = null)
     {
         var edit = await access.EditFilterAsync(schema, filter, callSite, tenantId);
-        return edit is null ? default : await collection.FindOneAndUpdateAsync(edit, update, options);
+        if (edit is null) return default;
+        await access.CheckUpdateAsync(schema, update, callSite, tenantId);
+        return await collection.FindOneAndUpdateAsync(edit, update, options);
     }
 
     public static async Task<DeleteResult?> DeleteOneAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
@@ -83,6 +93,7 @@ public static class IamDataAccessExtensions
         T document, string callSite, string? tenantId = null)
     {
         await access.EnsureInsertAllowedAsync(schema, callSite, tenantId);
+        await access.PrepareWriteAsync(schema, document, isInsert: true, callSite, tenantId);
         await collection.InsertOneAsync(document);
     }
 
@@ -90,7 +101,10 @@ public static class IamDataAccessExtensions
         IEnumerable<T> documents, string callSite, string? tenantId = null)
     {
         await access.EnsureInsertAllowedAsync(schema, callSite, tenantId);
-        await collection.InsertManyAsync(documents);
+        var list = documents as IList<T> ?? documents.ToList();
+        foreach (var document in list)
+            await access.PrepareWriteAsync(schema, document, isInsert: true, callSite, tenantId);
+        await collection.InsertManyAsync(list);
     }
 
     public static async Task EnsureInsertAllowedAsync(this IIamDataAccess access, string schema, string callSite, string? tenantId = null)

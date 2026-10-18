@@ -40,6 +40,9 @@ var apiRoutePrefix = builder.Configuration["ApiRouting:Prefix"];
 
 services.AddHealthChecks();
 
+// A system schema's validation rules refusing a save: 400 with the failed properties.
+services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options => options.Filters.Add<DataValidationExceptionFilter>());
+
 ApplicationConfigurations.ConfigureApi(
     services,
     serviceName: serviceName,

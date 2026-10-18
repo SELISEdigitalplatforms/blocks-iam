@@ -496,6 +496,12 @@
             All routes live under <c>/security</c>.
             </summary>
         </member>
+        <member name="T:Api.Middleware.DataValidationExceptionFilter">
+            <summary>
+            A save refused by a system schema's validation rules (IIamDataAccess PrepareWriteAsync / CheckUpdateAsync)
+            is the caller's mistake, not a server error: 400 with one message per property, the field's path as key.
+            </summary>
+        </member>
         <member name="T:Api.Middleware.SecurityHeadersMiddleware">
             <summary>
             Browser security headers via Response.OnStarting so Genesis/OIDC Set-Cookie

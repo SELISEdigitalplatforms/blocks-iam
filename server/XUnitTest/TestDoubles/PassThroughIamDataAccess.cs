@@ -17,4 +17,11 @@ internal sealed class PassThroughIamDataAccess : IIamDataAccess
         Task.FromResult<FilterDefinition<T>?>(filter);
 
     public Task<bool> InsertAllowedAsync(string schema, string callSite, string? tenantId = null) => Task.FromResult(true);
+
+    public Task<T> PrepareWriteAsync<T>(string schema, T entity, bool isInsert, string callSite, string? tenantId = null) => Task.FromResult(entity);
+
+    public Task<T> PrepareUpsertAsync<T>(string schema, T entity, IMongoCollection<T> collection, FilterDefinition<T> filter, string callSite, string? tenantId = null) =>
+        Task.FromResult(entity);
+
+    public Task CheckUpdateAsync<T>(string schema, UpdateDefinition<T> update, string callSite, string? tenantId = null) => Task.CompletedTask;
 }

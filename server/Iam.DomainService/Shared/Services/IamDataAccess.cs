@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Blocks.Genesis;
 using Blocks.Genesis.DataAccess;
+using Blocks.Genesis.DataAccess.Rules;
 using Blocks.Genesis.Entities.Data;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
@@ -13,6 +14,8 @@ namespace Iam.DomainService.Services;
 /// Wraps <see cref="IDataAccessResolver"/> for iam. Rules (decisions.md 2026-10-15):
 /// row filter + projection only (no column masking), missing schema = log and allow,
 /// no user context or another tenant's DB = <see cref="ShouldSkipResolver"/>.
+/// Writes also get the schema's default values and validation rules (only what the Genesis
+/// allow-list opens), on the same skip path.
 /// </summary>
 public sealed class IamDataAccess : IIamDataAccess
 {
@@ -72,6 +75,100 @@ public sealed class IamDataAccess : IIamDataAccess
             WarnMissingSchema(schema, callSite, ex);
             return true;
         }
+    }
+
+    public async Task<T> PrepareWriteAsync<T>(string schema, T entity, bool isInsert, string callSite, string? tenantId = null)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        if (!TakesRules(schema) || ShouldSkipResolver(callSite, tenantId))
+            return entity;
+
+        var resolved = await ResolveWriteAsync(schema, entity.ToBsonDocument(), isInsert, callSite);
+        if (resolved is { DefaultsApplied: true })
+            CopyInto(entity, BsonSerializer.Deserialize<T>(resolved.Document));
+        return entity;
+    }
+
+    public async Task<T> PrepareUpsertAsync<T>(string schema, T entity, IMongoCollection<T> collection, FilterDefinition<T> filter, string callSite, string? tenantId = null)
+    {
+        if (!TakesRules(schema) || ShouldSkipResolver(callSite, tenantId))
+            return entity;
+
+        var exists = await collection.Find(filter).Limit(1).AnyAsync();
+        return await PrepareWriteAsync(schema, entity, isInsert: !exists, callSite, tenantId);
+    }
+
+    public async Task CheckUpdateAsync<T>(string schema, UpdateDefinition<T> update, string callSite, string? tenantId = null)
+    {
+        if (!TakesRules(schema) || ShouldSkipResolver(callSite, tenantId))
+            return;
+
+        var rendered = update.Render(new RenderArgs<T>(BsonSerializer.LookupSerializer<T>(), BsonSerializer.SerializerRegistry));
+        if (rendered is not BsonDocument operators || !operators.TryGetValue("$set", out var set) || set is not BsonDocument fields)
+            return;
+
+        await ResolveWriteAsync(schema, Nest(fields), isInsert: false, callSite);
+    }
+
+    /// <summary>Schemas the Genesis allow-list keeps closed never have rules or defaults: no lookup at all.</summary>
+    private static bool TakesRules(string schema) => SystemSchemaRules.For(schema) is not null;
+
+    /// <summary>
+    /// Puts the values of <paramref name="source"/> (the entity with its defaults) into <paramref name="target"/>,
+    /// so the caller's own instance carries them, as an insert's generated id would.
+    /// </summary>
+    private static void CopyInto<T>(T target, T source)
+    {
+        foreach (var member in BsonClassMap.LookupClassMap(target!.GetType()).AllMemberMaps)
+        {
+            if (!member.IsReadOnly)
+                member.Setter(target, member.Getter(source!));
+        }
+    }
+
+    /// <summary>Runs the resolver's write rules; throws when one fails. Null when the schema doesn't exist (logged, allowed).</summary>
+    private async Task<ResolvedWrite?> ResolveWriteAsync(string schema, BsonDocument document, bool isInsert, string callSite)
+    {
+        ResolvedWrite resolved;
+        try
+        {
+            resolved = await _resolver.ResolveWriteAsync(schema, document, isInsert);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            WarnMissingSchema(schema, callSite, ex);
+            return null;
+        }
+
+        if (!resolved.IsValid)
+            throw new DataValidationException(resolved.Validation);
+        return resolved;
+    }
+
+    /// <summary>
+    /// <c>$set</c> paths as a document: <c>{ "Read.Roles": [..] }</c> becomes <c>{ Read: { Roles: [..] } }</c>, the
+    /// shape rules are written against. Paths into list items (<c>Items.0.Name</c>, <c>Items.$.Name</c>) are left
+    /// out: without the stored list there is nothing to check them against.
+    /// </summary>
+    private static BsonDocument Nest(BsonDocument set)
+    {
+        var root = new BsonDocument();
+        foreach (var element in set)
+        {
+            var parts = element.Name.Split('.');
+            if (parts.Any(p => p.StartsWith('$') || p.All(char.IsDigit)))
+                continue;
+
+            var container = root;
+            foreach (var part in parts[..^1])
+            {
+                if (!container.TryGetValue(part, out var next) || next is not BsonDocument nested)
+                    container[part] = nested = new BsonDocument();
+                container = nested;
+            }
+            container[parts[^1]] = element.Value;
+        }
+        return root;
     }
 
     private async Task<FilterDefinition<T>?> MutationFilterAsync<T>(string schema, PolicyOperation operation, FilterDefinition<T> filter, string callSite, string? tenantId)
