@@ -4,6 +4,7 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
+using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Blocks.Genesis.Entities.Iam;
@@ -180,11 +181,12 @@ namespace XUnitTest.IamTests
                 .Returns(Task.CompletedTask);
 
             var user = new User { ItemId = "u2", Email = "inv@x.com", UserName = "inv", FirstName = "Jane", LastName = "Doe" };
-            var result = await Create().SendActivationToEmailAsync(user, "https://project-link", "project_invitation");
+            var result = await Create().SendActivationToEmailAsync(user, "https://project-link", IdpConstants.ProjectInvitationMailPurpose);
 
             result.Should().BeTrue();
             captured.Should().NotBeNull();
-            var body = captured!.Payload.BodyDataContext;
+            captured!.Payload.Purpose.Should().Be("ProjectInvitation");
+            var body = captured.Payload.BodyDataContext;
             body["ProjectInvitationLink"].Should().Be("https://project-link");
             body["ProjectName"].Should().Be("My Project");
             body["DisplayName"].Should().Be("Jane Doe");
@@ -203,9 +205,29 @@ namespace XUnitTest.IamTests
                 .Returns(Task.CompletedTask);
 
             var user = new User { ItemId = "u3", Email = "noname@x.com", UserName = "nn", FirstName = null, LastName = null };
-            await Create().SendActivationToEmailAsync(user, "https://l", "project_invitation");
+            await Create().SendActivationToEmailAsync(user, "https://l", IdpConstants.ProjectInvitationMailPurpose);
 
             captured!.Payload.BodyDataContext["DisplayName"].Should().Be("noname@x.com");
+        }
+
+        [Fact]
+        public async Task SendActivationToEmail_LegacyProjectInvitationPurpose_SendsCurrentPurposeWithProjectContext()
+        {
+            _userRepository.Setup(r => r.GetProjectIdFromProjectPeopleAsync("u5")).ReturnsAsync("project-5");
+            _tenants.Setup(t => t.GetTenantByID("project-5")).Returns(MakeTenant("project-5", "P5"));
+
+            ConsumerMessage<SendMail>? captured = null;
+            _messageClient.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<SendMail>>()))
+                .Callback<ConsumerMessage<SendMail>>(c => captured = c)
+                .Returns(Task.CompletedTask);
+
+            // Invited before the rename: the stored MailPurpose is still snake_case.
+            var user = new User { ItemId = "u5", Email = "old@x.com", UserName = "old", FirstName = "Old", LastName = "Invite" };
+            await Create().SendActivationToEmailAsync(user, "https://legacy", "project_invitation");
+
+            captured!.Payload.Purpose.Should().Be("ProjectInvitation");
+            captured.Payload.BodyDataContext["ProjectInvitationLink"].Should().Be("https://legacy");
+            captured.Payload.BodyDataContext["ProjectName"].Should().Be("P5");
         }
 
         // ---------- SendAccountActivationEmailAsync ----------

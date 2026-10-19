@@ -25,8 +25,13 @@ namespace Iam.DomainService.Utilities
 
         // Informational only: the change has already been applied when these go out, so a
         // tenant with no template for either purpose simply sends nothing.
-        public const string OrganizationMemberAddedMailPurpose = "organization_member_added";
-        public const string OrganizationMemberRemovedMailPurpose = "organization_member_removed";
+        public const string OrganizationMemberAddedMailPurpose = "OrganizationMemberAdded";
+        public const string OrganizationMemberRemovedMailPurpose = "OrganizationMemberRemoved";
+
+        // Owned by blocks-os (IdentifierConstants.ProjectPeopleInvitationMailPurpose) and stored on the
+        // invited user's MailPurpose. Users invited before the rename still carry the legacy value.
+        public const string ProjectInvitationMailPurpose = "ProjectInvitation";
+        public const string LegacyProjectInvitationMailPurpose = "project_invitation";
 
         #endregion
 

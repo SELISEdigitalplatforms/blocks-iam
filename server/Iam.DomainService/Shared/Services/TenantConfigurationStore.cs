@@ -117,6 +117,7 @@ namespace Iam.DomainService.Services
             {
                 var edit = await dataAccess.EditFilterAsync(IamSchemas.IdentityConfiguration, identityFilter, "TenantConfigurationStore.UpdateAsync");
                 if (edit is null) return false;
+                await dataAccess.CheckUpdateAsync(IamSchemas.IdentityConfiguration, update, "TenantConfigurationStore.UpdateAsync");
                 identityFilter = edit;
             }
 
