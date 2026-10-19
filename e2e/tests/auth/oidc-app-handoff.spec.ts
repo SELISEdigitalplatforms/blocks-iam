@@ -521,12 +521,14 @@ test.describe("OIDC native-app hand-off (blocks-iam#617)", () => {
         await submitPasswordLogin(page);
         await expectHandoffBlock(page, APP_LOGIN_REDIRECT);
         await expect(page.locator(".oidc-scifi-root").first()).toHaveAttribute("data-theme", scheme);
-        // The link spans the card width (section 4 "Layout and states"). Measured without the
-        // pointer over it: the button's hover style scales it.
-        await moveMouseAway(page);
-        const link = await returnLink(page).boundingBox();
-        const block = await handoffBlock(page).boundingBox();
-        expect(link && block && Math.abs(link.width - block.width) <= 1).toBe(true);
+        // The link spans the card width (section 4 "Layout and states"). Compared as layout
+        // widths: the button's hover/active styles scale it with a transform, which a bounding
+        // box would include while that transition runs.
+        const widths = await returnLink(page).evaluate((link) => ({
+          link: (link as HTMLElement).offsetWidth,
+          block: (link.parentElement as HTMLElement).clientWidth,
+        }));
+        expect(Math.abs(widths.link - widths.block), JSON.stringify(widths)).toBeLessThanOrEqual(1);
         await screenshot(page, testInfo, `password-handoff-390x844-${scheme}`);
       });
 
