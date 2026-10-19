@@ -234,9 +234,20 @@ public static class ForwardedHeadersSetup
     // because with empty KnownProxies/KnownIPNetworks it would trust every source.
     public static ForwardedHeadersOptions? BuildOptions(IConfiguration configuration)
     {
-        var networks = configuration.GetSection(KnownNetworksKey).Get<string[]>();
+        var section = configuration.GetSection(KnownNetworksKey);
+        var networks = section.Get<string[]>();
         if (networks is null || networks.Length == 0)
         {
+            // A scalar value (e.g. ForwardedHeaders__KnownNetworks=10.0.0.0/24) binds to no array
+            // entries; failing here beats silently leaving the middleware unregistered.
+            if (!string.IsNullOrWhiteSpace(section.Value))
+            {
+                throw new InvalidOperationException(
+                    $"{KnownNetworksKey} is set to a single value '{section.Value}'; configure it as indexed entries " +
+                    "instead (e.g. ForwardedHeaders__KnownNetworks__0=<cidr>).");
+            }
+
+
             return null;
         }
 

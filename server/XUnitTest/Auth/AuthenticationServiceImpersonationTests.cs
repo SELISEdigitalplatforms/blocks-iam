@@ -432,11 +432,13 @@ namespace XUnitTest.Auth
                 .Callback<UserActivityEvent>(e => audit = e).Returns(Task.CompletedTask);
 
             // RemoteIpAddress as the forwarded-header middleware leaves it for a trusted gateway hop.
-            var ctx = await XUnitTest.ApiTests.ForwardedHeadersTestPipeline.ThroughTrustedGatewayAsync("203.0.113.10");
+            // Multi-entry header: a call site reading the raw header would record the spoofable first entry.
+            var ctx = await XUnitTest.ApiTests.ForwardedHeadersTestPipeline.ThroughTrustedGatewayAsync("198.51.100.99, 203.0.113.10");
             await Create().ExecuteStopImpersonationAsync(new StopImpersonationRequest(), ctx.Request, ctx.Response);
 
             audit!.Source.Should().Be("auth-impersonation");
             audit.Context.IpAddress.Should().Be("203.0.113.10");
+            audit.Context.IpAddress.Should().NotContain("198.51.100.99");
         }
 
         [Fact]
@@ -759,11 +761,14 @@ namespace XUnitTest.Auth
             _session.Setup(s => s.CreateSessionAsync("user-1", TenantId, It.IsAny<string>())).ReturnsAsync("new-sess");
 
             // RemoteIpAddress as the forwarded-header middleware leaves it for a trusted gateway hop.
-            var ctx = await XUnitTest.ApiTests.ForwardedHeadersTestPipeline.ThroughTrustedGatewayAsync("203.0.113.10");
+            // Multi-entry header: a call site reading the raw header would store the spoofable first entry.
+            var ctx = await XUnitTest.ApiTests.ForwardedHeadersTestPipeline.ThroughTrustedGatewayAsync("198.51.100.99, 203.0.113.10");
             var result = await Create().EnsureIdpSessionForOidcCallbackAsync(ctx, "user-1", TenantId);
 
             result.Should().BeTrue();
             _session.Verify(s => s.CreateSessionAsync("user-1", TenantId, "203.0.113.10"), Times.Once);
+            _session.Verify(s => s.CreateSessionAsync(It.IsAny<string>(), It.IsAny<string>(),
+                It.Is<string>(ip => ip != null && ip.Contains("198.51.100.99"))), Times.Never);
         }
 
         [Fact]

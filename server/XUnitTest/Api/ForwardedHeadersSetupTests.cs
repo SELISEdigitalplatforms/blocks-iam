@@ -39,6 +39,9 @@ namespace XUnitTest.ApiTests;
 public class ForwardedHeadersSetupTests : IDisposable
 {
     private const string Client = "203.0.113.10";
+    // The spoofable first entry: no writer may store it, so a call site reverting to the raw header fails.
+    private const string Spoofed = "198.51.100.99";
+    private const string MultiEntry = Spoofed + ", " + Client;
     private readonly ITestOutputHelper _output;
 
     public ForwardedHeadersSetupTests(ITestOutputHelper output)
@@ -92,6 +95,34 @@ public class ForwardedHeadersSetupTests : IDisposable
     }
 
     [Theory]
+    [InlineData("10.10.73.0/24")]
+    [InlineData("not-a-cidr")]
+    public void BuildOptions_ScalarValueWithoutIndex_ThrowsNamingKeyAndIndexedForm(string scalar)
+    {
+        // ForwardedHeaders__KnownNetworks=<cidr> (no __0) binds to no array entries; it must not
+        // silently leave the middleware unregistered.
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ForwardedHeaders:KnownNetworks"] = scalar })
+            .Build();
+
+        var act = () => ForwardedHeadersSetup.BuildOptions(config);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*ForwardedHeaders:KnownNetworks*")
+            .WithMessage("*ForwardedHeaders__KnownNetworks__0=<cidr>*");
+    }
+
+    [Fact]
+    public void BuildOptions_EmptyScalarValue_ReturnsNull()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ForwardedHeaders:KnownNetworks"] = "" })
+            .Build();
+
+        ForwardedHeadersSetup.BuildOptions(config).Should().BeNull();
+    }
+
+    [Theory]
     [InlineData("not-a-cidr")]
     [InlineData("10.10.73.0/33")]
     [InlineData("10.10.73.4")]
@@ -119,6 +150,8 @@ public class ForwardedHeadersSetupTests : IDisposable
         ctx.Request.Headers["X-Forwarded-For"].ToString().Should().Be(Client);
     }
 
+    // Reads Program.cs source because the test project has no TestServer/WebApplicationFactory package;
+    // guards that ForwardedHeadersSetup.Apply stays the first middleware after builder.Build().
     [Fact]
     public void Program_C10_ForwardedHeadersAreAppliedBeforeEveryOtherMiddleware()
     {
@@ -213,6 +246,17 @@ public class ForwardedHeadersSetupTests : IDisposable
         seen.Should().Be("127.0.0.1");
     }
 
+    [Theory]
+    [InlineData("127.0.0.1")]
+    [InlineData("::1")]
+    public async Task C2_A1_ConfiguredNetwork_LoopbackConnection_XffIgnored_LoopbackDefaultsCleared(string loopback)
+    {
+        var (ctx, seen) = await RunAsync(new[] { GatewayNetwork }, loopback, Client);
+
+        seen.Should().Be(loopback);
+        ctx.Request.Headers["X-Forwarded-For"].ToString().Should().Be(Client);
+    }
+
     [Fact]
     public async Task C7_C11_ProtoAndHostHeaders_SchemeAndHostUnchanged_NoIpInvented()
     {
@@ -269,14 +313,16 @@ public class ForwardedHeadersSetupTests : IDisposable
     [Fact]
     public async Task H6_OidcRedirectUrlBuilder_GetClientIpAddress_ReturnsResolvedClient()
     {
-        var ctx = await ThroughTrustedGatewayAsync(Client);
-        OidcRedirectUrlBuilder.GetClientIpAddress(ctx.Request).Should().Be(Client);
+        var ctx = await ThroughTrustedGatewayAsync(MultiEntry);
+        var ip = OidcRedirectUrlBuilder.GetClientIpAddress(ctx.Request);
+        ip.Should().Be(Client);
+        ip.Should().NotContain(Spoofed);
     }
 
     [Fact]
     public async Task H7_MfaAuditService_RecordsResolvedClient()
     {
-        var ctx = await ThroughTrustedGatewayAsync(Client);
+        var ctx = await ThroughTrustedGatewayAsync(MultiEntry);
         var accessor = new Mock<IHttpContextAccessor>();
         accessor.Setup(a => a.HttpContext).Returns(ctx);
         var dispatcher = new Mock<IUserActivityDispatcher>();
@@ -290,12 +336,13 @@ public class ForwardedHeadersSetupTests : IDisposable
             .WriteAsync(new MfaAuditEvent { EventType = "mfa.verify", UserId = "u1", Status = "success" });
 
         captured!.Context.IpAddress.Should().Be(Client);
+        captured.Context.IpAddress.Should().NotContain(Spoofed);
     }
 
     [Fact]
     public async Task H1_H8_IdpSessionService_ResolveOrCreate_StoresResolvedClient()
     {
-        var ctx = await ThroughTrustedGatewayAsync(Client);
+        var ctx = await ThroughTrustedGatewayAsync(MultiEntry);
         var repo = new Mock<IIdpSessionRepository>();
         IdpSessionModel? stored = null;
         repo.Setup(r => r.CreateAsync(It.IsAny<IdpSessionModel>()))
@@ -305,6 +352,56 @@ public class ForwardedHeadersSetupTests : IDisposable
         await IdpSessions(repo).ResolveOrCreateAsync(ctx, "user-1", "tenant-1", ctx.Connection.RemoteIpAddress?.ToString());
 
         stored!.IpAddress.Should().Be(Client);
+        stored.IpAddress.Should().NotContain(Spoofed);
+    }
+
+    private static IdpSessionModel ExistingSession(string sessionId, string ip) => new()
+    {
+        SessionId = sessionId,
+        TenantId = "tenant-1",
+        Accounts = new List<IdpSessionAccount> { new() { UserId = "user-1", TenantId = "tenant-1", LoginAt = DateTime.UtcNow } },
+        IpAddress = ip,
+        CreatedAt = DateTime.UtcNow.AddHours(-1),
+        LastActivityAt = DateTime.UtcNow,
+        IdleExpiry = DateTime.UtcNow.AddHours(1),
+        AbsoluteExpiry = DateTime.UtcNow.AddDays(30)
+    };
+
+    [Fact]
+    public async Task C8_ExistingSession_ReusedViaCookie_KeepsHistoricalIp_NoNewSessionWithCurrentIp()
+    {
+        const string historical = "192.0.2.50";
+        var ctx = await ThroughTrustedGatewayAsync(MultiEntry);
+        ctx.Request.Headers["Cookie"] = $"{Iam.DomainService.Utilities.IdpConstants.BuildIdpSessionCookieKey("tenant-1")}=sess-old";
+        var repo = new Mock<IIdpSessionRepository>();
+        var existing = ExistingSession("sess-old", historical);
+        repo.Setup(r => r.GetBySessionIdAsync("sess-old")).ReturnsAsync(existing);
+        repo.Setup(r => r.UpdateActivityAsync("sess-old")).ReturnsAsync(true);
+
+        var id = await IdpSessions(repo).ResolveOrCreateAsync(ctx, "user-1", "tenant-1", ctx.Connection.RemoteIpAddress?.ToString());
+
+        id.Should().Be("sess-old");
+        existing.IpAddress.Should().Be(historical);
+        repo.Verify(r => r.CreateAsync(It.IsAny<IdpSessionModel>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task C8_ExistingSession_Rotated_KeepsHistoricalIp_NotTheCurrentRequestIp()
+    {
+        const string historical = "192.0.2.50";
+        var ctx = await ThroughTrustedGatewayAsync(MultiEntry);
+        ctx.Connection.RemoteIpAddress!.ToString().Should().Be(Client, "the current request resolves a different client");
+        var repo = new Mock<IIdpSessionRepository>();
+        repo.Setup(r => r.GetBySessionIdAsync("sess-old")).ReturnsAsync(ExistingSession("sess-old", historical));
+        IdpSessionModel? rotated = null;
+        repo.Setup(r => r.CreateAsync(It.IsAny<IdpSessionModel>()))
+            .Callback<IdpSessionModel>(m => rotated = m).ReturnsAsync((IdpSessionModel m) => m.SessionId);
+
+        var newId = await IdpSessions(repo).RotateSessionAsync("sess-old", "login");
+
+        newId.Should().NotBeNull().And.NotBe("sess-old");
+        rotated!.IpAddress.Should().Be(historical);
+        rotated.IpAddress.Should().NotBe(Client);
     }
 
     private static Authentication.DomainService.Oidc.Services.IdpSessionService IdpSessions(Mock<IIdpSessionRepository> repo) => new(
@@ -388,6 +485,7 @@ public class ForwardedHeadersSetupTests : IDisposable
     // ---------- Section 5: performance contract ----------
 
     [Fact]
+    [Trait("Category", "Performance")]
     public async Task Perf_ForwardedHeadersMiddleware_P95OverheadWithinBudget()
     {
         const int iterations = 10_000;
