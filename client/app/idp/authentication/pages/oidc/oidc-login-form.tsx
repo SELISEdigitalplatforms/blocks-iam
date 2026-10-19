@@ -51,6 +51,16 @@ const generatePkcePair = async () => {
   return { verifier, challenge };
 };
 
+/** The fields of an /api/oidc/login JSON response the form acts on. */
+type OidcLoginResponseBody = {
+  error?: string;
+  error_description?: string;
+  message?: string;
+  mfa_id?: string;
+  user_mfa?: string;
+  redirect_uri?: string;
+};
+
 // Maps the backend's `user_mfa` channel string to the integer `mfa_type` the
 // /mfa-check form expects: 1 = authenticator (6 digits, no resend), 2 = email
 // / SMS / OTP-with-resend (6 digits). Unknown values fall back to 2.
@@ -199,6 +209,89 @@ export const OidcLoginForm = ({
     };
   };
 
+  /**
+   * Finishes a login the server accepted (HTTP 200 JSON): on to MFA, to a native app through the
+   * hand-off block, or to the client's redirect_uri (device flow: the same-origin returnUrl).
+   */
+  const completeLogin = async (data: OidcLoginResponseBody) => {
+    // Backend may signal MFA required via a 200 with `error: "mfa_enabled"`
+    // (matches /api/oidc/login contract: { error, error_description, mfa_id, user_mfa }).
+    if (data?.error === "mfa_enabled" && data?.mfa_id) {
+      animCtx?.resetAnimation();
+      const mfaType = mapUserMfaToType(data.user_mfa);
+      navigate(
+        buildOIDCNavigationUrl(
+          `/oidc/mfa-check?mfa_id=${encodeURIComponent(data.mfa_id)}&mfa_type=${mfaType}`,
+        ),
+      );
+      return;
+    }
+
+    // Checked before the success animation: the shell swaps its children for the success
+    // screen once that animation finishes, which would unmount the hand-off block.
+    if (data.redirect_uri && isAppRedirectUrl(data.redirect_uri)) {
+      animCtx?.resetAnimation();
+      setAppHandoffUrl(data.redirect_uri);
+      setIsLoading(false);
+      return;
+    }
+
+    await animCtx?.succeedAnimation();
+    // Normal flow always gets `redirect_uri` back; only device flow (RFC 8628)
+    // completes with `{ success: true }` and no redirect_uri, so returnUrl is
+    // only ever used as a fallback for that case, never preferred over it.
+    // redirect_uri is validated by the server against the client; returnUrl comes from
+    // the query string, so it may only point back at this origin.
+    const navigated = data.redirect_uri
+      ? navigateToUrl(data.redirect_uri)
+      : !!returnUrl && navigateToSameOrigin(returnUrl);
+    if (!navigated) {
+      const errMsg = "Login succeeded but no redirect target was provided";
+      shake();
+      setServerError(errMsg);
+      await animCtx?.failAnimation(errMsg);
+      setIsLoading(false);
+    }
+  };
+
+  /** Shows why a login the server refused (non-2xx JSON) failed, by its error code. */
+  const showLoginFailure = async (
+    data: OidcLoginResponseBody | null | undefined,
+    username: string,
+  ) => {
+    const errorMsg =
+      data?.error_description || data?.message || "Login failed";
+    const errorCode = data?.error;
+
+    shake();
+    if (errorCode === "account_locked") {
+      const msg = "Your account is locked. Please contact support or reset your password.";
+      setServerError(msg);
+      await animCtx?.failAnimation(msg);
+    } else if (errorCode === "account_not_verified") {
+      animCtx?.resetAnimation();
+      setLastAttemptedEmail(username);
+      setShowActivationError(true);
+    } else if (errorCode === "captcha_enabled") {
+      const msg = "Captcha verification is required. Please complete the given captcha.";
+      setServerError(msg);
+      await animCtx?.failAnimation(msg);
+      setCaptchaRequired(true);
+      resetCaptcha();
+    } else if (errorCode === "invalid_credentials" || errorCode === "captcha_invalid") {
+      const msg =
+        errorCode === "captcha_invalid"
+          ? "Captcha verification failed. Please try again."
+          : "Invalid email or password. Please try again.";
+      setServerError(msg);
+      await animCtx?.failAnimation(msg);
+      resetCaptcha();
+    } else {
+      setServerError(errorMsg);
+      await animCtx?.failAnimation(errorMsg);
+    }
+  };
+
   const onSubmitHandler = async (values: OidcLoginFormValues) => {
     setIsLoading(true);
     setShowActivationError(false);
@@ -247,46 +340,7 @@ export const OidcLoginForm = ({
       if (response.ok) {
         const data = await response.json();
         setCaptchaRequired(false);
-
-        // Backend may signal MFA required via a 200 with `error: "mfa_enabled"`
-        // (matches /api/oidc/login contract: { error, error_description, mfa_id, user_mfa }).
-        if (data?.error === "mfa_enabled" && data?.mfa_id) {
-          animCtx?.resetAnimation();
-          const mfaType = mapUserMfaToType(data.user_mfa);
-          navigate(
-            buildOIDCNavigationUrl(
-              `/oidc/mfa-check?mfa_id=${encodeURIComponent(data.mfa_id)}&mfa_type=${mfaType}`,
-            ),
-          );
-          return;
-        }
-
-        // Checked before the success animation: the shell swaps its children for the success
-        // screen once that animation finishes, which would unmount the hand-off block.
-        if (data.redirect_uri && isAppRedirectUrl(data.redirect_uri)) {
-          animCtx?.resetAnimation();
-          setAppHandoffUrl(data.redirect_uri);
-          setIsLoading(false);
-          return;
-        }
-
-        await animCtx?.succeedAnimation();
-        // Normal flow always gets `redirect_uri` back; only device flow (RFC 8628)
-        // completes with `{ success: true }` and no redirect_uri, so returnUrl is
-        // only ever used as a fallback for that case, never preferred over it.
-        // redirect_uri is validated by the server against the client; returnUrl comes from
-        // the query string, so it may only point back at this origin.
-        const navigated = data.redirect_uri
-          ? navigateToUrl(data.redirect_uri)
-          : !!returnUrl && navigateToSameOrigin(returnUrl);
-        if (!navigated) {
-          const errMsg = "Login succeeded but no redirect target was provided";
-          shake();
-          setServerError(errMsg);
-          await animCtx?.failAnimation(errMsg);
-          setIsLoading(false);
-          return;
-        }
+        await completeLogin(data);
         return;
       }
 
@@ -332,37 +386,7 @@ export const OidcLoginForm = ({
         return;
       }
 
-      const errorMsg =
-        data?.error_description || data?.message || "Login failed";
-      const errorCode = data?.error;
-
-shake();
-      if (errorCode === "account_locked") {
-        const msg = "Your account is locked. Please contact support or reset your password.";
-        setServerError(msg);
-        await animCtx?.failAnimation(msg);
-      } else if (errorCode === "account_not_verified") {
-        animCtx?.resetAnimation();
-        setLastAttemptedEmail(values.username);
-        setShowActivationError(true);
-      } else if (errorCode === "captcha_enabled") {
-        const msg = "Captcha verification is required. Please complete the given captcha.";
-        setServerError(msg);
-        await animCtx?.failAnimation(msg);
-        setCaptchaRequired(true);
-        resetCaptcha();
-      } else if (errorCode === "invalid_credentials" || errorCode === "captcha_invalid") {
-        const msg =
-          errorCode === "captcha_invalid"
-            ? "Captcha verification failed. Please try again."
-            : "Invalid email or password. Please try again.";
-        setServerError(msg);
-        await animCtx?.failAnimation(msg);
-        resetCaptcha();
-      } else {
-        setServerError(errorMsg);
-        await animCtx?.failAnimation(errorMsg);
-      }
+      await showLoginFailure(data, values.username);
     } catch (error) {
       console.error("Login error:", error);
       const msg = "An unexpected error occurred during login. Please try again.";

@@ -42,7 +42,10 @@ const navigateToCallbackError = (body: CallbackErrorBody, tenantId: string | und
 };
 
 /** The native-app hand-off, inside the same themed shell as the login page it started from. */
-function SsoCallbackAppHandoff({ url, tenantId }: { url: string; tenantId?: string }) {
+function SsoCallbackAppHandoff({
+  url,
+  tenantId,
+}: Readonly<{ url: string; tenantId?: string }>) {
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
   const template = oidcUiConfig?.template;
 

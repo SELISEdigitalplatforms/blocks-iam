@@ -233,7 +233,7 @@ export function isAppRedirectUrl(url: string): boolean {
  */
 export function navigateToUrl(url: string): boolean {
   if (isAppRedirectUrl(url)) {
-    window.location.href = url;
+    globalThis.location.href = url;
     return true;
   }
   let parsed: URL;

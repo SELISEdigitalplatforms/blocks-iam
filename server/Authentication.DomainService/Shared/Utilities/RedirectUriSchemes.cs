@@ -11,7 +11,8 @@ namespace Authentication.DomainService.Utilities
     {
         // RFC 3986 scheme syntax; the dot is checked separately so that the reverse-domain
         // requirement reads on its own.
-        private static readonly Regex SchemePattern = new("^[A-Za-z][A-Za-z0-9+.-]*$", RegexOptions.Compiled);
+        private static readonly Regex SchemePattern = new(
+            "^[A-Za-z][A-Za-z0-9+.-]*$", RegexOptions.Compiled, TimeSpan.FromMilliseconds(100));
 
         // Schemes that would run script, read local content, or point back at the web.
         private static readonly HashSet<string> RefusedSchemes = new(StringComparer.OrdinalIgnoreCase)
@@ -47,7 +48,7 @@ namespace Authentication.DomainService.Utilities
             }
 
             var scheme = value[..colon];
-            if (!SchemePattern.IsMatch(scheme) || !scheme.Contains('.', StringComparison.Ordinal))
+            if (!IsSchemeSyntax(scheme) || !scheme.Contains('.', StringComparison.Ordinal))
             {
                 return false;
             }
@@ -58,6 +59,20 @@ namespace Authentication.DomainService.Utilities
             }
 
             return !value.Contains('#', StringComparison.Ordinal);
+        }
+
+        // The pattern is linear on the short scheme text; the timeout only bounds the regex engine,
+        // and a value it cannot decide in time is refused.
+        private static bool IsSchemeSyntax(string scheme)
+        {
+            try
+            {
+                return SchemePattern.IsMatch(scheme);
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                return false;
+            }
         }
     }
 }

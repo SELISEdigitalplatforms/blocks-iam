@@ -278,7 +278,7 @@ describe("OidcLoginForm", () => {
 
       const link = await screen.findByRole("link", { name: "Return to the app" });
       expect(link).toHaveAttribute("href", APP_URL);
-      expect(link).toHaveFocus();
+      await waitFor(() => expect(link).toHaveFocus());
       expect(screen.getByRole("heading", { name: "Signed in" })).toBeInTheDocument();
       expect(screen.queryByPlaceholderText("name@company.com")).not.toBeInTheDocument();
       expect(assignments).toEqual([APP_URL]);

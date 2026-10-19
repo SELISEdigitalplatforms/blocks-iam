@@ -12,7 +12,7 @@ interface OidcAppHandoffProps {
  * once on mount; the block stays on screen with a link because the OS may not open the app
  * (no handler, or the user dismissed the prompt), and a custom scheme leaves the page as is.
  */
-export function OidcAppHandoff({ url }: OidcAppHandoffProps) {
+export function OidcAppHandoff({ url }: Readonly<OidcAppHandoffProps>) {
   const navigatedRef = useRef(false);
   const linkRef = useRef<HTMLAnchorElement>(null);
 
@@ -22,13 +22,12 @@ export function OidcAppHandoff({ url }: OidcAppHandoffProps) {
     // opened only once, or it receives the same one-time code twice.
     if (navigatedRef.current) return;
     navigatedRef.current = true;
-    if (isAppRedirectUrl(url)) window.location.href = url;
+    if (isAppRedirectUrl(url)) globalThis.location.href = url;
   }, [url]);
 
   return (
-    <div
+    <output
       className="flex flex-col items-center gap-3 py-2 text-center oidc-animate-fade-up"
-      role="status"
       aria-live="polite"
     >
       <div
@@ -53,6 +52,6 @@ export function OidcAppHandoff({ url }: OidcAppHandoffProps) {
       >
         Return to the app
       </a>
-    </div>
+    </output>
   );
 }

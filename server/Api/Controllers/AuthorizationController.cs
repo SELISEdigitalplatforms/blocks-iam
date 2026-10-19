@@ -165,7 +165,9 @@ namespace Blocks.Api.Controllers
             // A browser navigation still gets the 302. The SPA fetches this endpoint as JSON when
             // the sign-in started from a mobile app login, so it can hand off to the app-scheme
             // redirect itself; that GET receives the same URL as { redirect_uri } instead.
-            var returnRedirectResponse = !(HttpMethods.IsGet(Request.Method) && AcceptsJson());
+            var returnRedirectResponse = !(HttpMethods.IsGet(Request.Method) &&
+                Request.Headers.Accept.Any(header =>
+                    header != null && header.Contains("application/json", StringComparison.OrdinalIgnoreCase)));
 
             return await _authorizationFlowService.AuthorizeAsync(
                 result.ClientId,
@@ -240,11 +242,6 @@ namespace Blocks.Api.Controllers
                 return true;
             }
 
-            return AcceptsJson();
-        }
-
-        private bool AcceptsJson()
-        {
             return Request.Headers.Accept.Any(header =>
                 header != null && header.Contains("application/json", StringComparison.OrdinalIgnoreCase));
         }

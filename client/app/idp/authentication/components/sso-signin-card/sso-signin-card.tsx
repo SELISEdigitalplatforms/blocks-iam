@@ -34,6 +34,20 @@ type SSOSigninCardProps = {
   };
 };
 
+/**
+ * A native-app login cannot be finished by navigating the callback page to the backend
+ * (the backend's 302 to a custom scheme leaves a blank page), so mark it for the
+ * callback page to fetch the result as JSON and show the hand-off instead. Any other
+ * login clears the marker, so a stale one never changes it.
+ */
+const updateAppHandoffMarker = (redirectUri: string | undefined) => {
+  if (isAppRedirectUrl(redirectUri ?? "")) {
+    sessionStorage.setItem(OIDC_APP_HANDOFF_STORAGE_KEY, "1");
+  } else {
+    sessionStorage.removeItem(OIDC_APP_HANDOFF_STORAGE_KEY);
+  }
+};
+
 export const SSOSigninCard = ({
   providerConfig,
   withLabel = false,
@@ -76,14 +90,7 @@ export const SSOSigninCard = ({
             oidcContext.returnUrl,
           );
         }
-        // A native-app login cannot be finished by navigating the callback page to the backend
-        // (the backend's 302 to a custom scheme leaves a blank page), so mark it for the
-        // callback page to fetch the result as JSON and show the hand-off instead.
-        if (isAppRedirectUrl(oidcContext.redirectUri ?? "")) {
-          sessionStorage.setItem(OIDC_APP_HANDOFF_STORAGE_KEY, "1");
-        } else {
-          sessionStorage.removeItem(OIDC_APP_HANDOFF_STORAGE_KEY);
-        }
+        updateAppHandoffMarker(oidcContext.redirectUri);
         window.location.href = sanitizeProviderUrl(res.authorizationUrl);
         return;
       }

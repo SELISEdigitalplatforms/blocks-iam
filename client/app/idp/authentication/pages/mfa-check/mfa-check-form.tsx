@@ -75,6 +75,41 @@ export const MfaCheckFrom = () => {
     animCtx?.phase === "submitting" ||
     animCtx?.phase === "succeeded";
 
+  /**
+   * Hands a login the server returned a redirect target for back to the client: a native app
+   * through the hand-off block (no success animation, which would unmount it), anything else
+   * through a full-page navigation once the success animation has played.
+   */
+  const followRedirectUrl = async (redirectUrl: string) => {
+    if (isAppRedirectUrl(redirectUrl)) {
+      animCtx?.resetAnimation();
+      setAppHandoffUrl(redirectUrl);
+      return;
+    }
+    await animCtx?.succeedAnimation();
+    if (!navigateToUrl(redirectUrl)) {
+      const msg = "Login succeeded but no redirect target was provided";
+      setServerError(msg);
+      await animCtx?.failAnimation(msg);
+    }
+  };
+
+  /** Sends a verified login on: to its redirect target, else the device-flow returnUrl, else the profile. */
+  const completeVerifiedLogin = async (redirectUrl: string | undefined) => {
+    if (redirectUrl) {
+      await followRedirectUrl(redirectUrl);
+      return;
+    }
+    if (returnUrl) {
+      await animCtx?.succeedAnimation();
+      // returnUrl comes from the query string, so it may only point back at this origin.
+      if (!navigateToSameOrigin(returnUrl)) navigate("/app/profile");
+      return;
+    }
+    await animCtx?.succeedAnimation();
+    navigate("/app/profile");
+  };
+
   const submitHandler = async ({ code }: { code: string }) => {
     setIsLoading(true);
     setServerError(null);
@@ -116,28 +151,7 @@ export const MfaCheckFrom = () => {
         setAuthenticated();
         const redirectUrl =
           data?.redirect_uri || data?.redirect_url || data?.redirectUrl;
-        if (redirectUrl) {
-          if (isAppRedirectUrl(redirectUrl)) {
-            animCtx?.resetAnimation();
-            setAppHandoffUrl(redirectUrl);
-            return;
-          }
-          await animCtx?.succeedAnimation();
-          if (!navigateToUrl(redirectUrl)) {
-            const msg = "Login succeeded but no redirect target was provided";
-            setServerError(msg);
-            await animCtx?.failAnimation(msg);
-          }
-          return;
-        }
-        if (returnUrl) {
-          await animCtx?.succeedAnimation();
-          // returnUrl comes from the query string, so it may only point back at this origin.
-          if (!navigateToSameOrigin(returnUrl)) navigate("/app/profile");
-          return;
-        }
-        await animCtx?.succeedAnimation();
-        navigate("/app/profile");
+        await completeVerifiedLogin(redirectUrl);
         return;
       }
 
