@@ -54,7 +54,7 @@ let loginOptionsBody: Record<string, unknown> | null = null;
 let loginPosts: Request[] = [];
 let callbackRequests: { resourceType: string; accept: string; url: string }[] = [];
 let foreignRequests: string[] = [];
-let markerAtProviderRedirect: string | null | undefined;
+let providerRedirects = 0;
 
 const fulfillWith = (route: Route, stub: StubResponse) =>
   route.fulfill({
@@ -101,7 +101,7 @@ const submitPasswordLogin = async (page: Page) => {
 };
 
 const submitMfaCode = async (page: Page) => {
-  await page.locator('input[maxlength="5"]').fill("12345");
+  await page.locator('input[maxlength="6"]').fill("123456");
   await page.getByRole("button", { name: /^verify$/i }).click();
 };
 
@@ -140,7 +140,11 @@ const errorPageSearch = async (page: Page) => {
   return new URL(page.url()).search;
 };
 
+// The hand-off link replaces the submit button under the pointer; its :hover style scales it.
+const moveMouseAway = (page: Page) => page.mouse.move(0, 0);
+
 const screenshot = async (page: Page, testInfo: TestInfo, name: string) => {
+  await moveMouseAway(page);
   // outputPath() lands in the run's --output directory, never in the repository.
   const path = testInfo.outputPath(`${name}.png`);
   await page.screenshot({ path, fullPage: true, animations: "disabled" });
@@ -160,7 +164,7 @@ test.describe("OIDC native-app hand-off (blocks-iam#617)", () => {
     loginPosts = [];
     callbackRequests = [];
     foreignRequests = [];
-    markerAtProviderRedirect = undefined;
+    providerRedirects = 0;
 
     // Default template (normalised from {}), as oidc-pages.spec.ts does, so the screenshots
     // show the reference design rather than whatever the target tenant has customised.
@@ -204,12 +208,11 @@ test.describe("OIDC native-app hand-off (blocks-iam#617)", () => {
       await route.abort();
     });
 
-    // Identity provider: read the marker while the login page is still the current document,
-    // then answer 204 so Chromium cancels the navigation and the page stays put.
+    // Identity provider: answer 204 so Chromium cancels the navigation and the login page
+    // stays the current document; the test then reads the marker it left in sessionStorage.
+    // (Reading it from here, while the navigation is in flight, races the page.)
     await page.route("https://login.microsoftonline.com/**", async (route) => {
-      markerAtProviderRedirect = await page
-        .evaluate((key) => sessionStorage.getItem(key), HANDOFF_MARKER_KEY)
-        .catch(() => undefined);
+      providerRedirects += 1;
       await route.fulfill({ status: 204, body: "" });
     });
 
@@ -257,14 +260,14 @@ test.describe("OIDC native-app hand-off (blocks-iam#617)", () => {
     const nav = await watchNavigationAttempts(page);
     nextMfaResponse = { body: { redirect_uri: APP_LOGIN_REDIRECT } };
     await page.goto(MFA_URL, { waitUntil: "domcontentloaded" });
-    await expect(page.locator('input[maxlength="5"]')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('input[maxlength="6"]')).toBeVisible({ timeout: 30_000 });
     const mfaPageUrl = page.url();
 
     await submitMfaCode(page);
 
     await expectHandoffBlock(page, APP_LOGIN_REDIRECT);
     await expect(returnLink(page)).toBeFocused();
-    await expect(page.locator('input[maxlength="5"]')).toHaveCount(0);
+    await expect(page.locator('input[maxlength="6"]')).toHaveCount(0);
     await expect.poll(() => nav.to(APP_LOGIN_REDIRECT), { timeout: 10_000 }).toBe(1);
     await page.waitForTimeout(1_500);
     expect(nav.to(APP_LOGIN_REDIRECT)).toBe(1);
@@ -295,12 +298,12 @@ test.describe("OIDC native-app hand-off (blocks-iam#617)", () => {
     await test.step("C10 MFA: error in the form's error area, form still usable, no navigation", async () => {
       nextMfaResponse = { body: { redirect_uri: "javascript:alert(1)" } };
       await page.goto(MFA_URL, { waitUntil: "domcontentloaded" });
-      await expect(page.locator('input[maxlength="5"]')).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator('input[maxlength="6"]')).toBeVisible({ timeout: 30_000 });
       const before = page.url();
       await submitMfaCode(page);
 
       await expect(page.getByText(NO_REDIRECT_TARGET).first()).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator('input[maxlength="5"]')).toBeVisible();
+      await expect(page.locator('input[maxlength="6"]')).toBeVisible();
       await expect(handoffBlock(page)).toHaveCount(0);
       expect(page.url()).toBe(before);
     });
@@ -356,20 +359,20 @@ test.describe("OIDC native-app hand-off (blocks-iam#617)", () => {
     await test.step("H9 app-scheme redirect_uri: marker is \"1\" before leaving for the provider", async () => {
       await openLogin(page, APP_LOGIN_URL);
       await microsoftButton.click();
-      await expect.poll(() => markerAtProviderRedirect, { timeout: 15_000 }).not.toBeUndefined();
-      expect(markerAtProviderRedirect).toBe("1");
+      await expect.poll(() => providerRedirects, { timeout: 15_000 }).toBe(1);
+      expect(await readMarker(page)).toBe("1");
       const initiate = loginPosts.map((r) => JSON.parse(r.postData() || "{}")).find((b) => b.provider);
       expect(initiate?.provider).toBe("microsoft");
       expect(initiate?.redirect_uri).toBe(APP_SCHEME_REDIRECT_URI);
     });
 
     await test.step("H9 https redirect_uri: a stale marker is removed, so it is absent", async () => {
-      markerAtProviderRedirect = undefined;
+      providerRedirects = 0;
       await openLogin(page, WEB_LOGIN_URL);
       await page.evaluate((key) => sessionStorage.setItem(key, "1"), HANDOFF_MARKER_KEY);
       await microsoftButton.click();
-      await expect.poll(() => markerAtProviderRedirect, { timeout: 15_000 }).not.toBeUndefined();
-      expect(markerAtProviderRedirect).toBeNull();
+      await expect.poll(() => providerRedirects, { timeout: 15_000 }).toBe(1);
+      expect(await readMarker(page)).toBeNull();
     });
   });
 
@@ -518,7 +521,9 @@ test.describe("OIDC native-app hand-off (blocks-iam#617)", () => {
         await submitPasswordLogin(page);
         await expectHandoffBlock(page, APP_LOGIN_REDIRECT);
         await expect(page.locator(".oidc-scifi-root").first()).toHaveAttribute("data-theme", scheme);
-        // The link spans the card width (section 4 "Layout and states").
+        // The link spans the card width (section 4 "Layout and states"). Measured without the
+        // pointer over it: the button's hover style scales it.
+        await moveMouseAway(page);
         const link = await returnLink(page).boundingBox();
         const block = await handoffBlock(page).boundingBox();
         expect(link && block && Math.abs(link.width - block.width) <= 1).toBe(true);
