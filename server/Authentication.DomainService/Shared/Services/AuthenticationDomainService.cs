@@ -30,7 +30,6 @@ namespace Authentication.DomainService.Services
 
         private const string Origin_Header_Name = "Origin";
         private const string Referer_Header_Name = "Referer";
-        private const string X_Forwarded_For_Header_Name = "X-Forwarded-For";
         private const string DiscoveryClientName = "oidc-discovery";
 
         public AuthenticationDomainService(IMessageClient messageClient,
@@ -54,16 +53,15 @@ namespace Authentication.DomainService.Services
 
         public IEnumerable<string> GetVisitorsIpAddresses(HttpContext context)
         {
-            var forwardedForHeader = context.Request.Headers[X_Forwarded_For_Header_Name];
+            // The single source of truth is Connection.RemoteIpAddress, which the
+            // forwarded-header middleware (Program.cs) rewrites only for connections from
+            // trusted networks. The raw X-Forwarded-For header is not read: any entries the
+            // middleware leaves behind are untrusted and client-supplied.
+            var remoteIpAddress = context.Connection.RemoteIpAddress?.ToString();
 
-            var visitorsIpAddress = string.IsNullOrWhiteSpace(forwardedForHeader) ? context.Connection.RemoteIpAddress?.ToString() ?? string.Empty : forwardedForHeader.ToString();
-
-            var visitorsIpAddresses =
-                visitorsIpAddress
-               .Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-               .Select(ipAddress => ipAddress.Trim());
-
-            return visitorsIpAddresses;
+            return string.IsNullOrWhiteSpace(remoteIpAddress)
+                ? Array.Empty<string>()
+                : new[] { remoteIpAddress };
         }
 
         public string GetRequestOriginHostName(HttpContext context)

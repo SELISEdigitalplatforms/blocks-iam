@@ -424,6 +424,22 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task ExecuteStop_H7_ImpersonationAudit_TrustedGatewayXff_RecordsResolvedClientIp()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant());
+            UserActivityEvent? audit = null;
+            _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()))
+                .Callback<UserActivityEvent>(e => audit = e).Returns(Task.CompletedTask);
+
+            // RemoteIpAddress as the forwarded-header middleware leaves it for a trusted gateway hop.
+            var ctx = await XUnitTest.ApiTests.ForwardedHeadersTestPipeline.ThroughTrustedGatewayAsync("203.0.113.10");
+            await Create().ExecuteStopImpersonationAsync(new StopImpersonationRequest(), ctx.Request, ctx.Response);
+
+            audit!.Source.Should().Be("auth-impersonation");
+            audit.Context.IpAddress.Should().Be("203.0.113.10");
+        }
+
+        [Fact]
         public async Task ExecuteStop_NoRefreshToken_ReturnsUnauthorized()
         {
             _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant());
@@ -735,6 +751,19 @@ namespace XUnitTest.Auth
             result.Should().BeTrue();
             _session.Verify(s => s.CreateSessionAsync("user-1", TenantId, It.IsAny<string>()), Times.Once);
             ctx.Response.Headers.Should().ContainKey("Set-Cookie");
+        }
+
+        [Fact]
+        public async Task EnsureIdpSessionForOidcCallback_H3_TrustedGatewayXff_StoresResolvedClientIp()
+        {
+            _session.Setup(s => s.CreateSessionAsync("user-1", TenantId, It.IsAny<string>())).ReturnsAsync("new-sess");
+
+            // RemoteIpAddress as the forwarded-header middleware leaves it for a trusted gateway hop.
+            var ctx = await XUnitTest.ApiTests.ForwardedHeadersTestPipeline.ThroughTrustedGatewayAsync("203.0.113.10");
+            var result = await Create().EnsureIdpSessionForOidcCallbackAsync(ctx, "user-1", TenantId);
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.CreateSessionAsync("user-1", TenantId, "203.0.113.10"), Times.Once);
         }
 
         [Fact]

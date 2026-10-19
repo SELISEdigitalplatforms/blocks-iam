@@ -61,14 +61,27 @@ namespace XUnitTest.Auth.Shared
         // ---------- GetVisitorsIpAddresses ----------
 
         [Fact]
-        public void GetVisitorsIps_XForwardedForPresent_ReturnsAllTrimmed()
+        public void GetVisitorsIps_H12_XForwardedForPresent_IgnoresRawHeader_ReturnsOnlyRemoteIp()
         {
+            // H12: the raw header is no longer read. The forwarded-header middleware is the only
+            // place a trusted X-Forwarded-For is honored (it rewrites RemoteIpAddress); whatever it
+            // leaves in the header is untrusted, so it must not reach any IP field.
             var ctx = new DefaultHttpContext();
+            ctx.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.3");
             ctx.Request.Headers["X-Forwarded-For"] = "203.0.113.1, 198.51.100.2 , 192.0.2.3";
 
             var ips = Create().GetVisitorsIpAddresses(ctx).ToList();
 
-            ips.Should().Equal("203.0.113.1", "198.51.100.2", "192.0.2.3");
+            ips.Should().Equal("192.0.2.3");
+        }
+
+        [Fact]
+        public void GetVisitorsIps_H12_XForwardedForPresent_NoRemoteIp_ReturnsEmptySequence()
+        {
+            var ctx = new DefaultHttpContext();
+            ctx.Request.Headers["X-Forwarded-For"] = "203.0.113.1";
+
+            Create().GetVisitorsIpAddresses(ctx).Should().BeEmpty();
         }
 
         [Fact]
