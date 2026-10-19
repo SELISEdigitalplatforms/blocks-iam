@@ -24,6 +24,7 @@ namespace Iam.DomainService.Services
         public const string IdentityConfigurationCollection = "IdentityConfigurations";
         public const string LegacyCollection = "TenantConfigurations";
         private const string LastUpdatedDate = "LastUpdatedDate";
+        private static readonly FilterDefinition<BsonDocument> HasField = Builders<BsonDocument>.Filter.Type(FieldName, BsonType.Document);
 
         private readonly IDbContextProvider _dbContextProvider;
         private readonly IIamDataAccess? _dataAccess;
@@ -60,7 +61,8 @@ namespace Iam.DomainService.Services
         /// Applies <paramref name="update"/> (written against <see cref="TenantConfiguration"/> or
         /// <see cref="IamTenantConfiguration"/>, as it was for the old collection) to the field
         /// <c>TenantConfiguration</c> and sets its <c>LastUpdatedDate</c>. When the database has no such field, runs
-        /// the same update on the old collection, unchanged. Returns whether the write was acknowledged.
+        /// the same update on the old collection, unchanged. Returns whether the write was acknowledged; false
+        /// when the data access policy denies the edit or hides the identity document.
         /// </summary>
         public Task<bool> UpdateAsync<TConfiguration>(
             UpdateDefinition<TConfiguration> update,
@@ -101,6 +103,11 @@ namespace Iam.DomainService.Services
                 return BsonSerializer.Deserialize<IamTenantConfiguration>(value.AsBsonDocument);
             }
 
+            if (dataAccess is not null && !await LegacyInScopeAsync(identity, filter, ct))
+            {
+                return null;
+            }
+
             return await legacy.Find(_ => true).FirstOrDefaultAsync(ct);
         }
 
@@ -112,23 +119,29 @@ namespace Iam.DomainService.Services
             IIamDataAccess? dataAccess,
             CancellationToken ct)
         {
-            FilterDefinition<BsonDocument> identityFilter = Builders<BsonDocument>.Filter.Type(FieldName, BsonType.Document);
+            FilterDefinition<BsonDocument> scope = Builders<BsonDocument>.Filter.Empty;
+            var fieldUpdate = ToFieldUpdate(update);
             if (dataAccess is not null)
             {
-                var edit = await dataAccess.EditFilterAsync(IamSchemas.IdentityConfiguration, identityFilter, "TenantConfigurationStore.UpdateAsync");
+                var edit = await dataAccess.EditFilterAsync(IamSchemas.IdentityConfiguration, scope, "TenantConfigurationStore.UpdateAsync");
                 if (edit is null) return false;
-                await dataAccess.CheckUpdateAsync(IamSchemas.IdentityConfiguration, update, "TenantConfigurationStore.UpdateAsync");
-                identityFilter = edit;
+                await dataAccess.CheckUpdateAsync(IamSchemas.IdentityConfiguration, fieldUpdate, "TenantConfigurationStore.UpdateAsync");
+                scope = edit;
             }
 
             var result = await identity.UpdateOneAsync(
-                identityFilter,
-                ToFieldUpdate(update),
+                Builders<BsonDocument>.Filter.And(scope, HasField),
+                fieldUpdate,
                 cancellationToken: ct);
 
             if (result.MatchedCount > 0)
             {
                 return result.IsAcknowledged;
+            }
+
+            if (dataAccess is not null && !await LegacyInScopeAsync(identity, scope, ct))
+            {
+                return false;
             }
 
             var legacyResult = await legacy.UpdateOneAsync(
@@ -137,6 +150,25 @@ namespace Iam.DomainService.Services
                 upsertLegacy ? new UpdateOptions { IsUpsert = true } : null,
                 ct);
             return legacyResult?.IsAcknowledged ?? false;
+        }
+
+        /// <summary>
+        /// The old collection stands in for the field, so it gets the identity document's access: only while no
+        /// identity document has the field (checked without the row filter), and only when the caller's
+        /// <paramref name="scope"/> sees the identity document or there is none.
+        /// </summary>
+        private static async Task<bool> LegacyInScopeAsync(
+            IMongoCollection<BsonDocument> identity,
+            FilterDefinition<BsonDocument> scope,
+            CancellationToken ct)
+        {
+            if (await identity.Find(HasField).Limit(1).AnyAsync(ct))
+            {
+                return false;
+            }
+
+            return !await identity.Find(Builders<BsonDocument>.Filter.Empty).Limit(1).AnyAsync(ct)
+                || await identity.Find(scope).Limit(1).AnyAsync(ct);
         }
 
         /// <summary>
