@@ -28,7 +28,8 @@ import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 import { useOidcAuthAnimation } from "./oidc-auth-shell";
 import { OidcErrorDialog } from "./oidc-error-dialog";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
-import { navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
+import { OidcAppHandoff } from "./oidc-app-handoff";
+import { isAppRedirectUrl, navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
 
 const base64UrlEncode = (bytes: Uint8Array) => {
   const binary = String.fromCharCode(...bytes);
@@ -121,6 +122,9 @@ export const OidcLoginForm = ({
     codeChallengeMethod || "S256",
   );
   const [captchaRequired, setCaptchaRequired] = useState(false);
+  // Set when the client is a native app: the redirect is attempted by OidcAppHandoff, which
+  // replaces the form so the user has a way back if the OS does not open the app.
+  const [appHandoffUrl, setAppHandoffUrl] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   const isAuthenticating =
@@ -254,6 +258,15 @@ export const OidcLoginForm = ({
               `/oidc/mfa-check?mfa_id=${encodeURIComponent(data.mfa_id)}&mfa_type=${mfaType}`,
             ),
           );
+          return;
+        }
+
+        // Checked before the success animation: the shell swaps its children for the success
+        // screen once that animation finishes, which would unmount the hand-off block.
+        if (data.redirect_uri && isAppRedirectUrl(data.redirect_uri)) {
+          animCtx?.resetAnimation();
+          setAppHandoffUrl(data.redirect_uri);
+          setIsLoading(false);
           return;
         }
 
@@ -410,6 +423,8 @@ shake();
     if (!isValid && captchaCode) resetCaptcha();
   }, [captchaCode, isValid, resetCaptcha]);
 
+  if (appHandoffUrl) return <OidcAppHandoff url={appHandoffUrl} />;
+
   if (!oidcUiConfig?.template) return null;
   const loginCopy = oidcUiConfig.template.pages.login;
 
@@ -428,14 +443,11 @@ shake();
 
   /**
    * Hands the user back to the application that sent them. Falls back to dismissing the modal
-   * when the request carried no redirect_uri, since there is nowhere to send them and the form
-   * behind is better than a dead modal.
+   * when the request carried no redirect_uri, or one that is not safe to follow, since there is
+   * nowhere to send them and the form behind is better than a dead modal.
    */
   const leaveToApplication = () => {
-    if (redirectUri) {
-      window.location.href = redirectUri;
-      return;
-    }
+    if (redirectUri && navigateToUrl(redirectUri)) return;
     setRoundTripError(null);
   };
 

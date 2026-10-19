@@ -25,7 +25,8 @@ import { useState } from "react";
 
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
+import { isAppRedirectUrl, navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
+import { OidcAppHandoff } from "@blocks-idp/authentication/pages/oidc/oidc-app-handoff";
 
 const CustomInputOTPSlot = ({ index }: { index: number }) => {
   return (
@@ -52,6 +53,8 @@ export const MfaCheckFrom = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  // Set when the client is a native app; OidcAppHandoff then replaces the form and opens the app.
+  const [appHandoffUrl, setAppHandoffUrl] = useState<string | null>(null);
   const { setAuthenticated } = useAuthStore();
   const { remainingTime, resend } = useResendOtp({ mfaId });
 
@@ -61,6 +64,8 @@ export const MfaCheckFrom = () => {
       code: "",
     },
   });
+
+  if (appHandoffUrl) return <OidcAppHandoff url={appHandoffUrl} />;
 
   if (!oidcUiConfig?.template) return null;
   const mfaCopy = oidcUiConfig.template.pages.mfa;
@@ -112,8 +117,17 @@ export const MfaCheckFrom = () => {
         const redirectUrl =
           data?.redirect_uri || data?.redirect_url || data?.redirectUrl;
         if (redirectUrl) {
+          if (isAppRedirectUrl(redirectUrl)) {
+            animCtx?.resetAnimation();
+            setAppHandoffUrl(redirectUrl);
+            return;
+          }
           await animCtx?.succeedAnimation();
-          navigateToUrl(redirectUrl);
+          if (!navigateToUrl(redirectUrl)) {
+            const msg = "Login succeeded but no redirect target was provided";
+            setServerError(msg);
+            await animCtx?.failAnimation(msg);
+          }
           return;
         }
         if (returnUrl) {

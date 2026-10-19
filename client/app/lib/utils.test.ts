@@ -16,6 +16,7 @@ import {
   clearQueryString,
   getUniqueID,
   formatSize,
+  isAppRedirectUrl,
   navigateToSameOrigin,
   navigateToUrl,
 } from "./utils";
@@ -291,6 +292,49 @@ describe("navigateToUrl / navigateToSameOrigin", () => {
     expect(hrefSet).toBeUndefined();
   });
 
+  it("navigateToUrl follows app-scheme redirect URIs exactly once (Example 7, H6)", () => {
+    let assignments = 0;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        origin: "https://iam.example.com",
+        get href() {
+          return hrefSet ?? "https://iam.example.com/oidc/login";
+        },
+        set href(value: string) {
+          assignments += 1;
+          hrefSet = value;
+        },
+      },
+    });
+    const url = "com.klaxai.app://login/callback?code=abc&state=xyz";
+    expect(navigateToUrl(url)).toBe(true);
+    expect(hrefSet).toBe(url);
+    expect(assignments).toBe(1);
+  });
+
+  it("navigateToUrl keeps following relative http(s) targets resolved against the origin", () => {
+    expect(navigateToUrl("/oidc/next")).toBe(true);
+    expect(hrefSet).toBe("/oidc/next");
+  });
+
+  it("navigateToUrl refuses every unsafe or malformed target without navigating (Example 7, C10)", () => {
+    for (const url of [
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "file:///etc/passwd",
+      "blob:https://iam.example.com/uuid",
+      "about:blank",
+      "vbscript:msgbox(1)",
+      "myapp://callback",
+      "com.example.app://cb#frag",
+      "http://[bad",
+    ]) {
+      expect(navigateToUrl(url)).toBe(false);
+    }
+    expect(hrefSet).toBeUndefined();
+  });
+
   it("navigateToSameOrigin follows same-origin absolute URLs and paths", () => {
     expect(navigateToSameOrigin("https://iam.example.com/device?user_code=AB#x")).toBe(true);
     expect(hrefSet).toBe("https://iam.example.com/device?user_code=AB#x");
@@ -309,5 +353,51 @@ describe("navigateToUrl / navigateToSameOrigin", () => {
       expect(navigateToSameOrigin(url)).toBe(false);
     }
     expect(hrefSet).toBeUndefined();
+  });
+});
+
+describe("isAppRedirectUrl", () => {
+  it("accepts reverse-domain private-use schemes (Example 7)", () => {
+    expect(isAppRedirectUrl("com.example.app:/oauth2redirect")).toBe(true);
+    expect(isAppRedirectUrl("com.klaxai.app://login/callback")).toBe(true);
+    expect(isAppRedirectUrl("com.klaxai.app://login/callback?code=abc&state=xyz")).toBe(true);
+    expect(isAppRedirectUrl("Com.Example-App+x.y://cb")).toBe(true);
+  });
+
+  it("refuses a fragment, including Android intent URLs (Example 7)", () => {
+    expect(isAppRedirectUrl("intent://x#Intent;end")).toBe(false);
+    expect(isAppRedirectUrl("com.example.app://cb#frag")).toBe(false);
+  });
+
+  it("refuses schemes without a dot and web or script-capable schemes", () => {
+    for (const url of [
+      "myapp://callback",
+      "http://app.example.com/cb",
+      "https://app.example.com/cb",
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "file:///etc/passwd",
+      "vbscript:x",
+      "blob:x",
+      "about:blank",
+    ]) {
+      expect(isAppRedirectUrl(url)).toBe(false);
+    }
+  });
+
+  it("refuses blank, relative and malformed values", () => {
+    for (const url of [
+      "",
+      "   ",
+      " com.example.app://cb",
+      "/oidc/login",
+      ":nothing",
+      "1com.example.app://cb",
+      "com_example.app://cb",
+      "com.example.app://[bad",
+    ]) {
+      expect(isAppRedirectUrl(url)).toBe(false);
+    }
+    expect(isAppRedirectUrl(undefined as unknown as string)).toBe(false);
   });
 });
