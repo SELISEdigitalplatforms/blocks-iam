@@ -140,6 +140,23 @@ const errorPageSearch = async (page: Page) => {
   return new URL(page.url()).search;
 };
 
+// The link spans the card's form column at every viewport (section 4 "Layout and states").
+// Compared as layout widths: the button's hover/active styles scale it with a transform, which a
+// bounding box would include while that transition runs. The hand-off block fills the column, so
+// the column (the block's own container) is the reference.
+const expectLinkSpansCard = async (page: Page) => {
+  const widths = await returnLink(page).evaluate((link) => {
+    const block = link.parentElement as HTMLElement;
+    const column = block.parentElement as HTMLElement;
+    const columnStyle = getComputedStyle(column);
+    const columnContent =
+      column.clientWidth - parseFloat(columnStyle.paddingLeft) - parseFloat(columnStyle.paddingRight);
+    return { link: (link as HTMLElement).offsetWidth, block: block.clientWidth, column: columnContent };
+  });
+  expect(Math.abs(widths.link - widths.block), JSON.stringify(widths)).toBeLessThanOrEqual(1);
+  expect(Math.abs(widths.block - widths.column), JSON.stringify(widths)).toBeLessThanOrEqual(1);
+};
+
 // The hand-off link replaces the submit button under the pointer; its :hover style scales it.
 const moveMouseAway = (page: Page) => page.mouse.move(0, 0);
 
@@ -524,11 +541,7 @@ test.describe("OIDC native-app hand-off (blocks-iam#617)", () => {
         // The link spans the card width (section 4 "Layout and states"). Compared as layout
         // widths: the button's hover/active styles scale it with a transform, which a bounding
         // box would include while that transition runs.
-        const widths = await returnLink(page).evaluate((link) => ({
-          link: (link as HTMLElement).offsetWidth,
-          block: (link.parentElement as HTMLElement).clientWidth,
-        }));
-        expect(Math.abs(widths.link - widths.block), JSON.stringify(widths)).toBeLessThanOrEqual(1);
+        await expectLinkSpansCard(page);
         await screenshot(page, testInfo, `password-handoff-390x844-${scheme}`);
       });
 
@@ -544,6 +557,17 @@ test.describe("OIDC native-app hand-off (blocks-iam#617)", () => {
       });
     }
 
+    await test.step("Password hand-off at 768×1024, dark: the link spans the card", async () => {
+      await page.setViewportSize({ width: 768, height: 1024 });
+      await page.emulateMedia({ colorScheme: "dark" });
+      nextLoginResponse = { body: { redirect_uri: APP_LOGIN_REDIRECT } };
+      await openLogin(page);
+      await submitPasswordLogin(page);
+      await expectHandoffBlock(page, APP_LOGIN_REDIRECT);
+      await expectLinkSpansCard(page);
+      await screenshot(page, testInfo, "password-handoff-768x1024-dark");
+    });
+
     await test.step("Password hand-off at 1440×900, dark, with keyboard checks", async () => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.emulateMedia({ colorScheme: "dark" });
@@ -551,6 +575,7 @@ test.describe("OIDC native-app hand-off (blocks-iam#617)", () => {
       await openLogin(page);
       await submitPasswordLogin(page);
       await expectHandoffBlock(page, APP_LOGIN_REDIRECT);
+      await expectLinkSpansCard(page);
       await screenshot(page, testInfo, "password-handoff-1440x900-dark");
 
       // Tab reaches the link: start from the document, not from the mount-time focus.
