@@ -32,7 +32,7 @@ test.describe("OIDC MFA check", () => {
   test("MFA check — email/TOTP render, invalid code + locked errors, successful redirect", async ({
     page,
   }) => {
-    await test.step("[Positive] mfa_type=2 (email) renders a 5-slot OTP and the resend button", async () => {
+    await test.step("[Positive] mfa_type=2 (email) renders a 6-slot OTP and the resend button", async () => {
       await page.goto("/oidc/mfa-check?mfa_id=mfa-id-1&mfa_type=2", {
         waitUntil: "domcontentloaded",
       });
@@ -42,8 +42,9 @@ test.describe("OIDC MFA check", () => {
         page.getByText(/check your email for the verification code/i),
       ).toBeVisible({ timeout: 30_000 });
 
-      // 5 input slots; the OTP component is a single input with maxLength=5.
-      const otpInput = page.locator('input[maxlength="5"]');
+      // 6 input slots since 8fa531d2 (email codes have 6 digits, like TOTP); the OTP
+      // component is a single input with maxLength=6.
+      const otpInput = page.locator('input[maxlength="6"]');
       await expect(otpInput).toBeVisible();
 
       // Resend button (mfa_type=2 only).
@@ -88,7 +89,7 @@ test.describe("OIDC MFA check", () => {
         waitUntil: "domcontentloaded",
       });
 
-      await page.locator('input[maxlength="5"]').fill("12345");
+      await page.locator('input[maxlength="6"]').fill("123456");
       await page.getByRole("button", { name: /^verify$/i }).click();
 
       await expect(
@@ -116,7 +117,7 @@ test.describe("OIDC MFA check", () => {
         waitUntil: "domcontentloaded",
       });
 
-      await page.locator('input[maxlength="5"]').fill("12345");
+      await page.locator('input[maxlength="6"]').fill("123456");
       await page.getByRole("button", { name: /^verify$/i }).click();
 
       await expect(
@@ -148,7 +149,7 @@ test.describe("OIDC MFA check", () => {
         waitUntil: "domcontentloaded",
       });
 
-      await page.locator('input[maxlength="5"]').fill("12345");
+      await page.locator('input[maxlength="6"]').fill("123456");
       await page.getByRole("button", { name: /^verify$/i }).click();
 
       // The page uses window.location.href (full-page redirect), so the URL
