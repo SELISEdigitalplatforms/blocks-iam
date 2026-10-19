@@ -479,6 +479,165 @@ public class TenantConfigurationStoreTests : IDisposable
         back.CollectPasswordOnActivation.Should().BeFalse();
         back.AccessTokenValidForNumberMinutes.Should().Be(IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes);
     }
+
+    // ---------- data access: the old collection gets the identity document's access (audit A1, A2, A3) ----------
+
+    private static readonly FilterDefinition<BsonDocument> SeesTheDoc = Builders<BsonDocument>.Filter.Eq("Extra", "keep");
+    private static readonly FilterDefinition<BsonDocument> HidesTheDoc = Builders<BsonDocument>.Filter.Eq("Extra", "someone-else");
+
+    private TenantConfigurationStore Store(RowFilterDataAccess dataAccess) => new(_mongo.ProviderFor(), dataAccess);
+
+    private static UpdateDefinition<IamTenantConfiguration> SetMultiOrg() =>
+        Builders<IamTenantConfiguration>.Update
+            .SetOnInsert(c => c.ItemId, "created")
+            .Set(c => c.IsMultiOrgEnabled, true);
+
+    [RealMongoFact]
+    public async Task Update_PolicyHidesTheMigratedDoc_ReturnsFalse_AndNeitherWritesNorCreatesTheOldCollection()
+    {
+        await SeedIdentityAsync(FieldValue(multiOrg: false));
+
+        (await Store(new RowFilterDataAccess(HidesTheDoc)).UpdateAsync(SetMultiOrg(), upsertLegacy: true)).Should().BeFalse();
+
+        (await Identity.Find(Builders<BsonDocument>.Filter.Empty).FirstAsync())["TenantConfiguration"]["IsMultiOrgEnabled"].AsBoolean.Should().BeFalse();
+        (await Legacy.CountDocumentsAsync(Builders<BsonDocument>.Filter.Empty)).Should().Be(0);
+    }
+
+    [RealMongoFact]
+    public async Task Update_PolicyHidesThePreMigrationDoc_ReturnsFalse_AndLeavesTheOldCollection()
+    {
+        await SeedIdentityAsync(null);
+        await Legacy.InsertOneAsync(LegacyDoc(multiOrg: false));
+
+        (await Store(new RowFilterDataAccess(HidesTheDoc)).UpdateAsync(SetMultiOrg(), upsertLegacy: true)).Should().BeFalse();
+
+        (await Legacy.Find(Builders<BsonDocument>.Filter.Empty).SingleAsync())["IsMultiOrgEnabled"].AsBoolean.Should().BeFalse();
+    }
+
+    [RealMongoFact]
+    public async Task Update_PolicySeesTheMigratedDoc_WritesTheField()
+    {
+        await SeedIdentityAsync(FieldValue(multiOrg: false));
+
+        (await Store(new RowFilterDataAccess(SeesTheDoc)).UpdateAsync(SetMultiOrg(), upsertLegacy: true)).Should().BeTrue();
+
+        (await Identity.Find(Builders<BsonDocument>.Filter.Empty).FirstAsync())["TenantConfiguration"]["IsMultiOrgEnabled"].AsBoolean.Should().BeTrue();
+        (await Legacy.CountDocumentsAsync(Builders<BsonDocument>.Filter.Empty)).Should().Be(0);
+    }
+
+    [RealMongoFact]
+    public async Task Update_PolicySeesTheDoc_FieldMissing_WritesTheOldCollection()
+    {
+        await SeedIdentityAsync(null);
+        await Legacy.InsertOneAsync(LegacyDoc(multiOrg: false));
+
+        (await Store(new RowFilterDataAccess(SeesTheDoc)).UpdateAsync(SetMultiOrg())).Should().BeTrue();
+
+        (await Legacy.Find(Builders<BsonDocument>.Filter.Empty).SingleAsync())["IsMultiOrgEnabled"].AsBoolean.Should().BeTrue();
+    }
+
+    [RealMongoFact]
+    public async Task Update_RowFilter_NoIdentityDoc_StillUpsertsTheOldCollection()
+    {
+        (await Store(new RowFilterDataAccess(HidesTheDoc)).UpdateAsync(SetMultiOrg(), upsertLegacy: true)).Should().BeTrue();
+
+        var legacy = await Legacy.Find(Builders<BsonDocument>.Filter.Empty).SingleAsync();
+        legacy["_id"].AsString.Should().Be("created");
+        legacy["IsMultiOrgEnabled"].AsBoolean.Should().BeTrue();
+    }
+
+    [RealMongoFact]
+    public async Task Update_EditDenied_ReturnsFalse_AndWritesNothing()
+    {
+        await SeedIdentityAsync(null);
+
+        (await Store(new RowFilterDataAccess(SeesTheDoc, editDenied: true)).UpdateAsync(SetMultiOrg(), upsertLegacy: true)).Should().BeFalse();
+
+        (await Legacy.CountDocumentsAsync(Builders<BsonDocument>.Filter.Empty)).Should().Be(0);
+    }
+
+    [RealMongoFact]
+    public async Task Update_ChecksTheRulesAgainstTheFieldPaths_ThatAreWritten()
+    {
+        await SeedIdentityAsync(FieldValue());
+        var dataAccess = new RowFilterDataAccess(SeesTheDoc);
+
+        await Store(dataAccess).UpdateAsync(SetMultiOrg());
+
+        var set = dataAccess.CheckedUpdate!["$set"].AsBsonDocument;
+        set.Names.Should().Contain(["TenantConfiguration.IsMultiOrgEnabled", "TenantConfiguration.LastUpdatedDate"]);
+        set.Names.Should().NotContain("IsMultiOrgEnabled");
+    }
+
+    [RealMongoFact]
+    public async Task Read_PolicyHidesTheMigratedDoc_ReturnsNull_NotTheOldCollection()
+    {
+        await SeedIdentityAsync(FieldValue(multiOrg: true));
+        await Legacy.InsertOneAsync(LegacyDoc());
+
+        (await Store(new RowFilterDataAccess(HidesTheDoc)).ReadAsync()).Should().BeNull();
+    }
+
+    [RealMongoFact]
+    public async Task Read_PolicyHidesThePreMigrationDoc_ReturnsNull_NotTheOldCollection()
+    {
+        await SeedIdentityAsync(null);
+        await Legacy.InsertOneAsync(LegacyDoc());
+
+        (await Store(new RowFilterDataAccess(HidesTheDoc)).ReadAsync()).Should().BeNull();
+    }
+
+    [RealMongoFact]
+    public async Task Read_PolicySeesTheDoc_FieldMissing_ReadsTheOldCollection()
+    {
+        await SeedIdentityAsync(null);
+        await Legacy.InsertOneAsync(LegacyDoc());
+
+        (await Store(new RowFilterDataAccess(SeesTheDoc)).ReadAsync())!.ItemId.Should().Be("tc-legacy");
+    }
+
+    [RealMongoFact]
+    public async Task Read_RowFilter_NoIdentityDoc_ReadsTheOldCollection()
+    {
+        await Legacy.InsertOneAsync(LegacyDoc());
+
+        (await Store(new RowFilterDataAccess(HidesTheDoc)).ReadAsync())!.ItemId.Should().Be("tc-legacy");
+    }
+
+    /// <summary>Ands a fixed row filter into every BsonDocument read and edit filter; records the update it was asked to check.</summary>
+    private sealed class RowFilterDataAccess(FilterDefinition<BsonDocument> row, bool editDenied = false) : IIamDataAccess
+    {
+        public BsonDocument? CheckedUpdate { get; private set; }
+
+        private FilterDefinition<T> Scoped<T>(FilterDefinition<T> filter) =>
+            filter is FilterDefinition<BsonDocument> document
+                ? (FilterDefinition<T>)(object)Builders<BsonDocument>.Filter.And(document, row)
+                : filter;
+
+        public Task<ReadScope<T>> ReadAsync<T>(string schema, FilterDefinition<T> filter, string callSite, string? tenantId = null, bool useProjection = true) =>
+            Task.FromResult(new ReadScope<T>(true, Scoped(filter), null));
+
+        public Task<FilterDefinition<T>?> EditFilterAsync<T>(string schema, FilterDefinition<T> filter, string callSite, string? tenantId = null) =>
+            Task.FromResult(editDenied ? null : (FilterDefinition<T>?)Scoped(filter));
+
+        public Task<FilterDefinition<T>?> DeleteFilterAsync<T>(string schema, FilterDefinition<T> filter, string callSite, string? tenantId = null) =>
+            Task.FromResult<FilterDefinition<T>?>(Scoped(filter));
+
+        public Task<bool> InsertAllowedAsync(string schema, string callSite, string? tenantId = null) => Task.FromResult(true);
+
+        public Task<T> PrepareWriteAsync<T>(string schema, T entity, bool isInsert, string callSite, string? tenantId = null) => Task.FromResult(entity);
+
+        public Task<T> PrepareUpsertAsync<T>(string schema, T entity, IMongoCollection<T> collection, FilterDefinition<T> filter, string callSite, string? tenantId = null) =>
+            Task.FromResult(entity);
+
+        public Task CheckUpdateAsync<T>(string schema, UpdateDefinition<T> update, string callSite, string? tenantId = null)
+        {
+            CheckedUpdate = update.Render(new RenderArgs<T>(
+                MongoDB.Bson.Serialization.BsonSerializer.LookupSerializer<T>(),
+                MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry)).AsBsonDocument;
+            return Task.CompletedTask;
+        }
+    }
 }
 
 internal static class BsonDocumentExtensions
