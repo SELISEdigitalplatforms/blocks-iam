@@ -298,6 +298,56 @@ namespace XUnitTest.Auth
             _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
         }
 
+        // ---------- blocks-iam#617: native app (app-scheme) public clients ----------
+
+        private const string AppRedirectUri = "com.klaxai.app://login/callback";
+        private const string AppChallenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+
+        private void SetupAppSchemeExchange()
+        {
+            SetupValidExchange(new OidcClientRegistration
+            {
+                ItemId = "cid", ClientId = "cid", ClientType = "public", TokenEndpointAuthMethod = "none",
+                RequirePkce = true, UseTokensCookie = false, RedirectUris = new List<string> { AppRedirectUri }
+            });
+            var authCode = ValidAuthCode();
+            authCode.RedirectUri = AppRedirectUri;
+            authCode.CodeChallenge = AppChallenge;
+            _authCodeRepo.Setup(r => r.GetByCodeAsync("auth-code")).ReturnsAsync(authCode);
+            _pkce.Setup(p => p.ValidateVerifierAsync(AppChallenge, "right-verifier", "S256")).ReturnsAsync(true);
+            _pkce.Setup(p => p.ValidateVerifierAsync(AppChallenge, "wrong-verifier", "S256")).ReturnsAsync(false);
+        }
+
+        [Fact]
+        public async Task Exchange_AppSchemePublicClient_VerifierAndSameRedirect_NoSecret_IssuesTokensInTheBody()
+        {
+            SetupAppSchemeExchange();
+
+            var result = await Create().ExchangeAsync(
+                BuildContext(codeVerifier: "right-verifier", redirectUri: AppRedirectUri).Request);
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            Prop(ok.Value, "access_token").Should().Be("access-token");
+            Prop(ok.Value, "refresh_token").Should().NotBeNull();
+        }
+
+        [Theory]
+        [InlineData("", AppRedirectUri)]
+        [InlineData("wrong-verifier", AppRedirectUri)]
+        [InlineData("right-verifier", "com.klaxai.app://login/callback/")]
+        [InlineData("right-verifier", "https://app/cb")]
+        public async Task Exchange_AppSchemePublicClient_MissingOrWrongVerifierOrOtherRedirect_IsInvalidGrant(
+            string verifier, string redirectUri)
+        {
+            SetupAppSchemeExchange();
+
+            var result = await Create().ExchangeAsync(BuildContext(codeVerifier: verifier, redirectUri: redirectUri).Request);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_grant");
+            _tokenService.Verify(t => t.GenerateAccessTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        }
+
         public void Dispose()
         {
             BlocksContext.SetContext(null);

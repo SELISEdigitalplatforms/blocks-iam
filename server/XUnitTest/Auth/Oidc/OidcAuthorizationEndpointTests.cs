@@ -864,5 +864,84 @@ namespace XUnitTest.Auth.Oidc
             redirect.Url.Should().StartWith(RedirectUri);
             redirect.Url.Should().Contain("error=server_error");
         }
+    
+
+        // ================= mobile app-scheme redirect URIs =================
+
+        private const string AppRedirectUri = "com.klaxai.app://login/callback";
+        private static readonly string Challenge = new('a', 43);
+
+        [Fact]
+        public async Task AuthorizeAsync_AppSchemeRedirect_WithChallenge_GoesToLoginWithoutError()
+        {
+            ClientExists(AppRedirectUri, requirePkce: true);
+
+            var result = await Authorize(redirect_uri: AppRedirectUri, code_challenge: Challenge,
+                code_challenge_method: "S256");
+
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            redirect.Url.Should().NotContain("error=");
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_AppSchemeRedirect_ExactMatch_IssuesCodeToTheAppUri()
+        {
+            ClientExists(AppRedirectUri, requirePkce: true);
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var redirect = await Authorize(redirect_uri: AppRedirectUri, code_challenge: Challenge,
+                code_challenge_method: "S256", blocksUserId: "user-1", returnRedirectResponse: true);
+            var json = await Authorize(redirect_uri: AppRedirectUri, code_challenge: Challenge,
+                code_challenge_method: "S256", blocksUserId: "user-1", returnRedirectResponse: false);
+
+            var location = redirect.Should().BeOfType<RedirectResult>().Subject.Url;
+            location.Should().StartWith(AppRedirectUri + "?code=authcode123&state=st");
+            var body = json.Should().BeOfType<OkObjectResult>().Subject;
+            (Prop(body.Value, "redirect_uri") as string).Should().Be(location);
+        }
+
+        [Theory]
+        [InlineData("COM.KLAXAI.APP://login/callback")]
+        [InlineData("com.klaxai.app://login/Callback")]
+        [InlineData("com.klaxai.app://login/callback/")]
+        [InlineData("com.klaxai.app://login/callback/extra")]
+        public async Task AuthorizeAsync_AppSchemeRedirect_Variant_IsRefused(string variant)
+        {
+            ClientExists(AppRedirectUri, requirePkce: true);
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var result = await Authorize(redirect_uri: variant, code_challenge: Challenge,
+                code_challenge_method: "S256", blocksUserId: "user-1", returnRedirectResponse: false);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error_description").Should().Be("Invalid redirect_uri");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_AppSchemeRedirect_WithoutChallenge_IsRefusedBeforeLogin()
+        {
+            ClientExists(AppRedirectUri, requirePkce: true);
+
+            var result = await Authorize(redirect_uri: AppRedirectUri, returnRedirectResponse: false);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            (Prop(bad.Value, "error_description") as string).Should().Contain("PKCE code_challenge is required");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_DeviceFlowClient_InJsonMode_StillReturnsSuccess()
+        {
+            _authRepo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
+                .ReturnsAsync(new OidcClientRegistration { ClientId = "client-1", IsDeviceFlowClient = true });
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: false);
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            Prop(ok.Value, "success").Should().Be(true);
+        }
     }
 }

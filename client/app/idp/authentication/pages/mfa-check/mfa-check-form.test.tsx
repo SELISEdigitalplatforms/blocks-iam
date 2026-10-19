@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 const h = vi.hoisted(() => ({
@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   // The tenant of the login being completed, as carried by the /oidc/mfa-check URL.
   urlTenant: undefined as string | undefined,
   oidcUiConfig: undefined as unknown,
+  animCtx: null as Record<string, ReturnType<typeof vi.fn>> | null,
 }));
 
 vi.mock("react-router", () => ({ useNavigate: () => h.navigateMock }));
@@ -27,7 +28,7 @@ vi.mock("@blocks-idp/mfa/hooks/use-resend-otp", () => ({
   useResendOtp: vi.fn(() => ({ remainingTime: 0, resend: h.resend })),
 }));
 vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
-  useOidcAuthAnimation: vi.fn(() => null),
+  useOidcAuthAnimation: vi.fn(() => h.animCtx),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
   useOidcUiConfig: () => ({ data: h.oidcUiConfig }),
@@ -47,6 +48,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.envTenant = "root-project-key";
   h.urlTenant = undefined;
+  h.animCtx = null;
   h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
@@ -154,6 +156,103 @@ describe("MfaCheckFrom", () => {
     await submitCode(container);
     await waitFor(() => expect(location.href).toBe("https://redirect.test"));
     vi.unstubAllGlobals();
+  });
+
+  describe("redirect target after verification", () => {
+    const APP_URL = "com.klaxai.app://login/callback?code=abc&state=xyz";
+    const NO_TARGET = "Login succeeded but no redirect target was provided";
+    const originalLocation = window.location;
+    let assignments: string[];
+
+    beforeEach(() => {
+      assignments = [];
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          get href() {
+            return assignments[assignments.length - 1] ?? "";
+          },
+          set href(value: string) {
+            assignments.push(value);
+          },
+        },
+      });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
+      vi.unstubAllGlobals();
+    });
+
+    const respondWith = (body: unknown) =>
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          headers: { get: () => "application/json" },
+          json: async () => body,
+        }),
+      );
+
+    it("opens the app once and shows the hand-off in place of the form (H8)", async () => {
+      respondWith({ redirect_uri: APP_URL });
+      const { container } = render(<MfaCheckFrom />);
+      await submitCode(container);
+
+      const link = await screen.findByRole("link", { name: "Return to the app" });
+      expect(link).toHaveAttribute("href", APP_URL);
+      await waitFor(() => expect(link).toHaveFocus());
+      expect(screen.getByRole("heading", { name: "Signed in" })).toBeInTheDocument();
+      expect(container.querySelector("form")).toBeNull();
+      expect(assignments).toEqual([APP_URL]);
+      expect(h.setAuthenticated).toHaveBeenCalled();
+    });
+
+    it("skips the success animation for an app-scheme target when a shell is present", async () => {
+      h.animCtx = {
+        startAnimation: vi.fn(),
+        succeedAnimation: vi.fn().mockResolvedValue(undefined),
+        failAnimation: vi.fn().mockResolvedValue(undefined),
+        resetAnimation: vi.fn(),
+      };
+      respondWith({ redirect_uri: APP_URL });
+      const { container } = render(<MfaCheckFrom />);
+      await submitCode(container);
+
+      await screen.findByRole("link", { name: "Return to the app" });
+      expect(h.animCtx.succeedAnimation).not.toHaveBeenCalled();
+      expect(h.animCtx.resetAnimation).toHaveBeenCalled();
+      expect(assignments).toEqual([APP_URL]);
+    });
+
+    it.each(["javascript:alert(1)", "myapp://callback"])(
+      "shows the no-redirect-target error in the form for %s instead of idling (C10)",
+      async (redirectUri) => {
+        h.animCtx = {
+          startAnimation: vi.fn(),
+          succeedAnimation: vi.fn().mockResolvedValue(undefined),
+          failAnimation: vi.fn().mockResolvedValue(undefined),
+          resetAnimation: vi.fn(),
+        };
+        respondWith({ redirect_uri: redirectUri });
+        const { container } = render(<MfaCheckFrom />);
+        await submitCode(container);
+
+        expect(await screen.findByText(NO_TARGET)).toBeInTheDocument();
+        expect(h.animCtx.failAnimation).toHaveBeenCalledWith(NO_TARGET);
+        expect(assignments).toEqual([]);
+        expect(container.querySelector("form")).not.toBeNull();
+      },
+    );
+
+    it("follows a web redirect_uri once, unchanged", async () => {
+      respondWith({ redirect_uri: "https://app.example.com/cb?code=1" });
+      const { container } = render(<MfaCheckFrom />);
+      await submitCode(container);
+
+      await waitFor(() => expect(assignments).toEqual(["https://app.example.com/cb?code=1"]));
+      expect(screen.queryByRole("link", { name: "Return to the app" })).not.toBeInTheDocument();
+    });
   });
 
   it("shows the account-locked message", async () => {
