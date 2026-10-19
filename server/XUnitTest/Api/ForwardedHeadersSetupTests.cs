@@ -1,3 +1,4 @@
+using Blocks.Api;
 using System.Diagnostics;
 using System.Net;
 using Authentication.DomainService.Authentication;

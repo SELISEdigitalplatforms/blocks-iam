@@ -57,14 +57,14 @@ ApplyFrontendRuntimeSettings(builder.Configuration, wwwrootPath);
 services.RegisterAllServices();
 
 // Built before the host so an invalid ForwardedHeaders:KnownNetworks entry fails startup.
-var forwardedHeadersOptions = ForwardedHeadersSetup.BuildOptions(builder.Configuration);
+var forwardedHeadersOptions = Blocks.Api.ForwardedHeadersSetup.BuildOptions(builder.Configuration);
 
 var app = builder.Build();
 
 // Forwarded headers run before every other middleware so that each later reader of
 // Connection.RemoteIpAddress (sessions, refresh tokens, audits) sees the client address
 // supplied by a trusted gateway. Not registered at all when no network is configured.
-ForwardedHeadersSetup.Apply(app, forwardedHeadersOptions);
+Blocks.Api.ForwardedHeadersSetup.Apply(app, forwardedHeadersOptions);
 
 // Configure DomainResolver with IHttpContextAccessor instance
 DomainResolver.Configure(app.Services.GetRequiredService<IHttpContextAccessor>());
@@ -222,64 +222,67 @@ static string ResolveRequiredServiceName(IConfiguration configuration)
     return serviceName;
 }
 
-// Builds the forwarded-header trust configuration from ForwardedHeaders:KnownNetworks.
-// Only X-Forwarded-For is processed (scheme and host are left unchanged), only the last
-// entry is used, and only connections from the configured CIDR networks are trusted.
-// (Plain comments: XML docs here would change the tracked, generated Api.xml.)
-public static class ForwardedHeadersSetup
+namespace Blocks.Api
 {
-    public const string KnownNetworksKey = "ForwardedHeaders:KnownNetworks";
-
-    // Returns null when no network is configured: the middleware must then not be registered,
-    // because with empty KnownProxies/KnownIPNetworks it would trust every source.
-    public static ForwardedHeadersOptions? BuildOptions(IConfiguration configuration)
+    // Builds the forwarded-header trust configuration from ForwardedHeaders:KnownNetworks.
+    // Only X-Forwarded-For is processed (scheme and host are left unchanged), only the last
+    // entry is used, and only connections from the configured CIDR networks are trusted.
+    // (Plain comments: XML docs here would change the tracked, generated Api.xml.)
+    public static class ForwardedHeadersSetup
     {
-        var section = configuration.GetSection(KnownNetworksKey);
-        var networks = section.Get<string[]>();
-        if (networks is null || networks.Length == 0)
+        public const string KnownNetworksKey = "ForwardedHeaders:KnownNetworks";
+
+        // Returns null when no network is configured: the middleware must then not be registered,
+        // because with empty KnownProxies/KnownIPNetworks it would trust every source.
+        public static ForwardedHeadersOptions? BuildOptions(IConfiguration configuration)
         {
-            // A scalar value (e.g. ForwardedHeaders__KnownNetworks=10.0.0.0/24) binds to no array
-            // entries; failing here beats silently leaving the middleware unregistered.
-            if (!string.IsNullOrWhiteSpace(section.Value))
+            var section = configuration.GetSection(KnownNetworksKey);
+            var networks = section.Get<string[]>();
+            if (networks is null || networks.Length == 0)
             {
-                throw new InvalidOperationException(
-                    $"{KnownNetworksKey} is set to a single value '{section.Value}'; configure it as indexed entries " +
-                    "instead (e.g. ForwardedHeaders__KnownNetworks__0=<cidr>).");
+                // A scalar value (e.g. ForwardedHeaders__KnownNetworks=10.0.0.0/24) binds to no array
+                // entries; failing here beats silently leaving the middleware unregistered.
+                if (!string.IsNullOrWhiteSpace(section.Value))
+                {
+                    throw new InvalidOperationException(
+                        $"{KnownNetworksKey} is set to a single value '{section.Value}'; configure it as indexed entries " +
+                        "instead (e.g. ForwardedHeaders__KnownNetworks__0=<cidr>).");
+                }
+
+
+                return null;
             }
 
-
-            return null;
-        }
-
-        var options = new ForwardedHeadersOptions
-        {
-            ForwardedHeaders = ForwardedHeaders.XForwardedFor,
-            ForwardLimit = 1,
-        };
-        options.KnownProxies.Clear();
-        options.KnownIPNetworks.Clear();
-
-        foreach (var entry in networks)
-        {
-            if (string.IsNullOrWhiteSpace(entry) || !System.Net.IPNetwork.TryParse(entry.Trim(), out var network))
+            var options = new ForwardedHeadersOptions
             {
-                throw new InvalidOperationException(
-                    $"{KnownNetworksKey} entry '{entry}' is not a valid CIDR network.");
+                ForwardedHeaders = ForwardedHeaders.XForwardedFor,
+                ForwardLimit = 1,
+            };
+            options.KnownProxies.Clear();
+            options.KnownIPNetworks.Clear();
+
+            foreach (var entry in networks)
+            {
+                if (string.IsNullOrWhiteSpace(entry) || !System.Net.IPNetwork.TryParse(entry.Trim(), out var network))
+                {
+                    throw new InvalidOperationException(
+                        $"{KnownNetworksKey} entry '{entry}' is not a valid CIDR network.");
+                }
+
+                options.KnownIPNetworks.Add(network);
             }
 
-            options.KnownIPNetworks.Add(network);
+            return options;
         }
 
-        return options;
-    }
-
-    public static void Apply(IApplicationBuilder app, ForwardedHeadersOptions? options)
-    {
-        if (options is null)
+        public static void Apply(IApplicationBuilder app, ForwardedHeadersOptions? options)
         {
-            return;
-        }
+            if (options is null)
+            {
+                return;
+            }
 
-        app.UseForwardedHeaders(options);
+            app.UseForwardedHeaders(options);
+        }
     }
 }
