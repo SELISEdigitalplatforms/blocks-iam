@@ -26,6 +26,7 @@ public class TenantConfigurationStoreTests : IDisposable
     public void Dispose() => _mongo.Dispose();
 
     private TenantConfigurationStore Store() => new(_mongo.ProviderFor());
+    private TenantConfigurationStore Store(RowFilterDataAccess dataAccess) => new(_mongo.ProviderFor(), dataAccess);
 
     private IdentityAccessManagementRepository Iam() =>
         new(_mongo.ProviderFor(), new Mock<IBlocksSecret>().Object, NullLogger<IdentityAccessManagementRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
@@ -484,8 +485,6 @@ public class TenantConfigurationStoreTests : IDisposable
 
     private static readonly FilterDefinition<BsonDocument> SeesTheDoc = Builders<BsonDocument>.Filter.Eq("Extra", "keep");
     private static readonly FilterDefinition<BsonDocument> HidesTheDoc = Builders<BsonDocument>.Filter.Eq("Extra", "someone-else");
-
-    private TenantConfigurationStore Store(RowFilterDataAccess dataAccess) => new(_mongo.ProviderFor(), dataAccess);
 
     private static UpdateDefinition<IamTenantConfiguration> SetMultiOrg() =>
         Builders<IamTenantConfiguration>.Update
