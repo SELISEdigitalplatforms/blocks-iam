@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   isOrgConfigLoading: false,
   oidcUiConfig: undefined as unknown,
   shellProps: null as Record<string, unknown> | null,
+  formProps: null as Record<string, unknown> | null,
 }));
 
 vi.mock("@blocks-idp/authentication/hooks/use-auth", () => ({
@@ -22,7 +23,12 @@ vi.mock("@blocks-idp/iam/hooks/use-user", () => ({
 vi.mock("@blocks-idp/iam/hooks/use-organization", () => ({
   useGetSignupOrganizationConfig: () => ({ data: h.orgConfig, isLoading: h.isOrgConfigLoading }),
 }));
-vi.mock("./signup-form", () => ({ SignupForm: () => <div data-testid="signup-form" /> }));
+vi.mock("./signup-form", () => ({
+  SignupForm: (props: Record<string, unknown>) => {
+    h.formProps = props;
+    return <div data-testid="signup-form" />;
+  },
+}));
 vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
   OidcAuthShell: (props: Record<string, unknown>) => {
     h.shellProps = props;
@@ -58,6 +64,7 @@ beforeEach(() => {
   h.isOrgConfigLoading = false;
   h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
   h.shellProps = null;
+  h.formProps = null;
 });
 
 describe("Signup", () => {
@@ -112,5 +119,44 @@ describe("Signup", () => {
     }));
     expect(screen.getByText("Have an Acme account?")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Return to sign in" })).toBeInTheDocument();
+  });
+
+  describe("organization mode", () => {
+    const renderWith = (orgConfig: Record<string, boolean>) => {
+      h.signUpSetting = { isSignUpEnable: true, isEmailPasswordSignUpEnabled: true };
+      h.orgConfig = orgConfig;
+      renderSignup();
+      return h.formProps;
+    };
+
+    it("H12: multi-org, auto-join and creation on offer the join-or-create choice", () => {
+      expect(
+        renderWith({ isMultiOrgEnabled: true, isSignupAutoJoinEnabled: true, allowOrgCreationFromSignup: true }),
+      ).toEqual(expect.objectContaining({ collectOrganizationName: true, signupAutoJoinEnabled: true }));
+    });
+
+    it("H15: auto-join on and creation off asks for no organization", () => {
+      expect(
+        renderWith({ isMultiOrgEnabled: true, isSignupAutoJoinEnabled: true, allowOrgCreationFromSignup: false }),
+      ).toEqual(expect.objectContaining({ collectOrganizationName: false, signupAutoJoinEnabled: true }));
+    });
+
+    it("H16: auto-join off and creation on keeps today's organization-name field", () => {
+      expect(
+        renderWith({ isMultiOrgEnabled: true, isSignupAutoJoinEnabled: false, allowOrgCreationFromSignup: true }),
+      ).toEqual(expect.objectContaining({ collectOrganizationName: true, signupAutoJoinEnabled: false }));
+    });
+
+    it("passes signupAutoJoinEnabled=false and no name field when multi-org is off, whatever the flag", () => {
+      expect(
+        renderWith({ isMultiOrgEnabled: false, isSignupAutoJoinEnabled: true, allowOrgCreationFromSignup: true }),
+      ).toEqual(expect.objectContaining({ collectOrganizationName: false, signupAutoJoinEnabled: false }));
+    });
+
+    it("treats a config without the flag (older server) as auto-join off", () => {
+      expect(
+        renderWith({ isMultiOrgEnabled: true, allowOrgCreationFromSignup: true }),
+      ).toEqual(expect.objectContaining({ collectOrganizationName: true, signupAutoJoinEnabled: false }));
+    });
   });
 });

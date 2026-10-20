@@ -1,3 +1,5 @@
+using Blocks.Genesis.Entities.Iam;
+
 namespace Authentication.DomainService.OAuth.RequestModel
 {
     using Iam.DomainService.Entities;

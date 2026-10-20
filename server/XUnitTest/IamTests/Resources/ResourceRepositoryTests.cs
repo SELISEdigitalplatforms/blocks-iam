@@ -11,6 +11,7 @@ using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {
@@ -41,7 +42,7 @@ namespace XUnitTest.IamTests.Resources
             BlocksContext.IsTestMode = false;
         }
 
-        private ResourceRepository Sut() => new(_iam.Object);
+        private ResourceRepository Sut() => new(_iam.Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         private Mock<IMongoCollection<T>> Register<T>(IEnumerable<T>? items = null)
         {
@@ -473,19 +474,17 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetTenantConfigurationAsync_Delegates()
         {
-            var config = new TenantConfiguration { ItemId = "c1" };
+            var config = new IamTenantConfiguration { ItemId = "c1" };
             _iam.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(config);
             (await Sut().GetTenantConfigurationAsync()).ItemId.Should().Be("c1");
         }
 
         [Fact]
-        public async Task SaveOrganizationConfig_Upserts()
+        public async Task SaveOrganizationConfig_DelegatesToTheStore()
         {
-            var col = Register<TenantConfiguration>();
-            await Sut().SaveOrganizationConfig(new TenantConfiguration { ItemId = "c1" });
-            col.Verify(c => c.UpdateOneAsync(
-                It.IsAny<FilterDefinition<TenantConfiguration>>(), It.IsAny<UpdateDefinition<TenantConfiguration>>(),
-                It.Is<UpdateOptions>(o => o.IsUpsert), It.IsAny<CancellationToken>()), Times.Once);
+            var config = new IamTenantConfiguration { ItemId = "c1" };
+            await Sut().SaveOrganizationConfig(config);
+            _iam.Verify(r => r.SaveOrganizationConfigAsync(config), Times.Once);
         }
 
         [Fact]
@@ -899,55 +898,30 @@ namespace XUnitTest.IamTests.Resources
         // ---------- Signup-default scrub ----------
 
         [Fact]
-        public async Task RemoveRoleFromSignUpDefaultsAsync_PullsTheSlugFromTheRolesListOnly()
+        public async Task RemoveRoleFromSignUpDefaultsAsync_DelegatesTheSlug_AndReturnsTheResult()
         {
-            UpdateDefinition<TenantConfiguration>? capturedUpdate = null;
-            var col = Register<TenantConfiguration>();
-            col.Setup(c => c.UpdateOneAsync(It.IsAny<FilterDefinition<TenantConfiguration>>(), It.IsAny<UpdateDefinition<TenantConfiguration>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
-                .Callback<FilterDefinition<TenantConfiguration>, UpdateDefinition<TenantConfiguration>, UpdateOptions, CancellationToken>((_, u, _, _) => capturedUpdate = u)
-                .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
+            _iam.Setup(r => r.PullSignUpDefaultRoleAsync("manager")).ReturnsAsync(true);
 
             (await Sut().RemoveRoleFromSignUpDefaultsAsync("manager")).Should().BeTrue();
-
-            var registry = BsonSerializer.SerializerRegistry;
-            var update = capturedUpdate!.Render(new RenderArgs<TenantConfiguration>(registry.GetSerializer<TenantConfiguration>(), registry)).ToString();
-
-            // The roles list, not the permissions list: they are separate signup defaults and a
-            // slug must never be pulled from the one that holds permission resources.
-            update.Should().Contain("DefaultRolesForNewUserOnSignUp").And.Contain("manager");
-            update.Should().NotContain("DefaultPermissionsForNewUserOnSignUp");
+            _iam.Verify(r => r.PullSignUpDefaultRoleAsync("manager"), Times.Once);
+            _iam.Verify(r => r.PullSignUpDefaultPermissionAsync(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
-        public async Task RemovePermissionFromSignUpDefaultsAsync_PullsTheResourceFromThePermissionsListOnly()
+        public async Task RemovePermissionFromSignUpDefaultsAsync_DelegatesTheResource_AndReturnsTheResult()
         {
-            UpdateDefinition<TenantConfiguration>? capturedUpdate = null;
-            var col = Register<TenantConfiguration>();
-            col.Setup(c => c.UpdateOneAsync(It.IsAny<FilterDefinition<TenantConfiguration>>(), It.IsAny<UpdateDefinition<TenantConfiguration>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
-                .Callback<FilterDefinition<TenantConfiguration>, UpdateDefinition<TenantConfiguration>, UpdateOptions, CancellationToken>((_, u, _, _) => capturedUpdate = u)
-                .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
+            _iam.Setup(r => r.PullSignUpDefaultPermissionAsync("reports::export")).ReturnsAsync(true);
 
             (await Sut().RemovePermissionFromSignUpDefaultsAsync("reports::export")).Should().BeTrue();
-
-            var registry = BsonSerializer.SerializerRegistry;
-            var update = capturedUpdate!.Render(new RenderArgs<TenantConfiguration>(registry.GetSerializer<TenantConfiguration>(), registry)).ToString();
-
-            update.Should().Contain("DefaultPermissionsForNewUserOnSignUp").And.Contain("reports::export");
-            update.Should().NotContain("DefaultRolesForNewUserOnSignUp");
+            _iam.Verify(r => r.PullSignUpDefaultPermissionAsync("reports::export"), Times.Once);
+            _iam.Verify(r => r.PullSignUpDefaultRoleAsync(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
-        public async Task RemoveFromSignUpDefaultsAsync_MatchingNothingIsSuccessNotFailure()
+        public async Task RemoveFromSignUpDefaultsAsync_UnacknowledgedWriteIsAFailure()
         {
-            var col = Register<TenantConfiguration>();
-            col.Setup(c => c.UpdateOneAsync(It.IsAny<FilterDefinition<TenantConfiguration>>(), It.IsAny<UpdateDefinition<TenantConfiguration>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new UpdateResult.Acknowledged(0, 0, null));
-
-            // A role that was never a signup default -- or a tenant with no configuration document
-            // at all -- matches nothing. Treating that as a failure would abort every archive in
-            // any tenant that has never opened Signup Configuration.
-            (await Sut().RemoveRoleFromSignUpDefaultsAsync("manager")).Should().BeTrue();
-            (await Sut().RemovePermissionFromSignUpDefaultsAsync("reports::export")).Should().BeTrue();
+            _iam.Setup(r => r.PullSignUpDefaultRoleAsync(It.IsAny<string>())).ReturnsAsync(false);
+            (await Sut().RemoveRoleFromSignUpDefaultsAsync("manager")).Should().BeFalse();
         }
 
         [Theory]
@@ -955,7 +929,7 @@ namespace XUnitTest.IamTests.Resources
         [InlineData("   ")]
         public async Task RemoveFromSignUpDefaultsAsync_IgnoresBlankArguments(string value)
         {
-            Register<TenantConfiguration>();
+            Register<IamTenantConfiguration>();
 
             (await Sut().RemoveRoleFromSignUpDefaultsAsync(value)).Should().BeTrue();
             (await Sut().RemovePermissionFromSignUpDefaultsAsync(value)).Should().BeTrue();
@@ -1085,6 +1059,88 @@ namespace XUnitTest.IamTests.Resources
             // The scope of the tally is unchanged -- this role, in this organization.
             rendered["Roles"].AsString.Should().Be("admin");
             rendered["OrganizationId"].AsString.Should().Be("default");
+        }
+
+        // Genesis switch (review L1): the package Permission carries the os superset fields
+        // IsCaptchaRequired / IsMFARequired. Before the switch iam's own class did not have them, so a
+        // load + ReplaceOne dropped what os had written. Now the read keeps them and the replace writes
+        // them back (genesis SPEC1 6.5). Real local test Mongo, because only a real round trip shows it.
+        private static async Task<(RealMongo Mongo, IMongoCollection<BsonDocument> Raw)> SeedPermissionWithOsFieldsAsync(
+            Mock<IIdentityAccessManagementRepository> iam, params string[] ids)
+        {
+            var mongo = new RealMongo();
+            var typed = mongo.Database.GetCollection<Permission>("Permissions");
+            iam.Setup(r => r.GetCollection<Permission>()).Returns(typed);
+            iam.Setup(r => r.GetCollectionByName<Permission>(It.IsAny<string>())).Returns(typed);
+
+            var raw = mongo.Database.GetCollection<BsonDocument>("Permissions");
+            foreach (var id in ids)
+            {
+                var doc = Perm(id).ToBsonDocument();
+                doc["IsCaptchaRequired"] = true; // written by blocks-os ($set), unknown to iam before the switch
+                doc["IsMFARequired"] = false;
+                await raw.InsertOneAsync(doc);
+            }
+            return (mongo, raw);
+        }
+
+        [RealMongoFact]
+        public async Task UpdatePermissionAsync_LoadAndReplace_KeepsOsSupersetFields()
+        {
+            var (mongo, raw) = await SeedPermissionWithOsFieldsAsync(_iam, "p-l1");
+            using (mongo)
+            {
+                var permission = await Sut().GetPermissionByIdAsync("p-l1");
+                permission.IsCaptchaRequired.Should().BeTrue();
+                permission.IsMFARequired.Should().BeFalse();
+
+                permission.Description = "changed by iam";
+                (await Sut().UpdatePermissionAsync(permission)).Should().BeTrue();
+
+                var stored = await raw.Find(Builders<BsonDocument>.Filter.Eq("_id", "p-l1")).SingleAsync();
+                stored["Description"].AsString.Should().Be("changed by iam");
+                stored["IsCaptchaRequired"].AsBoolean.Should().BeTrue();
+                stored["IsMFARequired"].AsBoolean.Should().BeFalse();
+            }
+        }
+
+        [RealMongoFact]
+        public async Task UpdatePermissionsAsync_LoadAndBulkReplace_KeepsOsSupersetFields()
+        {
+            var (mongo, raw) = await SeedPermissionWithOsFieldsAsync(_iam, "p-l1-a", "p-l1-b");
+            using (mongo)
+            {
+                var permissions = await Sut().GetPermissionsByResourceAsync("res");
+                permissions.Should().HaveCount(2);
+                permissions.ForEach(p => p.Description = "bulk");
+
+                (await Sut().UpdatePermissionsAsync(permissions)).Should().BeTrue();
+
+                var stored = await raw.Find(FilterDefinition<BsonDocument>.Empty).ToListAsync();
+                stored.Should().HaveCount(2);
+                stored.Should().OnlyContain(d => d["Description"].AsString == "bulk"
+                    && d["IsCaptchaRequired"].AsBoolean
+                    && !d["IsMFARequired"].AsBoolean);
+            }
+        }
+
+        [RealMongoFact]
+        public async Task UpdatePermissionAsync_IamOnlyDocument_WritesNoSupersetFields()
+        {
+            // iam's own writes stay byte-identical: a document os never touched gets no new fields.
+            using var mongo = new RealMongo();
+            var typed = mongo.Database.GetCollection<Permission>("Permissions");
+            _iam.Setup(r => r.GetCollection<Permission>()).Returns(typed);
+            await Sut().InsertPermissionAsync(Perm("p-iam"));
+
+            var permission = await Sut().GetPermissionByIdAsync("p-iam");
+            permission.Description = "x";
+            await Sut().UpdatePermissionAsync(permission);
+
+            var stored = await mongo.Database.GetCollection<BsonDocument>("Permissions")
+                .Find(Builders<BsonDocument>.Filter.Eq("_id", "p-iam")).SingleAsync();
+            stored.Contains("IsCaptchaRequired").Should().BeFalse();
+            stored.Contains("IsMFARequired").Should().BeFalse();
         }
     }
 }

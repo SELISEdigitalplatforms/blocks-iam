@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using Moq;
 using System.Text;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {

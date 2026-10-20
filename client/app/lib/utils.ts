@@ -191,13 +191,51 @@ export function formatSize(
   return `${parseFloat(bytes.toFixed(decimals))} ${UNITS[unitIndex]}`;
 }
 
+const APP_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*$/;
+const FORBIDDEN_APP_SCHEMES = new Set([
+  "http",
+  "https",
+  "javascript",
+  "data",
+  "file",
+  "vbscript",
+  "blob",
+  "about",
+]);
+
+/**
+ * Whether `url` is a native-app redirect URI (RFC 8252 §7.1 private-use scheme), using the same
+ * rule the server applies when the client is registered: an absolute URI whose scheme is a
+ * reverse domain name (contains a dot), is not a web or script-capable scheme, and carries no
+ * fragment. The scheme is read from the raw string, before any URL normalisation.
+ */
+export function isAppRedirectUrl(url: string): boolean {
+  if (typeof url !== "string" || !url.trim()) return false;
+  if (url.includes("#")) return false;
+  const colon = url.indexOf(":");
+  if (colon <= 0) return false;
+  const scheme = url.slice(0, colon);
+  if (!APP_SCHEME_PATTERN.test(scheme) || !scheme.includes(".")) return false;
+  if (FORBIDDEN_APP_SCHEMES.has(scheme.toLowerCase())) return false;
+  try {
+    new URL(url);
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 /**
  * Full-page navigation away from the SPA to a server-provided URL (for example an OIDC
- * `redirect_uri` the backend has already validated against the client). Only http(s) URLs
- * are followed, so a `javascript:` or `data:` value can never run in this origin.
- * Returns false, without navigating, when the URL is refused.
+ * `redirect_uri` the backend has already validated against the client). Only http(s) URLs and
+ * native-app redirect URIs (see `isAppRedirectUrl`) are followed, so a `javascript:` or `data:`
+ * value can never run in this origin. Returns false, without navigating, when the URL is refused.
  */
 export function navigateToUrl(url: string): boolean {
+  if (isAppRedirectUrl(url)) {
+    globalThis.location.href = url;
+    return true;
+  }
   let parsed: URL;
   try {
     parsed = new URL(url, window.location.origin);

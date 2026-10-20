@@ -1,4 +1,4 @@
-using Authentication.DomainService.Entities;
+﻿using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -11,6 +11,7 @@ using Mfa.DomainService.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Iam.DomainService.Utilities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -185,6 +186,89 @@ namespace XUnitTest.Auth.OAuth
 
             result.Error.Should().Be(OAuthError.AccountLocked);
             result.StatusCode.Should().Be(423);
+        }
+
+        // ---- Real EmailOtpService behind the login mfa step (cache mocked) ----
+
+        private (MfaAuthorizationService Sut, MfaAuthenticationContext Context) CreateWithRealEmailOtp()
+        {
+            var cache = new Mock<Blocks.Genesis.ICacheClient>();
+            var context = MfaAuthenticationContext.Create("mfa-1", "u1", UserMfaType.Email);
+            context.MfaCode = "004217";
+            cache.Setup(c => c.KeyExistsAsync("mfa-1")).ReturnsAsync(true);
+            cache.Setup(c => c.GetStringValueAsync("mfa-1")).ReturnsAsync(context.Sterilize());
+            cache.Setup(c => c.RemoveKeyAsync("mfa-1")).ReturnsAsync(true);
+            var email = new global::Mfa.DomainService.OTP.Services.EmailOtpService(
+                cache.Object, new Mock<global::Mfa.DomainService.Configuration.IMfaConfigurationService>().Object, new Mock<Blocks.Genesis.IMessageClient>().Object);
+            _otpFactory.Setup(f => f.GetOTPService(UserMfaType.Email)).Returns(email);
+            return (Create(), context);
+        }
+
+        [Fact]
+        public async Task Authenticate_EmailOtp_WrongCode_IsCountedAgainstTheChallengeOwner()
+        {
+            var (sut, _) = CreateWithRealEmailOtp();
+            _repo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync("u1", 7, 9, It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "u1", FailedMfaCount = 1 });
+            var request = Request();
+            request.Code = "000000";
+            var config = new IdentityConfiguration { GetNumberOfWrongAttemptsToLockTheAccount = 7, AccountLockDurationInMinutes = 9 };
+
+            var result = await sut.AuthenticateAsync(request, config);
+
+            result.StatusCode.Should().Be(401);
+            _repo.Verify(r => r.IncrementFailedMfaAndApplyLockoutAsync("u1", 7, 9, It.IsAny<DateTime>()), Times.Once);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData("4217")]
+        [InlineData("12345")]
+        public async Task Authenticate_EmailOtp_BypassInputs_AreCountedAndRefused(string code)
+        {
+            var (sut, _) = CreateWithRealEmailOtp();
+            _repo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "u1", FailedMfaCount = 1 });
+            var request = Request();
+            request.Code = code;
+
+            var result = await sut.AuthenticateAsync(request, Config());
+
+            result.StatusCode.Should().Be(401);
+            _tokenManager.Verify(t => t.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+            _repo.Verify(r => r.IncrementFailedMfaAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Authenticate_EmailOtp_RepeatedWrongCodes_LockThenRightCodeIsAlsoRefused()
+        {
+            var (sut, context) = CreateWithRealEmailOtp();
+            var locked = new User { ItemId = "u1", IsMfaVerified = true };
+            var attempts = 0;
+            _repo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(() =>
+                {
+                    attempts++;
+                    locked.FailedMfaCount = attempts;
+                    if (attempts >= 3) locked.LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15);
+                    return locked;
+                });
+            _repo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(() => locked);
+            var config = new IdentityConfiguration { GetNumberOfWrongAttemptsToLockTheAccount = 3 };
+
+            var wrong = Request();
+            wrong.Code = "000000";
+            (await sut.AuthenticateAsync(wrong, config)).StatusCode.Should().Be(401);
+            (await sut.AuthenticateAsync(wrong, config)).StatusCode.Should().Be(401);
+            (await sut.AuthenticateAsync(wrong, config)).StatusCode.Should().Be(423);
+
+            // Locked: the correct code gets the same 423, with and without a resolved user.
+            var right = Request();
+            right.Code = context.MfaCode;
+            (await sut.AuthenticateAsync(right, config, locked)).StatusCode.Should().Be(423);
+            (await sut.AuthenticateAsync(right, config)).StatusCode.Should().Be(423);
+            _tokenManager.Verify(t => t.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
         }
 
         [Fact]

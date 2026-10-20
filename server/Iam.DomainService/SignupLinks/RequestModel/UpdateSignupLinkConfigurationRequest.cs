@@ -1,3 +1,5 @@
+using Blocks.Genesis.Entities.Iam;
+
 namespace Iam.DomainService.SignupLinks;
 
 public class UpdateSignupLinkConfigurationRequest

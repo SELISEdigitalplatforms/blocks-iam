@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Services
 {

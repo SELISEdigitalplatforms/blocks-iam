@@ -68,5 +68,33 @@ namespace XUnitTest.IamTests.Accounts.Validators
 
             result.IsValid.Should().BeTrue();
         }
-    }
+    
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task CaptchaConfigured_NoCode_Fails(string? code)
+        {
+            _captchaConfig.Setup(c => c.GetCaptchaConfigurationAsync())
+                .ReturnsAsync(new CaptchaConfiguration { IsEnable = true, Provider = "recaptcha" });
+
+            var result = await Create().ValidateAsync(new RecoveryUserRequest { Email = "user@example.com", CaptchaCode = code });
+
+            result.IsValid.Should().BeFalse();
+            result.Errors.Should().ContainSingle(e => e.ErrorMessage == "Captcha verification is required.");
+        }
+
+        [Fact]
+        public async Task CaptchaConfigured_ValidCode_Passes()
+        {
+            _captchaConfig.Setup(c => c.GetCaptchaConfigurationAsync())
+                .ReturnsAsync(new CaptchaConfiguration { IsEnable = true, Provider = "recaptcha" });
+            _captcha.Setup(c => c.VerifyCaptchaAsync(It.Is<VerifyCaptchaRequest>(r => r.ConfigurationName == "recaptcha")))
+                .ReturnsAsync(new VerifyCaptchaRequestResponse { Verified = true });
+
+            var result = await Create().ValidateAsync(new RecoveryUserRequest { Email = "user@example.com", CaptchaCode = "abc" });
+
+            result.IsValid.Should().BeTrue();
+        }
+}
 }

@@ -46,25 +46,6 @@ const mockRevokeResponse = {
 
 const mockActivitiesResponse = { items: [], totalCount: 0, page: 0, pageSize: 10 };
 
-const mockPats = [
-  {
-    note: "token",
-    itemId: "pat-1",
-    createdDate: "2025-01-01T00:00:00Z",
-    expiryDate: "2025-02-01T00:00:00Z",
-    createdBy: "user-1",
-    language: "en",
-    lastUpdatedBy: "user-1",
-    organizationIds: [],
-    tags: [],
-    code: "abc123",
-    userId: "user-1",
-    clientId: "client-1",
-  },
-];
-
-const mockGeneratePatPayload = { note: "new token", codeTtlInMinute: 60, clientId: "client-1" };
-
 describe("SecurityService", () => {
   let service: SecurityService;
 
@@ -227,45 +208,6 @@ describe("SecurityService", () => {
       vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
 
       await expect(service.getActivities({})).rejects.toThrow("Network error");
-    });
-  });
-
-  // ─── getPats ───────────────────────────────────────────────────────────────
-  describe("getPats", () => {
-    it("should GET the user-codes endpoint", async () => {
-      vi.mocked(http.get).mockResolvedValue(mockPats);
-
-      const result = await service.getPats();
-
-      expect(http.get).toHaveBeenCalledWith(SECURITY_ENDPOINTS.GET_USER_CODES);
-      expect(result).toEqual(mockPats);
-    });
-
-    it("should throw when the API call fails", async () => {
-      vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
-
-      await expect(service.getPats()).rejects.toThrow("Network error");
-    });
-  });
-
-  // ─── generatePats ──────────────────────────────────────────────────────────
-  describe("generatePats", () => {
-    it("should POST the payload to the generate endpoint", async () => {
-      vi.mocked(http.post).mockResolvedValue(mockPats);
-
-      const result = await service.generatePats(mockGeneratePatPayload);
-
-      expect(http.post).toHaveBeenCalledWith(
-        SECURITY_ENDPOINTS.GENERATE_USER_CODE,
-        mockGeneratePatPayload,
-      );
-      expect(result).toEqual(mockPats);
-    });
-
-    it("should throw when the API call fails", async () => {
-      vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
-
-      await expect(service.generatePats(mockGeneratePatPayload)).rejects.toThrow("Network error");
     });
   });
 });

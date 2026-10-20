@@ -1,6 +1,7 @@
 using Iam.DomainService.Services;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.SignupLinks;
 
@@ -12,13 +13,16 @@ public class SignupLinkConfigurationRepository : ISignupLinkConfigurationReposit
 
     private readonly IIdentityAccessManagementRepository _iamRepository;
     private readonly ILogger<SignupLinkConfigurationRepository> _logger;
+    private readonly IIamDataAccess _dataAccess;
 
     public SignupLinkConfigurationRepository(
         IIdentityAccessManagementRepository iamRepository,
-        ILogger<SignupLinkConfigurationRepository> logger)
+        ILogger<SignupLinkConfigurationRepository> logger,
+        IIamDataAccess dataAccess)
     {
         _iamRepository = iamRepository;
         _logger = logger;
+        _dataAccess = dataAccess;
     }
 
     private IMongoCollection<SignupLinkConfiguration> Collection =>
@@ -51,21 +55,24 @@ public class SignupLinkConfigurationRepository : ISignupLinkConfigurationReposit
     }
 
     public Task InsertAsync(SignupLinkConfiguration entity) =>
-        Collection.InsertOneAsync(entity);
+        _dataAccess.InsertOneAsync(Collection, IamSchemas.SignupLinkConfiguration, entity, "SignupLinkConfigurationRepository.InsertAsync");
 
     public async Task<bool> ReplaceAsync(SignupLinkConfiguration entity)
     {
-        var result = await Collection.ReplaceOneAsync(
-            x => x.ItemId == entity.ItemId && x.TenantId == entity.TenantId,
-            entity);
-        return result.IsAcknowledged && result.MatchedCount > 0;
+        var result = await _dataAccess.ReplaceOneAsync(
+            Collection,
+            IamSchemas.SignupLinkConfiguration,
+            Builders<SignupLinkConfiguration>.Filter.Where(x => x.ItemId == entity.ItemId && x.TenantId == entity.TenantId),
+            entity,
+            "SignupLinkConfigurationRepository.ReplaceAsync");
+        return result is not null && result.IsAcknowledged && result.MatchedCount > 0;
     }
 
     public async Task<SignupLinkConfiguration?> GetByIdAsync(string itemId, string tenantId)
     {
         var filter = Builders<SignupLinkConfiguration>.Filter.Eq(x => x.ItemId, itemId)
             & Builders<SignupLinkConfiguration>.Filter.Eq(x => x.TenantId, tenantId);
-        return await Collection.Find(filter).FirstOrDefaultAsync();
+        return await _dataAccess.FindFirstAsync(Collection, IamSchemas.SignupLinkConfiguration, filter, "SignupLinkConfigurationRepository.GetByIdAsync");
     }
 
     public async Task<SignupLinkConfiguration?> FindByNameAsync(string tenantId, string name, string? excludeItemId = null)
@@ -82,7 +89,9 @@ public class SignupLinkConfigurationRepository : ISignupLinkConfigurationReposit
             Collation = new Collation("en", strength: CollationStrength.Secondary),
             Limit = 1
         };
-        return await (await Collection.FindAsync(filter, options)).FirstOrDefaultAsync();
+        var scope = await _dataAccess.ReadAsync(IamSchemas.SignupLinkConfiguration, filter, "SignupLinkConfigurationRepository.FindByNameAsync", useProjection: false);
+        if (!scope.Granted) return null;
+        return await (await Collection.FindAsync(scope.Filter, options)).FirstOrDefaultAsync();
     }
 
     public async Task<(List<SignupLinkConfiguration> Items, long TotalCount)> QueryAsync(
@@ -103,8 +112,10 @@ public class SignupLinkConfigurationRepository : ISignupLinkConfigurationReposit
                 new MongoDB.Bson.BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(search), "i"));
         }
 
-        var total = await Collection.CountDocumentsAsync(filter);
-        var items = await Collection.Find(filter)
+        var scope = await _dataAccess.ReadAsync(IamSchemas.SignupLinkConfiguration, filter, "SignupLinkConfigurationRepository.QueryAsync", useProjection: false);
+        if (!scope.Granted) return ([], 0);
+        var total = await Collection.CountDocumentsAsync(scope.Filter);
+        var items = await scope.Apply(Collection)
             .Sort(Builders<SignupLinkConfiguration>.Sort.Descending(x => x.CreatedDate))
             .Skip(request.Page * request.PageSize)
             .Limit(request.PageSize)

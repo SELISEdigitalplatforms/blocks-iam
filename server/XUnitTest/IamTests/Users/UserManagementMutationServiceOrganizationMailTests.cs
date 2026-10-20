@@ -13,6 +13,7 @@ using Iam.DomainService.Users.RequestModel;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Users
 {
@@ -46,7 +47,7 @@ namespace XUnitTest.IamTests.Users
             _message.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<UserMutationEvent>>())).Returns(Task.CompletedTask);
             _userRepo.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _resourceRepo.Setup(r => r.GetOrganizationById("org-x"))
                 .ReturnsAsync(new Organization { ItemId = "org-x", Name = "Org X" });
             _iam.Setup(i => i.SendEmailAsync(It.IsAny<SendMail>()))

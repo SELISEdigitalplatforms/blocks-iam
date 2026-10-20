@@ -26,6 +26,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -1745,7 +1746,7 @@ namespace Authentication.DomainService.Authentication
         }
 
 
-        private async Task<(IActionResult? Error, string UserId, Iam.DomainService.Entities.User User)> ValidateImpersonationRequestAsync(
+        private async Task<(IActionResult? Error, string UserId, Blocks.Genesis.Entities.Iam.User User)> ValidateImpersonationRequestAsync(
             ImpersonateRequest request,
             Tenant? rootTenant,
             HttpRequest httpRequest)
@@ -1807,7 +1808,7 @@ namespace Authentication.DomainService.Authentication
             string existingSessionId,
             ImpersonateRequest request,
             string userId,
-            Iam.DomainService.Entities.User user,
+            Blocks.Genesis.Entities.Iam.User user,
             Tenant rootTenant,
             RefreshTokenCache? rootRefreshCache,
             IdentityConfiguration authConfiguration,

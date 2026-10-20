@@ -12,6 +12,7 @@ using Iam.DomainService.Accounts;
 using Authentication.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Api.Controllers;
 
@@ -64,7 +65,18 @@ public class AuthenticationController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> ExecuteSignup([FromBody] SignupUserRequest request)
     {
-        var result = await _accountService.SignupAccountAsync(request);
+        // This endpoint is anonymous, so it must never accept a caller's claim of an SSO identity:
+        // an SSO signup here created an active, verified user for any email and could link a
+        // caller-chosen external id to a pending account. SSO users are provisioned server-side
+        // after a real provider callback (SsoUserProvisioningService), never from this body.
+        if (request != null)
+        {
+            request.IsSsoSignup = false;
+            request.Provider = null;
+            request.ExternalUserId = null;
+        }
+
+        var result = await _accountService.SignupAccountAsync(request!);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -132,6 +144,10 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> UpdatePassword([FromBody] ChangePasswordRequest request)
     {
         var result = await _accountService.ChangePasswordAsync(request);
+        if (result.Errors.ContainsKey(Iam.DomainService.Accounts.AccountService.AccountLockedErrorKey))
+        {
+            return StatusCode(StatusCodes.Status423Locked, result);
+        }
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -294,6 +310,7 @@ public class AuthenticationController : ControllerBase
             return BadRequest(result.LogoutResponse);
         }
 
+        await _signupLinkRedemption.EndLinkSessionAsync(Request, Response);
         return Ok(result.LogoutResponse);
     }
 
@@ -400,6 +417,7 @@ public class AuthenticationController : ControllerBase
             backchannelSuccess = await _authenticationService.TriggerBackchannelLogoutAllAsync(Request);
         }
 
+        await _signupLinkRedemption.EndLinkSessionAsync(Request, Response);
         return Ok(new
         {
             IsSuccess = true,
@@ -538,20 +556,6 @@ public class AuthenticationController : ControllerBase
     public async Task<BaseResponse> UpdateAuthenticationConfiguration([FromBody] UpdateAuthenticationConfigurationRequest configuration)
     {
         return await _configurationService.UpdateAuthenticationConfigAsync(configuration);
-    }
-
-    [HttpPost("user-codes")]
-    [ProtectedEndPoint("blocks-iam::auth::mutate-user-pats")]
-    public async Task<BaseResponse> GenerateUserCode([FromBody] GenerateUserCodeRequest request)
-    {
-        return await _authenticationDomainService.GenerateUserCodeByClientAsync(request);
-    }
-
-    [HttpGet("user-codes")]
-    [ProtectedEndPoint("blocks-iam::auth::user-pats")]
-    public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodes()
-    {
-        return await _authenticationRepository.GetUserCodesByUserIdAsync(BlocksContext.GetContext()?.UserId);
     }
 
     #region Client Credential Management

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Shared
 {
@@ -45,7 +46,7 @@ namespace XUnitTest.IamTests.Shared
         }
 
         private UserActivityRepository Sut() =>
-            new(_db.Object, NullLogger<UserActivityRepository>.Instance);
+            new(_db.Object, NullLogger<UserActivityRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         private static UserActivity Activity(string id = "a1") =>
             new()

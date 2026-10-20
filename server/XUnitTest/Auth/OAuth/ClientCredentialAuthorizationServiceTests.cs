@@ -10,6 +10,7 @@ using Blocks.Genesis;
 using FluentAssertions;
 using Moq;
 using StackExchange.Redis;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {

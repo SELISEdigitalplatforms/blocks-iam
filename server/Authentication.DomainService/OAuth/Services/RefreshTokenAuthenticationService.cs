@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Utilities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth
 {

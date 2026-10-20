@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Utilities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Shared
 {
@@ -294,6 +295,34 @@ namespace XUnitTest.IamTests.Shared
             var act = () => OrganizationScopeResolver.Resolve(true, null!, null, HasAccess);
 
             act.Should().Throw<ArgumentNullException>();
+        }
+
+        // ---------- Sign-up auto-join: tokens for the shapes a new sign-up is stored with ----------
+
+        [Fact]
+        public void H6_AutoJoinedSignup_TokenCarriesTheTargetOrganization()
+        {
+            // The JoinTarget shape: OrganizationIds=[X], sign-up roles and permissions keyed under X.
+            var user = new User
+            {
+                OrganizationIds = ["org-sales"],
+                Roles = new Dictionary<string, List<string>> { ["org-sales"] = ["user"] },
+                Permissions = new Dictionary<string, List<string>> { ["org-sales"] = ["perm.read"] }
+            };
+
+            Resolve(isMultiOrgEnabled: true, user).ClaimValue.Should().Be("org-sales");
+        }
+
+        [Fact]
+        public void H8_SignupWithNoOrganization_TokenCarriesNoOrg_NotDefault()
+        {
+            // The NoOrganization shape: all three membership collections empty.
+            var user = new User { OrganizationIds = [], Roles = [], Permissions = [] };
+
+            var scope = Resolve(isMultiOrgEnabled: true, user);
+
+            scope.ClaimValue.Should().Be(IdpConstants.NoOrganizationId);
+            scope.ClaimValue.Should().NotBe(IdpConstants.DefaultOrganizationId);
         }
 
         [Theory]

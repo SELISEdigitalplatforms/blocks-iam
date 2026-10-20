@@ -8,6 +8,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Authentication.DomainService.Authentication
@@ -19,7 +20,7 @@ namespace Authentication.DomainService.Authentication
     public sealed class PasswordCredentialVerifier : IPasswordCredentialVerifier
     {
         public const string LockedDescription = "Account is temporarily locked due to failed login attempts";
-        public const string InvalidPasswordDescription = "Invalid username or password";
+        public const string InvalidPasswordDescription = OAuthError.InvalidUsernamePasswordDescription;
 
         private readonly ILogger<PasswordCredentialVerifier> _logger;
         private readonly ITenants _tenants;
@@ -94,17 +95,37 @@ namespace Authentication.DomainService.Authentication
                 return Locked();
             }
 
+            // The user above was read before this request; parallel requests all see the same copy.
+            // Reserve the attempt atomically first, so no more than the threshold of password checks
+            // can run before the lock, then give it back only if the password is right.
+            var threshold = configuration.GetNumberOfWrongAttemptsToLockTheAccount;
+            var reserved = await _repository.TryReserveLoginAttemptAsync(user.ItemId, threshold, DateTime.UtcNow);
+            if (reserved == null)
+            {
+                await SendTimelineEventAsync(request, user.ItemId, "failed_login_account_locked", "password_auth_account_locked");
+                return Locked();
+            }
+
             var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
             if (VerifyPassword(password, user.Password ?? string.Empty, tenant?.TenantSalt))
             {
-                return PasswordVerificationResult.Success();
+                if (await _repository.ReleaseLoginAttemptAsync(user.ItemId, DateTime.UtcNow))
+                {
+                    return PasswordVerificationResult.Success();
+                }
+
+                await SendTimelineEventAsync(request, user.ItemId, "failed_login_account_locked", "password_auth_account_locked");
+                return Locked();
             }
 
-            var updatedUser = await _repository.IncrementFailedLoginAndApplyLockoutAsync(
-                user.ItemId,
-                configuration.GetNumberOfWrongAttemptsToLockTheAccount,
-                configuration.AccountLockDurationInMinutes,
-                DateTime.UtcNow);
+            // The attempt is already counted; only the one that took the last slot can lock.
+            var updatedUser = reserved.FailedLoginCount >= threshold
+                ? await _repository.LockAccountIfLoginThresholdReachedAsync(
+                    user.ItemId,
+                    threshold,
+                    configuration.AccountLockDurationInMinutes,
+                    DateTime.UtcNow)
+                : null;
 
             var lockoutUntilUtc = updatedUser?.LockoutUntilUtc;
 
@@ -166,9 +187,15 @@ namespace Authentication.DomainService.Authentication
 
         public bool VerifyPassword(string? password, string? passwordHash, string? optionalSalt = null)
         {
-            if (string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(passwordHash))
+            if (string.IsNullOrWhiteSpace(password))
             {
                 return false;
+            }
+
+            // An account without a password (social only) costs the same time as one with.
+            if (string.IsNullOrWhiteSpace(passwordHash))
+            {
+                return UnknownUserLoginGuard.VerifyAgainstDummy(password, optionalSalt);
             }
 
             try

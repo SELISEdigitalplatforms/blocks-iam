@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Oidc
 {
@@ -29,7 +30,7 @@ namespace XUnitTest.Auth.Oidc
         }
 
         private DeviceAuthorizationRepository Sut() =>
-            new(_db.Object, NullLogger<DeviceAuthorizationRepository>.Instance);
+            new(_db.Object, NullLogger<DeviceAuthorizationRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         private static DeviceAuthorizationRequestModel Entity(string id = "d1") =>
             new() { Id = id, ClientId = "c1", DeviceCodeHash = "hash", UserCode = "ABCD", ExpiresAt = DateTime.UtcNow.AddMinutes(10) };

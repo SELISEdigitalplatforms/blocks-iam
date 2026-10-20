@@ -3,6 +3,7 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Accounts
 {

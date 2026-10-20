@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Oidc
 {
@@ -28,7 +29,7 @@ namespace XUnitTest.Auth.Oidc
         }
 
         private TokenRevocationRepository Sut() =>
-            new(_db.Object, NullLogger<TokenRevocationRepository>.Instance);
+            new(_db.Object, NullLogger<TokenRevocationRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         [Fact]
         public async Task RevokeTokenAsync_InsertsAndReturnsTrue()

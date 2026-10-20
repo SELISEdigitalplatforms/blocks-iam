@@ -1,7 +1,9 @@
+using Blocks.Genesis;
 using Authentication.DomainService.Services;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -14,17 +16,20 @@ namespace Authentication.DomainService.Oidc.Repositories
         private readonly ITokenRevocationRepository _revocationRepo;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
         private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly ICacheClient _cacheClient;
         private readonly ILogger<TokenRevocationService> _logger;
 
         public TokenRevocationService(
             ITokenRevocationRepository revocationRepo,
             IRefreshTokenRepository refreshTokenRepo,
             IAuthenticationRepository authenticationRepository,
+            ICacheClient cacheClient,
             ILogger<TokenRevocationService> logger)
         {
             _revocationRepo = revocationRepo;
             _refreshTokenRepo = refreshTokenRepo;
             _authenticationRepository = authenticationRepository;
+            _cacheClient = cacheClient;
             _logger = logger;
         }
 
@@ -350,6 +355,13 @@ namespace Authentication.DomainService.Oidc.Repositories
             }
 
             await _refreshTokenRepo.RevokeAllByTokenIdsAsync(tokenIds, "revoked");
+
+            // The refresh resolver trusts a Redis hit before Mongo, so a revoke that leaves the cached
+            // copy lets the token keep rotating until its TTL. Every revoke path ends here.
+            foreach (var tokenId in tokenIds)
+            {
+                await _cacheClient.RemoveKeyAsync(tokenId);
+            }
         }
     }
 }

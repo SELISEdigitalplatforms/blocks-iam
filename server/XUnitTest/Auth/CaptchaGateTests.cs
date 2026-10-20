@@ -14,7 +14,7 @@ namespace XUnitTest.Auth
         [Fact]
         public void IsCaptchaRequired_ReturnsFalse_WhenFailedCountBelowThreshold()
         {
-            var user = new Iam.DomainService.Entities.User { FailedLoginCount = 0 };
+            var user = new Blocks.Genesis.Entities.Iam.User { FailedLoginCount = 0 };
             CaptchaGate.IsCaptchaRequired(user).Should().BeFalse();
 
             user.FailedLoginCount = 1;
@@ -24,14 +24,14 @@ namespace XUnitTest.Auth
         [Fact]
         public void IsCaptchaRequired_ReturnsTrue_AtThreshold()
         {
-            var user = new Iam.DomainService.Entities.User { FailedLoginCount = CaptchaGate.FailedAttemptsBeforeCaptcha };
+            var user = new Blocks.Genesis.Entities.Iam.User { FailedLoginCount = CaptchaGate.FailedAttemptsBeforeCaptcha };
             CaptchaGate.IsCaptchaRequired(user).Should().BeTrue();
         }
 
         [Fact]
         public void IsCaptchaRequired_ReturnsTrue_AboveThreshold()
         {
-            var user = new Iam.DomainService.Entities.User { FailedLoginCount = 10 };
+            var user = new Blocks.Genesis.Entities.Iam.User { FailedLoginCount = 10 };
             CaptchaGate.IsCaptchaRequired(user).Should().BeTrue();
         }
 

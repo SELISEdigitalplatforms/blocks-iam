@@ -30,6 +30,13 @@ namespace Iam.DomainService.Resources
         Task ExecuteResourceMutationCommandAsync(ResourceMutationEvent command);
         Task<bool> ProcessPermissionAsync(ResourceSetToPermissionMutationEvent command);
         Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, string? creatorId = null);
+
+        /// <summary>
+        /// The refusals <see cref="CreateOrganizationAsync"/> would give for this request (multi-org
+        /// off, creation turned off for its source, name taken), without creating anything. Null
+        /// when it would be accepted.
+        /// </summary>
+        Task<BaseMutationResponse?> CheckOrganizationCreationAsync(CreateOrganizationRequest request);
         Task<BaseResponse> UpdateOrganizationAsync(string id, SaveOrganizationRequest request);
 
         /// <summary>
@@ -41,7 +48,11 @@ namespace Iam.DomainService.Resources
         Task<GetOrganizationResponse> GetOrganizationAsync(string id);
         Task<GetMyOrganizationsResponse> GetMyOrganizationAsync();
         Task<BaseResponse> SaveOrganizationConfigAsync(SaveOrganizationConfigRequest request);
+        /// <summary>Anonymous organization-config read. Never contains the sign-up auto-join target.</summary>
         Task<Dictionary<string, object>> GetOrganizationConfigAsync();
+
+        /// <summary>Signed-in organization-config read: the anonymous keys plus <c>signupAutoJoinOrganizationId</c>.</summary>
+        Task<Dictionary<string, object>> GetAdminOrganizationConfigAsync();
         Task ExecuteOrganizationProvisioningAsync(OrganizationProvisioningEvent command);
         Task ExecutePropagationRolePermissionUpdateAsync(PropagationRolePermissionUpdateEvent command);
         Task ExecutePermissionMutationForTenantsAsync(PermissionMutationForTenantsEvent context);

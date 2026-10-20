@@ -1,4 +1,5 @@
 ﻿using Iam.DomainService.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Mfa.DomainService.Configuration
 {
@@ -13,11 +14,5 @@ namespace Mfa.DomainService.Configuration
         public bool AllowUserOptOut { get; set; } = true;
         public bool AllowBackupCodes { get; set; } = true;
         public int BackupCodesCount { get; set; } = 10;
-    }
-
-    public class MfaTemplate
-    {
-        public string? TemplateName { get; set; }
-        public string? TemplateId { get; set; }
     }
 }

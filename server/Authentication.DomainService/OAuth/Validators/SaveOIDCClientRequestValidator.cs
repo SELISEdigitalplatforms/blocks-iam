@@ -1,10 +1,20 @@
 using Authentication.DomainService.RequestModel;
+using Authentication.DomainService.Utilities;
 using FluentValidation;
 
 namespace Authentication.DomainService.OAuth
 {
     public sealed class SaveOIDCClientRequestValidator : AbstractValidator<SaveOIDCClientRequest>
     {
+        private const string RedirectUrisMessage =
+            "Each redirect URI must be an http(s) URL or a mobile app URI whose scheme is a reverse domain name, such as com.example.app://callback.";
+        private const string PostLogoutRedirectUrisMessage =
+            "Each post-logout redirect URI must be an http(s) URL or a mobile app URI whose scheme is a reverse domain name, such as com.example.app://callback.";
+        private const string AppSchemeClientTypeMessage = "Mobile app redirect URIs require a public client.";
+        private const string AppSchemePkceMessage = "Mobile app redirect URIs require PKCE.";
+        private const string AppSchemeIdentityProviderMessage =
+            "A client with mobile app redirect URIs cannot be registered as an identity provider.";
+
         public SaveOIDCClientRequestValidator()
         {
             RuleFor(x => x.ItemId)
@@ -16,9 +26,30 @@ namespace Authentication.DomainService.OAuth
                 .Must(BeOneOfPublicOrConfidential)
                 .When(x => !string.IsNullOrWhiteSpace(x.ClientType));
 
+            // Native apps (RFC 8252) cannot hold a secret and receive the code through an OS-level
+            // scheme handler, so an app-scheme URI is only allowed on a public client with PKCE.
+            // Federation is refused too: the IdentityProvider record would copy these URIs, and
+            // its own validator accepts http(s) only. Device-flow clients have no redirect URIs
+            // once saved, so none of this applies to them.
+            RuleFor(x => x.ClientType)
+                .Must(value => string.Equals(value, "public", StringComparison.OrdinalIgnoreCase))
+                .When(HasAppSchemeUri)
+                .WithMessage(AppSchemeClientTypeMessage);
+
+            RuleFor(x => x.RequirePkce)
+                .Must(value => value)
+                .When(HasAppSchemeUri)
+                .WithMessage(AppSchemePkceMessage);
+
+            RuleFor(x => x.RegisterAsIdentityProvider)
+                .Must(value => !value)
+                .When(HasAppSchemeUri)
+                .WithMessage(AppSchemeIdentityProviderMessage);
+
             RuleFor(x => x.RedirectUris)
                 .Must(AllValidUris)
-                .When(x => x.RedirectUris != null && x.RedirectUris.Count > 0);
+                .When(x => x.RedirectUris != null && x.RedirectUris.Count > 0)
+                .WithMessage(RedirectUrisMessage);
 
             RuleFor(x => x.AllowedResponseTypes)
                 .Must(ContainCode)
@@ -38,7 +69,8 @@ namespace Authentication.DomainService.OAuth
 
             RuleFor(x => x.PostLogoutRedirectUris)
                 .Must(AllValidUris)
-                .When(x => x.PostLogoutRedirectUris != null && x.PostLogoutRedirectUris.Count > 0);
+                .When(x => x.PostLogoutRedirectUris != null && x.PostLogoutRedirectUris.Count > 0)
+                .WithMessage(PostLogoutRedirectUrisMessage);
 
             RuleFor(x => x.AllowedScopes)
                 .Must(AllNonEmpty)
@@ -80,9 +112,18 @@ namespace Authentication.DomainService.OAuth
 
         private static bool AllValidUris(List<string> values)
         {
-            return values.All(v => !string.IsNullOrWhiteSpace(v) &&
-                Uri.TryCreate(v, UriKind.Absolute, out var uri) &&
-                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps));
+            return values.All(v => RedirectUriSchemes.IsWebUri(v) || RedirectUriSchemes.IsAppScheme(v));
+        }
+
+        private static bool HasAppSchemeUri(SaveOIDCClientRequest request)
+        {
+            if (request.IsDeviceFlowClient)
+            {
+                return false;
+            }
+
+            return (request.RedirectUris?.Any(RedirectUriSchemes.IsAppScheme) ?? false)
+                || (request.PostLogoutRedirectUris?.Any(RedirectUriSchemes.IsAppScheme) ?? false);
         }
 
         private static bool ContainCode(List<string> values)

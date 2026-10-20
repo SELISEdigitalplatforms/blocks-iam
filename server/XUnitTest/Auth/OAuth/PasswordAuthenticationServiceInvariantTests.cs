@@ -10,6 +10,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -35,7 +36,8 @@ namespace XUnitTest.Auth.OAuth
                     repository,
                     new Mock<IAccountService>().Object,
                     new Mock<IUserActivityDispatcher>().Object,
-                    new Mock<IAuthenticationDomainService>().Object));
+                    new Mock<IAuthenticationDomainService>().Object),
+                XUnitTest.TestSupport.UnknownLoginGuardStub.Create().Object);
         }
 
         private static TokenRequest BuildRequest() => new()

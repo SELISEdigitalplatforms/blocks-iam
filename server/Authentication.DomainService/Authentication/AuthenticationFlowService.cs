@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using System.Security.Claims;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -30,6 +31,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ILogger<AuthenticationFlowService> _logger;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IRefreshSessionResolver _refreshSessionResolver;
+        private readonly IUnknownUserLoginGuard _unknownUserLoginGuard;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
@@ -40,7 +42,8 @@ namespace Authentication.DomainService.Authentication
             OidcLoginAuditWriter auditWriter,
             ILogger<AuthenticationFlowService> logger,
             IRefreshTokenRepository refreshTokenRepository,
-            IRefreshSessionResolver refreshSessionResolver)
+            IRefreshSessionResolver refreshSessionResolver,
+            IUnknownUserLoginGuard unknownUserLoginGuard)
         {
             _authenticationRepository = authenticationRepository;
             _authStrategy = authStrategy;
@@ -51,6 +54,7 @@ namespace Authentication.DomainService.Authentication
             _logger = logger;
             _refreshTokenRepository = refreshTokenRepository;
             _refreshSessionResolver = refreshSessionResolver;
+            _unknownUserLoginGuard = unknownUserLoginGuard;
         }
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
@@ -83,11 +87,31 @@ namespace Authentication.DomainService.Authentication
 
             var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
 
-            if (user != null
-                && user.LockoutUntilUtc.HasValue
-                && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            // Only an account that can sign in keeps its lock and failure count on the user. Any
+            // other name (unknown, pending, disabled) reads them from the unknown-user guard, so
+            // the lock and captcha answers come at the same thresholds whether it exists or not.
+            var usable = user is { Active: true, IsVerified: true };
+            int failedLoginCount;
+            bool locked;
+            if (usable)
             {
-                await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "embedded_login_account_locked");
+                failedLoginCount = user!.FailedLoginCount;
+                locked = user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow;
+            }
+            else
+            {
+                var state = await _unknownUserLoginGuard.GetStateAsync(request.Username);
+                failedLoginCount = state.FailedCount;
+                locked = state.Locked;
+            }
+
+            if (locked)
+            {
+                if (usable)
+                {
+                    await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "embedded_login_account_locked");
+                }
+
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status423Locked,
@@ -96,7 +120,7 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
+            var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(failedLoginCount, request.CaptchaCode);
             if (captchaValidationResult != null)
             {
                 if (user != null
@@ -252,9 +276,9 @@ namespace Authentication.DomainService.Authentication
             };
         }
 
-        private async Task<AuthenticationFlowResult?> ValidateCaptchaIfRequiredAsync(User? user, string? captchaCode)
+        private async Task<AuthenticationFlowResult?> ValidateCaptchaIfRequiredAsync(int failedLoginCount, string? captchaCode)
         {
-            if (!CaptchaGate.IsCaptchaRequired(user))
+            if (!CaptchaGate.IsCaptchaRequired(failedLoginCount))
             {
                 return null;
             }

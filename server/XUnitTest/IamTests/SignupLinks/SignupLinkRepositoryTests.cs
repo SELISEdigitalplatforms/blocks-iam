@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.SignupLinks;
 
@@ -22,7 +23,7 @@ public class SignupLinkRepositoryTests
     }
 
     private SignupLinkRepository Sut() =>
-        new(_iam.Object, NullLogger<SignupLinkRepository>.Instance);
+        new(_iam.Object, NullLogger<SignupLinkRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
     [Fact]
     public async Task EnsureIndexesAsync_CreatesIndexes()

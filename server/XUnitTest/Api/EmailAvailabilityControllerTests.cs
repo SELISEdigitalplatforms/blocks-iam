@@ -1,10 +1,12 @@
 using Api.Controllers;
+using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
 using Iam.DomainService.Users.ResponseModel;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
+using System.Reflection;
 
 namespace XUnitTest.ApiTests;
 
@@ -79,6 +81,37 @@ public class EmailAvailabilityControllerTests
         var result = await Sut().IsUserExistFromQuery(null);
         result.Should().BeOfType<BadRequestObjectResult>();
         _userQuery.Verify(s => s.IsUserExistAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    // users/exists is user enumeration: it needs the same permission as the user list
+    // (owner decision 2026-10-14), not just any signed-in token.
+    [Theory]
+    [InlineData(nameof(EmailAvailabilityController.IsUserExist))]
+    [InlineData(nameof(EmailAvailabilityController.IsUserExistFromQuery))]
+    public void UsersExist_IsProtectedByUsersPermission(string methodName)
+    {
+        var method = typeof(EmailAvailabilityController).GetMethod(methodName)!;
+
+        var guard = method.GetCustomAttribute<ProtectedEndPointAttribute>();
+        guard.Should().NotBeNull();
+        guard!.ResourceName.Should().Be("blocks-iam::iam::users");
+        method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().BeNull();
+    }
+
+    // email/available leaks whether an address is registered, so it needs its own permission
+    // (owner decision 2026-10-14), not anonymous access and not just any signed-in token.
+    [Theory]
+    [InlineData(nameof(EmailAvailabilityController.IsEmailAvailable))]
+    [InlineData(nameof(EmailAvailabilityController.IsEmailAvailableFromQuery))]
+    public void EmailAvailable_IsProtectedByEmailAvailablePermission(string methodName)
+    {
+        var method = typeof(EmailAvailabilityController).GetMethod(methodName)!;
+
+        var guard = method.GetCustomAttribute<ProtectedEndPointAttribute>();
+        guard.Should().NotBeNull();
+        guard!.ResourceName.Should().Be("blocks-iam::iam::email-available");
+        method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().BeNull();
+        method.GetCustomAttributes(true).Any(a => a.GetType() == typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute)).Should().BeFalse();
     }
 }
 

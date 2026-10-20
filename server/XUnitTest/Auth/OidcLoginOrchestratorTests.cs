@@ -18,6 +18,7 @@ using Mfa.DomainService.Shared;
 using Moq;
 using System.Text.Json;
 using Iam.DomainService.Resources;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {
@@ -32,6 +33,7 @@ namespace XUnitTest.Auth
         private readonly Mock<ICaptchaEvaluator> _captcha = new();
         private readonly Mock<IAuthenticationDomainService> _authDomain = new();
         private readonly Mock<IUserActivityDispatcher> _activity = new();
+        private readonly Mock<IUnknownUserLoginGuard> _guard = XUnitTest.TestSupport.UnknownLoginGuardStub.Create();
 
         private readonly PasswordHasher _passwordHasher;
         private readonly OidcLoginAuditWriter _auditWriter;
@@ -54,6 +56,9 @@ namespace XUnitTest.Auth
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
             _authDomain.Setup(d => d.GetDeviceInfo(It.IsAny<string>())).Returns((DeviceInformation)null!);
             _mfaIssuer.Setup(m => m.WriteAuditAsync(It.IsAny<MfaAuditEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.TryReserveLoginAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "user-1", FailedLoginCount = 1 });
+            _repo.Setup(r => r.ReleaseLoginAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>())).ReturnsAsync(true);
 
             _passwordHasher = new PasswordHasher(NullLogger<PasswordHasher>.Instance);
             _auditWriter = new OidcLoginAuditWriter(_authDomain.Object, _activity.Object, NullLogger<OidcLoginAuditWriter>.Instance);
@@ -84,7 +89,7 @@ namespace XUnitTest.Auth
         private OidcLoginOrchestrator Create() =>
             new(_repo.Object, _mfaIssuer.Object, _authService.Object, _tenants.Object, _cache.Object,
                 _userRepo.Object, _passwordHasher, _auditWriter, _captchaEvaluator, _authorizationEndpoint,
-                NullLogger<OidcLoginOrchestrator>.Instance);
+                NullLogger<OidcLoginOrchestrator>.Instance, _guard.Object);
 
         private static object? Prop(object? value, string name) =>
             value?.GetType().GetProperty(name)?.GetValue(value);
@@ -245,14 +250,14 @@ namespace XUnitTest.Auth
             var user = ValidUser();
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(user);
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
-                .ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = null });
 
             var result = await Create().ExecuteAsync(PasswordRequest(password: "wrong-password"), Req(), Res());
 
             var unauth = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
             Prop(unauth.Value, "error").Should().Be("invalid_credentials");
-            _repo.Verify(r => r.IncrementFailedLoginAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Once);
+            _repo.Verify(r => r.TryReserveLoginAttemptAsync("user-1", 5, It.IsAny<DateTime>()), Times.Once);
+            _repo.Verify(r => r.LockAccountIfLoginThresholdReachedAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+            _repo.Verify(r => r.ReleaseLoginAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
         }
 
         [Fact]
@@ -262,13 +267,41 @@ namespace XUnitTest.Auth
             var user = ValidUser();
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(user);
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+            _repo.Setup(r => r.TryReserveLoginAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "user-1", FailedLoginCount = 5 });
+            _repo.Setup(r => r.LockAccountIfLoginThresholdReachedAsync("user-1", 5, It.IsAny<int>(), It.IsAny<DateTime>()))
                 .ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15) });
 
             var result = await Create().ExecuteAsync(PasswordRequest(password: "wrong-password"), Req(), Res());
 
             var obj = result.Should().BeOfType<ObjectResult>().Subject;
             obj.StatusCode.Should().Be(StatusCodes.Status423Locked);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_ReturnsLocked_WithoutPasswordCheck_WhenReservationRefused()
+        {
+            SetupOidcClientExists();
+            _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _repo.Setup(r => r.TryReserveLoginAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>())).ReturnsAsync((User?)null);
+
+            var result = await Create().ExecuteAsync(PasswordRequest(), Req(), Res());
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status423Locked);
+            _repo.Verify(r => r.ReleaseLoginAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_ReturnsLocked_WhenPasswordRight_ButLockedMeanwhile()
+        {
+            SetupOidcClientExists();
+            _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _repo.Setup(r => r.ReleaseLoginAttemptAsync("user-1", It.IsAny<DateTime>())).ReturnsAsync(false);
+
+            var result = await Create().ExecuteAsync(PasswordRequest(), Req(), Res());
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status423Locked);
+            _mfaIssuer.Verify(m => m.IsRequiredAsync(It.IsAny<User>()), Times.Never);
         }
 
         // ---------- password: MFA challenge ----------

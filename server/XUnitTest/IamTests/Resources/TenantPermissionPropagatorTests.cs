@@ -8,6 +8,7 @@ using Iam.DomainService.Resources.TenantPropagation;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {

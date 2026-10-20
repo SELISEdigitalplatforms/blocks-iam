@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Primitives;
 using Moq;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 using RtaTests = XUnitTest.Auth.OAuth.RefreshTokenAuthenticationServiceTests;
 
 namespace XUnitTest.Auth.Oidc

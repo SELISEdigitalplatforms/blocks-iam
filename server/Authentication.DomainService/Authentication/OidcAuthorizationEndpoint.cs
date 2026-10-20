@@ -15,6 +15,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Idp.DomainService.Oidc.Contracts;
 using Idp.DomainService.Oidc.Services;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -155,6 +156,17 @@ namespace Authentication.DomainService.Authentication
                     return BuildBrowserError("invalid_request", "Invalid redirect_uri");
                 }
 
+                // RequirePkce is stored per client (on by default) and was never read, so a login could
+                // start without PKCE even for a client that requires it. Refuse before the login hop.
+                if (earlyClient != null
+                    && !earlyClient.IsDeviceFlowClient
+                    && earlyClient.RequirePkce
+                    && string.IsNullOrWhiteSpace(code_challenge))
+                {
+                    _logger.LogWarning("Authorize without PKCE refused for client {ClientId}", client_id);
+                    return BuildBrowserError("invalid_request", "PKCE code_challenge is required");
+                }
+
                 scope = EnsureOfflineAccess(scope);
 
                 var effectiveSessionId = request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant_id)];
@@ -181,18 +193,23 @@ namespace Authentication.DomainService.Authentication
                     // redeeming user and for anyone else who signed in on the same browser.
                     // The cookie is cleared rather than only ignored, so the next silent
                     // authorize does not pick it up again for the rest of its lifetime.
+                    // The session is ended too (it is stored per tenant, so a blank tenant_id skips the
+                    // store; such a request never carries the tenant's cookie anyway).
                     if (credentialsJustVerified)
                     {
+                        if (!string.IsNullOrWhiteSpace(tenant_id))
+                        {
+                            await _linkSessionRepo.DeleteAsync(tenant_id, linkCookieId);
+                        }
                         ClearLinkSessionCookie(request, response, tenant_id);
                     }
-                    else
+                    else if (!string.IsNullOrWhiteSpace(tenant_id))
                     {
-                        var linkSession = await _linkSessionRepo.GetBySessionIdAsync(linkCookieId);
+                        var linkSession = await _linkSessionRepo.GetBySessionIdAsync(tenant_id, linkCookieId);
                         if (linkSession != null
                             && !linkSession.IsExpired()
                             && string.Equals(linkSession.ClientId, client_id, StringComparison.Ordinal)
-                            && (string.IsNullOrWhiteSpace(tenant_id)
-                                || string.Equals(linkSession.TenantId, tenant_id, StringComparison.OrdinalIgnoreCase)))
+                            && string.Equals(linkSession.TenantId, tenant_id, StringComparison.OrdinalIgnoreCase))
                         {
                             matchedLinkSession = linkSession;
                             if (string.IsNullOrWhiteSpace(resolvedUserId))

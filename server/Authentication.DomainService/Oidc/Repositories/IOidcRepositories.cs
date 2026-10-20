@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Idp.DomainService.Oidc.Contracts;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -12,9 +13,21 @@ namespace Authentication.DomainService.Oidc.Repositories
     public interface IAuthorizationCodeRepository
     {
         Task<string> CreateAsync(AuthorizationCodeModel code);
+
+        /// <summary>Reads a code (also after use, until it expires). The model carries the store it came from.</summary>
         Task<AuthorizationCodeModel> GetByCodeAsync(string code);
-        Task<bool> DeleteAsync(string code);
-        Task<IEnumerable<AuthorizationCodeModel>> GetExpiredAsync();
+
+        /// <summary>Atomically marks an unused code as used, in the store the code was read from.</summary>
+        Task<AuthorizationCodeConsumeResult> TryConsumeAsync(AuthorizationCodeModel code);
+
+        /// <summary>
+        /// Records what the first exchange minted. False when the code was reused (or is gone) in the
+        /// meantime: the minted tokens must then not be handed out.
+        /// </summary>
+        Task<bool> RecordMintAsync(AuthorizationCodeModel code, AuthorizationCodeMint mint);
+
+        /// <summary>Marks a code as reused and returns what its first exchange minted, if anything.</summary>
+        Task<AuthorizationCodeMint?> MarkReusedAsync(AuthorizationCodeModel code);
     }
 
     /// <summary>
@@ -57,6 +70,13 @@ namespace Authentication.DomainService.Oidc.Repositories
         /// application, excluding the lineage just created. Returns the number of documents revoked.
         /// </summary>
         Task<int> RevokeSupersededLoginLineagesAsync(string sessionId, string userId, string clientId, string exceptRefreshTokenSessionId, string reason);
+
+        /// <summary>
+        /// Revokes every still-unrevoked token of one lineage in MongoDB, then removes every token of
+        /// that lineage from the Redis refresh cache (a cache hit is not checked against MongoDB).
+        /// One pass, no retry. Returns the number of documents revoked.
+        /// </summary>
+        Task<int> RevokeLineageAndEvictAsync(string refreshTokenSessionId, string reason);
 
         Task<bool> DeleteAsync(string tokenId);
         Task<IEnumerable<RefreshTokenModel>> GetExpiredAsync();

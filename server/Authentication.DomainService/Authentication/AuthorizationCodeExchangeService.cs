@@ -3,6 +3,7 @@ using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
@@ -12,6 +13,8 @@ using Idp.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using System.IdentityModel.Tokens.Jwt;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -23,8 +26,13 @@ namespace Authentication.DomainService.Authentication
     /// </summary>
     public sealed class AuthorizationCodeExchangeService
     {
+        /// <summary>Revoke reason for the tokens of a code that was used a second time.</summary>
+        public const string AuthorizationCodeReuseReason = "authorization_code_reuse";
+
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
+        private readonly ITokenRevocationRepository _tokenRevocationRepo;
+        private readonly ICacheClient _cacheClient;
         private readonly ITokenGenerationService _tokenService;
         private readonly IPkceService _pkceService;
         private readonly IUserRepository _userRepository;
@@ -42,10 +50,14 @@ namespace Authentication.DomainService.Authentication
             IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
             ITenants tenants,
+            ITokenRevocationRepository tokenRevocationRepo,
+            ICacheClient cacheClient,
             ILogger<AuthorizationCodeExchangeService> logger)
         {
             _authCodeRepo = authCodeRepo;
             _refreshTokenRepo = refreshTokenRepo;
+            _tokenRevocationRepo = tokenRevocationRepo;
+            _cacheClient = cacheClient;
             _tokenService = tokenService;
             _pkceService = pkceService;
             _userRepository = userRepository;
@@ -61,10 +73,16 @@ namespace Authentication.DomainService.Authentication
             var codeVerifier = request.Form["code_verifier"].ToString();
             var clientId = request.Form["client_id"].ToString();
             var redirectUri = request.Form["redirect_uri"].ToString();
+            var clientSecret = request.Form["client_secret"].ToString();
 
+            OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out var basicClientId, out var basicClientSecret);
             if (string.IsNullOrWhiteSpace(clientId))
             {
-                OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out clientId, out _);
+                clientId = basicClientId;
+            }
+            if (string.IsNullOrWhiteSpace(clientSecret))
+            {
+                clientSecret = basicClientSecret;
             }
 
             // Tenant ID resolution: form > query > header (X-Blocks-Key)
@@ -76,12 +94,12 @@ namespace Authentication.DomainService.Authentication
                         ? headerValue.ToString()
                         : string.Empty));
 
-            return await ExchangeCoreAsync(code, codeVerifier, clientId, redirectUri, tenantId, request, request.HttpContext.Response);
+            return await ExchangeCoreAsync(code, codeVerifier, clientId, clientSecret, redirectUri, tenantId, request, request.HttpContext.Response);
         }
 
-        private async Task<IActionResult> ExchangeCoreAsync(string code, string codeVerifier, string clientId, string redirectUri, string tenantId, HttpRequest request, HttpResponse response)
+        private async Task<IActionResult> ExchangeCoreAsync(string code, string codeVerifier, string clientId, string clientSecret, string redirectUri, string tenantId, HttpRequest request, HttpResponse response)
         {
-            var exchangeResult = await ExchangeToTokenSetAsync(code, codeVerifier, clientId, redirectUri, tenantId, request);
+            var exchangeResult = await ExchangeToTokenSetAsync(code, codeVerifier, clientId, clientSecret, redirectUri, tenantId, request);
             if (exchangeResult.ErrorResult != null)
             {
                 return exchangeResult.ErrorResult;
@@ -151,7 +169,7 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
-        private async Task<OidcExchangeResult> ExchangeToTokenSetAsync(string code, string codeVerifier, string clientId, string redirectUri, string tenantId, HttpRequest request)
+        private async Task<OidcExchangeResult> ExchangeToTokenSetAsync(string code, string codeVerifier, string clientId, string clientSecret, string redirectUri, string tenantId, HttpRequest request)
         {
             if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(clientId))
             {
@@ -162,7 +180,7 @@ namespace Authentication.DomainService.Authentication
                 ? tenantId
                 : request.HttpContext.User.FindFirst("tenant_id")?.Value;
 
-            var (validation, authCode, user, effectiveTenantId) = await ValidateInputsAsync(code, codeVerifier, clientId, redirectUri, resolvedTenantId);
+            var (validation, authCode, user, effectiveTenantId) = await ValidateInputsAsync(code, codeVerifier, clientId, clientSecret, redirectUri, resolvedTenantId);
             if (validation != null)
             {
                 return validation;
@@ -223,7 +241,7 @@ namespace Authentication.DomainService.Authentication
 
             if (string.IsNullOrWhiteSpace(authCode.IdpSessionId))
             {
-                _logger.LogWarning("Authorization code {Code} is missing IdP session id", code);
+                _logger.LogWarning("Authorization code is missing IdP session id");
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is missing IdP session" }));
             }
 
@@ -233,6 +251,24 @@ namespace Authentication.DomainService.Authentication
             var idToken = await _tokenService.GenerateIdTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer, false, idpSessionId);
+            var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
+
+            // Record what this code minted before any cookie or answer leaves, so a reuse can revoke it.
+            // If the code was reused (or is gone) meanwhile, these tokens are revoked and never handed out.
+            var mint = new AuthorizationCodeMint
+            {
+                LineageId = refreshTokenModel.EffectiveRefreshTokenSessionId,
+                Jti = ReadJti(accessToken),
+                UserId = authCode.UserId,
+                AccessExpiresAt = accessExpiry
+            };
+            if (!await _authCodeRepo.RecordMintAsync(authCode, mint))
+            {
+                _logger.LogWarning("Authorization code reuse refused for client {ClientId}", clientId);
+                await _cacheClient.RemoveKeyAsync(refreshTokenModel.TokenId);
+                await RevokeMintAsync(mint);
+                return OidcExchangeResult.FromError(InvalidCode());
+            }
 
             // UnifiedTokenSessionService.CreateOrRotateRefreshToken (called inside GenerateRefreshTokenAsync)
             // already persisted this refresh token to MongoDB with full SessionId/ClientId metadata.
@@ -242,7 +278,6 @@ namespace Authentication.DomainService.Authentication
             _logger.LogInformation("Tokens issued for user {UserId}, client {ClientId}", authCode.UserId, clientId);
 
             var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request);
-            var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
             var refreshExpiry = refreshTokenModel.AbsoluteExpiry == default
                 ? DateTime.UtcNow.AddMinutes(absoluteRefreshTokenLifetimeMinutes)
                 : refreshTokenModel.AbsoluteExpiry;
@@ -264,13 +299,14 @@ namespace Authentication.DomainService.Authentication
             string code,
             string codeVerifier,
             string clientId,
+            string clientSecret,
             string redirectUri,
             string? tenantId)
         {
             var authCode = await _authCodeRepo.GetByCodeAsync(code);
             if (authCode == null)
             {
-                _logger.LogWarning("Authorization code not found: {Code}", code);
+                _logger.LogWarning("Authorization code not found");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" })), null, null, null);
             }
 
@@ -284,7 +320,7 @@ namespace Authentication.DomainService.Authentication
 
             if (authCode.ExpiresAt < DateTime.UtcNow)
             {
-                _logger.LogWarning("Authorization code expired: {Code}", code);
+                _logger.LogWarning("Authorization code expired");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has expired" })), null, null, null);
             }
 
@@ -293,6 +329,21 @@ namespace Authentication.DomainService.Authentication
             {
                 _logger.LogWarning("Client validation failed for code exchange");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_client" })), null, null, null);
+            }
+
+            // A confidential client proves it is the client (RFC 6749 3.2.1); without this a leaked code
+            // plus the public client_id and redirect_uri was enough. Same rule as the device flow.
+            if (OidcClientValidator.RequiresClientAuthentication(client) && !OidcClientValidator.SecretsMatch(clientSecret, client.ClientSecret))
+            {
+                _logger.LogWarning("Client authentication failed for code exchange, client {ClientId}", clientId);
+                return (OidcExchangeResult.FromError(new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client authentication failed" })), null, null, null);
+            }
+
+            // A public client has no secret, so PKCE is its only proof (RFC 9700 2.1.1).
+            if (OidcClientValidator.IsPublicClient(client, GrantTypes.AuthCode) && string.IsNullOrWhiteSpace(authCode.CodeChallenge))
+            {
+                _logger.LogWarning("Public client code without PKCE refused, client {ClientId}", clientId);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE is required for public clients" })), null, null, null);
             }
 
             if (string.IsNullOrWhiteSpace(clientId)
@@ -306,6 +357,14 @@ namespace Authentication.DomainService.Authentication
             {
                 _logger.LogWarning("Redirect URI mismatch for code exchange");
                 return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Redirect URI mismatch" })), null, null, null);
+            }
+
+            // A code issued with a PKCE challenge can only be redeemed with its verifier; skipping the
+            // verifier must not skip the check (RFC 7636 4.6, RFC 9700 2.1.1).
+            if (!string.IsNullOrWhiteSpace(authCode.CodeChallenge) && string.IsNullOrWhiteSpace(codeVerifier))
+            {
+                _logger.LogWarning("PKCE code_verifier missing for client {ClientId}", clientId);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE code_verifier is required" })), null, null, null);
             }
 
             if (!string.IsNullOrWhiteSpace(codeVerifier))
@@ -333,9 +392,51 @@ namespace Authentication.DomainService.Authentication
                 }), null, null, null);
             }
 
+            // Last check before tokens are minted, so a code is only spent by a request that passed
+            // every other check. A second redemption of the same code is refused.
+            var consumed = await _authCodeRepo.TryConsumeAsync(authCode);
+            if (consumed != AuthorizationCodeConsumeResult.Consumed)
+            {
+                _logger.LogWarning("Authorization code reuse refused for client {ClientId}", clientId);
+                if (consumed == AuthorizationCodeConsumeResult.Reused)
+                {
+                    // Only the tokens minted from this code; other sessions of the user stay.
+                    var minted = await _authCodeRepo.MarkReusedAsync(authCode);
+                    if (minted != null)
+                    {
+                        await RevokeMintAsync(minted);
+                    }
+                }
+                return (OidcExchangeResult.FromError(InvalidCode()), null, null, null);
+            }
+
             var effectiveTenantId = authCode.TenantId ?? tenantId ?? "default";
             return (null, authCode, user, effectiveTenantId);
         }
+        private static BadRequestObjectResult InvalidCode() =>
+            new(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" });
+
+        /// <summary>
+        /// Revokes the refresh-token lineage (MongoDB + Redis refresh cache) and the access token's jti.
+        /// The access token itself still works at the APIs until it expires; only introspection sees it.
+        /// </summary>
+        private async Task RevokeMintAsync(AuthorizationCodeMint mint)
+        {
+            await _refreshTokenRepo.RevokeLineageAndEvictAsync(mint.LineageId, AuthorizationCodeReuseReason);
+            if (!string.IsNullOrWhiteSpace(mint.Jti))
+            {
+                await _tokenRevocationRepo.RevokeTokenAsync(mint.Jti, mint.UserId, AuthorizationCodeReuseReason, mint.AccessExpiresAt);
+            }
+        }
+
+        private static string ReadJti(string accessToken)
+        {
+            var handler = new JwtSecurityTokenHandler();
+            return !string.IsNullOrWhiteSpace(accessToken) && handler.CanReadToken(accessToken)
+                ? handler.ReadJwtToken(accessToken).Id
+                : string.Empty;
+        }
+
         private static bool AppendAccessAndRefreshTokenCookies(
             HttpResponse response,
             string tokenDomain,

@@ -11,8 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Security.Cryptography;
-using System.Text;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -95,7 +94,7 @@ namespace Authentication.DomainService.Authentication
                 return DeviceEndpointErrors.InvalidClient("client is not authorized for the device_code grant");
             }
 
-            if (RequiresClientAuthentication(client) && !SecretsMatch(clientSecret, client!.ClientSecret))
+            if (OidcClientValidator.RequiresClientAuthentication(client) && !OidcClientValidator.SecretsMatch(clientSecret, client!.ClientSecret))
             {
                 return DeviceEndpointErrors.InvalidClient("invalid client authentication");
             }
@@ -242,35 +241,6 @@ namespace Authentication.DomainService.Authentication
             return scope
                 .Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Any(s => string.Equals(s, "offline_access", StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static bool RequiresClientAuthentication(OidcClientRegistration? client)
-        {
-            if (client == null)
-            {
-                return false;
-            }
-
-            if (string.Equals(client.ClientType, "public", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            return !string.IsNullOrWhiteSpace(client.TokenEndpointAuthMethod)
-                && !string.Equals(client.TokenEndpointAuthMethod, "none", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool SecretsMatch(string? presentedSecret, string? registeredSecret)
-        {
-            if (string.IsNullOrEmpty(presentedSecret) || string.IsNullOrEmpty(registeredSecret))
-            {
-                return false;
-            }
-
-            var presented = Encoding.UTF8.GetBytes(presentedSecret);
-            var registered = Encoding.UTF8.GetBytes(registeredSecret);
-            return presented.Length == registered.Length
-                && CryptographicOperations.FixedTimeEquals(presented, registered);
         }
 
         private static string? ResolveTenantIdFromRequest(HttpRequest request)

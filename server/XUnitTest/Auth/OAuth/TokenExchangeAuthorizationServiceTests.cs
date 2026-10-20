@@ -16,6 +16,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -392,6 +393,24 @@ namespace XUnitTest.Auth.OAuth
 
             result.Error.Should().Be("invalid_request");
             result.ErrorDescription.Should().Contain("replay");
+            _cache.Verify(c => c.GetStringValueAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task NonceStoreFailure_ShouldFailClosed_WithTheSameCodeButItsOwnDescription()
+        {
+            _cacheDb
+                .Setup(db => db.StringSetAsync(
+                    It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<TimeSpan?>(),
+                    It.IsAny<bool>(), When.NotExists, It.IsAny<CommandFlags>()))
+                .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+
+            var result = await Create().AuthenticateAsync(Request(), new IdentityConfiguration());
+
+            result.Error.Should().Be("invalid_request");
+            result.StatusCode.Should().Be(400);
+            result.ErrorDescription.Should().Be("Nonce check unavailable");
+            result.ErrorDescription.Should().NotContain("replay");
             _cache.Verify(c => c.GetStringValueAsync(It.IsAny<string>()), Times.Never);
         }
 

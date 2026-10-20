@@ -313,5 +313,93 @@ namespace XUnitTest.ApiTests
             // A POST here is an API caller, not a browser — a 302 would be useless to it.
             result.Should().BeOfType<BadRequestObjectResult>();
         }
+    
+
+        // ---------- HandleOidcCallback JSON success mode ----------
+
+        private void SetupSuccessfulCallback()
+        {
+            _callbackHandler.Setup(h => h.HandleCallbackAsync("code", "state"))
+                .ReturnsAsync(new OidcCallbackResult
+                {
+                    IsSuccess = true,
+                    ClientId = "client",
+                    RedirectUri = "com.klaxai.app://login/callback",
+                    OriginalState = "state-1",
+                    TenantId = "tenant-1"
+                });
+            _flowService.Setup(f => f.AuthorizeAsync(
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>(),
+                    It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>()))
+                .ReturnsAsync(new OkObjectResult("authorized"));
+        }
+
+        private void VerifyReturnRedirectResponse(bool expected)
+        {
+            _flowService.Verify(f => f.AuthorizeAsync(
+                    "client", "code", "com.klaxai.app://login/callback", It.IsAny<string>(),
+                    "state-1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), "tenant-1", It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>(),
+                    It.IsAny<string>(), expected, It.IsAny<bool>()),
+                Times.Once);
+        }
+
+        [Theory]
+        [InlineData("application/json")]
+        [InlineData("application/json, text/plain, */*")]
+        public async Task HandleOidcCallback_GetAskingForJson_AuthorizesWithoutRedirect(string accept)
+        {
+            // H11: the SPA's app hand-off fetches the callback and needs { redirect_uri } back.
+            SetupSuccessfulCallback();
+            var httpContext = GetContext();
+            httpContext.Request.Headers.Accept = accept;
+
+            await CreateController(httpContext).HandleOidcCallbackGet("code", "state");
+
+            VerifyReturnRedirectResponse(false);
+        }
+
+        [Theory]
+        [InlineData("GET", null)]
+        [InlineData("GET", "text/html,application/xhtml+xml,*/*;q=0.8")]
+        [InlineData("POST", null)]
+        [InlineData("POST", "application/json")]
+        public async Task HandleOidcCallback_BrowserNavigationOrPost_StillAuthorizesWithRedirect(string method, string? accept)
+        {
+            // C14: only a GET that asks for JSON switches mode; everything else keeps the 302.
+            SetupSuccessfulCallback();
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Method = method;
+            if (accept != null)
+            {
+                httpContext.Request.Headers.Accept = accept;
+            }
+
+            await CreateController(httpContext).HandleOidcCallbackGet("code", "state");
+
+            VerifyReturnRedirectResponse(true);
+        }
+
+        [Fact]
+        public async Task HandleOidcCallback_GetAskingForJson_FailureBodyUnchanged()
+        {
+            _callbackHandler.Setup(h => h.HandleCallbackAsync("code", "state"))
+                .ReturnsAsync(SignupDisabledFailure());
+            var httpContext = GetContext();
+            httpContext.Request.Headers.Accept = "application/json";
+
+            var result = await CreateController(httpContext).HandleOidcCallbackGet("code", "state");
+
+            var body = result.Should().BeOfType<BadRequestObjectResult>().Subject.Value;
+            body.Should().BeEquivalentTo(new { error = "signup_disabled", error_description = "No account exists for this email" });
+            _flowService.Verify(f => f.AuthorizeAsync(
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>(),
+                    It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>()),
+                Times.Never);
+        }
     }
 }

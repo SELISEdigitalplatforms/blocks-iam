@@ -5,6 +5,7 @@ using Authentication.DomainService.Oidc.Repositories;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Shared.Services
 {

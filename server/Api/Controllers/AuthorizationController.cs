@@ -162,6 +162,13 @@ namespace Blocks.Api.Controllers
                 return BuildCallbackFailure(result);
             }
 
+            // A browser navigation still gets the 302. The SPA fetches this endpoint as JSON when
+            // the sign-in started from a mobile app login, so it can hand off to the app-scheme
+            // redirect itself; that GET receives the same URL as { redirect_uri } instead.
+            var returnRedirectResponse = !(HttpMethods.IsGet(Request.Method) &&
+                Request.Headers.Accept.Any(header =>
+                    header != null && header.Contains("application/json", StringComparison.OrdinalIgnoreCase)));
+
             return await _authorizationFlowService.AuthorizeAsync(
                 result.ClientId,
                 "code",
@@ -176,7 +183,7 @@ namespace Blocks.Api.Controllers
                 Request,
                 Response,
                 result.BlocksUserId,
-                true);
+                returnRedirectResponse);
         }
 
         /// <summary>

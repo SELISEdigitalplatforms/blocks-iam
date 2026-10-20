@@ -1,5 +1,6 @@
 ﻿using Blocks.Genesis;
 using FluentValidation;
+using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
@@ -14,6 +15,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Users
 {
@@ -153,6 +155,63 @@ namespace Iam.DomainService.Users
             {
                 IsSuccess = true,
                 ItemId = itemId
+            };
+        }
+
+        public async Task<BaseMutationResponse> CreateSignupUserWithoutOrganizationAsync(CreateUserRequest command)
+        {
+            ArgumentNullException.ThrowIfNull(command);
+            _logger.LogInformation("Signup user creation without organization start");
+
+            // The organization rule is the only one skipped: on a multi-org tenant it insists on an organization,
+            // and having none is the whole point of this path. Every other rule (email, password, names) applies.
+            var validationResult = await _createValidator.ValidateAsync(command);
+            var validationErrors = validationResult.Errors
+                .Where(x => x.PropertyName != nameof(CreateUserRequest.OrganizationId))
+                .ToList();
+            if (validationErrors.Count > 0)
+            {
+                _logger.LogInformation("Signup user creation without organization end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    Errors = validationErrors
+                        .GroupBy(x => x.PropertyName)
+                        .ToDictionary(g => g.Key, g => g.First().ErrorMessage)
+                };
+            }
+
+            // An account that appeared since the caller's own lookup is left exactly as it is: nothing is granted
+            // and no second document is written for the email.
+            var existingUser = await _userRepository.GetUserByEmailAsync(command.Email);
+            if (existingUser != null)
+            {
+                _logger.LogInformation("Signup user creation without organization end -- email already has an account; nothing changed");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = true,
+                    ItemId = existingUser.ItemId
+                };
+            }
+
+            // MapUser keys roles and permissions by OrganizationId and cannot take a null key, so it is given an
+            // empty one and the three membership collections are then cleared together.
+            command.OrganizationId = string.Empty;
+            command.Roles = [];
+            command.Permissions = [];
+
+            var user = MapUser(command);
+            user.OrganizationIds = [];
+            user.Roles = new Dictionary<string, List<string>>();
+            user.Permissions = new Dictionary<string, List<string>>();
+
+            await _userRepository.CreateUserAsync(user);
+            await SendEvent(user.ItemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail);
+
+            _logger.LogInformation("Signup user creation without organization end -- Success");
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = user.ItemId
             };
         }
 
@@ -1047,7 +1106,7 @@ namespace Iam.DomainService.Users
                 return false;
             }
 
-            await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
+            await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Activation, key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
             var emailPurpose = string.IsNullOrWhiteSpace(user.MailPurpose) ? "AccountActivation" : user.MailPurpose;
             var result = await _identityAccessManagementService.SendActivationToEmailAsync(user, accountActivationUri, emailPurpose);
@@ -1461,7 +1520,7 @@ namespace Iam.DomainService.Users
             var key = Guid.NewGuid().ToString("n");
             var expiresAtUtc = DateTime.UtcNow.AddMinutes(config.ActivationUrlLifetimeInMinutes);
 
-            await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
+            await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Activation, key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
             await _userRepository.InsertUserKeyMapAsync(new UserKeyMap
             {

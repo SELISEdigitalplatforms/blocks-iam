@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Authentication.DomainService.Shared.ResponseModel;
 using Authentication.DomainService.Shared.RequestModel;
 using Iam.DomainService.Dtos;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Services
 {
@@ -20,7 +21,6 @@ namespace Authentication.DomainService.Services
         Task<OidcUiTemplate?> GetOidcTemplateForManagementAsync();
         Task<SaveOidcUiTemplateResponse> SaveOidcUiTemplateRequestAsync(SaveOidcUiTemplateRequest request);
         Task<BaseResponse> DeleteOidcClientAsync(DeleteOIDCClientRequest request);
-        Task<BaseResponse> GenerateUserCodeByClientAsync(GenerateUserCodeRequest request);
         Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId);
         Task<GetOIDCClientsResponse> GetOidcClientsAsync();
         Task<SaveClientCredentialResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request);

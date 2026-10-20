@@ -4,6 +4,7 @@ using Iam.DomainService.Utilities;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Users
 {

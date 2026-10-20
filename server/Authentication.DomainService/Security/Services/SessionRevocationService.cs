@@ -7,6 +7,7 @@ using Blocks.Genesis;
 using Authentication.DomainService.Security.Models;
 using Authentication.DomainService.Security.Repositories;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Security.Services
 {

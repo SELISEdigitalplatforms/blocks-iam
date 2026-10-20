@@ -1,5 +1,6 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.RequestModel
 {

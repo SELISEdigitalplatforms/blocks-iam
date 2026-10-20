@@ -11,6 +11,7 @@ using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Iam.DomainService.Users;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {
@@ -45,7 +46,7 @@ namespace XUnitTest.IamTests.Resources
             InstallContext();
 
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
             _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
                 .ReturnsAsync(new GetOrganizationsResponse { IsSuccess = true, Organizations = [], TotalCount = 0 });

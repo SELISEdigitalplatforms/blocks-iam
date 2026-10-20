@@ -11,6 +11,7 @@ using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace XUnitTest.Auth;
@@ -39,6 +40,9 @@ public class PasswordCredentialVerifierTests
             JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = "", IssueDate = DateTime.UtcNow }
         });
         _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
+        _repo.Setup(r => r.TryReserveLoginAttemptAsync("u1", It.IsAny<int>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(new User { ItemId = "u1", FailedLoginCount = 1 });
+        _repo.Setup(r => r.ReleaseLoginAttemptAsync("u1", It.IsAny<DateTime>())).ReturnsAsync(true);
         _authDomain.Setup(a => a.GetVisitorsIpAddresses(It.IsAny<HttpContext>())).Returns(["10.0.0.1"]);
     }
 
@@ -115,9 +119,6 @@ public class PasswordCredentialVerifierTests
     [Fact]
     public async Task WrongPassword_Increments_AndReports401()
     {
-        _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync("u1", 5, 15, It.IsAny<DateTime>()))
-            .ReturnsAsync(new User { ItemId = "u1", FailedLoginCount = 1 });
-
         var result = await Sut().VerifyAsync(UserWith("Correct#1"), "nope", null, Request(), "t1");
 
         result.Succeeded.Should().BeFalse();
@@ -126,13 +127,18 @@ public class PasswordCredentialVerifierTests
         result.AccountLockedNow.Should().BeFalse();
         _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e => e.Event == "failed_login_invalid_password")), Times.Once);
         _account.Verify(a => a.SendAccountLockedNotificationAsync(It.IsAny<User>(), It.IsAny<DateTime>()), Times.Never);
+        _repo.Verify(r => r.TryReserveLoginAttemptAsync("u1", 5, It.IsAny<DateTime>()), Times.Once);
+        _repo.Verify(r => r.LockAccountIfLoginThresholdReachedAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+        _repo.Verify(r => r.ReleaseLoginAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
     }
 
     [Fact]
     public async Task WrongPasswordThatLocks_NotifiesTheUser_AndSaysSo()
     {
         var lockedUntil = DateTime.UtcNow.AddMinutes(15);
-        _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+        _repo.Setup(r => r.TryReserveLoginAttemptAsync("u1", 5, It.IsAny<DateTime>()))
+            .ReturnsAsync(new User { ItemId = "u1", FailedLoginCount = 5 });
+        _repo.Setup(r => r.LockAccountIfLoginThresholdReachedAsync("u1", 5, 15, It.IsAny<DateTime>()))
             .ReturnsAsync(new User { ItemId = "u1", LockoutUntilUtc = lockedUntil });
 
         var result = await Sut().VerifyAsync(UserWith("Correct#1"), "nope", null, Request(), "t1");
@@ -145,7 +151,9 @@ public class PasswordCredentialVerifierTests
     [Fact]
     public async Task LockNotificationFailure_DoesNotChangeTheOutcome()
     {
-        _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+        _repo.Setup(r => r.TryReserveLoginAttemptAsync("u1", It.IsAny<int>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(new User { ItemId = "u1", FailedLoginCount = 5 });
+        _repo.Setup(r => r.LockAccountIfLoginThresholdReachedAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
             .ReturnsAsync(new User { ItemId = "u1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15) });
         _account.Setup(a => a.SendAccountLockedNotificationAsync(It.IsAny<User>(), It.IsAny<DateTime>()))
             .ThrowsAsync(new InvalidOperationException("smtp down"));
@@ -166,8 +174,43 @@ public class PasswordCredentialVerifierTests
 
         result.StatusCode.Should().Be(423);
         result.Error.Should().Be("account_locked");
-        _repo.Verify(r => r.IncrementFailedLoginAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+        _repo.Verify(r => r.TryReserveLoginAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
         _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e => e.Event == "failed_login_account_locked")), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReservationRefused_Is423_WithoutCheckingThePassword()
+    {
+        // The stale copy says unlocked, but parallel attempts already took every slot.
+        _repo.Setup(r => r.TryReserveLoginAttemptAsync("u1", It.IsAny<int>(), It.IsAny<DateTime>())).ReturnsAsync((User?)null);
+
+        var result = await Sut().VerifyAsync(UserWith("Correct#1"), "Correct#1", null, Request(), "t1");
+
+        result.StatusCode.Should().Be(423);
+        result.Error.Should().Be("account_locked");
+        _repo.Verify(r => r.ReleaseLoginAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
+        _repo.Verify(r => r.LockAccountIfLoginThresholdReachedAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CorrectPassword_ButLockedMeanwhile_Is423_NotSuccess()
+    {
+        _repo.Setup(r => r.ReleaseLoginAttemptAsync("u1", It.IsAny<DateTime>())).ReturnsAsync(false);
+
+        var result = await Sut().VerifyAsync(UserWith("Correct#1"), "Correct#1", null, Request(), "t1");
+
+        result.Succeeded.Should().BeFalse();
+        result.StatusCode.Should().Be(423);
+    }
+
+    [Fact]
+    public async Task CorrectPassword_GivesTheReservationBack()
+    {
+        var result = await Sut().VerifyAsync(UserWith("Correct#1"), "Correct#1", null, Request(), "t1");
+
+        result.Succeeded.Should().BeTrue();
+        _repo.Verify(r => r.TryReserveLoginAttemptAsync("u1", 5, It.IsAny<DateTime>()), Times.Once);
+        _repo.Verify(r => r.ReleaseLoginAttemptAsync("u1", It.IsAny<DateTime>()), Times.Once);
     }
 
     [Fact]
@@ -191,7 +234,7 @@ public class PasswordCredentialVerifierTests
         result.Error.Should().Be("captcha_enabled");
         result.CaptchaRequired.Should().BeTrue();
         result.CaptchaSiteKey.Should().Be("site-key");
-        _repo.Verify(r => r.IncrementFailedLoginAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+        _repo.Verify(r => r.TryReserveLoginAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
     }
 
     [Fact]

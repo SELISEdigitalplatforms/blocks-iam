@@ -15,6 +15,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using System.Text.Json;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Users
 {
@@ -191,7 +192,7 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext();
             _iam.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ThrowsAsync(new InvalidOperationException("the repository must not be reached"));
@@ -214,7 +215,7 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext();
             _iam.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = false });
             UserListScope? captured = null;
             _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))

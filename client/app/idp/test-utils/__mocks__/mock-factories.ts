@@ -123,8 +123,6 @@ export const mockSecurityServiceFactory = () => ({
     revokeSession: vi.fn(),
     revokeRefreshToken: vi.fn(),
     getActivities: vi.fn(),
-    getPats: vi.fn(),
-    generatePats: vi.fn(),
   },
 });
 

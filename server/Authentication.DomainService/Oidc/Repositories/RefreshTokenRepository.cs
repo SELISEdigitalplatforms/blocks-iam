@@ -1,9 +1,11 @@
 using MongoDB.Driver;
 using Blocks.Genesis;
+using Iam.DomainService.Services;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -12,15 +14,18 @@ namespace Authentication.DomainService.Oidc.Repositories
         private readonly IDbContextProvider _dbContextProvider;
         private readonly ICacheClient _cacheClient;
         private readonly ILogger<RefreshTokenRepository> _logger;
+        private readonly IIamDataAccess _dataAccess;
 
         public RefreshTokenRepository(
             IDbContextProvider dbContextProvider,
             ICacheClient cacheClient,
-            ILogger<RefreshTokenRepository> logger)
+            ILogger<RefreshTokenRepository> logger,
+            IIamDataAccess dataAccess)
         {
             _dbContextProvider = dbContextProvider;
             _cacheClient = cacheClient;
             _logger = logger;
+            _dataAccess = dataAccess;
         }
 
         private IMongoDatabase GetDatabase() =>
@@ -52,7 +57,7 @@ namespace Authentication.DomainService.Oidc.Repositories
             }
 
             var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
-            await collection.InsertOneAsync(token);
+            await _dataAccess.InsertOneAsync(collection, IamSchemas.RefreshTokenModel, token, "RefreshTokenRepository.CreateAsync");
             _logger.LogInformation("Refresh token created for user {UserId}, client {ClientId}, session {SessionId}", token.UserId, token.ClientId, token.SessionId);
             return token.TokenId;
         }
@@ -66,7 +71,7 @@ namespace Authentication.DomainService.Oidc.Repositories
 
             var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
             var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
-            return await collection.Find(filter).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.RefreshTokenModel, filter, "RefreshTokenRepository.GetByTokenIdAsync");
         }
 
         public async Task<IReadOnlyList<RefreshTokenModel>> GetBySessionIdAsync(string sessionId)
@@ -78,7 +83,7 @@ namespace Authentication.DomainService.Oidc.Repositories
 
             var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
             var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.SessionId, sessionId);
-            return await collection.Find(filter).ToListAsync();
+            return await _dataAccess.FindListAsync(collection, IamSchemas.RefreshTokenModel, filter, "RefreshTokenRepository.GetBySessionIdAsync");
         }
 
         public async Task<IReadOnlyList<RefreshTokenModel>> GetActiveTokensBySessionIdAsync(string sessionId)
@@ -96,7 +101,9 @@ namespace Authentication.DomainService.Oidc.Repositories
                 Builders<RefreshTokenModel>.Filter.Gt(t => t.AbsoluteExpiry, now),
                 Builders<RefreshTokenModel>.Filter.Gt(t => t.SlidingExpiry, now)
             );
-            return await collection.Find(filter)
+            var scope = await _dataAccess.ReadAsync(IamSchemas.RefreshTokenModel, filter, "RefreshTokenRepository.GetActiveTokensBySessionIdAsync", useProjection: false);
+            if (!scope.Granted) return Array.Empty<RefreshTokenModel>();
+            return await scope.Apply(collection)
                 .SortByDescending(t => t.IssuedUtc)
                 .ToListAsync();
         }
@@ -118,7 +125,7 @@ namespace Authentication.DomainService.Oidc.Repositories
             );
 
             var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
-            return await collection.Find(filter).ToListAsync();
+            return await _dataAccess.FindListAsync(collection, IamSchemas.RefreshTokenModel, filter, "RefreshTokenRepository.GetActiveTokensByUserAsync");
         }
 
         public async Task<IEnumerable<RefreshTokenModel>> GetRotationHistoryAsync(string sessionId)
@@ -130,7 +137,9 @@ namespace Authentication.DomainService.Oidc.Repositories
 
             var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
             var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.SessionId, sessionId);
-            return await collection.Find(filter)
+            var scope = await _dataAccess.ReadAsync(IamSchemas.RefreshTokenModel, filter, "RefreshTokenRepository.GetRotationHistoryAsync", useProjection: false);
+            if (!scope.Granted) return [];
+            return await scope.Apply(collection)
                 .SortBy(t => t.AbsoluteExpiry)
                 .ToListAsync();
         }
@@ -142,7 +151,7 @@ namespace Authentication.DomainService.Oidc.Repositories
                 Builders<RefreshTokenModel>.Filter.Eq(t => t.UserId, userId),
                 Builders<RefreshTokenModel>.Filter.Eq(t => t.TenantId, tenantId)
             );
-            return await collection.Find(filter).ToListAsync();
+            return await _dataAccess.FindListAsync(collection, IamSchemas.RefreshTokenModel, filter, "RefreshTokenRepository.GetByUserAsync");
         }
 
         public async Task<bool> RevokeByTokenIdAsync(string tokenId, string reason, string? supersededByTokenId = null)
@@ -166,8 +175,8 @@ namespace Authentication.DomainService.Oidc.Repositories
                 update = update.Set(t => t.SupersededByTokenId, supersededByTokenId);
             }
 
-            var result = await collection.UpdateOneAsync(filter, update);
-            return result.ModifiedCount > 0;
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.RefreshTokenModel, filter, update, "RefreshTokenRepository.RevokeByTokenIdAsync");
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<int> RevokeAllByRefreshTokenSessionIdAsync(string refreshTokenSessionId, string reason)
@@ -197,8 +206,43 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Set(t => t.RevokeReason, reason)
                 .Set(t => t.RevokedAt, DateTime.UtcNow);
 
-            var result = await collection.UpdateManyAsync(filter, update);
-            return (int)result.ModifiedCount;
+            var result = await _dataAccess.UpdateManyAsync(collection, IamSchemas.RefreshTokenModel, filter, update, "RefreshTokenRepository.RevokeAllByRefreshTokenSessionIdAsync");
+            return (int)(result?.ModifiedCount ?? 0);
+        }
+
+        public async Task<int> RevokeLineageAndEvictAsync(string refreshTokenSessionId, string reason)
+        {
+            if (string.IsNullOrWhiteSpace(refreshTokenSessionId))
+            {
+                return 0;
+            }
+
+            var revoked = await RevokeAllByRefreshTokenSessionIdAsync(refreshTokenSessionId, reason);
+
+            // Every refresh token is cached from the moment it is made, and a cache hit is not checked
+            // against IsRevoked, so the revoke only stops the lineage once its keys are gone. All tokens
+            // of the lineage, revoked or not: that covers a token rotated since the mint.
+            var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+            var b = Builders<RefreshTokenModel>.Filter;
+            var lineage = b.Or(
+                b.Eq(t => t.RefreshTokenSessionId, refreshTokenSessionId),
+                b.And(
+                    b.Eq(t => t.TokenId, refreshTokenSessionId),
+                    b.Or(
+                        b.Eq(t => t.RefreshTokenSessionId, null),
+                        b.Exists(t => t.RefreshTokenSessionId, false))));
+            // Own projection (t.TokenId): only the row filter is applied, not the resolver projection.
+            var lineageScope = await _dataAccess.ReadAsync(IamSchemas.RefreshTokenModel, lineage, "RefreshTokenRepository.RevokeLineageAndEvictAsync", useProjection: false);
+            var tokenIds = lineageScope.Granted
+                ? await collection.Find(lineageScope.Filter).Project(t => t.TokenId).ToListAsync()
+                : [];
+
+            foreach (var tokenId in tokenIds.Where(id => !string.IsNullOrWhiteSpace(id)))
+            {
+                await _cacheClient.RemoveKeyAsync(tokenId);
+            }
+
+            return revoked;
         }
 
         public async Task<int> RevokeSupersededLoginLineagesAsync(
@@ -230,7 +274,7 @@ namespace Authentication.DomainService.Oidc.Repositories
                 b.Ne(t => t.RefreshTokenSessionId, exceptRefreshTokenSessionId),
                 b.Ne(t => t.TokenId, exceptRefreshTokenSessionId));
 
-            var candidates = await collection.Find(filter).ToListAsync();
+            var candidates = await _dataAccess.FindListAsync(collection, IamSchemas.RefreshTokenModel, filter, "RefreshTokenRepository.RevokeSupersededLoginLineagesAsync");
             if (candidates.Count == 0)
             {
                 return 0;
@@ -251,11 +295,14 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Set(t => t.RevokeReason, reason)
                 .Set(t => t.RevokedAt, DateTime.UtcNow);
 
-            var result = await collection.UpdateManyAsync(
+            var result = await _dataAccess.UpdateManyAsync(
+                collection,
+                IamSchemas.RefreshTokenModel,
                 Builders<RefreshTokenModel>.Filter.In(t => t.TokenId, tokenIds),
-                update);
+                update,
+                "RefreshTokenRepository.RevokeSupersededLoginLineagesAsync.Revoke");
 
-            return (int)result.ModifiedCount;
+            return (int)(result?.ModifiedCount ?? 0);
         }
 
         public async Task<int> RevokeAllByTokenIdsAsync(IEnumerable<string> tokenIds, string reason)
@@ -273,8 +320,8 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Set(t => t.RevokeReason, reason)
                 .Set(t => t.RevokedAt, DateTime.UtcNow);
 
-            var result = await collection.UpdateManyAsync(filter, update);
-            return (int)result.ModifiedCount;
+            var result = await _dataAccess.UpdateManyAsync(collection, IamSchemas.RefreshTokenModel, filter, update, "RefreshTokenRepository.RevokeAllByTokenIdsAsync");
+            return (int)(result?.ModifiedCount ?? 0);
         }
 
         public async Task<int> RevokeAllBySessionIdAsync(string sessionId, string reason)
@@ -294,8 +341,8 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Set(t => t.RevokeReason, reason)
                 .Set(t => t.RevokedAt, DateTime.UtcNow);
 
-            var result = await collection.UpdateManyAsync(filter, update);
-            return (int)result.ModifiedCount;
+            var result = await _dataAccess.UpdateManyAsync(collection, IamSchemas.RefreshTokenModel, filter, update, "RefreshTokenRepository.RevokeAllBySessionIdAsync");
+            return (int)(result?.ModifiedCount ?? 0);
         }
 
         public async Task<int> ReassignSessionAsync(string fromSessionId, string toSessionId)
@@ -314,8 +361,8 @@ namespace Authentication.DomainService.Oidc.Repositories
             );
             var update = Builders<RefreshTokenModel>.Update.Set(t => t.SessionId, toSessionId);
 
-            var result = await collection.UpdateManyAsync(filter, update);
-            return (int)result.ModifiedCount;
+            var result = await _dataAccess.UpdateManyAsync(collection, IamSchemas.RefreshTokenModel, filter, update, "RefreshTokenRepository.ReassignSessionAsync");
+            return (int)(result?.ModifiedCount ?? 0);
         }
 
         public async Task<bool> DeleteAsync(string tokenId)
@@ -326,15 +373,15 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Set(t => t.IsRevoked, true)
                 .Set(t => t.RevokedAt, DateTime.UtcNow);
 
-            var result = await collection.UpdateOneAsync(filter, update);
-            return result.ModifiedCount > 0;
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.RefreshTokenModel, filter, update, "RefreshTokenRepository.DeleteAsync");
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<IEnumerable<RefreshTokenModel>> GetExpiredAsync()
         {
             var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
             var filter = Builders<RefreshTokenModel>.Filter.Lt(t => t.AbsoluteExpiry, DateTime.UtcNow);
-            return await collection.Find(filter).ToListAsync();
+            return await _dataAccess.FindListAsync(collection, IamSchemas.RefreshTokenModel, filter, "RefreshTokenRepository.GetExpiredAsync");
         }
     }
 }

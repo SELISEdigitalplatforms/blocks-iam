@@ -1,6 +1,7 @@
 ﻿using Iam.DomainService.Entities;
 using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Shared.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Resources
 {
@@ -39,9 +40,9 @@ namespace Iam.DomainService.Resources
         Task SaveOrganizationAsync(Organization organization);
         Task DeleteOrganizationAsync(string organizationId);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
-        Task SaveOrganizationConfig(TenantConfiguration tenantConfiguration);
+        Task SaveOrganizationConfig(IamTenantConfiguration tenantConfiguration);
         Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync(string? orgainzationId = null);
-        Task<TenantConfiguration> GetTenantConfigurationAsync();
+        Task<IamTenantConfiguration> GetTenantConfigurationAsync();
         Task<List<Role>> GetRolesBySlugAndOrgAsync(List<string> slugs, string organizationId);
         Task<bool> InsertRolesAsync(List<Role> roles);
         Task<bool> UpdateAllSamePermissionAsync(Permission permission);

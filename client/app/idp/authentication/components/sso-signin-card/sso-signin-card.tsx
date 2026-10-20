@@ -8,9 +8,11 @@ import { useTheme } from "@/hooks/use-theme";
 import { useCallback, useMemo } from "react";
 import { sanitizeProviderUrl } from "@blocks-idp/authentication/utils/sanitize-provider-url.util";
 import {
+  OIDC_APP_HANDOFF_STORAGE_KEY,
   OIDC_DEVICE_RETURN_URL_STORAGE_KEY,
 } from "@blocks-idp/authentication/utils/oidc-utils";
 import { getRuntimeEnv } from "@/lib/runtime-env";
+import { isAppRedirectUrl } from "@/lib/utils";
 
 type SSOSigninCardProps = {
   providerConfig: ISsoProviderConfigurationWithMeta;
@@ -30,6 +32,20 @@ type SSOSigninCardProps = {
     // verification page to send the browser back to once the provider returns.
     returnUrl?: string;
   };
+};
+
+/**
+ * A native-app login cannot be finished by navigating the callback page to the backend
+ * (the backend's 302 to a custom scheme leaves a blank page), so mark it for the
+ * callback page to fetch the result as JSON and show the hand-off instead. Any other
+ * login clears the marker, so a stale one never changes it.
+ */
+const updateAppHandoffMarker = (redirectUri: string | undefined) => {
+  if (isAppRedirectUrl(redirectUri ?? "")) {
+    sessionStorage.setItem(OIDC_APP_HANDOFF_STORAGE_KEY, "1");
+  } else {
+    sessionStorage.removeItem(OIDC_APP_HANDOFF_STORAGE_KEY);
+  }
 };
 
 export const SSOSigninCard = ({
@@ -74,6 +90,7 @@ export const SSOSigninCard = ({
             oidcContext.returnUrl,
           );
         }
+        updateAppHandoffMarker(oidcContext.redirectUri);
         window.location.href = sanitizeProviderUrl(res.authorizationUrl);
         return;
       }

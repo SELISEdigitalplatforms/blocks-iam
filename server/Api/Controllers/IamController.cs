@@ -106,7 +106,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("permissions/by-severity")]
-        [Authorize]
+        [ProtectedEndPoint("blocks-iam::iam::permissions")]
         public async Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverity()
         {
             return await _resourceQueryService.GetPermissionsGroupBySeverityAsync();
@@ -483,7 +483,8 @@ namespace Api.Controllers
         [Authorize]
         public async Task<Dictionary<string, object>> GetAdminOrganizationConfig()
         {
-            return await _resourceMutationService.GetOrganizationConfigAsync();
+            // The admin read alone carries the sign-up auto-join target; the anonymous read above must never.
+            return await _resourceMutationService.GetAdminOrganizationConfigAsync();
         }
 
         [HttpPost("signup-settings")]

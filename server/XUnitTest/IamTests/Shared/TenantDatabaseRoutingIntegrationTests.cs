@@ -14,6 +14,7 @@ using Mfa.DomainService.TOTP;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Shared;
 
@@ -39,14 +40,14 @@ public class TenantDatabaseRoutingIntegrationTests
         }
         using var activity = new ActivitySource(nameof(TenantDatabaseRoutingIntegrationTests));
         var provider = new MongoDbContextProvider(NullLogger<MongoDbContextProvider>.Instance, tenants.Object, activity);
-        var identity = new IdentityAccessManagementRepository(provider, secret, NullLogger<IdentityAccessManagementRepository>.Instance);
-        var users = new UserRepository(identity);
+        var identity = new IdentityAccessManagementRepository(provider, secret, NullLogger<IdentityAccessManagementRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
+        var users = new UserRepository(identity, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
         var authentication = new AuthenticationRepository(provider,
-            new OidcDiscoveryClient(Mock.Of<IHttpClientFactory>()), Mock.Of<IKeyValueStore>());
-        var mfa = new MfaManagementRepository(provider);
-        var refresh = new RefreshTokenRepository(provider, Mock.Of<ICacheClient>(), NullLogger<RefreshTokenRepository>.Instance);
-        var sessions = new IdpSessionRepository(provider, NullLogger<IdpSessionRepository>.Instance);
-        var security = new SecurityRepository(provider);
+            new OidcDiscoveryClient(Mock.Of<IHttpClientFactory>()), Mock.Of<IKeyValueStore>(), new XUnitTest.TestDoubles.PassThroughIamDataAccess());
+        var mfa = new MfaManagementRepository(provider, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
+        var refresh = new RefreshTokenRepository(provider, Mock.Of<ICacheClient>(), NullLogger<RefreshTokenRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
+        var sessions = new IdpSessionRepository(provider, NullLogger<IdpSessionRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
+        var security = new SecurityRepository(provider, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
         var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {

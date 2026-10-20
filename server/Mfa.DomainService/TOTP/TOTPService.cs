@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using DomainService.Storage;
 using FluentValidation;
 using Mfa.DomainService.Entities;
@@ -9,11 +9,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OtpNet;
 using QRCoder;
+using StackExchange.Redis;
 using Storage.DomainService.Enums;
 using StorageDriver;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Mfa.DomainService.TOTP
 {
@@ -30,6 +32,10 @@ namespace Mfa.DomainService.TOTP
         private HttpClient _httpClient;
 
         private const long DefaultTotpLoginSession = 15 * 60;
+
+        // How long a used time-step is remembered. Covers the accepted drift window (the current
+        // step plus the previous one = 60s) with margin.
+        private static readonly TimeSpan UsedTimeStepLifetime = TimeSpan.FromSeconds(120);
 
         public TotpService(IMfaManagementRepository repository,
                            ILogger<TotpService> logger,
@@ -236,6 +242,24 @@ namespace Mfa.DomainService.TOTP
             var key = Base32Encoding.ToBytes(tOTPInfo.Secret);
             var tOTP = new Totp(key);
             bool isValid = tOTP.VerifyTotp(request.VerificationCode ?? string.Empty, out long timeStepMatched, VerificationWindow.RfcSpecifiedNetworkDelay);
+
+            if (isValid)
+            {
+                // Single use. Deleting the login session is the atomic gate: of any number of
+                // parallel submits with the same mfa_id, only the one that really deleted the key
+                // may continue.
+                if (!await _cacheClient.RemoveKeyAsync(request.MfaId ?? string.Empty))
+                {
+                    isValid = false;
+                }
+                // A time-step is single use per user: the same code (or the same step) cannot be
+                // replayed under a new mfa_id. SET NX is atomic, so parallel submits race safely.
+                else if (!await _cacheClient.CacheDatabase().StringSetAsync(
+                    $"totp:used:{tOTPInfo.CreatedBy}:{timeStepMatched}", "1", UsedTimeStepLifetime, When.NotExists))
+                {
+                    isValid = false;
+                }
+            }
 
             return new OtpVerificationResponse { IsSuccess = true, IsValid = isValid, UserId = tOTPInfo.CreatedBy };
         }

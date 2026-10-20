@@ -37,6 +37,15 @@ export const DEFAULT_OIDC_UI_TEMPLATE: IOidcUiTemplate = {
   },
 };
 
+// Built-in copy for the sign-up page's join-or-create choice. Deliberately not part of
+// IOidcUiTemplate: these labels are not tenant-editable.
+export const SIGNUP_ORGANIZATION_CHOICE_COPY = {
+  legend: "How would you like to start?",
+  joinOption: "Join this project's organization",
+  createOption: "Create my own organization",
+  unavailableMessage: "This project's organization isn't available right now.",
+} as const;
+
 // A stored template saved before a field existed comes back with that field as null (the
 // server serializes unset string? properties), so null falls back to the default like undefined.
 const mergeDefaults = (defaults: unknown, value: unknown): unknown => {

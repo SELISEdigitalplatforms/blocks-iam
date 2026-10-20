@@ -99,6 +99,34 @@ describe("AuthService", () => {
 
       await expect(service.signupByEmail(mockSignupPayload)).rejects.toThrow("Network error");
     });
+
+    it("H14: drops a false creation flag and its name from the request (Join)", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSignupResponse);
+
+      await service.signupByEmail({
+        ...mockSignupPayload,
+        createOrganizationDuringSignup: false,
+        organizationName: "Typed Then Switched To Join",
+      });
+
+      const body = vi.mocked(http.post).mock.calls[0][1] as Record<string, unknown>;
+      expect(body).not.toHaveProperty("createOrganizationDuringSignup");
+      expect(body).not.toHaveProperty("organizationName");
+    });
+
+    it("H14: sends the creation flag with the name (Create)", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSignupResponse);
+
+      await service.signupByEmail({
+        ...mockSignupPayload,
+        createOrganizationDuringSignup: true,
+        organizationName: "AJ Org 2",
+      });
+
+      expect(vi.mocked(http.post).mock.calls[0][1]).toEqual(
+        expect.objectContaining({ createOrganizationDuringSignup: true, organizationName: "AJ Org 2" }),
+      );
+    });
   });
 
   // ─── logout ─────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Users
 {
@@ -35,7 +36,7 @@ namespace XUnitTest.IamTests.Users
             _configRepo.Setup(c => c.GetConfigurationAsync())
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = string.Empty });
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = false });
         }
 
         public void Dispose()
@@ -202,7 +203,7 @@ namespace XUnitTest.IamTests.Users
         public async Task MultiOrgEnabled_NonExistingOrg_Fails()
         {
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _resourceRepo.Setup(r => r.GetOrganizationById("org-x")).ReturnsAsync((Organization?)null!);
             var req = ValidRequest();
             req.OrganizationId = "org-x";
@@ -214,7 +215,7 @@ namespace XUnitTest.IamTests.Users
         public async Task MultiOrgEnabled_DefaultOrg_Passes()
         {
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             var req = ValidRequest();
             req.OrganizationId = "default";
             var result = await Create().TestValidateAsync(req);
@@ -225,7 +226,7 @@ namespace XUnitTest.IamTests.Users
         public async Task MultiOrgEnabled_ExistingOrg_Passes()
         {
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _resourceRepo.Setup(r => r.GetOrganizationById("org-1"))
                 .ReturnsAsync(new Organization { ItemId = "org-1", Name = "Org One" });
             var req = ValidRequest();

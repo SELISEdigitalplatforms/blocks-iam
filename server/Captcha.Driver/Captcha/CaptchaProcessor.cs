@@ -9,7 +9,7 @@ namespace Blocks.CaptchaDriver;
 /// </summary>
 public sealed class CaptchaProcessor : ICaptchaProcessor
 {
-    private const string VerificationCodeCacheKeyPrefix = "captcha:vc:";
+    internal const string VerificationCodeCacheKeyPrefix = "captcha:vc:";
 
     private readonly ICacheClient _cache;
     private readonly ICaptchaVerificationServiceProvider _captchaVerificationServiceProvider;

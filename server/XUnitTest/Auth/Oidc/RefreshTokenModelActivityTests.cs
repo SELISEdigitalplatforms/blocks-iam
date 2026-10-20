@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Oidc
 {

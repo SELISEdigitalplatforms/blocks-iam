@@ -15,6 +15,7 @@ using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 using System.Text.Json; // required by other files
 
 namespace Authentication.DomainService.Authentication

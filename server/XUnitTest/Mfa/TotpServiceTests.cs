@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using StorageDriver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Mfa
 {

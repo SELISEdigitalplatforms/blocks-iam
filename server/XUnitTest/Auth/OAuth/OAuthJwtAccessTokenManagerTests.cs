@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using System.IdentityModel.Tokens.Jwt;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -53,7 +54,7 @@ namespace XUnitTest.Auth.OAuth
             _authDomain.Setup(a => a.GetVisitorsIpAddresses(It.IsAny<HttpContext>())).Returns(new List<string> { "1.1.1.1" });
             _idpSession.Setup(s => s.ResolveOrCreateAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync("session-1");
-            _refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>())).ReturnsAsync("id");
+            _refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>())).ReturnsAsync("id");
             _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
             _userRepository.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(new User { ItemId = "u1" });
         }
@@ -161,7 +162,7 @@ namespace XUnitTest.Auth.OAuth
             token.Should().Be("B");
             cookieExpiry.Should().Be(cap);
             // A replay must not consume another rotation.
-            _refreshRepo.Verify(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()), Times.Never);
+            _refreshRepo.Verify(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()), Times.Never);
             _refreshRepo.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
@@ -169,7 +170,7 @@ namespace XUnitTest.Auth.OAuth
         public async Task ManageRefreshToken_RotationWithUnresolvablePredecessor_ReturnsEmptyToken()
         {
             _cache.Setup(c => c.GetStringValueAsync("ghost")).ReturnsAsync((string)null!);
-            _refreshRepo.Setup(r => r.GetByTokenIdAsync("ghost")).ReturnsAsync((Idp.DomainService.Oidc.Contracts.RefreshTokenModel)null!);
+            _refreshRepo.Setup(r => r.GetByTokenIdAsync("ghost")).ReturnsAsync((Blocks.Genesis.Entities.Iam.RefreshTokenModel)null!);
 
             var request = MakeRequest(GrantTypes.RefreshToken);
             request.RefreshToken = "ghost";
@@ -182,7 +183,7 @@ namespace XUnitTest.Auth.OAuth
                 new User { ItemId = "u1" });
 
             token.Should().BeEmpty();
-            _refreshRepo.Verify(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()), Times.Never);
+            _refreshRepo.Verify(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()), Times.Never);
         }
 
         // ---------- CreateJwtAccessToken (static) ----------
@@ -336,7 +337,7 @@ namespace XUnitTest.Auth.OAuth
             token.Should().NotBeNullOrWhiteSpace();
             expiry.Should().BeAfter(DateTime.UtcNow);
             // Initial issue path persists the refresh token model and increments login info.
-            _refreshRepo.Verify(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()), Times.Once);
+            _refreshRepo.Verify(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()), Times.Once);
             _userRepository.Verify(r => r.RecordSuccessfulLoginAsync("u1", It.IsAny<string>(), It.IsAny<DateTime>()), Times.Once);
         }
 
