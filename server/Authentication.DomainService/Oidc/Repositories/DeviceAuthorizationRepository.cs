@@ -86,6 +86,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         public async Task CreateAsync(DeviceAuthorizationRequestModel entity, CancellationToken ct = default)
         {
             await _dataAccess.EnsureInsertAllowedAsync(IamSchemas.DeviceAuthorizationRequestModel, "DeviceAuthorizationRepository.CreateAsync");
+            await _dataAccess.PrepareWriteAsync(IamSchemas.DeviceAuthorizationRequestModel, entity, isInsert: true, "DeviceAuthorizationRepository.CreateAsync");
             await Collection().InsertOneAsync(entity, cancellationToken: ct);
             _logger.LogInformation("Device authorization request persisted {Id} for client {ClientId}", entity.Id, entity.ClientId);
         }

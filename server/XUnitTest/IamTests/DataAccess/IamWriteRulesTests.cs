@@ -77,6 +77,47 @@ public class IamWriteRulesTests : IDisposable
     }
 
     [Fact]
+    public async Task Insert_AddsTheRequesterToReadUpdateAndDeleteUserIds_KeepingIdsAlreadyThere()
+    {
+        Resolves();
+        var record = new Role { ItemId = "r1", Name = "Editors" };
+        record.Read = new OperationAccess { UserIds = ["user-9"], Roles = ["admin"] };
+        record.Update = new OperationAccess { UserIds = ["user-1"] };
+
+        await _sut.PrepareWriteAsync(IamSchemas.Role, record, isInsert: true, "test");
+
+        record.Read!.UserIds.Should().Equal("user-9", "user-1");
+        record.Read.Roles.Should().Equal("admin");
+        record.Update!.UserIds.Should().Equal("user-1");   // once
+        record.Delete!.UserIds.Should().Equal("user-1");
+        record.Create.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Insert_OnASchemaWithoutRules_StillAddsTheRequester()
+    {
+        var record = new Role { ItemId = "r1", Name = "Editors" };
+
+        await _sut.PrepareWriteAsync("RefreshTokenModel", record, isInsert: true, "test");
+
+        record.Read!.UserIds.Should().Equal("user-1");
+    }
+
+    [Fact]
+    public async Task AReplace_OrAnInsertWithoutASignedInUser_AddsNoRequester()
+    {
+        Resolves();
+        var replaced = new Role { ItemId = "r1", Name = "Editors" };
+        await _sut.PrepareWriteAsync(IamSchemas.Role, replaced, isInsert: false, "test");
+        replaced.Read.Should().BeNull();
+
+        SetContext(authenticated: false);
+        var anonymous = new Role { ItemId = "r1", Name = "Editors" };
+        await _sut.PrepareWriteAsync(IamSchemas.Role, anonymous, isInsert: true, "test");
+        anonymous.Read.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ABrokenRule_Throws_WithThePropertyAndMessage()
     {
         Resolves(validation: Failed("FirstName", "FirstName must be at most 5 characters"));

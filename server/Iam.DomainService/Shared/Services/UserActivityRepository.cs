@@ -29,6 +29,7 @@ namespace Iam.DomainService.Services
         {
             var collection = GetCollection<UserActivity>();
             await _dataAccess.EnsureInsertAllowedAsync(IamSchemas.UserActivity, "UserActivityRepository.InsertAsync");
+            await _dataAccess.PrepareWriteAsync(IamSchemas.UserActivity, activity, isInsert: true, "UserActivityRepository.InsertAsync");
             try
             {
                 await collection.InsertOneAsync(activity, cancellationToken: ct);

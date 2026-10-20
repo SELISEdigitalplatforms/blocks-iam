@@ -15,7 +15,8 @@ namespace Iam.DomainService.Services;
 /// row filter + projection only (no column masking), missing schema = log and allow,
 /// no user context or another tenant's DB = <see cref="ShouldSkipResolver"/>.
 /// Writes also get the schema's default values and validation rules (only what the Genesis
-/// allow-list opens), on the same skip path.
+/// allow-list opens), on the same skip path. On insert the requester's user id joins the
+/// record's Read, Update and Delete UserIds.
 /// </summary>
 public sealed class IamDataAccess : IIamDataAccess
 {
@@ -80,18 +81,24 @@ public sealed class IamDataAccess : IIamDataAccess
     public async Task<T> PrepareWriteAsync<T>(string schema, T entity, bool isInsert, string callSite, string? tenantId = null)
     {
         ArgumentNullException.ThrowIfNull(entity);
-        if (!TakesRules(schema) || ShouldSkipResolver(callSite, tenantId))
+        if (ShouldSkipResolver(callSite, tenantId))
             return entity;
 
-        var resolved = await ResolveWriteAsync(schema, entity.ToBsonDocument(), isInsert, callSite);
-        if (resolved is { DefaultsApplied: true })
-            CopyInto(entity, BsonSerializer.Deserialize<T>(resolved.Document));
+        if (TakesRules(schema))
+        {
+            var resolved = await ResolveWriteAsync(schema, entity.ToBsonDocument(), isInsert, callSite);
+            if (resolved is { DefaultsApplied: true })
+                CopyInto(entity, BsonSerializer.Deserialize<T>(resolved.Document));
+        }
+        // After the defaults, so a configured default for these lists still fills them first.
+        if (isInsert)
+            AddRequesterToAccessLists(entity);
         return entity;
     }
 
     public async Task<T> PrepareUpsertAsync<T>(string schema, T entity, IMongoCollection<T> collection, FilterDefinition<T> filter, string callSite, string? tenantId = null)
     {
-        if (!TakesRules(schema) || ShouldSkipResolver(callSite, tenantId))
+        if (ShouldSkipResolver(callSite, tenantId))
             return entity;
 
         var exists = await collection.Find(filter).Limit(1).AnyAsync();
@@ -108,6 +115,29 @@ public sealed class IamDataAccess : IIamDataAccess
             return;
 
         await ResolveWriteAsync(schema, Nest(fields), isInsert: false, callSite);
+    }
+
+    /// <summary>
+    /// The requester can read, edit and delete what they create: their user id is added to the record's
+    /// Read, Update and Delete UserIds (kept once; ids already there stay). Only records that carry the lists.
+    /// </summary>
+    private static void AddRequesterToAccessLists(object entity)
+    {
+        var userId = BlocksContext.GetContext()?.UserId;
+        if (entity is not BaseEntity record || string.IsNullOrWhiteSpace(userId))
+            return;
+
+        record.Read = WithUser(record.Read, userId);
+        record.Update = WithUser(record.Update, userId);
+        record.Delete = WithUser(record.Delete, userId);
+    }
+
+    private static OperationAccess WithUser(OperationAccess? access, string userId)
+    {
+        access ??= new OperationAccess();
+        if (!access.UserIds.Contains(userId, StringComparer.Ordinal))
+            access.UserIds = [.. access.UserIds, userId];
+        return access;
     }
 
     /// <summary>Schemas the Genesis allow-list keeps closed never have rules or defaults: no lookup at all.</summary>

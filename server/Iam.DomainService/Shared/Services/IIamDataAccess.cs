@@ -80,7 +80,8 @@ public interface IIamDataAccess
     /// <summary>
     /// Default values and validation rules for an insert or a whole-document replace. On insert, defaults
     /// fill the entity's null properties, in the instance passed in (which is also returned). Schemas the
-    /// Genesis allow-list keeps closed return at once. Throws <see cref="Blocks.Genesis.DataAccess.Rules.DataValidationException"/> when a rule fails.
+    /// Genesis allow-list keeps closed skip them. Throws <see cref="Blocks.Genesis.DataAccess.Rules.DataValidationException"/> when a rule fails.
+    /// On insert the requester's user id is then added to the record's Read, Update and Delete UserIds.
     /// </summary>
     Task<T> PrepareWriteAsync<T>(string schema, T entity, bool isInsert, string callSite, string? tenantId = null);
 
