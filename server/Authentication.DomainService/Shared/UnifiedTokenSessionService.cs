@@ -25,6 +25,12 @@ namespace Authentication.DomainService.Shared
         internal const string SupersededByRotationReason = "superseded_by_rotation";
         internal const string SupersededByLoginReason = "superseded_by_login";
 
+        private static readonly Action<ILogger, string, string, string, string, Exception?> LogClientMismatch =
+            LoggerMessage.Define<string, string, string, string>(
+                LogLevel.Warning,
+                new EventId(6240, "RefreshTokenClientMismatch"),
+                "Refresh token rotation kept the lineage client instead of the requested one. reason=client_mismatch refreshTokenSessionId={RefreshTokenSessionId} tokenFingerprint={TokenFingerprint} lineageClientId={LineageClientId} requestedClientId={RequestedClientId}");
+
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
@@ -74,6 +80,7 @@ namespace Authentication.DomainService.Shared
 
             var isRotation = !string.IsNullOrWhiteSpace(oldRefreshToken);
             string refreshTokenSessionId = refreshTokenId;
+            string? successorClientId = tokenRequest.ClientId;
 
             PreserveLinkAuthenticationOnRotation(isRotation, oldRefreshTokenCache, tokenRequest);
 
@@ -93,6 +100,11 @@ namespace Authentication.DomainService.Shared
 
                 refreshTokenSessionId = predecessor.Value.RefreshTokenSessionId;
                 absoluteRefreshTokenExpireOn = predecessor.Value.AbsoluteExpiry;
+                successorClientId = ResolveSuccessorClientId(
+                    predecessor.Value.ClientId,
+                    tokenRequest.ClientId,
+                    refreshTokenSessionId,
+                    oldRefreshToken!);
             }
 
             var httpContext = _httpContextAccessor.HttpContext;
@@ -123,7 +135,7 @@ namespace Authentication.DomainService.Shared
                 RefreshToken = refreshTokenId,
                 TenantId = tenant.TenantId,
                 OrganizationId = tokenRequest.OrganizationId,
-                ClientId = tokenRequest.ClientId,
+                ClientId = successorClientId,
                 SessionId = sessionId,
                 RefreshTokenSessionId = refreshTokenSessionId,
                 IssuedUtc = now,
@@ -219,11 +231,11 @@ namespace Authentication.DomainService.Shared
         }
 
         /// <summary>
-        /// Resolves the lineage id and absolute expiry a rotation must inherit. Redis answers when it can;
-        /// MongoDB is the system of record and decides when it cannot. A predecessor written before
-        /// lineage tracking shipped is read as a lineage of one keyed by its own token id.
+        /// Resolves the lineage id, absolute expiry and OIDC client a rotation must inherit. Redis answers
+        /// when it can; MongoDB is the system of record and decides when it cannot. A predecessor written
+        /// before lineage tracking shipped is read as a lineage of one keyed by its own token id.
         /// </summary>
-        private async Task<(string RefreshTokenSessionId, DateTime AbsoluteExpiry)?> ResolvePredecessorAsync(
+        private async Task<(string RefreshTokenSessionId, DateTime AbsoluteExpiry, string? ClientId)?> ResolvePredecessorAsync(
             string oldRefreshToken,
             RefreshTokenCache? oldRefreshTokenCache)
         {
@@ -232,7 +244,7 @@ namespace Authentication.DomainService.Shared
                 var lineageFromCache = string.IsNullOrWhiteSpace(oldRefreshTokenCache.RefreshTokenSessionId)
                     ? (oldRefreshTokenCache.RefreshToken ?? oldRefreshToken)
                     : oldRefreshTokenCache.RefreshTokenSessionId!;
-                return (lineageFromCache, oldRefreshTokenCache.AbsoluteExpiresUtc);
+                return (lineageFromCache, oldRefreshTokenCache.AbsoluteExpiresUtc, oldRefreshTokenCache.ClientId);
             }
 
             var persisted = await _refreshTokenRepository.GetByTokenIdAsync(oldRefreshToken);
@@ -241,7 +253,47 @@ namespace Authentication.DomainService.Shared
                 return null;
             }
 
-            return (persisted.EffectiveRefreshTokenSessionId, persisted.AbsoluteExpiry);
+            return (persisted.EffectiveRefreshTokenSessionId, persisted.AbsoluteExpiry, persisted.ClientId);
+        }
+
+        /// <summary>
+        /// A lineage belongs to one OIDC client for its whole life. Rotation grants that do not speak for a
+        /// client (switch-organization, /auth/refresh) used to store an empty client on the successor, after
+        /// which /oidc/token refused the lineage as invalid_client and the browser was signed out. The
+        /// predecessor's client therefore wins; the request's client is used only for a lineage that never
+        /// had one, which is today's behaviour and does not repair a lineage already stored empty.
+        /// </summary>
+        private string? ResolveSuccessorClientId(
+            string? lineageClientId,
+            string? requestedClientId,
+            string refreshTokenSessionId,
+            string oldRefreshToken)
+        {
+            if (string.IsNullOrWhiteSpace(lineageClientId))
+            {
+                return requestedClientId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(requestedClientId)
+                && !string.Equals(lineageClientId, requestedClientId, StringComparison.Ordinal))
+            {
+                LogClientMismatch(
+                    _logger,
+                    refreshTokenSessionId,
+                    TokenPrefix(oldRefreshToken),
+                    lineageClientId,
+                    requestedClientId!,
+                    null);
+            }
+
+            return lineageClientId;
+        }
+
+        /// <summary>At most the first 8 characters of a token id: enough to correlate, never the token.</summary>
+        private static string TokenPrefix(string token)
+        {
+            const int visibleLength = 8;
+            return token.Length <= visibleLength ? token : token[..visibleLength];
         }
 
         /// <summary>
