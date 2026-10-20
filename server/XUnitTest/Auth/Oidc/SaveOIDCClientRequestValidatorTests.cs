@@ -23,6 +23,21 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
+        public void DeviceFlow_WithDefaultResponseTypes_IsRejectedOnAllowedResponseTypesWithAClearMessage()
+        {
+            // AllowedResponseTypes defaults to ["code"], so a device client registered without
+            // setting it used to fail with "The specified condition was not met for ''".
+            var request = new SaveOIDCClientRequest { IsDeviceFlowClient = true };
+
+            var result = _validator.TestValidate(request);
+
+            result.Errors.Should().ContainSingle();
+            result.ShouldHaveValidationErrorFor(x => x.AllowedResponseTypes)
+                .WithErrorMessage(SaveOIDCClientRequestValidator.DeviceFlowResponseTypesMessage);
+            result.Errors.Should().NotContain(e => string.IsNullOrEmpty(e.PropertyName));
+        }
+
+        [Fact]
         public void DeviceFlow_WithoutCodeResponseType_IsAccepted()
         {
             var request = new SaveOIDCClientRequest

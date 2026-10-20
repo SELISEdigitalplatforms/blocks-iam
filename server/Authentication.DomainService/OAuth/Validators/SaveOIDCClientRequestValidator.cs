@@ -14,6 +14,8 @@ namespace Authentication.DomainService.OAuth
         private const string AppSchemePkceMessage = "Mobile app redirect URIs require PKCE.";
         private const string AppSchemeIdentityProviderMessage =
             "A client with mobile app redirect URIs cannot be registered as an identity provider.";
+        public const string DeviceFlowResponseTypesMessage =
+            "A device-flow client must have no response types (allowedResponseTypes: []).";
 
         public SaveOIDCClientRequestValidator()
         {
@@ -76,22 +78,23 @@ namespace Authentication.DomainService.OAuth
                 .Must(AllNonEmpty)
                 .When(x => x.AllowedScopes != null && x.AllowedScopes.Count > 0);
 
-            RuleFor(x => x)
-                .Must(NotCombineDeviceFlowWithCodeResponseType)
-                .When(x => x.IsDeviceFlowClient);
+            // Bound to AllowedResponseTypes with its own message: as a whole-object rule it failed
+            // with "The specified condition was not met for ''", and since AllowedResponseTypes
+            // defaults to ["code"] every device client registered without it hit that.
+            RuleFor(x => x.AllowedResponseTypes)
+                .Must(NotContainCodeResponseType)
+                .When(x => x.IsDeviceFlowClient)
+                .WithMessage(DeviceFlowResponseTypesMessage);
         }
 
-        private static bool NotCombineDeviceFlowWithCodeResponseType(SaveOIDCClientRequest request)
+        private static bool NotContainCodeResponseType(List<string>? values)
         {
-            if (request.AllowedResponseTypes == null || request.AllowedResponseTypes.Count == 0)
+            if (values == null || values.Count == 0)
             {
                 return true;
             }
 
-            var hasCode = request.AllowedResponseTypes.Any(v =>
-                string.Equals(v, "code", StringComparison.OrdinalIgnoreCase));
-
-            return !hasCode;
+            return !values.Any(v => string.Equals(v, "code", StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool BeUrlSafe(string value)
