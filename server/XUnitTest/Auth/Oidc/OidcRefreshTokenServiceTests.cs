@@ -231,6 +231,78 @@ namespace XUnitTest.Auth.Oidc
             obj.StatusCode.Should().Be(StatusCodes.Status423Locked);
         }
 
+        // ---------- account state: a deactivated or suspended user cannot refresh ----------
+
+        public static TheoryData<User> BlockedUsers => new()
+        {
+            // What DeactivateUserAsync writes today.
+            new User { ItemId = "u1", Active = false, IsVerified = true, Status = UserLifecycleStatus.Disabled, DeactivatedAtUtc = DateTime.UtcNow },
+            // Status alone, even with the flag left on.
+            new User { ItemId = "u1", Active = true, IsVerified = true, Status = UserLifecycleStatus.Disabled },
+            new User { ItemId = "u1", Active = true, IsVerified = true, Status = UserLifecycleStatus.Suspended },
+            // Deactivated before Status existed: verified once, now inactive.
+            new User { ItemId = "u1", Active = false, IsVerified = true, Status = UserLifecycleStatus.Active },
+        };
+
+        [Theory]
+        [MemberData(nameof(BlockedUsers))]
+        public async Task Rotate_BlockedUser_IsRefusedInvalidGrant_RevokesTheLineage_AndMintsNothing(User user)
+        {
+            SetupClient();
+            var cache = new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "tenant-1", RefreshToken = "rt-1", RefreshTokenSessionId = "lineage-1" };
+            SetupValidRefreshToken(cache, user);
+            SetupSuccessfulInner();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken()));
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            bad.Value.Should().BeEquivalentTo(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" });
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", BlockedUserRefreshGuard.RevokeReason), Times.Once);
+            _innerTokenMgr.Verify(m => m.ManageRefreshTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<JwtAccessToken>(), It.IsAny<IdentityConfiguration>(), It.IsAny<Tenant>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Rotate_BlockedUser_LineageRevokeFails_IsStillRefused()
+        {
+            SetupClient();
+            var cache = new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "tenant-1", RefreshToken = "rt-1" };
+            SetupValidRefreshToken(cache, new User { ItemId = "u1", Active = false, IsVerified = true, Status = UserLifecycleStatus.Disabled });
+            _refreshTokenRepo.Setup(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("store down"));
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken()));
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+            // No lineage id on the cache entry: the presented token id is the lineage root.
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync("rt-1", BlockedUserRefreshGuard.RevokeReason), Times.Once);
+        }
+
+        public static TheoryData<User> UsableUsers => new()
+        {
+            new User { ItemId = "u1", Active = true, IsVerified = true, Status = UserLifecycleStatus.Active },
+            // Never activated (invite / signup link): may hold a session, must keep refreshing.
+            new User { ItemId = "u1", Active = false, IsVerified = false, Status = UserLifecycleStatus.PendingVerification },
+            new User { ItemId = "u1", Active = false, IsVerified = false, Status = UserLifecycleStatus.Active },
+            // A document written before Status existed and later read with the enum's first value.
+            new User { ItemId = "u1", Active = true, IsVerified = true, Status = UserLifecycleStatus.PendingVerification },
+        };
+
+        [Theory]
+        [MemberData(nameof(UsableUsers))]
+        public async Task Rotate_UsableUser_StillRotates(User user)
+        {
+            SetupClient();
+            SetupValidRefreshToken(
+                new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "tenant-1", OrganizationId = "default" },
+                user);
+            SetupSuccessfulInner();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken()));
+
+            result.Should().BeOfType<OkObjectResult>();
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
         // ---------- token issuance outcome ----------
 
         [Fact]

@@ -38,6 +38,7 @@ namespace Iam.DomainService.Users
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
         private readonly IConfiguration? _configuration;
+        private readonly IUserSessionTerminator? _userSessionTerminator;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -53,7 +54,8 @@ namespace Iam.DomainService.Users
             IResourceRepository? resourceRepository = null,
             IHttpContextAccessor? httpContextAccessor = null,
             IDefaultOidcClientResolver? defaultOidcClientResolver = null,
-            IConfiguration? configuration = null
+            IConfiguration? configuration = null,
+            IUserSessionTerminator? userSessionTerminator = null
         )
         {
             _logger = logger;
@@ -71,6 +73,7 @@ namespace Iam.DomainService.Users
             _httpContextAccessor = httpContextAccessor;
             _defaultOidcClientResolver = defaultOidcClientResolver;
             _configuration = configuration;
+            _userSessionTerminator = userSessionTerminator;
         }
 
         public async Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command)
@@ -806,7 +809,45 @@ namespace Iam.DomainService.Users
                     IsActive = false
                 }
             }));
+
+            // A deactivated account keeps no live session: its refresh tokens and IdP session
+            // accounts end now, the same way password reset / change end them.
+            await EndAllSessionsAsync(request.UserId, "user_deactivated");
+
             return new BaseResponse { IsSuccess = true };
+        }
+
+        // Inline, so the sessions are dead before the response goes out; the logout-all queue is
+        // only the backup for when that fails (or no terminator is wired). Same pattern as
+        // AccountService.EndAllSessionsAsync.
+        private async Task EndAllSessionsAsync(string userId, string reason)
+        {
+            if (_userSessionTerminator != null)
+            {
+                try
+                {
+                    await _userSessionTerminator.EndAllSessionsAsync(userId, reason);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Ending sessions inline failed for user {UserId}; queueing logout-all", userId);
+                }
+            }
+
+            try
+            {
+                await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
+                {
+                    UserId = userId
+                });
+            }
+            catch (Exception ex)
+            {
+                // The account is already deactivated and every refresh is refused by the account-state
+                // guard, so a lost logout-all only leaves dead sessions behind; it must not fail the call.
+                _logger.LogError(ex, "Queueing logout-all failed for deactivated user {UserId}", userId);
+            }
         }
 
         public async Task<BaseMutationResponse> ActivateUserAsync(ActivateUserByAdminRequest request)

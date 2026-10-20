@@ -689,6 +689,49 @@ namespace XUnitTest.IamTests.Users
             _message.Verify(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<UserStatusChangedEvent>>()), Times.Once);
         }
 
+        private UserManagementMutationService CreateWithTerminator(IUserSessionTerminator? terminator) =>
+            new(NullLogger<UserManagementMutationService>.Instance, _createValidator.Object, _updateValidator.Object, _myAccountValidator.Object,
+                _iam.Object, _userRepo.Object, _message.Object, _cache.Object, _tenants.Object, _activity.Object,
+                null, _resourceRepo.Object, null, userSessionTerminator: terminator);
+
+        [Fact]
+        public async Task Deactivate_EndsAllSessionsOfTheUserInline()
+        {
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(new User { ItemId = "u1", Active = true });
+            var terminator = new Mock<IUserSessionTerminator>();
+
+            var result = await CreateWithTerminator(terminator.Object).DeactivateUserAsync(new DeactivateUserRequest { UserId = "u1" });
+
+            result.IsSuccess.Should().BeTrue();
+            terminator.Verify(t => t.EndAllSessionsAsync("u1", "user_deactivated"), Times.Once);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<LogoutAllEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Deactivate_InlineSessionEndFails_QueuesLogoutAllAndStillSucceeds()
+        {
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(new User { ItemId = "u1", Active = true });
+            var terminator = new Mock<IUserSessionTerminator>();
+            terminator.Setup(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("store down"));
+
+            var result = await CreateWithTerminator(terminator.Object).DeactivateUserAsync(new DeactivateUserRequest { UserId = "u1" });
+
+            result.IsSuccess.Should().BeTrue();
+            _iam.Verify(i => i.SendToQueueAsync(IdpConstants.AuthenticationQueue, It.Is<LogoutAllEvent>(e => e.UserId == "u1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task Deactivate_NoTerminatorWired_QueuesLogoutAll()
+        {
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(new User { ItemId = "u1", Active = true });
+
+            var result = await CreateWithTerminator(null).DeactivateUserAsync(new DeactivateUserRequest { UserId = "u1" });
+
+            result.IsSuccess.Should().BeTrue();
+            _iam.Verify(i => i.SendToQueueAsync(IdpConstants.AuthenticationQueue, It.Is<LogoutAllEvent>(e => e.UserId == "u1")), Times.Once);
+        }
+
         // ---------- ActivateUserAsync ----------
 
         [Fact]

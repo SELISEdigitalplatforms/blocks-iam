@@ -288,6 +288,34 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
+        public async Task ExchangeAsync_ReturnsAccessDenied_WhenUserDeactivatedAfterApproval()
+        {
+            var (svc, repo, userRepo, authRepo) = Build();
+            var hash = _generator.HashDeviceCode(DeviceCode);
+            var entity = new DeviceAuthorizationRequestModel
+            {
+                Id = "id1", DeviceCodeHash = hash, UserCode = "ABCD-EFGH", ClientId = "c1", TenantId = "t1",
+                Status = DeviceAuthorizationStatus.Approved,
+                UserId = "user-1",
+                RequestedScopes = "openid offline_access",
+                ExpiresAt = DateTime.UtcNow.AddMinutes(5)
+            };
+            repo.Setup(r => r.GetByDeviceCodeHashAsync(hash, It.IsAny<CancellationToken>())).ReturnsAsync(entity);
+            userRepo.Setup(u => u.GetUserByIdAsync("user-1")).ReturnsAsync(new User
+            {
+                ItemId = "user-1", Active = false, IsVerified = true,
+                Status = UserLifecycleStatus.Disabled, DeactivatedAtUtc = DateTime.UtcNow
+            });
+            authRepo.Setup(a => a.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(DeviceClient());
+
+            var result = await svc.ExchangeAsync(BuildRequest(DeviceCode, "c1"));
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            bad.Value!.ToString().Should().Contain("access_denied");
+            repo.Verify(r => r.MarkConsumedAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
         public async Task ExchangeAsync_ReturnsTokenJson_OnApproved()
         {
             var (svc, repo, userRepo, authRepo) = Build();

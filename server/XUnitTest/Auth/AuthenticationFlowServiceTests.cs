@@ -391,6 +391,26 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task SwitchOrg_DeactivatedUser_ReturnsSessionExpired_RevokesTheLineage_AndDoesNotRotate()
+        {
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User
+            {
+                ItemId = "user-1", OrganizationIds = new() { "org-x" },
+                Active = false, IsVerified = true, Status = UserLifecycleStatus.Disabled, DeactivatedAtUtc = DateTime.UtcNow
+            });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            Resolves(Session());
+
+            var result = await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            result.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+            result.Error.Should().Be(OAuthError.SessionExpired);
+            _refreshRepo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", BlockedUserRefreshGuard.RevokeReason), Times.Once);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
         public async Task SwitchOrg_HappyPath_CallsRefresher()
         {
             _repo.Setup(r => r.GetUserByIdAsync("user-1"))
@@ -674,6 +694,46 @@ namespace XUnitTest.Auth
             // Not a replay: no grace token id is carried into the rotation.
             _refresher.Verify(r => r.AuthenticateAsync(
                 It.Is<TokenRequest>(t => t.GraceReplayTokenId == null), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Refresh_DeactivatedUser_IsRefused_RevokesTheLineage_AndDoesNotRotate()
+        {
+            Resolves(Session());
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User
+            {
+                ItemId = "user-1", Active = false, IsVerified = true,
+                Status = UserLifecycleStatus.Disabled, DeactivatedAtUtc = DateTime.UtcNow
+            });
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
+            var ctx = new DefaultHttpContext();
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be(OAuthError.InvalidRefreshToken);
+            Prop(bad.Value, "error_description").Should().Be("Refresh token is invalid or expired");
+            _refreshRepo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", BlockedUserRefreshGuard.RevokeReason), Times.Once);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Refresh_ActiveUser_RotatesAndRevokesNothing()
+        {
+            Resolves(Session());
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User
+            {
+                ItemId = "user-1", Active = true, IsVerified = true, Status = UserLifecycleStatus.Active
+            });
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
+            var ctx = new DefaultHttpContext();
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            result.Should().BeOfType<OkObjectResult>();
+            _refreshRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

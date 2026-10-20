@@ -176,7 +176,9 @@ namespace Authentication.DomainService.Authentication
             }
 
             var user = await _userRepository.GetUserByIdAsync(entity.UserId);
-            if (user == null)
+            // A user deactivated or suspended between approval and polling gets no tokens. Same
+            // answer as an unknown user, so the device learns nothing about the account state.
+            if (user == null || BlockedUserRefreshGuard.IsBlocked(user))
             {
                 return DeviceEndpointErrors.AccessDenied("user not found");
             }

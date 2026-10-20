@@ -454,6 +454,22 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
+            // Switching organization is a rotation of the same lineage: a deactivated or suspended
+            // account is refused exactly as a refresh is, and the lineage is revoked.
+            if (BlockedUserRefreshGuard.IsBlocked(user!))
+            {
+                _logger.LogWarning(
+                    "Switch organization refused for a blocked account. reason=user_inactive userId={UserId} tenantId={TenantId}",
+                    userId,
+                    tenantId);
+                await BlockedUserRefreshGuard.RevokeLineageAsync(_refreshTokenRepository, refreshCache, _logger);
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status401Unauthorized,
+                    Error = OAuthError.SessionExpired
+                };
+            }
+
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.SwitchOrganization,
@@ -582,6 +598,19 @@ namespace Authentication.DomainService.Authentication
                 {
                     StatusCode = StatusCodes.Status423Locked
                 };
+            }
+
+            // A deactivated or suspended account must not mint new tokens from a refresh token it
+            // obtained while still active (same guard as /oidc/token).
+            if (BlockedUserRefreshGuard.IsBlocked(user))
+            {
+                _logger.LogWarning(
+                    "Refresh refused for a blocked account. reason=user_inactive userId={UserId} tenantId={TenantId}",
+                    tokenCache.UserId,
+                    tokenCache.TenantId);
+                await BlockedUserRefreshGuard.RevokeLineageAsync(_refreshTokenRepository, tokenCache, _logger);
+                ClearSessionCookies(httpRequest, httpResponse);
+                return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = BlockedUserRefreshGuard.ErrorDescription });
             }
 
             var tokenRequest = new TokenRequest
