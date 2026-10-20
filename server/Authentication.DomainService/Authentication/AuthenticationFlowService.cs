@@ -529,9 +529,16 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = OAuthError.AuthConfigMissing });
             }
 
+            // Order: body refresh_token, then the session cookie, then the client's camelCase field.
+            // The last one only fills the case that otherwise answers "Refresh token is required"
+            // (a caller with no cookie), so every request that resolved a token before resolves the same one.
             var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
                 ? _authenticationService.CookieToken(httpRequest)
                 : request.RefreshToken;
+            if (string.IsNullOrWhiteSpace(refreshToken))
+            {
+                refreshToken = request.ClientRefreshToken;
+            }
 
             if (string.IsNullOrWhiteSpace(refreshToken))
             {

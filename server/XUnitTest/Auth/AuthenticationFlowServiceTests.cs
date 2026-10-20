@@ -622,6 +622,40 @@ namespace XUnitTest.Auth
             Prop(bad.Value, "error").Should().Be(OAuthError.InvalidRefreshToken);
         }
 
+        [Theory]
+        // body refresh_token, cookie, body refreshToken → the token that is resolved
+        [InlineData("body", "cookie", "client", "body")]
+        [InlineData(null, "cookie", "client", "cookie")]
+        [InlineData(null, null, "client", "client")]
+        [InlineData("body", null, null, "body")]
+        public async Task Refresh_PicksTokenInOrder_BodyThenCookieThenClientField(
+            string? body, string? cookie, string? client, string expected)
+        {
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns(cookie!);
+            _sessionResolver
+                .Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync((RefreshTokenCache?)null);
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
+            var ctx = new DefaultHttpContext();
+
+            await Create().ExecuteRefreshAsync(
+                new RefreshRequest { RefreshToken = body, ClientRefreshToken = client }, Principal(), ctx.Request, ctx.Response);
+
+            _sessionResolver.Verify(r => r.TryResolveRefreshSessionAsync(expected, It.IsAny<IdentityConfiguration>()), Times.Once);
+        }
+
+        [Fact]
+        public void RefreshRequest_BindsBothBodyNames()
+        {
+            var snake = System.Text.Json.JsonSerializer.Deserialize<RefreshRequest>("{\"refresh_token\":\"a\"}")!;
+            var camel = System.Text.Json.JsonSerializer.Deserialize<RefreshRequest>("{\"refreshToken\":\"b\"}")!;
+
+            snake.RefreshToken.Should().Be("a");
+            snake.ClientRefreshToken.Should().BeNull();
+            camel.ClientRefreshToken.Should().Be("b");
+            camel.RefreshToken.Should().BeNull();
+        }
+
         /// <summary>
         /// Seeds the shared validity check with the session it should resolve for "rt".
         /// </summary>
