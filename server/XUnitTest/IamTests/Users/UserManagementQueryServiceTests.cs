@@ -304,6 +304,180 @@ namespace XUnitTest.IamTests.Users
         }
 
         // =====================================================================================
+        // Organization scope of the user read: a user is read in the caller's organization.
+        // Only a tenant-wide ("default") caller may name another organization.
+        // =====================================================================================
+
+        private static GetAccounts MemberOf(string id, params string[] organizationIds) => new()
+        {
+            ItemId = id,
+            Email = id + "@e.com",
+            OrganizationIds = organizationIds.ToList(),
+            Roles = organizationIds.ToDictionary(o => o, o => new List<string> { "role-" + o }),
+            Permissions = organizationIds.ToDictionary(o => o, o => new List<string> { "perm-" + o })
+        };
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("org-a")]
+        public async Task GetUser_NonDefaultCaller_ReadsInItsOwnOrganization(string? queryOrganizationId)
+        {
+            InstallContext(orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "org-a", "org-b"));
+
+            var result = await CreateAt(Now).GetUserAsync("u1", queryOrganizationId);
+
+            result.Data.Should().NotBeNull();
+            result.Data!["itemId"].Should().Be("u1");
+            result.Data["roles"].Should().BeEquivalentTo(new List<string> { "role-org-a" });
+            result.Data["permissions"].Should().BeEquivalentTo(new List<string> { "perm-org-a" });
+            result.Data.Should().NotContainKey("OrganizationsRoles");
+            result.Data.Should().NotContainKey("OrganizationsPermissions");
+        }
+
+        [Fact]
+        public async Task GetUser_NonDefaultCaller_ReadsItselfInItsOwnOrganization()
+        {
+            InstallContext(userId: "self", orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("self")).ReturnsAsync(MemberOf("self", "org-a"));
+
+            (await CreateAt(Now).GetUserAsync("self", null)).Data!["itemId"].Should().Be("self");
+            (await CreateAt(Now).GetUserAsync(string.Empty, null)).Data!["itemId"].Should().Be("self");
+        }
+
+        [Fact]
+        public async Task GetUser_NonDefaultCaller_OtherOrganizationInQuery_ReturnsNotAMemberShape()
+        {
+            InstallContext(orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "org-a", "org-b"));
+
+            var otherOrg = await CreateAt(Now).GetUserAsync("u1", "org-b");
+
+            otherOrg.Data.Should().NotBeNull().And.BeEmpty();
+        }
+
+        [Fact]
+        public async Task GetUser_NonDefaultCaller_OtherOrganizationInQuery_MatchesAUserOutsideTheCallersOrganization()
+        {
+            // The answer for an organization outside the caller's scope is the same response a
+            // caller gets for a user who is not a member of the caller's own organization.
+            InstallContext(orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "org-b"));
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u2")).ReturnsAsync(MemberOf("u2", "org-b"));
+
+            var outsideMember = await CreateAt(Now).GetUserAsync("u1", null);
+            var otherOrgQuery = await CreateAt(Now).GetUserAsync("u2", "org-b");
+
+            JsonSerializer.Serialize(otherOrgQuery).Should().Be(JsonSerializer.Serialize(outsideMember));
+        }
+
+        [Fact]
+        public async Task GetUser_NonDefaultCaller_DefaultInQuery_ReturnsNotAMemberShapeWithoutAllOrganizationFields()
+        {
+            InstallContext(orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "default", "org-a", "org-b"));
+
+            var result = await CreateAt(Now).GetUserAsync("u1", "default");
+
+            result.Data.Should().NotBeNull().And.BeEmpty();
+            result.Data.Should().NotContainKey("OrganizationsRoles");
+            result.Data.Should().NotContainKey("OrganizationsPermissions");
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task GetUser_TokenWithoutOrganization_ReturnsNotAMemberShape(string tokenOrganizationId)
+        {
+            InstallContext(orgId: tokenOrganizationId);
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "default", "org-a"));
+
+            var result = await CreateAt(Now).GetUserAsync("u1", null);
+
+            result.Data.Should().NotBeNull().And.BeEmpty();
+        }
+
+        [Fact]
+        public async Task GetUser_NonDefaultCaller_MissingUserInOwnOrganization_ReturnsNullData()
+        {
+            InstallContext(orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("nope")).ReturnsAsync((GetAccounts)null!);
+
+            var result = await CreateAt(Now).GetUserAsync("nope", null);
+
+            result.Data.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetUser_DefaultCaller_OtherOrganizationInQuery_IsUnchanged()
+        {
+            InstallContext();
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "org-a", "org-b"));
+
+            var result = await CreateAt(Now).GetUserAsync("u1", "org-b");
+
+            result.Data!["itemId"].Should().Be("u1");
+            result.Data["roles"].Should().BeEquivalentTo(new List<string> { "role-org-b" });
+            result.Data.Should().NotContainKey("OrganizationsRoles");
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("default")]
+        public async Task GetUser_DefaultCaller_DefaultScope_IncludesAllOrganizationFields(string? queryOrganizationId)
+        {
+            InstallContext();
+            var account = MemberOf("u1", "org-a", "org-b");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(account);
+
+            var result = await CreateAt(Now).GetUserAsync("u1", queryOrganizationId);
+
+            result.Data!["itemId"].Should().Be("u1");
+            result.Data["OrganizationsRoles"].Should().BeSameAs(account.Roles);
+            result.Data["OrganizationsPermissions"].Should().BeSameAs(account.Permissions);
+        }
+
+        [Fact]
+        public async Task GetUsers_NonDefaultCaller_ReturnsOnlyTheCallersOrganizationRoles()
+        {
+            InstallContext(orgId: "org-a");
+            var accounts = new List<GetAccounts>
+            {
+                MemberOf("u1", "org-a", "org-b"),
+                MemberOf("u2", "org-a"),
+                new() { ItemId = "u3", Email = "u3@e.com", OrganizationIds = ["org-a"] }
+            }.AsQueryable();
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ReturnsAsync((accounts, 3L));
+
+            var result = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.ToList();
+
+            result[0]["roles"].Should().BeEquivalentTo(new Dictionary<string, List<string>> { ["org-a"] = ["role-org-a"] });
+            result[1]["roles"].Should().BeEquivalentTo(new Dictionary<string, List<string>> { ["org-a"] = ["role-org-a"] });
+            result[2]["roles"].Should().BeEquivalentTo(new Dictionary<string, List<string>>());
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task GetUsers_DefaultCaller_RolesAreUnchanged(bool narrowedToOrganizations)
+        {
+            InstallContext();
+            var account = MemberOf("u1", "org-a", "org-b");
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ReturnsAsync((new List<GetAccounts> { account }.AsQueryable(), 1L));
+
+            var request = narrowedToOrganizations
+                ? new GetUsersRequest { Filter = new GetUsersFilter { OrganizationIds = ["org-a"] } }
+                : new GetUsersRequest();
+
+            var result = (await CreateAt(Now).GetUsersAsync(request)).Data.Single();
+
+            result["roles"].Should().BeSameAs(account.Roles);
+        }
+
+        // =====================================================================================
         // #427 — lockout state exposure. Phase 1 of 2; the FE phase is built against these keys.
         // =====================================================================================
 
@@ -474,30 +648,35 @@ namespace XUnitTest.IamTests.Users
             var svc = new UserManagementQueryService(
                 NullLogger<UserManagementQueryService>.Instance, _repo.Object, new ThrowingClock(), _iam.Object);
 
-            // Non-default org: the default-org path dereferences null before returning, which is the
-            // pre-existing defect this phase deliberately leaves alone.
+            // A tenant-wide caller naming another organization; the default-organization path has its
+            // own missing-user test.
             var result = await svc.GetUserAsync("nope", "org-42");
 
             result.Data.Should().BeNull();
         }
 
         [Fact]
-        public async Task GetUser_MissingUser_DefaultOrg_ThrowsToday_KnownPreExistingDefect()
+        public async Task GetUser_MissingUser_DefaultOrg_ReturnsNullData()
         {
-            // Pins ACTUAL behaviour, not desired. C4 says a non-existent id returns "the existing
-            // not-found error" - there is none. On the default-org path GetUserAsync builds a null
-            // `data` and then dereferences it to add OrganizationsRoles, so the caller gets a 500.
-            //
-            // #427 deliberately does not fix this: introducing a 404 changes the endpoint's status
-            // code and controller response type, which contradicts C6 and the ticket's out-of-scope
-            // list. Asserted so a future fix has to flip this test deliberately rather than silently,
-            // and so the C4 discrepancy is visible in the suite and not only in the PR.
+            // A missing user on the tenant-wide path answers with null data, the same as on every
+            // other path, instead of failing while adding the all-organization fields.
             InstallContext();
             _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("nope")).ReturnsAsync((GetAccounts)null!);
 
-            var act = async () => await CreateAt(Now).GetUserAsync("nope", "default");
+            var result = await CreateAt(Now).GetUserAsync("nope", "default");
 
-            await act.Should().ThrowAsync<NullReferenceException>();
+            result.Data.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetUser_MissingUser_DefaultCallerWithoutQuery_ReturnsNullData()
+        {
+            InstallContext();
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("nope")).ReturnsAsync((GetAccounts)null!);
+
+            var result = await CreateAt(Now).GetUserAsync("nope", null);
+
+            result.Data.Should().BeNull();
         }
 
         [Fact]
