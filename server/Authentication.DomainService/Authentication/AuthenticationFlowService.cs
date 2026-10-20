@@ -458,6 +458,9 @@ namespace Authentication.DomainService.Authentication
             {
                 GrantType = GrantTypes.SwitchOrganization,
                 OrganizationId = request.OrganizationId,
+                // The lineage keeps its OIDC client across the switch, as /oidc/token does. Without it the
+                // successor was stored client-less and the next /oidc/token refresh failed invalid_client.
+                ClientId = refreshCache.ClientId,
                 RefreshToken = refreshToken,
                 Request = httpRequest
             };
@@ -585,6 +588,8 @@ namespace Authentication.DomainService.Authentication
             {
                 GrantType = GrantTypes.RefreshToken,
                 OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
+                // Keep the lineage's OIDC client on the successor (empty stays empty: nothing is repaired).
+                ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,
                 Request = httpRequest,
                 GraceReplayTokenId = graceReplayTokenId,

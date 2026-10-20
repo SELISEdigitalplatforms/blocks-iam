@@ -300,6 +300,9 @@ namespace XUnitTest.Auth
                 new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
 
             result.Error.Should().Be("organization_not_available");
+            // C6: rejected before the refresh token is even read, so nothing rotates and no cookie changes.
+            VerifyNoRotation();
+            _sessionResolver.Verify(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()), Times.Never);
         }
 
         [Fact]
@@ -328,6 +331,7 @@ namespace XUnitTest.Auth
                 new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
 
             result.Error.Should().Be(OAuthError.SessionExpired);
+            VerifyNoRotation();
         }
 
         [Fact]
@@ -363,6 +367,7 @@ namespace XUnitTest.Auth
                 new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
 
             result.Error.Should().Be(OAuthError.SessionExpired);
+            VerifyNoRotation();
         }
 
         [Fact]
@@ -480,6 +485,95 @@ namespace XUnitTest.Auth
                 new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
 
             result.TokenResponse!.AccessToken.Should().Be("switch-at");
+        }
+
+        // ==================== blocks-iam#624 — switch-org keeps the lineage's OIDC client ====================
+
+        private void VerifyNoRotation() =>
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+
+        private List<TokenRequest> CaptureRotations(TokenResponse response)
+        {
+            var captured = new List<TokenRequest>();
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .Callback<TokenRequest, IdentityConfiguration, User>((t, _, _) => captured.Add(t))
+                .ReturnsAsync(response);
+            return captured;
+        }
+
+        [Fact]
+        public async Task SwitchOrg_HappyPath_CarriesTheLineageClientIntoTheRotation()
+        {
+            // H1/H2/H6/H8: the rotation request names the lineage client and the requested organization;
+            // lineage and cap are inherited downstream from the same predecessor (RefreshTokenLineageTests).
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            Resolves(Session());
+            var rotations = CaptureRotations(new TokenResponse { AccessToken = "switch-at" });
+
+            var result = await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            result.TokenResponse!.AccessToken.Should().Be("switch-at");
+            var request = rotations.Should().ContainSingle().Subject;
+            request.ClientId.Should().Be("client-1");
+            request.OrganizationId.Should().Be("org-x");
+            request.GrantType.Should().Be(GrantTypes.SwitchOrganization);
+            request.RefreshToken.Should().Be("rt");
+        }
+
+        [Fact]
+        public async Task SwitchOrg_LineageWithAStaleAudience_DoesNotCarryTheAudienceIntoTheRotation()
+        {
+            // C12: aud comes from the tenant at mint time; the rotation request must not re-narrow it.
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            var session = Session();
+            session.Audience = "stale-client-audience";
+            Resolves(session);
+            var rotations = CaptureRotations(new TokenResponse { AccessToken = "switch-at" });
+
+            await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            rotations.Should().ContainSingle().Which.Audience.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task SwitchOrg_ClientLessLineage_RotatesWithoutInventingAClient()
+        {
+            // Out of scope to repair: an already client-less lineage passes no client.
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            var session = Session();
+            session.ClientId = string.Empty;
+            Resolves(session);
+            var rotations = CaptureRotations(new TokenResponse { AccessToken = "switch-at" });
+
+            await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            rotations.Should().ContainSingle().Which.ClientId.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task SwitchOrg_ForeignUserInSession_ReturnsSessionExpiredWithoutRotating()
+        {
+            // C8 (user half): a refresh token belonging to someone else is rejected before any rotation.
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            Resolves(Session(userId: "user-other"));
+
+            var result = await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            result.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+            result.Error.Should().Be(OAuthError.SessionExpired);
+            VerifyNoRotation();
         }
 
         // ==================== ExecuteRefreshAsync ====================
@@ -626,6 +720,7 @@ namespace XUnitTest.Auth
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error_description").Should().Be("Refresh token tenant mismatch");
+            VerifyNoRotation();
         }
 
         [Fact]
@@ -685,6 +780,51 @@ namespace XUnitTest.Auth
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             Prop(ok.Value, "access_token").Should().Be("new-at");
             Prop(ok.Value, "cookie_set").Should().Be(true);
+        }
+
+        // ==================== blocks-iam#624 — /auth/refresh keeps the lineage's OIDC client ====================
+
+        [Fact]
+        public async Task Refresh_HostedLineage_CarriesTheLineageClientAndNoAudienceIntoTheRotation()
+        {
+            // H4 + C12: the client is carried; the stored audience is not.
+            var session = Session();
+            session.Audience = "stale-client-audience";
+            Resolves(session);
+            // The browser shape: an empty body, the refresh token in the rt_ cookie.
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
+            var rotations = CaptureRotations(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
+            var ctx = new DefaultHttpContext();
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest(), Principal(), ctx.Request, ctx.Response);
+
+            result.Should().BeOfType<OkObjectResult>();
+            var request = rotations.Should().ContainSingle().Subject;
+            request.ClientId.Should().Be("client-1");
+            request.Audience.Should().BeNull();
+            request.GrantType.Should().Be(GrantTypes.RefreshToken);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        public async Task Refresh_ClientLessLineage_StillRotatesWith200(string? lineageClient)
+        {
+            // C3: embedded /auth/login lineages (and ones broken before the fix) keep refreshing here.
+            var session = Session();
+            session.ClientId = lineageClient;
+            Resolves(session);
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
+            var rotations = CaptureRotations(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
+            var ctx = new DefaultHttpContext();
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            result.Should().BeOfType<OkObjectResult>();
+            rotations.Should().ContainSingle().Which.ClientId.Should().BeNullOrEmpty();
         }
 
         // ==================== Impersonation pass-throughs ====================

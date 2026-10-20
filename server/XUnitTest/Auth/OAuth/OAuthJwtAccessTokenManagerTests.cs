@@ -375,5 +375,158 @@ namespace XUnitTest.Auth.OAuth
             _cache.Verify(c => c.RemoveKeyAsync("old-token"), Times.Once);
             _refreshRepo.Verify(r => r.RevokeByTokenIdAsync("old-token", "superseded_by_rotation", It.IsAny<string>()), Times.Once);
         }
+
+        // ---------- blocks-iam#624 C10: the rotation leg makes no extra store call ----------
+        //
+        // Baseline recorded at 48b576eb by running these same tests against the unchanged
+        // UnifiedTokenSessionService: a cache-hit rotation is 1 Redis read, 1 Redis write, 1 Redis
+        // delete, 1 Mongo insert and 1 Mongo revoke; a cache miss adds exactly 1 Mongo read. Carrying
+        // the lineage client reuses the predecessor already loaded there, so the counts must not move.
+
+        private const string SwitchOrgEndpoint = "/auth/switch-org";
+        private const string AuthRefreshEndpoint = "/auth/refresh";
+        private const string OidcTokenEndpoint = "/oidc/token";
+
+        /// <summary>The TokenRequest each endpoint hands the rotation leg.</summary>
+        private static TokenRequest EndpointRotationRequest(string endpoint, string presentedToken)
+        {
+            var isSwitch = endpoint == SwitchOrgEndpoint;
+            var request = MakeRequest(isSwitch ? GrantTypes.SwitchOrganization : GrantTypes.RefreshToken);
+            request.RefreshToken = presentedToken;
+            request.OrganizationId = isSwitch ? "org-b" : "default";
+            if (endpoint == OidcTokenEndpoint)
+            {
+                request.IdpSessionId = "session-1";
+            }
+
+            return request;
+        }
+
+        private Dictionary<string, int> StoreCallCounts()
+        {
+            int Count(Moq.Mock mock, string method) => mock.Invocations.Count(i => i.Method.Name == method);
+
+            return new Dictionary<string, int>
+            {
+                ["cache.GetStringValueAsync"] = Count(_cache, nameof(ICacheClient.GetStringValueAsync)),
+                ["cache.AddStringValueAsync"] = Count(_cache, nameof(ICacheClient.AddStringValueAsync)),
+                ["cache.RemoveKeyAsync"] = Count(_cache, nameof(ICacheClient.RemoveKeyAsync)),
+                ["repo.GetByTokenIdAsync"] = Count(_refreshRepo, nameof(IRefreshTokenRepository.GetByTokenIdAsync)),
+                ["repo.CreateAsync"] = Count(_refreshRepo, nameof(IRefreshTokenRepository.CreateAsync)),
+                ["repo.RevokeByTokenIdAsync"] = Count(_refreshRepo, nameof(IRefreshTokenRepository.RevokeByTokenIdAsync)),
+                ["repo.RevokeSupersededLoginLineagesAsync"] = Count(_refreshRepo, nameof(IRefreshTokenRepository.RevokeSupersededLoginLineagesAsync)),
+            };
+        }
+
+        [Theory]
+        [InlineData(SwitchOrgEndpoint, true)]
+        [InlineData(SwitchOrgEndpoint, false)]
+        [InlineData(AuthRefreshEndpoint, true)]
+        [InlineData(AuthRefreshEndpoint, false)]
+        [InlineData(OidcTokenEndpoint, true)]
+        [InlineData(OidcTokenEndpoint, false)]
+        public async Task ManageRefreshToken_Rotation_MakesTheBaselineNumberOfStoreCalls(string endpoint, bool predecessorCached)
+        {
+            var cap = DateTime.UtcNow.AddDays(6);
+            if (predecessorCached)
+            {
+                _cache.Setup(c => c.GetStringValueAsync("old-token"))
+                    .ReturnsAsync(System.Text.Json.JsonSerializer.Serialize(new Authentication.DomainService.Dtos.RefreshTokenCache
+                    {
+                        RefreshToken = "old-token",
+                        UserId = "u1",
+                        TenantId = "tenant-1",
+                        ClientId = "client-1",
+                        SessionId = "session-1",
+                        RefreshTokenSessionId = "lineage-1",
+                        ExpiresUtc = DateTime.UtcNow.AddMinutes(30),
+                        AbsoluteExpiresUtc = cap
+                    }));
+            }
+            else
+            {
+                _cache.Setup(c => c.GetStringValueAsync("old-token")).ReturnsAsync((string)null!);
+                _refreshRepo.Setup(r => r.GetByTokenIdAsync("old-token")).ReturnsAsync(new Blocks.Genesis.Entities.Iam.RefreshTokenModel
+                {
+                    TokenId = "old-token",
+                    UserId = "u1",
+                    TenantId = "tenant-1",
+                    ClientId = "client-1",
+                    SessionId = "session-1",
+                    RefreshTokenSessionId = "lineage-1",
+                    SlidingExpiry = DateTime.UtcNow.AddMinutes(30),
+                    AbsoluteExpiry = cap
+                });
+            }
+            _cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>())).ReturnsAsync(true);
+
+            var (token, _) = await Create().ManageRefreshTokenAsync(
+                EndpointRotationRequest(endpoint, "old-token"),
+                RefreshTokenAuthenticationServiceTests.MakeJwtAccessToken(),
+                new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 60 },
+                RefreshTokenAuthenticationServiceTests.MakeTenant(),
+                new User { ItemId = "u1" });
+
+            token.Should().NotBeNullOrWhiteSpace();
+            StoreCallCounts().Should().Equal(new Dictionary<string, int>
+            {
+                ["cache.GetStringValueAsync"] = 1,
+                ["cache.AddStringValueAsync"] = 1,
+                ["cache.RemoveKeyAsync"] = 1,
+                ["repo.GetByTokenIdAsync"] = predecessorCached ? 0 : 1,
+                ["repo.CreateAsync"] = 1,
+                ["repo.RevokeByTokenIdAsync"] = 1,
+                ["repo.RevokeSupersededLoginLineagesAsync"] = 0,
+            });
+        }
+
+        // ---------- blocks-iam#624 C14: a grace replay hands back a successor that kept the client ----------
+
+        [Fact]
+        public async Task ManageRefreshToken_ConcurrentSwitchThenGraceReplay_ReturnsTheSuccessorCarryingTheLineageClient()
+        {
+            var cap = DateTime.UtcNow.AddDays(6);
+            _cache.Setup(c => c.GetStringValueAsync("old-token"))
+                .ReturnsAsync(System.Text.Json.JsonSerializer.Serialize(new Authentication.DomainService.Dtos.RefreshTokenCache
+                {
+                    RefreshToken = "old-token",
+                    UserId = "u1",
+                    TenantId = "tenant-1",
+                    ClientId = "client-1",
+                    SessionId = "session-1",
+                    RefreshTokenSessionId = "lineage-1",
+                    ExpiresUtc = DateTime.UtcNow.AddMinutes(30),
+                    AbsoluteExpiresUtc = cap
+                }));
+            _cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>())).ReturnsAsync(true);
+            var created = new List<Blocks.Genesis.Entities.Iam.RefreshTokenModel>();
+            _refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()))
+                .Callback<Blocks.Genesis.Entities.Iam.RefreshTokenModel>(created.Add)
+                .ReturnsAsync("id");
+
+            // First rotation: a switch-org request that, at this layer, names no client.
+            var first = EndpointRotationRequest(SwitchOrgEndpoint, "old-token");
+            first.ClientId = null;
+            var (successor, _) = await Create().ManageRefreshTokenAsync(
+                first, RefreshTokenAuthenticationServiceTests.MakeJwtAccessToken(),
+                new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 60 },
+                RefreshTokenAuthenticationServiceTests.MakeTenant(), new User { ItemId = "u1" });
+
+            // The concurrent second request resolved through the grace window onto that successor.
+            var replay = EndpointRotationRequest(AuthRefreshEndpoint, "old-token");
+            replay.GraceReplayTokenId = successor;
+            replay.GraceReplayAbsoluteExpiry = cap;
+            var (replayed, replayedExpiry) = await Create().ManageRefreshTokenAsync(
+                replay, RefreshTokenAuthenticationServiceTests.MakeJwtAccessToken(),
+                new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 60 },
+                RefreshTokenAuthenticationServiceTests.MakeTenant(), new User { ItemId = "u1" });
+
+            replayed.Should().Be(successor);
+            replayedExpiry.Should().Be(cap);
+            created.Should().ContainSingle("the replay does not rotate again");
+            created[0].TokenId.Should().Be(successor);
+            created[0].ClientId.Should().Be("client-1");
+            created[0].OrganizationId.Should().Be("org-b");
+        }
     }
 }

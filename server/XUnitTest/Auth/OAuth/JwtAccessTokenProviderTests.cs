@@ -228,6 +228,24 @@ namespace XUnitTest.Auth.OAuth
             token.Audience.Should().Be("app.example.com");
         }
 
+        [Theory]
+        [InlineData("switch_organization")]
+        [InlineData("refresh_token")]
+        public void MapJwtAccessToken_RotationCarryingTheLineageClient_StillUsesTheTenantAudience(string grantType)
+        {
+            // blocks-iam#624 C12: switch-org and /auth/refresh now name the lineage client and leave the
+            // request Audience unset; the minted aud is still DomainResolver.GetAudience(tenant).
+            var tenant = TenantWithAudience();
+            var token = Sut().MapJwtAccessToken(
+                Config(), tenant, MakeUser(), GenerateCertificate(),
+                new ResolvedAuthorizationClaims { Roles = { "admin" } },
+                new TokenRequest { GrantType = grantType, OrganizationId = "org1", ClientId = "client-1", Audience = null },
+                Scope("org1"));
+
+            token.Audience.Should().Be(Authentication.DomainService.Utilities.DomainResolver.GetAudience(tenant));
+            token.Audience.Should().Be("app.example.com");
+        }
+
         [Fact]
         public async Task GetOrRetrieveCertAsync_CacheMiss_FetchesFromProviderAndCaches()
         {
