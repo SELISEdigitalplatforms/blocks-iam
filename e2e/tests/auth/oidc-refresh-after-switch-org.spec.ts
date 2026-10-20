@@ -1,6 +1,6 @@
 import type { Page, Request } from "@playwright/test";
 import { test, expect } from "../../support/test-base";
-import { loginFresh } from "../../support/login-helper";
+import { loginThroughOidc } from "../../support/login-helper";
 import {
   iamApi,
   oidcRefresh,
@@ -113,6 +113,10 @@ async function runtimeClientId(page: Page): Promise<string | undefined> {
 }
 
 test.describe("OIDC refresh after switch-org and /auth/refresh (blocks-iam#624)", () => {
+  // Start with no saved session at all, so the login below begins a new lineage whose client is
+  // known. Clearing only the cookies kept the saved auth-storage in localStorage.
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test("a hosted-OIDC session keeps refreshing through /oidc/token", async ({ page }) => {
     // ---- Step 1: fresh hosted OIDC login, recording the client it ran for ----
     const loginClientIds: string[] = [];
@@ -125,11 +129,11 @@ test.describe("OIDC refresh after switch-org and /auth/refresh (blocks-iam#624)"
     };
 
     await test.step("Sign in through the hosted OIDC login", async () => {
-      // Start a new lineage rather than reusing the saved session, so its client is known.
-      await page.context().clearCookies();
+      // Start at /login, not "/": "/" always routes through /app/profile before the auth guard
+      // sends a signed-out user to /login, and loginFresh takes that transient URL for a session.
       page.on("request", recordClientId);
       try {
-        await loginFresh(page);
+        await loginThroughOidc(page);
       } finally {
         page.off("request", recordClientId);
       }
