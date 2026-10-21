@@ -1,4 +1,3 @@
-using System.Reflection;
 using Authentication.DomainService.Entities;
 using Blocks.Genesis;
 using Blocks.Genesis.Entities.Iam;
@@ -31,18 +30,6 @@ namespace Authentication.DomainService.Shared.Services
     public sealed class OidcClientTokenLifetimeService : IOidcClientTokenLifetimeService
     {
         public const string StoreKeyPrefix = "oidc-client-token-lifetimes:";
-
-        private static readonly MethodInfo MemberwiseCloneMethod =
-            typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!;
-
-        private static readonly PropertyInfo AccessProperty =
-            typeof(IdentityConfiguration).GetProperty(nameof(IdentityConfiguration.AccessTokenValidForNumberMinutes))!;
-
-        private static readonly PropertyInfo SlidingProperty =
-            typeof(IdentityConfiguration).GetProperty(nameof(IdentityConfiguration.RefreshTokenValidForNumberMinutes))!;
-
-        private static readonly PropertyInfo AbsoluteProperty =
-            typeof(IdentityConfiguration).GetProperty(nameof(IdentityConfiguration.AbsoluteRefreshTokenValidForNumberMinutes))!;
 
         private readonly IKeyValueStore _keyValueStore;
         private readonly ILogger<OidcClientTokenLifetimeService> _logger;
@@ -138,27 +125,8 @@ namespace Authentication.DomainService.Shared.Services
                 return projectConfiguration;
             }
 
-            // Shallow copy: every other setting stays exactly the project's. AccessTokenValidForNumberMinutes
-            // is init-only on the Genesis type, so the three values are written through reflection.
-            var effective = (IdentityConfiguration)MemberwiseCloneMethod.Invoke(
-                projectConfiguration ?? new IdentityConfiguration(), null)!;
-
-            if (access.HasValue)
-            {
-                AccessProperty.SetValue(effective, access.Value);
-            }
-
-            if (sliding.HasValue)
-            {
-                SlidingProperty.SetValue(effective, sliding.Value);
-            }
-
-            if (absolute.HasValue)
-            {
-                AbsoluteProperty.SetValue(effective, absolute.Value);
-            }
-
-            return effective;
+            // Every other setting stays exactly the project's.
+            return (projectConfiguration ?? new IdentityConfiguration()).WithTokenLifetimes(access, sliding, absolute);
         }
 
         private static int? Usable(int? value, Func<int, bool> isValid, string? clientId, string field, ILogger? logger)
