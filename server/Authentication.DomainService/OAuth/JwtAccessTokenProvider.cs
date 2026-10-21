@@ -24,7 +24,6 @@ namespace Authentication.DomainService.OAuth
         private readonly ICertificateProviderFactory _certificateProviderFactory;
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IResourceRepository _resourceRepository;
-        private string? _key;
 
 
         public JwtAccessTokenProvider(
@@ -52,8 +51,10 @@ namespace Authentication.DomainService.OAuth
             TokenRequest tokenRequest,
             StateInfo? state = null)
         {
-            _key = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
-            var certificate = await GetOrRetrieveCertAsync(tenant);
+            // A local, not a field: this provider is a singleton, so a field would be shared by
+            // concurrent requests and one tenant's mint could read another tenant's key.
+            var certificateKey = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
+            var certificate = await GetOrRetrieveCertAsync(certificateKey, tenant);
             if (certificate == null) return new JwtAccessToken();
 
             // The authoritative organization decision for every OAuth-family token: password,
@@ -202,21 +203,21 @@ namespace Authentication.DomainService.OAuth
             }
         }
 
-        public async Task<byte[]?> GetOrRetrieveCertAsync(Tenant tenant)
+        public async Task<byte[]?> GetOrRetrieveCertAsync(string certificateKey, Tenant tenant)
         {
             _logger.LogInformation("Getting Certificate");
-            var cachedCert = _cacheDb.StringGet(_key);
+            var cachedCert = await _cacheDb.StringGetAsync(certificateKey);
             _logger.LogInformation("Has Cache Certificate: {CC}", cachedCert.HasValue);
 
             if (!cachedCert.HasValue)
             {
                 var provider = _certificateProviderFactory.GetProvider(tenant.JwtTokenParameters?.CertificateStorageType ?? CertificateStorageType.Azure);
-                var certificate = await provider.GetCertificateAsync(_key);
+                var certificate = await provider.GetCertificateAsync(certificateKey);
 
                 if (certificate != null && certificate.Length > 0)
                 {
                     var expirationDays = tenant.JwtTokenParameters?.CertificateValidForNumberOfDays - (DateTime.UtcNow - tenant.JwtTokenParameters?.IssueDate)?.Days - 1;
-                    _cacheDb.StringSet(_key, certificate, TimeSpan.FromDays(expirationDays ?? 0));
+                    await _cacheDb.StringSetAsync(certificateKey, certificate, TimeSpan.FromDays(expirationDays ?? 0));
                     _logger.LogInformation("Certificate set to cache");
                 }
                 return certificate;
