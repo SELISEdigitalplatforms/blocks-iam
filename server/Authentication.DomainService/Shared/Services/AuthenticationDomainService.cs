@@ -13,6 +13,8 @@ using Authentication.DomainService.Shared.RequestModel;
 using Iam.DomainService.Dtos;
 using Authentication.DomainService.Authentication;
 using Blocks.Genesis.Entities.Iam;
+using Authentication.DomainService.Shared.Services;
+using Microsoft.Extensions.Logging;
 
 
 namespace Authentication.DomainService.Services
@@ -27,6 +29,10 @@ namespace Authentication.DomainService.Services
         private readonly IValidator<UpdateIdentityProviderRequest> _updateIdpValidator;
         private readonly ITenants _tenants;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
+        private readonly ILogger<AuthenticationDomainService>? _logger;
+
+        public const string TokenLifetimesSaveFailedMessage = "Token lifetimes could not be saved. Try again.";
 
         private const string Origin_Header_Name = "Origin";
         private const string Referer_Header_Name = "Referer";
@@ -39,7 +45,9 @@ namespace Authentication.DomainService.Services
                                            IValidator<SaveIdentityProviderRequest> saveIdpValidator,
                                            IValidator<UpdateIdentityProviderRequest> updateIdpValidator,
                                            ITenants tenants,
-                                           IHttpClientFactory httpClientFactory)
+                                           IHttpClientFactory httpClientFactory,
+                                           IOidcClientTokenLifetimeService? clientTokenLifetimes = null,
+                                           ILogger<AuthenticationDomainService>? logger = null)
         {
             _messageClient = messageClient;
             _authenticationRepository = authenticationRepository;
@@ -49,6 +57,8 @@ namespace Authentication.DomainService.Services
             _updateIdpValidator = updateIdpValidator;
             _tenants = tenants;
             _httpClientFactory = httpClientFactory;
+            _clientTokenLifetimes = clientTokenLifetimes;
+            _logger = logger;
         }
 
         public IEnumerable<string> GetVisitorsIpAddresses(HttpContext context)
@@ -148,7 +158,17 @@ namespace Authentication.DomainService.Services
                 };
             }
 
-            var credential = await InitializeOidcClientCredentialAsync(request);
+            var lifetimeErrors = await ValidateTokenLifetimesAgainstProjectAsync(request.TokenLifetimes);
+            if (lifetimeErrors != null)
+            {
+                return new SaveOIDCClientResponse
+                {
+                    IsSuccess = false,
+                    Errors = lifetimeErrors
+                };
+            }
+
+            var (credential, isNewClient) = await InitializeOidcClientCredentialAsync(request);
             ApplyOidcClientScopesAndRedirects(credential, request);
             ApplyOidcClientOptions(credential, request);
 
@@ -219,12 +239,104 @@ namespace Authentication.DomainService.Services
                 }
             }
 
+            if (!await TrySaveTokenLifetimesAsync(credential.ClientId, request.TokenLifetimes, isNewClient))
+            {
+                return new SaveOIDCClientResponse
+                {
+                    IsSuccess = false,
+                    ItemId = credential.ItemId,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(SaveOIDCClientRequest.TokenLifetimes), TokenLifetimesSaveFailedMessage }
+                    }
+                };
+            }
+
             return new SaveOIDCClientResponse { IsSuccess = true, ItemId = credential.ItemId };
         }
 
-        private async Task<OidcClientRegistration> InitializeOidcClientCredentialAsync(SaveOIDCClientRequest request)
+        /// <summary>
+        /// When only one refresh lifetime is set, the other comes from the project; the pair must still
+        /// satisfy maximum >= idle. Both-set and range rules live in the request validator.
+        /// </summary>
+        private async Task<Dictionary<string, string>?> ValidateTokenLifetimesAgainstProjectAsync(OidcClientTokenLifetimes? lifetimes)
+        {
+            if (lifetimes == null)
+            {
+                return null;
+            }
+
+            var hasSliding = lifetimes.RefreshTokenValidForNumberMinutes.HasValue;
+            var hasAbsolute = lifetimes.AbsoluteRefreshTokenValidForNumberMinutes.HasValue;
+            if (hasSliding == hasAbsolute)
+            {
+                return null;
+            }
+
+            var project = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            var (projectSliding, projectAbsolute) = RefreshTokenLifetimeResolver.Resolve(project);
+
+            if (hasSliding && lifetimes.RefreshTokenValidForNumberMinutes!.Value > projectAbsolute)
+            {
+                return new Dictionary<string, string>
+                {
+                    {
+                        $"{nameof(SaveOIDCClientRequest.TokenLifetimes)}.{nameof(OidcClientTokenLifetimes.RefreshTokenValidForNumberMinutes)}",
+                        $"Refresh token idle lifetime must not exceed the project's maximum refresh token lifetime ({projectAbsolute} minutes)."
+                    }
+                };
+            }
+
+            if (hasAbsolute && lifetimes.AbsoluteRefreshTokenValidForNumberMinutes!.Value < projectSliding)
+            {
+                return new Dictionary<string, string>
+                {
+                    {
+                        $"{nameof(SaveOIDCClientRequest.TokenLifetimes)}.{nameof(OidcClientTokenLifetimes.AbsoluteRefreshTokenValidForNumberMinutes)}",
+                        $"Refresh token maximum lifetime must be at least the project's refresh token idle lifetime ({projectSliding} minutes)."
+                    }
+                };
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Absent lifetimes keep an existing client's stored values; a new client never inherits an entry
+        /// left under the same id. Runs after the client document is saved; a failure is reported to the
+        /// caller and the previous values stay in force.
+        /// </summary>
+        private async Task<bool> TrySaveTokenLifetimesAsync(string clientId, OidcClientTokenLifetimes? lifetimes, bool isNewClient)
+        {
+            if (_clientTokenLifetimes == null || (lifetimes == null && !isNewClient))
+            {
+                return true;
+            }
+
+            try
+            {
+                if (lifetimes == null)
+                {
+                    await _clientTokenLifetimes.DeleteAsync(clientId);
+                }
+                else
+                {
+                    await _clientTokenLifetimes.SaveAsync(clientId, lifetimes);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Saving OIDC client token lifetimes failed. clientId={ClientId}", clientId);
+                return false;
+            }
+        }
+
+        private async Task<(OidcClientRegistration Credential, bool IsNew)> InitializeOidcClientCredentialAsync(SaveOIDCClientRequest request)
         {
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
+            var isNew = credential == null;
             var clientId = string.IsNullOrWhiteSpace(request.ItemId) ? Guid.NewGuid().ToString() : request.ItemId;
 
             credential ??= new OidcClientRegistration
@@ -247,7 +359,7 @@ namespace Authentication.DomainService.Services
                     ? GenerateClientSecret()
                     : credential.ClientSecret;
 
-            return credential;
+            return (credential, isNew);
         }
 
         private static void ApplyOidcClientScopesAndRedirects(OidcClientRegistration credential, SaveOIDCClientRequest request)
@@ -327,9 +439,13 @@ namespace Authentication.DomainService.Services
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
         {
             var client = await _authenticationRepository.GetOIDCCredentialByIdAsync(tenantId);
+            var tokenLifetimes = client != null && _clientTokenLifetimes != null
+                ? await _clientTokenLifetimes.GetAsync(string.IsNullOrWhiteSpace(client.ClientId) ? client.ItemId : client.ClientId)
+                : null;
             return new GetOIDCClientResponse
             {
                 oIDCClientCredential = client,
+                TokenLifetimes = tokenLifetimes,
                 IsSuccess = true,
             };
         }
@@ -400,7 +516,15 @@ namespace Authentication.DomainService.Services
         {
             // Get the OIDC client before deletion to know the ClientId
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
-            
+
+            // The client's token lifetimes go first: if this fails the client stays, so no values are
+            // left behind for a later client created under the same id.
+            if (_clientTokenLifetimes != null)
+            {
+                var lifetimesKey = !string.IsNullOrWhiteSpace(credential?.ClientId) ? credential.ClientId : request.ItemId;
+                await _clientTokenLifetimes.DeleteAsync(lifetimesKey ?? string.Empty);
+            }
+
             // Delete the OIDC client registration
             await _authenticationRepository.DeleteOidcClientAsync(request);
 

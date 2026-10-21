@@ -39,6 +39,7 @@ namespace Authentication.DomainService.Shared
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IUserRepository _userRepository;
         private readonly ILogger<UnifiedTokenSessionService> _logger;
+        private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
 
         public UnifiedTokenSessionService(
             ICacheClient cacheClient,
@@ -48,8 +49,10 @@ namespace Authentication.DomainService.Shared
             IIdpSessionService idpSessionService,
             IHttpContextAccessor httpContextAccessor,
             IUserRepository userRepository,
-            ILogger<UnifiedTokenSessionService> logger)
+            ILogger<UnifiedTokenSessionService> logger,
+            IOidcClientTokenLifetimeService? clientTokenLifetimes = null)
         {
+            _clientTokenLifetimes = clientTokenLifetimes;
             _cacheClient = cacheClient;
             _authenticationDomainService = authenticationDomainService;
             _refreshTokenRepository = refreshTokenRepository;
@@ -72,11 +75,7 @@ namespace Authentication.DomainService.Shared
         {
             var now = DateTime.UtcNow;
             string refreshTokenId = Guid.NewGuid().ToString("N");
-            var (refreshTokenLifetime, absoluteLifetime) =
-                RefreshTokenLifetimeResolver.Resolve(authenticationConfiguration, _logger);
-
-            DateTime refreshTokenExpireOn = now.AddMinutes(refreshTokenLifetime);
-            DateTime absoluteRefreshTokenExpireOn = now.AddMinutes(absoluteLifetime);
+            DateTime? inheritedAbsoluteExpiry = null;
 
             var isRotation = !string.IsNullOrWhiteSpace(oldRefreshToken);
             string refreshTokenSessionId = refreshTokenId;
@@ -99,13 +98,24 @@ namespace Authentication.DomainService.Shared
                 }
 
                 refreshTokenSessionId = predecessor.Value.RefreshTokenSessionId;
-                absoluteRefreshTokenExpireOn = predecessor.Value.AbsoluteExpiry;
+                inheritedAbsoluteExpiry = predecessor.Value.AbsoluteExpiry;
                 successorClientId = ResolveSuccessorClientId(
                     predecessor.Value.ClientId,
                     tokenRequest.ClientId,
                     refreshTokenSessionId,
                     oldRefreshToken!);
             }
+
+            // The lineage's client decides the lifetimes when it has its own set; otherwise the project
+            // configuration instance is used unchanged. A rotation never re-anchors the absolute cap.
+            var effectiveConfiguration = _clientTokenLifetimes == null
+                ? authenticationConfiguration
+                : await _clientTokenLifetimes.ApplyAsync(authenticationConfiguration, successorClientId);
+            var (refreshTokenLifetime, absoluteLifetime) =
+                RefreshTokenLifetimeResolver.Resolve(effectiveConfiguration, _logger);
+
+            DateTime refreshTokenExpireOn = now.AddMinutes(refreshTokenLifetime);
+            DateTime absoluteRefreshTokenExpireOn = inheritedAbsoluteExpiry ?? now.AddMinutes(absoluteLifetime);
 
             var httpContext = _httpContextAccessor.HttpContext;
             var userAgent = tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent")

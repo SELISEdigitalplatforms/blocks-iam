@@ -40,6 +40,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
         private readonly ILogger<AuthorizationCodeExchangeService> _logger;
+        private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
 
         public AuthorizationCodeExchangeService(
             IAuthorizationCodeRepository authCodeRepo,
@@ -52,8 +53,10 @@ namespace Authentication.DomainService.Authentication
             ITenants tenants,
             ITokenRevocationRepository tokenRevocationRepo,
             ICacheClient cacheClient,
-            ILogger<AuthorizationCodeExchangeService> logger)
+            ILogger<AuthorizationCodeExchangeService> logger,
+            IOidcClientTokenLifetimeService? clientTokenLifetimes = null)
         {
+            _clientTokenLifetimes = clientTokenLifetimes;
             _authCodeRepo = authCodeRepo;
             _refreshTokenRepo = refreshTokenRepo;
             _tokenRevocationRepo = tokenRevocationRepo;
@@ -234,6 +237,11 @@ namespace Authentication.DomainService.Authentication
 
 
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            // The client's own lifetimes, when set, replace the project values; otherwise the same instance is kept.
+            if (_clientTokenLifetimes != null)
+            {
+                authConfiguration = (await _clientTokenLifetimes.ApplyAsync(authConfiguration, clientId))!;
+            }
             var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * IdpConstants.SecondsPerMinute, IdpConstants.MinAccessTokenLifetimeSeconds);
             var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
 

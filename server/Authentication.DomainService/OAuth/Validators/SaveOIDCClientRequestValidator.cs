@@ -1,3 +1,4 @@
+using Authentication.DomainService.Entities;
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Utilities;
 using FluentValidation;
@@ -85,7 +86,40 @@ namespace Authentication.DomainService.OAuth
                 .Must(NotContainCodeResponseType)
                 .When(x => x.IsDeviceFlowClient)
                 .WithMessage(DeviceFlowResponseTypesMessage);
+
+            // Optional per-client token lifetimes. Null fields mean "use the project value".
+            RuleFor(x => x.TokenLifetimes!.AccessTokenValidForNumberMinutes)
+                .Must(value => OidcClientTokenLifetimes.IsValidAccessMinutes(value!.Value))
+                .When(x => x.TokenLifetimes?.AccessTokenValidForNumberMinutes != null)
+                .WithMessage(AccessTokenLifetimeMessage);
+
+            RuleFor(x => x.TokenLifetimes!.RefreshTokenValidForNumberMinutes)
+                .Must(value => OidcClientTokenLifetimes.IsValidRefreshMinutes(value!.Value))
+                .When(x => x.TokenLifetimes?.RefreshTokenValidForNumberMinutes != null)
+                .WithMessage(RefreshTokenLifetimeMessage);
+
+            RuleFor(x => x.TokenLifetimes!.AbsoluteRefreshTokenValidForNumberMinutes)
+                .Must(value => OidcClientTokenLifetimes.IsValidRefreshMinutes(value!.Value))
+                .When(x => x.TokenLifetimes?.AbsoluteRefreshTokenValidForNumberMinutes != null)
+                .WithMessage(AbsoluteRefreshTokenLifetimeMessage);
+
+            RuleFor(x => x.TokenLifetimes!.AbsoluteRefreshTokenValidForNumberMinutes)
+                .Must((request, absolute) => absolute!.Value >= request.TokenLifetimes!.RefreshTokenValidForNumberMinutes!.Value)
+                .When(x => x.TokenLifetimes?.AbsoluteRefreshTokenValidForNumberMinutes != null
+                    && x.TokenLifetimes.RefreshTokenValidForNumberMinutes != null
+                    && OidcClientTokenLifetimes.IsValidRefreshMinutes(x.TokenLifetimes.AbsoluteRefreshTokenValidForNumberMinutes.Value)
+                    && OidcClientTokenLifetimes.IsValidRefreshMinutes(x.TokenLifetimes.RefreshTokenValidForNumberMinutes.Value))
+                .WithMessage(AbsoluteBelowSlidingMessage);
         }
+
+        public const string AccessTokenLifetimeMessage =
+            "Access token lifetime must be between 1 and 1440 minutes.";
+        public const string RefreshTokenLifetimeMessage =
+            "Refresh token idle lifetime must be between 1 and 525600 minutes.";
+        public const string AbsoluteRefreshTokenLifetimeMessage =
+            "Refresh token maximum lifetime must be between 1 and 525600 minutes.";
+        public const string AbsoluteBelowSlidingMessage =
+            "Refresh token maximum lifetime must be at least the refresh token idle lifetime.";
 
         private static bool NotContainCodeResponseType(List<string>? values)
         {

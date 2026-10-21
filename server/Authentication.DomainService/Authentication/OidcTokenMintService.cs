@@ -12,6 +12,7 @@ using Idp.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Blocks.Genesis.Entities.Iam;
+using Authentication.DomainService.Shared.Services;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -62,6 +63,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ITenants _tenants;
         private readonly IIdpSessionService _idpSessionService;
         private readonly ILogger<OidcTokenMintService> _logger;
+        private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
 
         public OidcTokenMintService(
             ITokenGenerationService tokenService,
@@ -69,8 +71,10 @@ namespace Authentication.DomainService.Authentication
             IAuthenticationRepository authenticationRepository,
             ITenants tenants,
             IIdpSessionService idpSessionService,
-            ILogger<OidcTokenMintService> logger)
+            ILogger<OidcTokenMintService> logger,
+            IOidcClientTokenLifetimeService? clientTokenLifetimes = null)
         {
+            _clientTokenLifetimes = clientTokenLifetimes;
             _tokenService = tokenService;
             _authorizationClaimsResolver = authorizationClaimsResolver;
             _authenticationRepository = authenticationRepository;
@@ -122,6 +126,11 @@ namespace Authentication.DomainService.Authentication
             };
 
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            // The client's own lifetimes, when set, replace the project values; otherwise the same instance is kept.
+            if (_clientTokenLifetimes != null)
+            {
+                authConfiguration = (await _clientTokenLifetimes.ApplyAsync(authConfiguration, request.ClientId))!;
+            }
             var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * IdpConstants.SecondsPerMinute, IdpConstants.MinAccessTokenLifetimeSeconds);
             var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
 

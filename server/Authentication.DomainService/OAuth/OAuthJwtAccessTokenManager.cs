@@ -17,6 +17,7 @@ using Iam.DomainService.Utilities;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Oidc.Services;
 using Blocks.Genesis.Entities.Iam;
+using Authentication.DomainService.Shared.Services;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -31,6 +32,7 @@ namespace Authentication.DomainService.OAuth
         private readonly ITenants _tenants;
         private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
         private readonly IIdpSessionService _idpSessionService;
+        private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
 
         private static readonly HashSet<string> MfaCheckpointExemptGrantTypes = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -57,9 +59,11 @@ namespace Authentication.DomainService.OAuth
             ITenants tenants,
             IOtpServiceFactory otpServiceFactory,
             UnifiedTokenSessionService unifiedTokenSessionService,
-            IIdpSessionService idpSessionService
+            IIdpSessionService idpSessionService,
+            IOidcClientTokenLifetimeService? clientTokenLifetimes = null
         )
         {
+            _clientTokenLifetimes = clientTokenLifetimes;
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
             _authenticationDomainService = authenticationDomainService;
             _authenticationRepository = authenticationRepository;
@@ -99,8 +103,14 @@ namespace Authentication.DomainService.OAuth
             // explicit rather than re-deriving it from the request cookie.
             tokenRequest.IdpSessionId = await ResolveEffectiveIdpSessionIdAsync(tokenRequest, tenant, user);
 
+            // Access token lifetime: the client's own value when set, else the project value (same instance).
+            // The refresh token resolves its own lifetimes inside UnifiedTokenSessionService.
+            var accessConfiguration = _clientTokenLifetimes == null
+                ? authenticationConfiguration
+                : (await _clientTokenLifetimes.ApplyAsync(authenticationConfiguration, tokenRequest.ClientId))!;
+
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
-                authenticationConfiguration,
+                accessConfiguration,
                 tenant,
                 user,
                 tokenRequest,
@@ -124,7 +134,7 @@ namespace Authentication.DomainService.OAuth
             var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, tokenRequest.Request);
 
             var accessTokenLifetimeSeconds = Math.Max(
-                authenticationConfiguration.AccessTokenValidForNumberMinutes * IdpConstants.SecondsPerMinute,
+                accessConfiguration.AccessTokenValidForNumberMinutes * IdpConstants.SecondsPerMinute,
                 IdpConstants.MinAccessTokenLifetimeSeconds);
 
             return new TokenResponse

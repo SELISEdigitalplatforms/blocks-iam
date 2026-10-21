@@ -41,12 +41,15 @@ namespace Authentication.DomainService.Shared.Services
         private readonly ICacheClient _cacheClient;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly ILogger<RefreshSessionResolver> _logger;
+        private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
 
         public RefreshSessionResolver(
             ICacheClient cacheClient,
             IRefreshTokenRepository refreshTokenRepository,
-            ILogger<RefreshSessionResolver> logger)
+            ILogger<RefreshSessionResolver> logger,
+            IOidcClientTokenLifetimeService? clientTokenLifetimes = null)
         {
+            _clientTokenLifetimes = clientTokenLifetimes;
             _cacheClient = cacheClient;
             _refreshTokenRepository = refreshTokenRepository;
             _logger = logger;
@@ -285,7 +288,11 @@ namespace Authentication.DomainService.Shared.Services
                 Audience = persisted.Audience
             };
 
-            var (slidingMinutes, _) = RefreshTokenLifetimeResolver.Resolve(configuration, _logger);
+            // The token's own client decides the idle window when it has one set; otherwise the project value.
+            var effectiveConfiguration = _clientTokenLifetimes == null
+                ? configuration
+                : await _clientTokenLifetimes.ApplyAsync(configuration, persisted.ClientId);
+            var (slidingMinutes, _) = RefreshTokenLifetimeResolver.Resolve(effectiveConfiguration, _logger);
             var ttlSeconds = RefreshTokenLifetimeResolver.ResolveCacheTtlSeconds(slidingMinutes, persisted.AbsoluteExpiry, now);
 
             await _cacheClient.AddStringValueAsync(persisted.TokenId, JsonSerializer.Serialize(tokenCache), ttlSeconds);

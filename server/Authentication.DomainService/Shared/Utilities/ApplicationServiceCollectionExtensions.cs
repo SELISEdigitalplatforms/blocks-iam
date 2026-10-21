@@ -269,6 +269,7 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
             serviceCollection.AddSingleton<IRefreshSessionResolver, RefreshSessionResolver>();
+            serviceCollection.AddSingleton<IOidcClientTokenLifetimeService, OidcClientTokenLifetimeService>();
             serviceCollection.AddSingleton<IImpersonationFlowHelper, ImpersonationFlowHelper>();
 
             // Drivers
