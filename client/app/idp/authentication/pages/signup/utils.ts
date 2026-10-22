@@ -7,7 +7,7 @@ export const signupFormDefaultValue = {
   lastName: "",
   email: "",
   organizationName: "",
-  // Only read when the page offers the join-or-create choice; "join" is preselected there.
+  // Only read when the page offers the create-organization opt-in; "join" is the unticked box.
   organizationChoice: "join" as SignupOrganizationChoice,
 };
 
@@ -29,7 +29,7 @@ export const buildSignupFormSchema = (
   offerOrganizationChoice = false,
 ) => {
   if (organizationNameRequired && offerOrganizationChoice) {
-    // Join-or-create: the name is required only once the user picks "create".
+    // Create-organization opt-in: the name is required only once the user ticks the box.
     return signupFormSchema.superRefine((values, ctx) => {
       if (values.organizationChoice === "create" && !values.organizationName) {
         ctx.addIssue({
