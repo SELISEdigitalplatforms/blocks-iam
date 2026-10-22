@@ -1551,6 +1551,25 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
+        public async Task SaveSignUpSettingBelongsToTheSystemUser()
+        {
+            var delegation = new Mock<Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationService>();
+            delegation.Setup(d => d.AuthorizeSystemOnly("signup-settings")).Returns(false);
+            var service = new AccountService(
+                _loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
+                _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,
+                _userMutationMock.Object, _resourceMutationMock.Object, _captchaServiceMock.Object, _captchaConfigurationServiceMock.Object,
+                _userActivityDispatcherMock.Object, new SignupOrganizationResolver(_resourceRepositoryMock.Object),
+                delegatedAdministration: delegation.Object);
+
+            var result = await service.SaveSignUpSettingAsync(new SaveSignUpSettingRequest { DefaultRolesForNewUserOnSignUp = ["admin"] });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationErrors.GrantNotAllowed);
+            _repositoryMock.Verify(r => r.SaveSignUpSettingAsync(It.IsAny<IamTenantConfiguration>()), Times.Never);
+        }
+
+        [Fact]
         public async Task Get_TenantConfigMissing_ReturnsAllDisabled()
         {
             var service = CreateService();

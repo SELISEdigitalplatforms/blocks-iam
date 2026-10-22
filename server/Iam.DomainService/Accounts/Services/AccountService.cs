@@ -4,6 +4,7 @@
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentValidation;
+using Iam.DomainService.DelegatedAdministration;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -69,6 +70,7 @@ namespace Iam.DomainService.Accounts
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
         private readonly IUserSessionTerminator? _userSessionTerminator;
         private readonly IFailedLoginTracker? _failedLoginTracker;
+        private readonly IDelegatedAdministrationService? _delegatedAdministration;
         private readonly IValidator<SignupOrganizationInfo>? _signupOrganizationValidator;
         private readonly IOrganizationNameResolver? _organizationNameResolver;
         private readonly IConfiguration? _configuration;
@@ -98,7 +100,8 @@ namespace Iam.DomainService.Accounts
             IOrganizationNameResolver? organizationNameResolver = null,
             IConfiguration? configuration = null,
             IUserSessionTerminator? userSessionTerminator = null,
-            IFailedLoginTracker? failedLoginTracker = null)
+            IFailedLoginTracker? failedLoginTracker = null,
+            IDelegatedAdministrationService? delegatedAdministration = null)
         {
             _logger = logger;
             _repository = repository;
@@ -121,6 +124,7 @@ namespace Iam.DomainService.Accounts
             _configuration = configuration;
             _userSessionTerminator = userSessionTerminator;
             _failedLoginTracker = failedLoginTracker;
+            _delegatedAdministration = delegatedAdministration;
         }
 
         public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
@@ -1482,6 +1486,13 @@ namespace Iam.DomainService.Accounts
 
         public async Task<SaveSignUpSettingResponse> SaveSignUpSettingAsync(SaveSignUpSettingRequest request)
         {
+            // R6: signup settings are tenant-wide -- they hand roles to every future signup -- so
+            // they belong to the system user.
+            if (!_delegatedAdministration.AuthorizeSystemOnlyIfWired("signup-settings"))
+            {
+                return new SaveSignUpSettingResponse { IsSuccess = false, Errors = DelegatedAdministrationErrors.Create() };
+            }
+
             var settings = await _repository.GetTenantConfigurationAsync();
 
             if (settings == null)

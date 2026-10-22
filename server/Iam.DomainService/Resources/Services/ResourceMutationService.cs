@@ -1,6 +1,7 @@
 using Iam.DomainService.Notifications;
 ﻿using Blocks.Genesis;
 using FluentValidation;
+using Iam.DomainService.DelegatedAdministration;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
@@ -53,6 +54,7 @@ namespace Iam.DomainService.Resources
         private readonly IUserRepository _userRepository;
 
         private readonly IBuiltInNotificationSender? _notificationSender;
+        private readonly IDelegatedAdministrationService? _delegatedAdministration;
 
         public ResourceMutationService(
             ILogger<ResourceMutationService> logger,
@@ -64,10 +66,14 @@ namespace Iam.DomainService.Resources
             ITenantPermissionPropagator tenantPermissionPropagator,
             IUserActivityDispatcher userActivityDispatcher,
             IUserRepository userRepository,
-            IBuiltInNotificationSender? notificationSender = null
+            IBuiltInNotificationSender? notificationSender = null,
+            // Trailing and optional like the sender above, so existing fixtures keep compiling; DI
+            // always supplies it. Without it no delegated-administration rule runs.
+            IDelegatedAdministrationService? delegatedAdministration = null
         )
         {
             _notificationSender = notificationSender;
+            _delegatedAdministration = delegatedAdministration;
             _logger = logger;
             _resourceRepository = resourceRepository;
             _identityAccessManagementService = identityAccessManagementService;
@@ -81,6 +87,11 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> CreatePermissionAsync(CreatePermissionRequest command)
         {
+            if (!_delegatedAdministration.AuthorizeSystemOnlyIfWired("permissions/create"))
+            {
+                return GrantNotAllowed();
+            }
+
             var blocksContext = BlocksContext.GetContext();
             if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
@@ -256,6 +267,13 @@ namespace Iam.DomainService.Resources
                 };
             }
 
+            // R5: a non-system caller may hang a new role only below a role it holds or manages.
+            // The role starts empty, so its parent is the only power it can carry.
+            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope => DelegatedAdministrationRules.CheckCreateRole(scope, command.ParentRoleSlug)).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
             // An archived parent is still resolvable by slug -- deliberately, since the duplicate
             // check during organization provisioning depends on that. Hanging a live role off one
             // would build a hierarchy whose parent is hidden from every roles list.
@@ -392,6 +410,11 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> UpdatePermissionAsync(string id, UpdatePermissionRequest command)
         {
+            if (!_delegatedAdministration.AuthorizeSystemOnlyIfWired("permissions/update"))
+            {
+                return GrantNotAllowed();
+            }
+
             var blocksContext = BlocksContext.GetContext();
             if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
@@ -515,6 +538,11 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> ArchivePermissionAsync(string id, bool confirmRevokeFromUsers = false)
         {
+            if (!_delegatedAdministration.AuthorizeSystemOnlyIfWired("permissions/delete"))
+            {
+                return GrantNotAllowed();
+            }
+
             var blocksContext = BlocksContext.GetContext();
             if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
@@ -673,6 +701,75 @@ namespace Iam.DomainService.Resources
             };
         }
 
+        /// <summary>The delegated-administration refusal; the controller answers it with 403.</summary>
+        private static BaseMutationResponse GrantNotAllowed() =>
+            new() { IsSuccess = false, Errors = DelegatedAdministrationErrors.Create() };
+
+        /// <summary>
+        /// R7. The roles and permissions <see cref="GrantCreatorMembershipAsync"/> will write: the
+        /// request's member defaults, else the caller's own live roles and direct permissions in the
+        /// organization it is acting in -- the same fallback, minus slugs that grant nothing.
+        /// </summary>
+        private async Task<bool> AuthorizeCreatorGrantAsync(CreateOrganizationRequest request)
+        {
+            var scope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (scope is null || scope.IsSystem)
+            {
+                return true;
+            }
+
+            var roles = request.DefaultRoleForMembers.Count > 0 ? request.DefaultRoleForMembers : scope.HeldRoles.ToList();
+            return await _delegatedAdministration
+                .AuthorizeGrantIfWiredAsync(scope, roles, request.DefaultPermissionsForMembers, DelegatedAdministrationRules.CreateOrganization)
+                .ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// True when a record in <paramref name="organizationId"/> is within the token's organization:
+        /// a tenant-wide token (<c>default</c>, or none) reaches every organization, any other only
+        /// its own.
+        /// </summary>
+        private static bool IsInTokenOrganizationScope(string? organizationId)
+        {
+            var tokenOrganizationId = BlocksContext.GetContext()?.OrganizationId;
+            return string.IsNullOrWhiteSpace(tokenOrganizationId)
+                || IsDefaultOrgScope(tokenOrganizationId)
+                || string.Equals(organizationId, tokenOrganizationId, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// After a role moves, every role below it still lists its old ancestors. Each descendant's
+        /// chain is rebuilt as: its own path down to the moved role, the moved role, then the moved
+        /// role's new ancestors -- so "managed by" stays true for the whole subtree.
+        /// </summary>
+        private async Task RecomputeDescendantAncestorsAsync(Role role)
+        {
+            var descendants = (await _resourceRepository.GetRolesByOrgAsync(role.OrganizationId).ConfigureAwait(false) ?? [])
+                .Where(x => x.ItemId != role.ItemId
+                    && (x.AncestorRoleSlugs ?? []).Contains(role.Slug, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            if (descendants.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var descendant in descendants)
+            {
+                var below = descendant.AncestorRoleSlugs
+                    .TakeWhile(x => !string.Equals(x, role.Slug, StringComparison.OrdinalIgnoreCase));
+                descendant.AncestorRoleSlugs = below
+                    .Append(role.Slug)
+                    .Concat(role.AncestorRoleSlugs ?? [])
+                    .ToList();
+            }
+
+            if (!await _resourceRepository.UpdateRolesAsync(descendants).ConfigureAwait(false))
+            {
+                ResourceMutationLog.DescendantAncestorsNotUpdated(_logger, role.Slug, role.OrganizationId, descendants.Count);
+            }
+        }
+
         public async Task<BaseMutationResponse> ArchiveRoleAsync(string id, bool confirmRevokeFromUsers = false)
         {
             var blocksContext = BlocksContext.GetContext();
@@ -710,6 +807,14 @@ namespace Iam.DomainService.Resources
                 return Failure(ArchivedKey, "Role_Already_Archived");
             }
 
+            // R5: archiving takes the role, and every permission it carries, away from its holders,
+            // so the caller must be able to grant all of it -- and may not archive a role it holds.
+            var grantScope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (!_delegatedAdministration.AuthorizeScopeIfWired(grantScope, scope => DelegatedAdministrationRules.CheckEditRole(scope, role)))
+            {
+                return GrantNotAllowed();
+            }
+
             if (await _resourceRepository.HasChildRolesAsync(role.Slug, role.OrganizationId))
             {
                 _logger.LogInformation("Role archive end -- Has Child Roles");
@@ -737,12 +842,21 @@ namespace Iam.DomainService.Resources
                     role.OrganizationId);
             }
 
+            // R12 needs to know whose access the cleanup below removes, and only before it runs.
+            var removedFromUserIds = await _delegatedAdministration.GetRoleHoldersIfWiredAsync(grantScope, role.Slug).ConfigureAwait(false);
+
             // Cleanup precedes the archive deliberately. If the archive write then fails, a slug
             // removed from permissions without the role being archived is the safer half-state and
             // a retry converges. The reverse -- an archived role still referenced -- is not, so an
             // unacknowledged cleanup stops here rather than archiving anyway.
             var permissionsCleaned = await _resourceRepository.RemoveRoleFromAllPermissionsAsync(role.Slug, role.OrganizationId);
             var usersCleaned = await _resourceRepository.RemoveRoleFromAllUsersAsync(role.Slug, role.OrganizationId);
+            if (usersCleaned)
+            {
+                // Right after the removal, not after the archive: the users have lost the role even
+                // if a later step below fails.
+                await _delegatedAdministration.EndSessionsAfterRemovalIfWiredAsync(grantScope, removedFromUserIds, "role_archived").ConfigureAwait(false);
+            }
 
             // The signup defaults are the third reference, and the one that keeps acting after the
             // archive: DefaultRolesForNewUserOnSignUp is copied verbatim onto every account created
@@ -780,6 +894,22 @@ namespace Iam.DomainService.Resources
                 return new BaseMutationResponse();
             }
 
+            await PublishRoleArchivedAsync(role, callerOrganizationId, confirmRevokeFromUsers).ConfigureAwait(false);
+
+            _logger.LogInformation("Role archive end -- Success");
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = role.ItemId
+            };
+        }
+
+        /// <summary>
+        /// Publishes the events of a committed role archive: the resource mutation and, for a
+        /// default-organization archive under multi-org, the propagation to every copy.
+        /// </summary>
+        private async Task PublishRoleArchivedAsync(Role role, string callerOrganizationId, bool confirmRevokeFromUsers)
+        {
             // Both sends happen after the archive has committed, and a retry cannot republish them
             // because it stops at Role_Already_Archived. Letting an exception escape would return
             // 500 for a write that succeeded and still leave the gap, so the failure is reported
@@ -828,13 +958,6 @@ namespace Iam.DomainService.Resources
                     role.ItemId,
                     role.OrganizationId);
             }
-
-            _logger.LogInformation("Role archive end -- Success");
-            return new BaseMutationResponse
-            {
-                IsSuccess = true,
-                ItemId = role.ItemId
-            };
         }
 
         public async Task<BaseMutationResponse> UpdateRoleAsync(UpdateRoleRequest command)
@@ -853,15 +976,16 @@ namespace Iam.DomainService.Resources
                 };
             }
 
-            if (role.CreatedFromDefault && !IsDefaultOrgScope(role.OrganizationId))
+            var normalizedParentRoleSlug = NormalizeParentRoleSlug(command.ParentRoleSlug);
+            var parentChanged = !string.Equals(
+                normalizedParentRoleSlug,
+                NormalizeParentRoleSlug(role.ParentRoleSlug),
+                StringComparison.Ordinal);
+
+            var updateRefusal = await CheckRoleUpdateAllowedAsync(role, normalizedParentRoleSlug, parentChanged).ConfigureAwait(false);
+            if (updateRefusal != null)
             {
-                return new BaseMutationResponse
-                {
-                    Errors = new Dictionary<string, string>
-                        {
-                            { "forbidden", "Can_Not_Change_Default_role" }
-                        }
-                };
+                return updateRefusal;
             }
 
             if (string.IsNullOrWhiteSpace(command.Name))
@@ -898,10 +1022,6 @@ namespace Iam.DomainService.Resources
             }
 
             var blocksContext = BlocksContext.GetContext();
-            var normalizedParentRoleSlug = string.IsNullOrWhiteSpace(command.ParentRoleSlug)
-                ? null
-                : command.ParentRoleSlug.ToLower();
-
 
             role.Name = command.Name;
             role.Description = command.Description;
@@ -910,16 +1030,10 @@ namespace Iam.DomainService.Resources
             role.LastUpdatedBy = blocksContext?.UserId;
             role.CanCreateOwn = command.CanCreateOwn;
 
-            if (!string.IsNullOrWhiteSpace(command.ParentRoleSlug))
+            var parentFailure = await ApplyParentRoleAsync(role, command.ParentRoleSlug).ConfigureAwait(false);
+            if (parentFailure != null)
             {
-                var (ancestorRoleSlugs, ancestorError) = await ResolveAncestorRoleSlugsAsync(command.ParentRoleSlug);
-                if (ancestorError != null)
-                {
-                    _logger.LogInformation("Role update end -- Parent Chain Unresolvable");
-                    return Failure("ParentRoleSlug", ancestorError);
-                }
-
-                role.AncestorRoleSlugs = ancestorRoleSlugs!;
+                return parentFailure;
             }
 
             var result = await _resourceRepository.UpdateRoleAsync(role);
@@ -928,6 +1042,11 @@ namespace Iam.DomainService.Resources
             {
                 _logger.LogInformation("Role update end -- Error");
                 return new BaseMutationResponse();
+            }
+
+            if (parentChanged)
+            {
+                await RecomputeDescendantAncestorsAsync(role).ConfigureAwait(false);
             }
 
             await SendResourceMutationEventAsync(
@@ -958,6 +1077,79 @@ namespace Iam.DomainService.Resources
                 IsSuccess = true,
                 ItemId = role.ItemId
             };
+        }
+
+        private static string? NormalizeParentRoleSlug(string? parentRoleSlug) =>
+            string.IsNullOrWhiteSpace(parentRoleSlug)
+                ? null
+                : parentRoleSlug.ToLower();
+
+        /// <summary>
+        /// The guards a role update runs before anything is validated or written: the role must be
+        /// in the token's organization, must not be a default-organization copy, and must pass R5
+        /// for the caller. Null when the update may go ahead.
+        /// </summary>
+        private async Task<BaseMutationResponse?> CheckRoleUpdateAllowedAsync(Role role, string? normalizedParentRoleSlug, bool parentChanged)
+        {
+            // GetRoleByIdAsync has no organization scope, so an organization-scoped caller could
+            // otherwise edit another organization's role by id. Always on, whatever the
+            // delegated-administration mode; a tenant-wide token is excepted, as it is everywhere.
+            if (!IsInTokenOrganizationScope(role.OrganizationId))
+            {
+                ResourceMutationLog.RoleUpdateOutsideTokenOrganization(_logger, role.ItemId);
+                return Failure("forbidden", "Not_Allowed_To_Update_Role_From_Another_Organization");
+            }
+
+            if (role.CreatedFromDefault && !IsDefaultOrgScope(role.OrganizationId))
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                        {
+                            { "forbidden", "Can_Not_Change_Default_role" }
+                        }
+                };
+            }
+
+            // R5: no edits to a role the caller holds; the role must be one it could assign, and a
+            // new parent one it holds or manages.
+            var allowed = await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope =>
+                DelegatedAdministrationRules.CheckEditRole(scope, role, normalizedParentRoleSlug, parentChanged)).ConfigureAwait(false);
+            return allowed ? null : GrantNotAllowed();
+        }
+
+        /// <summary>
+        /// Resolves the role's ancestor chain for its (possibly new) parent and writes it onto the
+        /// role. Null on success, otherwise the failure to return.
+        /// </summary>
+        private async Task<BaseMutationResponse?> ApplyParentRoleAsync(Role role, string? parentRoleSlug)
+        {
+            if (string.IsNullOrWhiteSpace(parentRoleSlug))
+            {
+                // A role moved to the top keeps no ancestors; stale ones would leave it "managed"
+                // by roles that no longer sit above it.
+                role.AncestorRoleSlugs = [];
+                return null;
+            }
+
+            var (ancestorRoleSlugs, ancestorError) = await ResolveAncestorRoleSlugsAsync(parentRoleSlug);
+            if (ancestorError != null)
+            {
+                _logger.LogInformation("Role update end -- Parent Chain Unresolvable");
+                return Failure("ParentRoleSlug", ancestorError);
+            }
+
+            // The walk above stops on a loop already in the data, but not on the one this
+            // request would close: a parent that is the role itself or sits below it walks up
+            // through the role and out again, and would be stored as a cycle.
+            if (DelegatedAdministrationRules.CreatesCycle(role.Slug, role.ParentRoleSlug, ancestorRoleSlugs))
+            {
+                ResourceMutationLog.RoleParentWouldCloseCycle(_logger, role.Slug);
+                return Failure(nameof(UpdateRoleRequest.ParentRoleSlug), "Role_Hierarchy_Cycle_Detected");
+            }
+
+            role.AncestorRoleSlugs = ancestorRoleSlugs!;
+            return null;
         }
 
         public async Task SendResourceMutationEventAsync(ResourceMutationEvent resourceMutation)
@@ -1032,6 +1224,19 @@ namespace Iam.DomainService.Resources
                 };
             }
 
+
+            // R5: every permission added to or taken from the role must be one the caller holds,
+            // and the role itself one it could assign but does not hold.
+            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope => DelegatedAdministrationRules.CheckEditRole(
+                    scope,
+                    isExist,
+                    changedPermissions: command.AddPermissions
+                        .Concat(command.RemovePermissions)
+                        .Select(scope.ResourceOfPermissionId)
+                        .OfType<string>())).ConfigureAwait(false))
+            {
+                return new SetRolesResponse { Errors = DelegatedAdministrationErrors.Create() };
+            }
 
             if (command.AddPermissions.Any())
             {
@@ -2087,6 +2292,14 @@ namespace Iam.DomainService.Resources
                 return refusal;
             }
 
+            // R7: the creator is about to be given these roles and permissions in the new
+            // organization, so a non-system caller must be able to grant them where it acts now.
+            var grantsCreatorMembership = request.CreatedFrom == CreatedFrom.ConstructPortal && tenantConfig.AllowOrgCreationFromPortal;
+            if (grantsCreatorMembership && !await AuthorizeCreatorGrantAsync(request).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
             // Create organization
             var blocksContext = BlocksContext.GetContext();
             var contextUserId = blocksContext?.UserId;
@@ -2152,7 +2365,7 @@ namespace Iam.DomainService.Resources
                 return new BaseMutationResponse { IsSuccess = true, ItemId = organization.ItemId };
             }
 
-            if (request.CreatedFrom == CreatedFrom.ConstructPortal && tenantConfig.AllowOrgCreationFromPortal)
+            if (grantsCreatorMembership)
             {
                 await GrantCreatorMembershipAsync(organization.ItemId, createdByUserId, blocksContext, request);
             }
@@ -2744,6 +2957,12 @@ namespace Iam.DomainService.Resources
         public async Task<BaseResponse> SaveOrganizationConfigAsync(SaveOrganizationConfigRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
+
+            // R6: tenant configuration belongs to the system user.
+            if (!_delegatedAdministration.AuthorizeSystemOnlyIfWired("organizations/config"))
+            {
+                return new BaseResponse { IsSuccess = false, Errors = DelegatedAdministrationErrors.Create() };
+            }
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
             if (tenantConfig == null)
