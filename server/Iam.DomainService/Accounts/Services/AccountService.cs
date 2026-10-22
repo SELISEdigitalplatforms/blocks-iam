@@ -1316,6 +1316,13 @@ namespace Iam.DomainService.Accounts
                 return new BaseAccountResponse();
             }
 
+            // Sending another user an activation link is managing that user (delegated
+            // administration, R3). Asking for one's own is self-service.
+            if (!await MayResendActivationToAsync(user).ConfigureAwait(false))
+            {
+                return new BaseAccountResponse { Errors = DelegatedAdministrationErrors.Create() };
+            }
+
             var result = await SendReActivationAsync(user);
 
             return new BaseAccountResponse
@@ -1323,6 +1330,11 @@ namespace Iam.DomainService.Accounts
                 IsSuccess = result,
             };
         }
+
+        private Task<bool> MayResendActivationToAsync(User user) =>
+            string.Equals(user.ItemId, BlocksContext.GetContext()?.UserId, StringComparison.Ordinal)
+                ? Task.FromResult(true)
+                : _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope => DelegatedAdministrationRules.CheckManageUser(scope, user));
 
         public async Task<bool> SendReActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {

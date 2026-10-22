@@ -212,6 +212,11 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> ResendActivation([FromBody] ResendActivationRequest command)
     {
         var result = await _accountService.ResendActivationAsync(command);
+        if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        }
+
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

@@ -285,6 +285,17 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
+        public async Task ResendActivationRefusedByDelegationIs403()
+        {
+            _accountService.Setup(s => s.ResendActivationAsync(It.IsAny<ResendActivationRequest>()))
+                .ReturnsAsync(new BaseAccountResponse { Errors = DelegatedAdministrationErrors.Create() });
+
+            var result = await CreateController().ResendActivation(new ResendActivationRequest { UserId = "boss" });
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        }
+
+        [Fact]
         public async Task ResendActivation_Failure_ReturnsBadRequest()
         {
             _accountService.Setup(s => s.ResendActivationAsync(It.IsAny<ResendActivationRequest>()))

@@ -1277,6 +1277,65 @@ namespace XUnitTest.IamTests.Accounts.Services
             _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
 
+        private AccountService CreateServiceWithDelegation(Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationService delegation) =>
+            new(_loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
+                _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,
+                _userMutationMock.Object, _resourceMutationMock.Object, _captchaServiceMock.Object, _captchaConfigurationServiceMock.Object,
+                _userActivityDispatcherMock.Object, new SignupOrganizationResolver(_resourceRepositoryMock.Object),
+                delegatedAdministration: delegation);
+
+        private XUnitTest.TestSupport.DelegationTestKit ResendKit(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationMode mode)
+        {
+            var kit = new XUnitTest.TestSupport.DelegationTestKit(mode).WithStandardTree();
+            kit.WithUser("caller", ["manager"]);
+            foreach (var user in new[] { kit.WithUser("boss", ["owner"]), kit.WithUser("junior", ["viewer"]), kit.FindUser("caller")! })
+            {
+                _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
+            }
+
+            _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration());
+            _repositoryMock.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
+            _iamServiceMock.Setup(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
+            XUnitTest.TestSupport.DelegationTestKit.SignIn("caller");
+            return kit;
+        }
+
+        [Fact]
+        public async Task ResendActivationToAUserAboveTheCallerIsRefused()
+        {
+            var kit = ResendKit(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationMode.Enforce);
+
+            var refused = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "boss" });
+            var allowed = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "junior" });
+
+            refused.Errors.Should().ContainKey(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationErrors.GrantNotAllowed);
+            allowed.IsSuccess.Should().BeTrue();
+            _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.Is<User>(u => u.ItemId == "boss"), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ResendActivationToYourselfIsNeverChecked()
+        {
+            var kit = ResendKit(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationMode.Enforce);
+
+            var result = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "caller" });
+
+            result.IsSuccess.Should().BeTrue();
+            kit.Repository.Verify(r => r.GetRolesAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ResendActivationInAuditSendsAndLogs()
+        {
+            var kit = ResendKit(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationMode.Audit);
+
+            var result = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "boss" });
+
+            result.IsSuccess.Should().BeTrue();
+            kit.Logged("DelegatedAdministration would deny R3-ManageUser caller").Should().BeTrue();
+        }
+
         [Fact]
         public async Task SendReActivation_DefaultsMailPurpose_ToAccountActivation()
         {
