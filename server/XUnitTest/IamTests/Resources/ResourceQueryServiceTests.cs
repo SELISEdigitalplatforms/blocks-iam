@@ -5,7 +5,7 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources;
-using Iam.DomainService.SignupLinks;
+using Iam.DomainService.DelegatedAdministration;
 using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,9 +17,10 @@ namespace XUnitTest.IamTests.Resources
     public class ResourceQueryServiceTests : IDisposable
     {
         private readonly Mock<IResourceRepository> _repo = new();
+        private readonly Mock<IDelegatedAdministrationService> _delegation = new();
 
         private ResourceQueryService Create() =>
-            new(NullLogger<ResourceQueryService>.Instance, _repo.Object, new GrantAuthorizationService(_repo.Object));
+            new(NullLogger<ResourceQueryService>.Instance, _repo.Object, _delegation.Object);
 
         private static void SetContext(
             string orgId = "default",
@@ -317,108 +318,65 @@ namespace XUnitTest.IamTests.Resources
         // ---------- GetAssignableRolesAsync ----------
 
         [Fact]
-        public async Task GetAssignableRoles_ClassifiesHierarchyAndStandalone()
+        public async Task GetAssignableRolesComesFromDelegatedAdministration()
         {
-            SetContext(roles: new List<string> { "manager" });
-
-            var roles = new List<Role>
+            var response = new GetAssignableRolesResponse
             {
-                new() { Slug = "manager", Name = "Manager", CanCreateOwn = true, ParentRoleSlug = null, AncestorRoleSlugs = new() },
-                new() { Slug = "team-lead", Name = "Team Lead", CanCreateOwn = true, ParentRoleSlug = "manager", AncestorRoleSlugs = new() { "manager" } },
-                new() { Slug = "admin", Name = "Admin", CanCreateOwn = true, ParentRoleSlug = null, AncestorRoleSlugs = new() },
-                new() { Slug = "guest", Name = "Guest", CanCreateOwn = false, ParentRoleSlug = null, AncestorRoleSlugs = new() },
-            }.AsQueryable();
-            _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
-                .ReturnsAsync((roles, 4L));
-            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
-                .ReturnsAsync((roles, 4L));
+                Hierarchy = [new AssignableRole { Slug = "manager", Name = "Manager" }],
+                Standalone = [new AssignableRole { Slug = "guest", Name = "Guest" }]
+            };
+            _delegation.Setup(d => d.GetAssignableRolesAsync()).ReturnsAsync(response);
 
             var result = await Create().GetAssignableRolesAsync();
 
-            result.Hierarchy.Select(x => x.Slug).Should().BeEquivalentTo("manager", "team-lead");
-            result.Standalone.Select(x => x.Slug).Should().BeEquivalentTo("guest");
-            // admin is neither a descendant of a creatable role nor standalone -> excluded
-            result.Hierarchy.Select(x => x.Slug).Should().NotContain("admin");
-            result.Standalone.Select(x => x.Slug).Should().NotContain("admin");
+            result.Should().BeSameAs(response);
         }
 
-        [Fact]
-        public async Task GetAssignableRoles_RequestsLargePage()
+        // ---------- GET by id is pinned to the token organization (always on) ----------
+
+        [Theory]
+        [InlineData("org-a", "org-a", true)]
+        [InlineData("org-a", "org-b", false)]
+        [InlineData("default", "org-b", true)]
+        [InlineData("", "org-b", true)]
+        public async Task GetRoleIsPinnedToTheTokenOrganization(string tokenOrg, string roleOrg, bool visible)
         {
-            SetContext(roles: new List<string> { "manager" });
-            var roles = new List<Role>().AsQueryable();
-            _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
-                .ReturnsAsync((roles, 0L));
-            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
-                .ReturnsAsync((roles, 0L));
+            SetContext(orgId: tokenOrg);
+            var role = new Role { ItemId = "r1", Slug = "manager", Name = "Manager", OrganizationId = roleOrg };
+            _repo.Setup(r => r.GetRoleByIdForViewAsync("r1")).ReturnsAsync(role);
 
-            await Create().GetAssignableRolesAsync();
+            var result = await Create().GetRoleAsync("r1");
 
-            _repo.Verify(r => r.GetRolesAsync(It.Is<GetRolesRequest>(q => q.PageSize == 1000), It.IsAny<string>()), Times.Once);
-        }
-
-        [Fact]
-        public async Task GetAssignableRoles_NoUserRoles_YieldsOnlyStandalone()
-        {
-            SetContext(roles: new List<string>());
-
-            var roles = new List<Role>
+            if (visible)
             {
-                new() { Slug = "manager", Name = "Manager", CanCreateOwn = true, AncestorRoleSlugs = new() },
-                new() { Slug = "guest", Name = "Guest", CanCreateOwn = false, AncestorRoleSlugs = new() },
-            }.AsQueryable();
-            _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
-                .ReturnsAsync((roles, 2L));
-            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
-                .ReturnsAsync((roles, 2L));
-
-            var result = await Create().GetAssignableRolesAsync();
-
-            result.Hierarchy.Should().BeEmpty();
-            result.Standalone.Select(x => x.Slug).Should().BeEquivalentTo("guest");
+                result.Data.Should().BeSameAs(role);
+            }
+            else
+            {
+                result.Data.Should().BeNull("another organization's role reads as not found, like the list");
+            }
         }
 
-        [Fact]
-        public async Task GetAssignableRoles_MatchesUserRolesCaseInsensitively()
+        [Theory]
+        [InlineData("org-a", "org-a", true)]
+        [InlineData("org-a", "org-b", false)]
+        [InlineData("default", "org-b", true)]
+        public async Task GetPermissionIsPinnedToTheTokenOrganization(string tokenOrg, string permissionOrg, bool visible)
         {
-            SetContext(roles: new List<string> { "MANAGER" });
+            SetContext(orgId: tokenOrg);
+            var permission = new Permission { ItemId = "p1", Resource = "res.read", OrganizationId = permissionOrg };
+            _repo.Setup(r => r.GetPermissionByIdForViewAsync("p1")).ReturnsAsync(permission);
 
-            var roles = new List<Role>
+            var result = await Create().GetPermissionAsync("p1");
+
+            if (visible)
             {
-                new() { Slug = "manager", Name = "Manager", CanCreateOwn = true, AncestorRoleSlugs = new() },
-            }.AsQueryable();
-            _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
-                .ReturnsAsync((roles, 1L));
-            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
-                .ReturnsAsync((roles, 1L));
-
-            var result = await Create().GetAssignableRolesAsync();
-
-            result.Hierarchy.Select(x => x.Slug).Should().BeEquivalentTo("manager");
-        }
-
-        [Fact]
-        public async Task GetAssignableRoles_RoleReferencedAsAncestor_IsNotStandalone()
-        {
-            // "root" cannot create own, has no parent/ancestors, but is referenced as an
-            // ancestor by "child" -> excluded from standalone. Since no user role can create
-            // it, it lands in neither bucket.
-            SetContext(roles: new List<string>());
-
-            var roles = new List<Role>
+                result.Data.Should().BeSameAs(permission);
+            }
+            else
             {
-                new() { Slug = "root", Name = "Root", CanCreateOwn = false, ParentRoleSlug = null, AncestorRoleSlugs = new() },
-                new() { Slug = "child", Name = "Child", CanCreateOwn = true, ParentRoleSlug = "root", AncestorRoleSlugs = new() { "root" } },
-            }.AsQueryable();
-            _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
-                .ReturnsAsync((roles, 2L));
-            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
-                .ReturnsAsync((roles, 2L));
-
-            var result = await Create().GetAssignableRolesAsync();
-
-            result.Standalone.Should().BeEmpty();
-            result.Hierarchy.Should().BeEmpty();
+                result.Data.Should().BeNull();
+            }
         }
 
         // ---------- Archive impact preview (#464) ----------

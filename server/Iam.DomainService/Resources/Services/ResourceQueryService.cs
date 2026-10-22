@@ -2,7 +2,7 @@
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
-using Iam.DomainService.SignupLinks;
+using Iam.DomainService.DelegatedAdministration;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 using Blocks.Genesis.Entities.Iam;
@@ -15,17 +15,17 @@ namespace Iam.DomainService.Resources
 
         private readonly ILogger<ResourceQueryService> _logger;
         private readonly IResourceRepository _resourceRepository;
-        private readonly IGrantAuthorizationService _grantAuthorization;
+        private readonly IDelegatedAdministrationService _delegation;
 
         public ResourceQueryService(
             ILogger<ResourceQueryService> logger,
             IResourceRepository resourceRepository,
-            IGrantAuthorizationService grantAuthorization
+            IDelegatedAdministrationService delegation
         )
         {
             _logger = logger;
             _resourceRepository = resourceRepository;
-            _grantAuthorization = grantAuthorization;
+            _delegation = delegation;
         }
 
         public async Task<GetPermissionResponse> GetPermissionAsync(string id)
@@ -38,7 +38,7 @@ namespace Iam.DomainService.Resources
 
             return new GetPermissionResponse
             {
-                Data = permission
+                Data = IsVisibleToCaller(permission?.OrganizationId) ? permission : null
             };
         }
 
@@ -76,7 +76,7 @@ namespace Iam.DomainService.Resources
 
             return new GetRoleResponse
             {
-                Data = role
+                Data = IsVisibleToCaller(role?.OrganizationId) ? role : null
             };
         }
 
@@ -133,9 +133,25 @@ namespace Iam.DomainService.Resources
                 .ToList();
         }
 
+        /// <summary>
+        /// Pins a read by id to the caller's organization, as the list endpoints already are. The
+        /// repository looks up by id alone, so without this a caller in one organization could read
+        /// another organization's role or permission by guessing its id. Out of scope reads as not
+        /// found -- the same empty <c>Data</c> the lists give -- so nothing about the record leaks.
+        /// A tenant-wide token (organization <c>default</c>, or none) keeps reading any
+        /// organization, which its list reads can also name.
+        /// </summary>
+        private static bool IsVisibleToCaller(string? recordOrganizationId)
+        {
+            var tokenOrganizationId = BlocksContext.GetContext()?.OrganizationId;
+            return string.IsNullOrWhiteSpace(tokenOrganizationId)
+                || string.Equals(tokenOrganizationId, DefaultOrganizationId, StringComparison.Ordinal)
+                || string.Equals(recordOrganizationId, tokenOrganizationId, StringComparison.Ordinal);
+        }
+
         public Task<GetAssignableRolesResponse> GetAssignableRolesAsync()
         {
-            return _grantAuthorization.GetAssignableRolesAsync();
+            return _delegation.GetAssignableRolesAsync();
         }
 
         public async Task<RoleArchiveImpactResponse> GetRoleArchiveImpactAsync(string id)

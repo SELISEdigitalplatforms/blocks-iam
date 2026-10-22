@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Blocks.Genesis;
 using FluentValidation;
+using Iam.DomainService.DelegatedAdministration;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
 using Iam.DomainService.Utilities;
@@ -20,7 +21,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
     private readonly ISignupLinkRepository _linkRepository;
     private readonly ISignupLinkConfigurationRepository _configurationRepository;
     private readonly IOidcClientRegistrationLookup _oidcLookup;
-    private readonly IGrantAuthorizationService _grantAuthorization;
+    private readonly IDelegatedAdministrationService _delegation;
     private readonly IUserRepository _userRepository;
     private readonly IConfiguration _configuration;
     private readonly IValidator<GenerateSignupLinkRequest> _generateValidator;
@@ -36,7 +37,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         _linkRepository = repositories.Links;
         _configurationRepository = repositories.Configurations;
         _oidcLookup = repositories.Oidc;
-        _grantAuthorization = repositories.GrantAuthorization;
+        _delegation = repositories.Delegation;
         _userRepository = repositories.Users;
         _configuration = validators.Configuration;
         _generateValidator = validators.GenerateValidator;
@@ -92,16 +93,12 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         var roles = UsePayloadOrDefault(request.Roles, config.DefaultRoles);
         var permissions = UsePayloadOrDefault(request.Permissions, config.DefaultPermissions);
 
-        var deniedRole = await _grantAuthorization.FindUngrantableRoleAsync(roles);
-        if (deniedRole != null)
+        // R9: a link hands out exactly what R1/R2 would let the caller assign directly. Which
+        // role or permission failed stays in the server log; the response is the generic refusal.
+        var grantScope = await _delegation.GetScopeAsync().ConfigureAwait(false);
+        if (!await _delegation.AuthorizeGrantAsync(grantScope, roles, permissions, DelegatedAdministrationRules.SignupLink).ConfigureAwait(false))
         {
-            return GenerateSignupLinkResult.Fail(403, "Roles", $"You cannot grant the role: {deniedRole}");
-        }
-
-        var deniedPermission = _grantAuthorization.FindUngrantablePermission(permissions);
-        if (deniedPermission != null)
-        {
-            return GenerateSignupLinkResult.Fail(403, "Permissions", $"You cannot grant the permission: {deniedPermission}");
+            return GenerateSignupLinkResult.Fail(403, DelegatedAdministrationErrors.Create());
         }
 
         var forwardedTo = !string.IsNullOrWhiteSpace(request.ForwardedTo)
