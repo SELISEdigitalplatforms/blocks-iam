@@ -15,6 +15,7 @@ import { getDeviceIcon } from "@blocks-idp/iam/utils/device-icon";
 import { Laptop } from "lucide-react";
 import { useUserSessions, useRevokeSession } from "../hooks";
 import { toSessionCardViewModel } from "../mappers/session.mapper";
+import { revokeResultMessage } from "../utils/revoke-message";
 import type { ISessionCardViewModel } from "../view-models/session.view-model";
 import { SessionDetailsDrawer } from "./session-details-drawer";
 
@@ -55,8 +56,8 @@ const SignOutButton = ({
 
   const handleConfirm = async () => {
     try {
-      await mutateAsync({ sessionId: card.id });
-      showSuccessToast({ description: "Device signed out successfully" });
+      const result = await mutateAsync({ sessionId: card.id });
+      showSuccessToast({ description: revokeResultMessage(result) });
       setOpen(false);
       onRevoked?.();
     } catch (error) {

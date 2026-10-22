@@ -77,7 +77,7 @@ namespace XUnitTest.Auth.Security
         public async Task GetSecuritySummary_SetsCurrentSessionId_FromRefreshTokenCookie()
         {
             var ctx = UseHttpContext();
-            ctx.Request.Headers["Cookie"] = "tetorefreshtoken_example.com=tok-1";
+            ctx.Request.Headers["Cookie"] = "rt_example.com=tok-1";
             _refreshTokens.Setup(r => r.GetByTokenIdAsync("tok-1"))
                 .ReturnsAsync(new RefreshTokenModel { SessionId = "s2" });
 
@@ -126,7 +126,7 @@ namespace XUnitTest.Auth.Security
         public async Task GetUserSessions_MarksCurrentSession()
         {
             var ctx = UseHttpContext();
-            ctx.Request.Headers["Cookie"] = "tetorefreshtoken_example.com=tok-1";
+            ctx.Request.Headers["Cookie"] = "rt_example.com=tok-1";
             _refreshTokens.Setup(r => r.GetByTokenIdAsync("tok-1"))
                 .ReturnsAsync(new RefreshTokenModel { SessionId = "s2" });
 
@@ -315,7 +315,7 @@ namespace XUnitTest.Auth.Security
         public async Task ResolveCurrentSessionId_UsesCookieToken()
         {
             var ctx = UseHttpContext();
-            ctx.Request.Headers["Cookie"] = "tetorefreshtoken_example.com=cookie-tok";
+            ctx.Request.Headers["Cookie"] = "rt_example.com=cookie-tok";
             _refreshTokens.Setup(r => r.GetByTokenIdAsync("cookie-tok"))
                 .ReturnsAsync(new RefreshTokenModel { SessionId = "sess-cookie" });
 
@@ -329,7 +329,7 @@ namespace XUnitTest.Auth.Security
         {
             var ctx = UseHttpContext();
             // Header named exactly as the cookie key (not a Cookie header) exercises the fallback.
-            ctx.Request.Headers["tetorefreshtoken_example.com"] = "header-tok";
+            ctx.Request.Headers["rt_example.com"] = "header-tok";
             _refreshTokens.Setup(r => r.GetByTokenIdAsync("header-tok"))
                 .ReturnsAsync(new RefreshTokenModel { SessionId = "sess-header" });
 
@@ -342,7 +342,7 @@ namespace XUnitTest.Auth.Security
         public async Task ResolveCurrentSessionId_ReturnsNull_WhenRepositoryThrows()
         {
             var ctx = UseHttpContext();
-            ctx.Request.Headers["Cookie"] = "tetorefreshtoken_example.com=boom";
+            ctx.Request.Headers["Cookie"] = "rt_example.com=boom";
             _refreshTokens.Setup(r => r.GetByTokenIdAsync("boom"))
                 .ThrowsAsync(new InvalidOperationException("db down"));
 
@@ -355,13 +355,56 @@ namespace XUnitTest.Auth.Security
         public async Task ResolveCurrentSessionId_ReturnsNull_WhenTokenNotFound()
         {
             var ctx = UseHttpContext();
-            ctx.Request.Headers["Cookie"] = "tetorefreshtoken_example.com=unknown";
+            ctx.Request.Headers["Cookie"] = "rt_example.com=unknown";
             _refreshTokens.Setup(r => r.GetByTokenIdAsync("unknown"))
                 .ReturnsAsync((RefreshTokenModel)null!);
 
             var result = await Create().ResolveCurrentSessionIdAsync("u1", CancellationToken.None);
 
             result.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task ResolveCurrentSessionId_UsesTheAccessTokensSid_BeforeAnyCookie()
+        {
+            var ctx = UseHttpContext();
+            ctx.Request.Headers["Cookie"] = "rt_example.com=cookie-tok";
+            Blocks.Genesis.BlocksContext.IsTestMode = true;
+            Blocks.Genesis.BlocksContext.SetContext(Blocks.Genesis.BlocksContext.Create(
+                tenantId: "tenant-1", roles: null, userId: "u1", impersonated: false,
+                isAuthenticated: true, requestUri: "https://test", organizationId: "default",
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
+                userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
+                originalTenantId: "tenant-1", impersonationSessionId: null, applicationDomain: "test",
+                sessionId: "sess-from-sid"));
+            try
+            {
+                var result = await Create().ResolveCurrentSessionIdAsync("u1", CancellationToken.None);
+
+                result.Should().Be("sess-from-sid");
+                _refreshTokens.Verify(r => r.GetByTokenIdAsync(It.IsAny<string>()), Times.Never);
+            }
+            finally
+            {
+                Blocks.Genesis.BlocksContext.SetContext(null);
+                Blocks.Genesis.BlocksContext.IsTestMode = false;
+            }
+        }
+
+        [Fact]
+        public async Task ResolveCurrentSessionId_ReadsTheCallingAppsCookie_NamedAfterTheOriginHost()
+        {
+            // IAM sets "rt_{host}" for the app that signed in; a call from dev-os to the IAM API carries
+            // the dev-os cookie, not one named after the API host.
+            var ctx = UseHttpContext("dev-iam.example.com");
+            ctx.Request.Headers.Origin = "https://dev-os.example.com";
+            ctx.Request.Headers["Cookie"] = "rt_dev-os.example.com=os-tok";
+            _refreshTokens.Setup(r => r.GetByTokenIdAsync("os-tok"))
+                .ReturnsAsync(new RefreshTokenModel { SessionId = "sess-os" });
+
+            var result = await Create().ResolveCurrentSessionIdAsync("u1", CancellationToken.None);
+
+            result.Should().Be("sess-os");
         }
     }
 }

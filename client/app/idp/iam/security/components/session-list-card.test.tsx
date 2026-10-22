@@ -86,7 +86,21 @@ describe("SessionListCard", () => {
     const confirmButtons = screen.getAllByRole("button", { name: "Sign out" });
     fireEvent.click(confirmButtons[confirmButtons.length - 1]);
     await waitFor(() => expect(h.revoke).toHaveBeenCalledWith({ sessionId: "s1" }));
-    await waitFor(() => expect(h.showSuccess).toHaveBeenCalled());
+    await waitFor(() => expect(h.showSuccess).toHaveBeenCalledWith({ description: "Device signed out successfully" }));
+  });
+
+  it("says the device was already signed out when nothing was live", async () => {
+    h.revoke.mockResolvedValue({ alreadyRevoked: true, revokedRefreshTokens: 0, warnings: [] });
+    render(<SessionListCard userId="u1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument(),
+    );
+    const confirmButtons = screen.getAllByRole("button", { name: "Sign out" });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+    await waitFor(() =>
+      expect(h.showSuccess).toHaveBeenCalledWith({ description: "This device was already signed out" }),
+    );
   });
 
   it("opens a session row when it is activated", () => {
