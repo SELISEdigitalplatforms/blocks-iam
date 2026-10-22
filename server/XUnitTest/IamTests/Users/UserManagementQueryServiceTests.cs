@@ -448,7 +448,7 @@ namespace XUnitTest.IamTests.Users
                 MemberOf("u2", "org-a"),
                 new() { ItemId = "u3", Email = "u3@e.com", OrganizationIds = ["org-a"] }
             }.AsQueryable();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((accounts, 3L));
 
             var result = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.ToList();
@@ -465,7 +465,7 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext();
             var account = MemberOf("u1", "org-a", "org-b");
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((new List<GetAccounts> { account }.AsQueryable(), 1L));
 
             var request = narrowedToOrganizations
