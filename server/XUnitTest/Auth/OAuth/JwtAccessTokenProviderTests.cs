@@ -156,8 +156,8 @@ namespace XUnitTest.Auth.OAuth
         {
             var token = Sut().MapJwtAccessToken(
                 Config(), MakeTenant(), MakeUser(), GenerateCertificate(),
-                new ResolvedAuthorizationClaims { Roles = { "admin" } },
-                new TokenRequest { OrganizationId = "org1" }, Scope("org1"));
+                new TokenClaimSet(new ResolvedAuthorizationClaims { Roles = { "admin" } }, Scope("org1")),
+                new TokenRequest { OrganizationId = "org1" });
 
             token.Issuer.Should().Be("https://issuer");
             token.AccessTokenValidForNumberMinute.Should().Be(10);
@@ -180,15 +180,14 @@ namespace XUnitTest.Auth.OAuth
             // The audience is the tenant's, exactly as for a password login.
             var token = Sut().MapJwtAccessToken(
                 Config(), TenantWithAudience(), MakeUser(), GenerateCertificate(),
-                new ResolvedAuthorizationClaims { Roles = { "admin", "manager" } },
+                new TokenClaimSet(new ResolvedAuthorizationClaims { Roles = { "admin", "manager" } }, Scope("org1")),
                 new TokenRequest
                 {
                     OrganizationId = "org1",
                     IsLinkAuthentication = true,
                     ClientId = "partner-web",
                     RestrictedRoles = ["manager"]
-                },
-                Scope("org1"));
+                });
 
             token.Audience.Should().Be("app.example.com");
             token.Audience.Should().NotBe("partner-web");
@@ -201,15 +200,14 @@ namespace XUnitTest.Auth.OAuth
             // audience narrowing costs nothing: authority comes from here, not from aud.
             var token = Sut().MapJwtAccessToken(
                 Config(), TenantWithAudience(), MakeUser(), GenerateCertificate(),
-                new ResolvedAuthorizationClaims { Roles = { "admin", "manager" } },
+                new TokenClaimSet(new ResolvedAuthorizationClaims { Roles = { "admin", "manager" } }, Scope("org1")),
                 new TokenRequest
                 {
                     OrganizationId = "org1",
                     IsLinkAuthentication = true,
                     ClientId = "partner-web",
                     RestrictedRoles = ["manager"]
-                },
-                Scope("org1"));
+                });
 
             token.Claims.Should().Contain(c => c.Type == BlocksContext.ROLES_CLAIM && c.Value == "manager");
             token.Claims.Should().NotContain(c => c.Type == BlocksContext.ROLES_CLAIM && c.Value == "admin");
@@ -221,9 +219,8 @@ namespace XUnitTest.Auth.OAuth
         {
             var token = Sut().MapJwtAccessToken(
                 Config(), TenantWithAudience(), MakeUser(), GenerateCertificate(),
-                new ResolvedAuthorizationClaims { Roles = { "admin" } },
-                new TokenRequest { OrganizationId = "org1", ClientId = "partner-web" },
-                Scope("org1"));
+                new TokenClaimSet(new ResolvedAuthorizationClaims { Roles = { "admin" } }, Scope("org1")),
+                new TokenRequest { OrganizationId = "org1", ClientId = "partner-web" });
 
             token.Audience.Should().Be("app.example.com");
         }
@@ -238,9 +235,8 @@ namespace XUnitTest.Auth.OAuth
             var tenant = TenantWithAudience();
             var token = Sut().MapJwtAccessToken(
                 Config(), tenant, MakeUser(), GenerateCertificate(),
-                new ResolvedAuthorizationClaims { Roles = { "admin" } },
-                new TokenRequest { GrantType = grantType, OrganizationId = "org1", ClientId = "client-1", Audience = null },
-                Scope("org1"));
+                new TokenClaimSet(new ResolvedAuthorizationClaims { Roles = { "admin" } }, Scope("org1")),
+                new TokenRequest { GrantType = grantType, OrganizationId = "org1", ClientId = "client-1", Audience = null });
 
             token.Audience.Should().Be(Authentication.DomainService.Utilities.DomainResolver.GetAudience(tenant));
             token.Audience.Should().Be("app.example.com");

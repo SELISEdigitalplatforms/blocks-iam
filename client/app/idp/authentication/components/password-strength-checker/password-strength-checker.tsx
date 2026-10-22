@@ -75,15 +75,17 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
 
       {hasPolicy && (
         <div className="mb-3 flex items-center gap-3">
-          <div
-            className="flex h-1.5 flex-1 gap-1"
-            role="progressbar"
-            aria-valuenow={strength}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuetext={`${strengthLabel} password, ${strength} percent`}
-            aria-label="Password strength"
-          >
+          <div className="flex h-1.5 flex-1 gap-1">
+            <progress
+              className="sr-only"
+              value={strength}
+              max={100}
+              aria-valuenow={strength}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuetext={`${strengthLabel} password, ${strength} percent`}
+              aria-label="Password strength"
+            />
             {Array.from({ length: STRENGTH_SEGMENTS }, (_, index) => (
               <div
                 key={index}

@@ -20,6 +20,12 @@ using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Shared
 {
+    /// <summary>The refresh token a rotation replaces, with its cached session when one was found. <see cref="None"/> for a first sign-in.</summary>
+    public readonly record struct RefreshTokenPredecessor(string? Token, RefreshTokenCache? Cache)
+    {
+        public static RefreshTokenPredecessor None => default;
+    }
+
     public sealed class UnifiedTokenSessionService
     {
         internal const string SupersededByRotationReason = "superseded_by_rotation";
@@ -64,8 +70,7 @@ namespace Authentication.DomainService.Shared
         }
 
         public async Task<(string RefreshToken, DateTime SlidingExpiry, DateTime AbsoluteExpiry, string RefreshTokenSessionId)> CreateOrRotateRefreshToken(
-            string? oldRefreshToken,
-            RefreshTokenCache? oldRefreshTokenCache,
+            RefreshTokenPredecessor previousToken,
             TokenRequest tokenRequest,
             IdentityConfiguration authenticationConfiguration,
             Tenant tenant,
@@ -73,6 +78,8 @@ namespace Authentication.DomainService.Shared
             IEnumerable<string> visitorsIpAddresses,
             bool impersoanted)
         {
+            var oldRefreshToken = previousToken.Token;
+            var oldRefreshTokenCache = previousToken.Cache;
             var now = DateTime.UtcNow;
             string refreshTokenId = Guid.NewGuid().ToString("N");
             DateTime? inheritedAbsoluteExpiry = null;

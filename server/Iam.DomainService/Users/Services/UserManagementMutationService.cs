@@ -23,6 +23,9 @@ namespace Iam.DomainService.Users
     public class UserManagementMutationService : IUserManagementMutationService
     {
         private const string DefaultOrganizationId = "default";
+        private const string NotFoundMessage = "Not found";
+        private const string OrganizationIdKey = "organizationId";
+        private const string RolesKey = "Roles";
         private const int MaxPermissionsPerUser = 5;
         private readonly ILogger<UserManagementMutationService> _logger;
         private readonly IValidator<CreateUserRequest> _createValidator;
@@ -602,7 +605,7 @@ namespace Iam.DomainService.Users
                 {
                     Errors = new Dictionary<string, string>
                     {
-                        { "ItemId", "Not found" }
+                        { "ItemId", NotFoundMessage }
                     }
                 };
             }
@@ -638,7 +641,7 @@ namespace Iam.DomainService.Users
             user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
 
             // Membership is not a side effect of editing a profile. Adding the context
-            // organization here enrolled users as a by-product of a name change;
+            // organization here enrolled users as a by-product of a name change.
             // UpdateUserAccessControlAsync owns OrganizationIds.
 
             var result = await _userRepository.UpdateUserAsync(user);
@@ -677,7 +680,7 @@ namespace Iam.DomainService.Users
                 _logger.LogInformation("My account update end -- No authenticated user");
                 return new BaseMutationResponse
                 {
-                    Errors = new Dictionary<string, string> { { "ItemId", "Not found" } }
+                    Errors = new Dictionary<string, string> { { "ItemId", NotFoundMessage } }
                 };
             }
 
@@ -697,7 +700,7 @@ namespace Iam.DomainService.Users
                 _logger.LogInformation("My account update end -- Not found");
                 return new BaseMutationResponse
                 {
-                    Errors = new Dictionary<string, string> { { "ItemId", "Not found" } }
+                    Errors = new Dictionary<string, string> { { "ItemId", NotFoundMessage } }
                 };
             }
 
@@ -784,7 +787,7 @@ namespace Iam.DomainService.Users
         }
 
         private static readonly HashSet<string> RetiredUpdateFields =
-            new(StringComparer.OrdinalIgnoreCase) { "roles", "permissions", "mfaEnabled", "userMfaType", "itemId", "organizationId" };
+            new(StringComparer.OrdinalIgnoreCase) { "roles", "permissions", "mfaEnabled", "userMfaType", "itemId", OrganizationIdKey };
 
         public async Task<BaseResponse> DeactivateUserAsync(DeactivateUserRequest request)
         {
@@ -1211,7 +1214,7 @@ namespace Iam.DomainService.Users
                 {
                     Errors = new Dictionary<string, string>
                     {
-                        { nameof(command.UserId), "Not found" }
+                        { nameof(command.UserId), NotFoundMessage }
                     }
                 };
             }
@@ -1299,23 +1302,6 @@ namespace Iam.DomainService.Users
 
             await NotifyRolesChangedAsync(user.ItemId, blocksContext?.UserId, organizationId, "updated");
 
-            //await SendEvent(user.ItemId, MutationEventType.Update);
-
-            //await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
-            //{
-            //    UserId = user.ItemId,
-            //    Category = UserActivityCategory.Resource,
-            //    Event = isAddToOrganization ? "USER_ACCESS_UPDATED" : "USER_ACCESS_REVOKED",
-            //    Source = "iam-user-access-control",
-            //    Entity = "User",
-            //    EntityId = user.ItemId,
-            //    Metadata = new Dictionary<string, string>
-            //    {
-            //        { "organizationId", organizationId ?? string.Empty },
-            //        { "rolesAdded", string.Join(",", command.Roles ?? new List<string>()) },
-            //        { "permissionsAdded", string.Join(",", command.Permissions ?? new List<string>()) }
-            //    }
-            //});
 
             _logger.LogInformation("Update User Access Control end -- Success");
             return new BaseMutationResponse
@@ -1351,7 +1337,7 @@ namespace Iam.DomainService.Users
                     IsSuccess = false,
                     Errors = new Dictionary<string, string>
                     {
-                        { nameof(command.UserId), "Not found" }
+                        { nameof(command.UserId), NotFoundMessage }
                     }
                 };
             }
@@ -1456,7 +1442,7 @@ namespace Iam.DomainService.Users
                 EntityId = user.ItemId,
                 Metadata = new Dictionary<string, string>
                 {
-                    { "organizationId", organizationId }
+                    { OrganizationIdKey, organizationId }
                 }
             });
 
@@ -1840,12 +1826,9 @@ namespace Iam.DomainService.Users
 
             // Append-only, so a user's existing order survives and re-running the same delta is a
             // no-op rather than a reshuffle.
-            foreach (var role in addRoles)
+            foreach (var role in addRoles.Where(r => !next.Contains(r, StringComparer.Ordinal)))
             {
-                if (!next.Contains(role, StringComparer.Ordinal))
-                {
-                    next.Add(role);
-                }
+                next.Add(role);
             }
 
             if (next.SequenceEqual(current, StringComparer.Ordinal))
@@ -1882,16 +1865,9 @@ namespace Iam.DomainService.Users
                 return new BulkRoleChangePreviewResponse { Errors = OverMatchedCapError() };
             }
 
-            long affected = 0;
-            foreach (var user in users)
-            {
-                // Safe to mutate: these are documents loaded into memory and thrown away. Nothing on
-                // this path writes, which a collection diff in the E2E steps proves.
-                if (ApplyRoleDelta(user, plan!.OrganizationId, plan.AddRoles, plan.RemoveRoles))
-                {
-                    affected++;
-                }
-            }
+            // Safe to mutate: these are documents loaded into memory and thrown away. Nothing on
+            // this path writes, which a collection diff in the E2E steps proves.
+            long affected = users.Count(user => ApplyRoleDelta(user, plan!.OrganizationId, plan.AddRoles, plan.RemoveRoles));
 
             // Counted from the set actually evaluated rather than from CountDocuments, so the
             // matched == affected + unchanged invariant holds even if the collection moves between
@@ -2098,7 +2074,7 @@ namespace Iam.DomainService.Users
                         "An admin changed your roles.",
                         fields: new Dictionary<string, object?>
                         {
-                            ["organizationId"] = command.OrganizationId,
+                            [OrganizationIdKey] = command.OrganizationId,
                             ["change"] = "updated",
                             ["batchId"] = command.BatchId
                         })));
@@ -2126,7 +2102,7 @@ namespace Iam.DomainService.Users
                     fields: new Dictionary<string, object?>
                     {
                         ["batchId"] = command.BatchId,
-                        ["organizationId"] = command.OrganizationId,
+                        [OrganizationIdKey] = command.OrganizationId,
                         ["part"] = part,
                         ["parts"] = parts,
                         ["applied"] = applied.Count,
@@ -2159,7 +2135,7 @@ namespace Iam.DomainService.Users
                     fields: new Dictionary<string, object?>
                     {
                         ["userId"] = userId,
-                        ["organizationId"] = organizationId,
+                        [OrganizationIdKey] = organizationId,
                         ["change"] = change
                     })));
         }
@@ -2191,7 +2167,7 @@ namespace Iam.DomainService.Users
 
             if (string.IsNullOrWhiteSpace(organizationId))
             {
-                return (Error(nameof(command.OrganizationId), "OrganizationId is required"), null);
+                return (BulkError(nameof(command.OrganizationId), "OrganizationId is required"), null);
             }
 
             // Reused verbatim from the single-user path, so the cross-organization rule cannot drift
@@ -2208,24 +2184,10 @@ namespace Iam.DomainService.Users
             var addRoles = Clean(command.AddRoles);
             var removeRoles = Clean(command.RemoveRoles);
 
-            if (addRoles.Count == 0 && removeRoles.Count == 0)
+            var rolesError = ValidateBulkRoleLists(addRoles, removeRoles);
+            if (rolesError is not null)
             {
-                return (Error("Roles", "At least one role to add or remove is required"), null);
-            }
-
-            if (addRoles.Count > MaxRolesPerBulkRequest || removeRoles.Count > MaxRolesPerBulkRequest)
-            {
-                return (Error("Roles", $"A maximum of {MaxRolesPerBulkRequest} roles is allowed per request"), null);
-            }
-
-            if (HasDuplicates(addRoles) || HasDuplicates(removeRoles))
-            {
-                return (Error("Roles", "Duplicate role in the same request"), null);
-            }
-
-            if (addRoles.Intersect(removeRoles, StringComparer.Ordinal).Any())
-            {
-                return (Error("Roles", "The same role cannot be both added and removed"), null);
+                return (rolesError, null);
             }
 
             var target = command.Target;
@@ -2233,22 +2195,10 @@ namespace Iam.DomainService.Users
             var hasUserIds = userIds.Count > 0;
             var hasFilter = target?.Filter is not null;
 
-            if (hasUserIds == hasFilter)
+            var targetError = ValidateBulkTarget(userIds, hasUserIds, hasFilter);
+            if (targetError is not null)
             {
-                return (Error("Target", "Exactly one of userIds or filter is required"), null);
-            }
-
-            if (hasUserIds)
-            {
-                if (userIds.Count > MaxUserIdsPerBulkRequest)
-                {
-                    return (Error("Target", $"A maximum of {MaxUserIdsPerBulkRequest} userIds is allowed per request"), null);
-                }
-
-                if (HasDuplicates(userIds))
-                {
-                    return (Error("Target", "Duplicate userId in the same request"), null);
-                }
+                return (targetError, null);
             }
 
             // "default" is the tenant-wide organization and has no Organization document, exactly as
@@ -2259,7 +2209,7 @@ namespace Iam.DomainService.Users
                 var organization = await _resourceRepository.GetOrganizationById(organizationId);
                 if (organization is null)
                 {
-                    return (Error(nameof(command.OrganizationId), "Organization not found"), null);
+                    return (BulkError(nameof(command.OrganizationId), "Organization not found"), null);
                 }
             }
 
@@ -2271,16 +2221,64 @@ namespace Iam.DomainService.Users
 
             return (null, plan);
 
-            static Dictionary<string, string> Error(string field, string message) =>
-                new() { { field, message } };
-
             static List<string> Clean(List<string>? values) =>
                 values is null
                     ? new List<string>()
                     : values.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+        }
 
-            static bool HasDuplicates(List<string> values) =>
-                values.Distinct(StringComparer.Ordinal).Count() != values.Count;
+        private static Dictionary<string, string> BulkError(string field, string message) =>
+            new() { { field, message } };
+
+        private static bool HasDuplicates(List<string> values) =>
+            values.Distinct(StringComparer.Ordinal).Count() != values.Count;
+
+        private static Dictionary<string, string>? ValidateBulkRoleLists(List<string> addRoles, List<string> removeRoles)
+        {
+            if (addRoles.Count == 0 && removeRoles.Count == 0)
+            {
+                return BulkError(RolesKey, "At least one role to add or remove is required");
+            }
+
+            if (addRoles.Count > MaxRolesPerBulkRequest || removeRoles.Count > MaxRolesPerBulkRequest)
+            {
+                return BulkError(RolesKey, $"A maximum of {MaxRolesPerBulkRequest} roles is allowed per request");
+            }
+
+            if (HasDuplicates(addRoles) || HasDuplicates(removeRoles))
+            {
+                return BulkError(RolesKey, "Duplicate role in the same request");
+            }
+
+            if (addRoles.Intersect(removeRoles, StringComparer.Ordinal).Any())
+            {
+                return BulkError(RolesKey, "The same role cannot be both added and removed");
+            }
+
+            return null;
+        }
+
+        private static Dictionary<string, string>? ValidateBulkTarget(List<string> userIds, bool hasUserIds, bool hasFilter)
+        {
+            if (hasUserIds == hasFilter)
+            {
+                return BulkError("Target", "Exactly one of userIds or filter is required");
+            }
+
+            if (hasUserIds)
+            {
+                if (userIds.Count > MaxUserIdsPerBulkRequest)
+                {
+                    return BulkError("Target", $"A maximum of {MaxUserIdsPerBulkRequest} userIds is allowed per request");
+                }
+
+                if (HasDuplicates(userIds))
+                {
+                    return BulkError("Target", "Duplicate userId in the same request");
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -2312,7 +2310,8 @@ namespace Iam.DomainService.Users
             var users = new List<User>();
             long totalCount = 0;
 
-            for (var page = 0; ; page++)
+            var page = 0;
+            while (true)
             {
                 var query = new GetUsersRequest
                 {
@@ -2339,6 +2338,8 @@ namespace Iam.DomainService.Users
                 {
                     break;
                 }
+
+                page++;
             }
 
             return (users, false);

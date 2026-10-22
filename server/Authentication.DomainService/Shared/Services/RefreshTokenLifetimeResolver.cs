@@ -31,7 +31,7 @@ namespace Authentication.DomainService.Shared.Services
             if (absolute < sliding)
             {
                 logger?.LogError(
-                    "Invalid identity configuration: AbsoluteRefreshTokenValidForNumberMinutes ({Absolute}) is less than RefreshTokenValidForNumberMinutes ({Sliding}). Using {Sliding} for both.",
+                    "Invalid identity configuration: AbsoluteRefreshTokenValidForNumberMinutes ({Absolute}) is less than RefreshTokenValidForNumberMinutes ({Sliding}). Using {SlidingMinutes} for both.",
                     absolute,
                     sliding,
                     sliding);

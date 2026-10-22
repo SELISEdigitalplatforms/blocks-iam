@@ -22,6 +22,9 @@ namespace Authentication.DomainService.Services
 {
     public sealed class AuthenticationDomainService : IAuthenticationDomainService
     {
+        private const string ErrorInvalidRequest = "invalid_request";
+        private const string ErrorNotFound = "not_found";
+
         private readonly IMessageClient _messageClient;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IValidator<SaveOIDCClientRequest> _oidcClientValidator;
@@ -397,11 +400,14 @@ namespace Authentication.DomainService.Services
             // Device-flow clients are always public (TokenEndpointAuthMethod "none") and never
             // authenticate with a secret, so none is generated — and any secret left over from
             // before the client became device-flow-only is cleared.
-            credential.ClientSecret = request.IsDeviceFlowClient
-                ? null
-                : string.IsNullOrWhiteSpace(credential.ClientSecret)
-                    ? GenerateClientSecret()
-                    : credential.ClientSecret;
+            if (request.IsDeviceFlowClient)
+            {
+                credential.ClientSecret = null;
+            }
+            else if (string.IsNullOrWhiteSpace(credential.ClientSecret))
+            {
+                credential.ClientSecret = GenerateClientSecret();
+            }
 
             return (credential, isNew);
         }
@@ -480,11 +486,14 @@ namespace Authentication.DomainService.Services
             credential.RegisterAsIdentityProvider = !request.IsDeviceFlowClient && request.RegisterAsIdentityProvider;
         }
 
+        private static string ResolveTokenLifetimesKey(OidcClientRegistration client) =>
+            string.IsNullOrWhiteSpace(client.ClientId) ? client.ItemId : client.ClientId;
+
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
         {
             var client = await _authenticationRepository.GetOIDCCredentialByIdAsync(tenantId);
             var tokenLifetimes = client != null && _clientTokenLifetimes != null
-                ? await _clientTokenLifetimes.GetAsync(string.IsNullOrWhiteSpace(client.ClientId) ? client.ItemId : client.ClientId)
+                ? await _clientTokenLifetimes.GetAsync(ResolveTokenLifetimesKey(client))
                 : null;
             return new GetOIDCClientResponse
             {
@@ -595,13 +604,13 @@ namespace Authentication.DomainService.Services
         public async Task<SaveClientCredentialResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Name))
-                return ClientCredentialSaveFailure("invalid_request", "Name is required.");
+                return ClientCredentialSaveFailure(ErrorInvalidRequest, "Name is required.");
 
             var roles = (request.Roles ?? new List<string>()).Where(r => !string.IsNullOrWhiteSpace(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var permissions = (request.Permissions ?? new List<string>()).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
             if (roles.Count == 0 && permissions.Count == 0)
-                return ClientCredentialSaveFailure("invalid_request", "At least one role or permission is required.");
+                return ClientCredentialSaveFailure(ErrorInvalidRequest, "At least one role or permission is required.");
 
             var blocksContext = BlocksContext.GetContext();
             var scope = OrganizationAccessScopeResolver.Resolve(blocksContext?.OrganizationId);
@@ -616,7 +625,7 @@ namespace Authentication.DomainService.Services
                 // Out of scope is reported as "not found", decided before anything is written, so a
                 // caller learns nothing about credentials belonging to another organization.
                 if (existing == null || !scope.Allows(existing.OrganizationId))
-                    return ClientCredentialSaveFailure("not_found", $"Client credential '{request.ItemId}' not found.");
+                    return ClientCredentialSaveFailure(ErrorNotFound, $"Client credential '{request.ItemId}' not found.");
 
                 existing.Name = request.Name;
                 existing.IsActive = request.IsActive;
@@ -680,7 +689,7 @@ namespace Authentication.DomainService.Services
         public async Task<RotateClientCredentialSecretResponse> RotateClientCredentialSecretAsync(string itemId)
         {
             if (string.IsNullOrWhiteSpace(itemId))
-                return new RotateClientCredentialSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "ItemId is required." } } };
+                return new RotateClientCredentialSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorInvalidRequest, "ItemId is required." } } };
 
             var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
             if (scope.Kind == OrganizationAccessScopeKind.Denied)
@@ -741,7 +750,7 @@ namespace Authentication.DomainService.Services
                 return (null, new BaseResponse
                 {
                     IsSuccess = false,
-                    Errors = new Dictionary<string, string> { { "invalid_request", $"'{IdpConstants.NoOrganizationId}' is not a selectable organization." } }
+                    Errors = new Dictionary<string, string> { { ErrorInvalidRequest, $"'{IdpConstants.NoOrganizationId}' is not a selectable organization." } }
                 });
 
             return (requested, null);
@@ -751,7 +760,7 @@ namespace Authentication.DomainService.Services
             new()
             {
                 IsSuccess = false,
-                Errors = new Dictionary<string, string> { { "not_found", $"Client credential '{itemId}' not found." } }
+                Errors = new Dictionary<string, string> { { ErrorNotFound, $"Client credential '{itemId}' not found." } }
             };
 
         private static BaseResponse ClientCredentialForbidden() =>
@@ -781,7 +790,7 @@ namespace Authentication.DomainService.Services
         public async Task<BaseResponse> DeleteClientCredentialAsync(DeleteClientCredentialRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.ItemId))
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "ItemId is required." } } };
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorInvalidRequest, "ItemId is required." } } };
 
             var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
             if (scope.Kind == OrganizationAccessScopeKind.Denied)
@@ -913,7 +922,7 @@ namespace Authentication.DomainService.Services
 
             var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(id);
             if (existing == null)
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorNotFound, "Provider not found." } } };
 
             // Immutability check: Provider, ProviderType, Protocol, ClientId cannot change after create.
             if (request.Provider != null && !string.Equals(request.Provider, existing.Provider, StringComparison.OrdinalIgnoreCase))
@@ -980,7 +989,7 @@ namespace Authentication.DomainService.Services
 
             var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(id);
             if (existing == null)
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorNotFound, "Provider not found." } } };
 
             // Delete the IdentityProvider
             await _authenticationRepository.DeleteIdentityProviderAsync(id);
@@ -1007,7 +1016,7 @@ namespace Authentication.DomainService.Services
 
             var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(id);
             if (existing == null)
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorNotFound, "Provider not found." } } };
 
             existing.IsActive = isActive;
             await _authenticationRepository.UpdateIdentityProviderAsync(existing);
@@ -1021,7 +1030,7 @@ namespace Authentication.DomainService.Services
 
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(itemId);
             if (credential == null)
-                return new RotateOidcClientSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", $"OIDC client '{itemId}' not found." } } };
+                return new RotateOidcClientSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorNotFound, $"OIDC client '{itemId}' not found." } } };
 
             // Device-flow clients are always public (TokenEndpointAuthMethod "none") and never
             // hold a secret — reject rotation rather than silently reintroducing one.

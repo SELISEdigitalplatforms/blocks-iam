@@ -238,12 +238,12 @@ export function navigateToUrl(url: string): boolean {
   }
   let parsed: URL;
   try {
-    parsed = new URL(url, window.location.origin);
+    parsed = new URL(url, globalThis.location.origin);
   } catch {
     return false;
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
-  window.location.href = url;
+  globalThis.location.href = url;
   return true;
 }
 
@@ -255,11 +255,11 @@ export function navigateToUrl(url: string): boolean {
 export function navigateToSameOrigin(url: string): boolean {
   let parsed: URL;
   try {
-    parsed = new URL(url, window.location.origin);
+    parsed = new URL(url, globalThis.location.origin);
   } catch {
     return false;
   }
-  if (parsed.origin !== window.location.origin) return false;
-  window.location.href = `${window.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`;
+  if (parsed.origin !== globalThis.location.origin) return false;
+  globalThis.location.href = `${globalThis.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`;
   return true;
 }

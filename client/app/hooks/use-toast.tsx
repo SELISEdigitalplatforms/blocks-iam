@@ -12,7 +12,7 @@ type ToasterToast = ToastProps & {
   action?: ToastActionElement;
 };
 
-// Only ever consumed via `typeof` to build ActionType, never read at runtime, so it is
+// Only ever consumed via `typeof` to build ActionTypes, never read at runtime, so it is
 // declared as a type rather than a const object.
 type ActionTypes = {
   ADD_TOAST: "ADD_TOAST";
@@ -28,23 +28,21 @@ function genId() {
   return count.toString();
 }
 
-type ActionType = ActionTypes;
-
 type Action =
   | {
-      type: ActionType["ADD_TOAST"];
+      type: ActionTypes["ADD_TOAST"];
       toast: ToasterToast;
     }
   | {
-      type: ActionType["UPDATE_TOAST"];
+      type: ActionTypes["UPDATE_TOAST"];
       toast: Partial<ToasterToast>;
     }
   | {
-      type: ActionType["DISMISS_TOAST"];
+      type: ActionTypes["DISMISS_TOAST"];
       toastId?: ToasterToast["id"];
     }
   | {
-      type: ActionType["REMOVE_TOAST"];
+      type: ActionTypes["REMOVE_TOAST"];
       toastId?: ToasterToast["id"];
     };
 

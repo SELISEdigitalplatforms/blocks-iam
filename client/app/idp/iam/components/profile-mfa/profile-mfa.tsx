@@ -90,7 +90,7 @@ export const profileMfaContext = createContext<
   mfaMethodType: 0,
 });
 
-export const ProfileMFA = (props: ProfileMFAProps) => {
+export const ProfileMFA = ({ userId, projectKey, own }: Readonly<ProfileMFAProps>) => {
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState<boolean>(false);
   const [isDisableModalOpen, setIsDisableModalOpen] = useState<boolean>(false);
   const [mfaMethodType, setMfaMethodType] = useState<number>(0);
@@ -106,7 +106,9 @@ export const ProfileMFA = (props: ProfileMFAProps) => {
   return (
     <profileMfaContext.Provider
       value={{
-        ...props,
+        userId,
+        projectKey,
+        own,
         isVerifyModalOpen,
         setIsVerifyModalOpen,
         showVerifyModal,

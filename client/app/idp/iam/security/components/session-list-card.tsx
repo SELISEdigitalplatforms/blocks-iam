@@ -133,38 +133,29 @@ export const SessionListCard = ({ showSignOut = true, userId }: SessionListCardP
               return (
                 <li
                   key={card.id}
-                  role="button"
-                  tabIndex={0}
-                  className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 hover:bg-muted/30"
-                  onClick={() => setSelectedSessionId(card.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setSelectedSessionId(card.id);
-                    }
-                  }}
+                  className="flex items-center justify-between hover:bg-muted/30"
                 >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-high-emphasis">
-                        {card.deviceName}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {card.browser} on {card.operatingSystem} · {card.applicationSummary}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {card.ipAddress} · last active {card.lastActivityDisplay}
-                      </p>
-                    </div>
-                  </div>
-                  <div
-                    className="flex shrink-0 items-center gap-2"
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-4 pr-3 text-left"
+                    onClick={() => setSelectedSessionId(card.id)}
                   >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="block min-w-0">
+                      <span className="block truncate font-medium text-high-emphasis">
+                        {card.deviceName}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {card.browser} on {card.operatingSystem} · {card.applicationSummary}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {card.ipAddress} · last active {card.lastActivityDisplay}
+                      </span>
+                    </span>
+                  </button>
+                  <div className="flex shrink-0 items-center gap-2 py-3 pr-4">
                     {card.isCurrent ? (
                       <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
                         This device

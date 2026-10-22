@@ -57,7 +57,7 @@ namespace XUnitTest.Auth.Oidc
             new(NullLogger<RefreshTokenAuthenticationService>.Instance, _innerJwt.Object, _innerTenants.Object, _innerTokenMgr.Object, _innerAuthRepo.Object);
 
         private OidcRefreshTokenService Create() =>
-            new(_authRepo.Object, _cache.Object, _tenants.Object, BuildInner(), _authService.Object, _refreshTokenRepo.Object, _sessionResolver.Object, NullLogger<OidcRefreshTokenService>.Instance);
+            new(_authRepo.Object, _tenants.Object, BuildInner(), _authService.Object, _refreshTokenRepo.Object, _sessionResolver.Object, NullLogger<OidcRefreshTokenService>.Instance);
 
         private static HttpRequest MakeRequest(Dictionary<string, string>? form = null)
         {

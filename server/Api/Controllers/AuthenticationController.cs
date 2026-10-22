@@ -34,7 +34,6 @@ public class AuthenticationController : ControllerBase
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
     private readonly IAuthenticationConfigurationService _configurationService;
-    private readonly IAuthenticationRepository _authenticationRepository;
     private readonly IAuthenticationDomainService _authenticationDomainService;
     private readonly ISignupLinkRedemptionOrchestrator _signupLinkRedemption;
 
@@ -42,7 +41,7 @@ public class AuthenticationController : ControllerBase
         IAuthenticationService authenticationService,
         IAccountService accountService,
         IAuthenticationFlowService authenticationFlowService,
-        IAuthenticationConfigurationService configurationService, IAuthenticationRepository authenticationRepository,
+        IAuthenticationConfigurationService configurationService,
         IAuthenticationDomainService authenticationDomainService,
         ISignupLinkRedemptionOrchestrator signupLinkRedemption
     )
@@ -51,7 +50,6 @@ public class AuthenticationController : ControllerBase
         _accountService = accountService;
         _authenticationFlowService = authenticationFlowService;
         _configurationService= configurationService;
-        _authenticationRepository = authenticationRepository;
         _authenticationDomainService = authenticationDomainService;
         _signupLinkRedemption = signupLinkRedemption;
     }

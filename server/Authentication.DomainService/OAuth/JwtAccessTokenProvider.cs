@@ -16,6 +16,9 @@ using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth
 {
+    /// <summary>The resolved roles/permissions of a token together with the organization scope they were read from.</summary>
+    public sealed record TokenClaimSet(ResolvedAuthorizationClaims ResolvedClaims, OrganizationScope OrganizationScope);
+
     public sealed class JwtAccessTokenProvider : IJwtAccessTokenProvider
     {
         private readonly ILogger<JwtAccessTokenProvider> _logger;
@@ -67,7 +70,7 @@ namespace Authentication.DomainService.OAuth
             // the requested organization here instead would mint a token whose claim and whose
             // role set disagree.
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, organizationScope.ClaimValue, state?.Scope);
-            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, tokenRequest, organizationScope, stateInfo: state);
+            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, new TokenClaimSet(resolvedClaims, organizationScope), tokenRequest, stateInfo: state);
         }
 
         /// <summary>
@@ -97,8 +100,10 @@ namespace Authentication.DomainService.OAuth
             return OrganizationAccessResolver.Resolve(user, requestedOrganizationId, isMultiOrgEnabled);
         }
 
-        public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, OrganizationScope organizationScope, StateInfo? stateInfo = null)
+        public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, TokenClaimSet claimSet, TokenRequest tokenRequest, StateInfo? stateInfo = null)
         {
+            var resolvedClaims = claimSet.ResolvedClaims;
+            var organizationScope = claimSet.OrganizationScope;
             var effectiveClaims = resolvedClaims;
             if (tokenRequest.IsLinkAuthentication)
             {

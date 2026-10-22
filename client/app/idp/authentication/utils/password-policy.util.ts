@@ -46,7 +46,7 @@ export interface PasswordPolicyRequirement {
 // RegExp from the server response at all.
 const ASCII_UPPER = /[A-Z]/;
 const ASCII_LOWER = /[a-z]/;
-const ASCII_DIGIT = /[0-9]/;
+const ASCII_DIGIT = /\d/;
 const ASCII_SPECIAL = /[^A-Za-z0-9]/;
 
 /** A policy is only usable once its bounds are sane; a corrupt response degrades to the default. */

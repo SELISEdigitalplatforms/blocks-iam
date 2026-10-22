@@ -19,6 +19,9 @@ namespace Authentication.DomainService.Authentication
     /// </summary>
     public sealed class PasswordCredentialVerifier : IPasswordCredentialVerifier
     {
+        private const string FailedLoginAccountLockedEvent = "failed_login_account_locked";
+        private const string PasswordAuthAccountLockedEvent = "password_auth_account_locked";
+
         public const string LockedDescription = "Account is temporarily locked due to failed login attempts";
         public const string InvalidPasswordDescription = OAuthError.InvalidUsernamePasswordDescription;
 
@@ -67,7 +70,7 @@ namespace Authentication.DomainService.Authentication
 
             if (IsLocked(user))
             {
-                await SendTimelineEventAsync(request, user.ItemId, "failed_login_account_locked", "password_auth_account_locked");
+                await SendTimelineEventAsync(request, user.ItemId, FailedLoginAccountLockedEvent, PasswordAuthAccountLockedEvent);
                 return Locked();
             }
 
@@ -91,7 +94,7 @@ namespace Authentication.DomainService.Authentication
         {
             if (IsLocked(user))
             {
-                await SendTimelineEventAsync(request, user.ItemId, "failed_login_account_locked", "password_auth_account_locked");
+                await SendTimelineEventAsync(request, user.ItemId, FailedLoginAccountLockedEvent, PasswordAuthAccountLockedEvent);
                 return Locked();
             }
 
@@ -102,7 +105,7 @@ namespace Authentication.DomainService.Authentication
             var reserved = await _repository.TryReserveLoginAttemptAsync(user.ItemId, threshold, DateTime.UtcNow);
             if (reserved == null)
             {
-                await SendTimelineEventAsync(request, user.ItemId, "failed_login_account_locked", "password_auth_account_locked");
+                await SendTimelineEventAsync(request, user.ItemId, FailedLoginAccountLockedEvent, PasswordAuthAccountLockedEvent);
                 return Locked();
             }
 
@@ -114,7 +117,7 @@ namespace Authentication.DomainService.Authentication
                     return PasswordVerificationResult.Success();
                 }
 
-                await SendTimelineEventAsync(request, user.ItemId, "failed_login_account_locked", "password_auth_account_locked");
+                await SendTimelineEventAsync(request, user.ItemId, FailedLoginAccountLockedEvent, PasswordAuthAccountLockedEvent);
                 return Locked();
             }
 

@@ -83,6 +83,7 @@ export const OidcErrorDialog = ({
 
   return createPortal(
     <div
+      role="presentation"
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "color-mix(in srgb, var(--bg) 82%, transparent)" }}
       // Swallow backdrop presses rather than treating them as a dismissal. Guarded on the

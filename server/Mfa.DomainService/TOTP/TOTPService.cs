@@ -248,14 +248,11 @@ namespace Mfa.DomainService.TOTP
                 // Single use. Deleting the login session is the atomic gate: of any number of
                 // parallel submits with the same mfa_id, only the one that really deleted the key
                 // may continue.
-                if (!await _cacheClient.RemoveKeyAsync(request.MfaId ?? string.Empty))
-                {
-                    isValid = false;
-                }
                 // A time-step is single use per user: the same code (or the same step) cannot be
                 // replayed under a new mfa_id. SET NX is atomic, so parallel submits race safely.
-                else if (!await _cacheClient.CacheDatabase().StringSetAsync(
-                    $"totp:used:{tOTPInfo.CreatedBy}:{timeStepMatched}", "1", UsedTimeStepLifetime, When.NotExists))
+                if (!await _cacheClient.RemoveKeyAsync(request.MfaId ?? string.Empty)
+                    || !await _cacheClient.CacheDatabase().StringSetAsync(
+                        $"totp:used:{tOTPInfo.CreatedBy}:{timeStepMatched}", "1", UsedTimeStepLifetime, When.NotExists))
                 {
                     isValid = false;
                 }

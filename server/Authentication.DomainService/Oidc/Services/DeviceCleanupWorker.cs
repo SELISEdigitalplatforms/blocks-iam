@@ -85,36 +85,7 @@ namespace Authentication.DomainService.Oidc.Services
 
                 try
                 {
-                    var target = (tenant.TenantId, tenant.DbConnectionString, tenant.DBName);
-                    if (!_indexedTargets.Contains(target))
-                    {
-                        try
-                        {
-                            await _repository.EnsureIndexesAsync(tenant.TenantId, ct);
-                            _indexedTargets.Add(target);
-                        }
-                        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                        {
-                            break;
-                        }
-                        catch (Exception ex)
-                        {
-                            // Index creation is retried next sweep, but an index problem must
-                            // not prevent expiration of requests in a reachable database.
-                            _logger.LogWarning(ex, "DeviceCleanupWorker: index creation failed for tenant {TenantId}", tenant.TenantId);
-                        }
-                    }
-
-                    var ids = await _repository.GetExpiredIdsAsync(
-                        tenant.TenantId, now, _options.Value.NormalizedCleanupBatchLimit, ct);
-                    if (ids.Count == 0) continue;
-
-                    if (await _repository.MarkExpiredAsync(tenant.TenantId, ids, ct))
-                    {
-                        _logger.LogInformation(
-                            "DeviceCleanupWorker: marked {Count} device authorization request(s) as expired for tenant {TenantId}",
-                            ids.Count, tenant.TenantId);
-                    }
+                    await SweepTenantAsync(tenant, now, ct);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
@@ -124,6 +95,46 @@ namespace Authentication.DomainService.Oidc.Services
                 {
                     _logger.LogError(ex, "DeviceCleanupWorker: sweep failed for tenant {TenantId}", tenant.TenantId);
                 }
+            }
+        }
+
+        private async Task SweepTenantAsync(Tenant tenant, DateTime now, CancellationToken ct)
+        {
+            var target = (tenant.TenantId, tenant.DbConnectionString, tenant.DBName);
+            if (!_indexedTargets.Contains(target))
+            {
+                await EnsureIndexesAsync(tenant, target, ct);
+            }
+
+            var ids = await _repository.GetExpiredIdsAsync(
+                tenant.TenantId, now, _options.Value.NormalizedCleanupBatchLimit, ct);
+            if (ids.Count == 0) return;
+
+            if (await _repository.MarkExpiredAsync(tenant.TenantId, ids, ct))
+            {
+                _logger.LogInformation(
+                    "DeviceCleanupWorker: marked {Count} device authorization request(s) as expired for tenant {TenantId}",
+                    ids.Count, tenant.TenantId);
+            }
+        }
+
+        private async Task EnsureIndexesAsync(Tenant tenant, (string TenantId, string DbConnectionString, string DBName) target, CancellationToken ct)
+        {
+            try
+            {
+                await _repository.EnsureIndexesAsync(tenant.TenantId, ct);
+                _indexedTargets.Add(target);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Cancellation ends the sweep; the caller's cancellation handler stops the loop.
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Index creation is retried next sweep, but an index problem must
+                // not prevent expiration of requests in a reachable database.
+                _logger.LogWarning(ex, "DeviceCleanupWorker: index creation failed for tenant {TenantId}", tenant.TenantId);
             }
         }
     }

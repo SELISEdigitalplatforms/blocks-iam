@@ -87,7 +87,7 @@ export function buildOidcThemeStyle(theme: IOidcUiThemePalette): OidcThemeStyle 
 export function OidcBrand({
   logoUrl,
   brandName,
-}: { logoUrl: string | null; brandName: string }) {
+}: Readonly<{ logoUrl: string | null; brandName: string }>) {
   return (
     <div className="flex items-center gap-3">
       {logoUrl ? (
@@ -103,7 +103,7 @@ export function OidcBrand({
   );
 }
 
-export function OidcFooter({ footerText }: { footerText: string }) {
+export function OidcFooter({ footerText }: Readonly<{ footerText: string }>) {
   return (
     <p className="text-xs font-sans" style={{ color: "var(--muted)" }}>
       {footerText.replaceAll("{year}", String(new Date().getFullYear()))}
@@ -192,7 +192,7 @@ export function OidcAuthShell({
   successTitle,
   successSubtitle,
   showCorners = true,
-}: OidcAuthShellProps) {
+}: Readonly<OidcAuthShellProps>) {
   const htmlTheme = useOidcResolvedTheme();
   const resolvedLogoUrl = htmlTheme === "dark" ? logoUrlDark : logoUrlLight;
 

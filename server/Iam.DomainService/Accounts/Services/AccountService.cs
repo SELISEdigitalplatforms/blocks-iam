@@ -64,7 +64,6 @@ namespace Iam.DomainService.Accounts
         private readonly IResourceMutationService _resourceMutationService;
         private readonly ICaptchaService _captchaService;
         private readonly ICaptchaConfigurationService _captchaConfigurationService;
-        private readonly IDbContextProvider _dbContextProvider;
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
@@ -88,7 +87,6 @@ namespace Iam.DomainService.Accounts
             IResourceMutationService resourceMutationService,
             ICaptchaService captchaService,
             ICaptchaConfigurationService captchaConfigurationService,
-            IDbContextProvider dbContextProvider,
             IUserActivityDispatcher userActivityDispatcher,
             // Required, unlike the optional trailing dependencies: without it a sign-up cannot be placed.
             ISignupOrganizationResolver signupOrganizationResolver,
@@ -114,7 +112,6 @@ namespace Iam.DomainService.Accounts
             _resourceMutationService = resourceMutationService;
             _captchaService = captchaService;
             _captchaConfigurationService = captchaConfigurationService;
-            _dbContextProvider = dbContextProvider;
             _userActivityDispatcher = userActivityDispatcher;
             _signupOrganizationResolver = signupOrganizationResolver;
             _httpContextAccessor = httpContextAccessor;
@@ -202,6 +199,15 @@ namespace Iam.DomainService.Accounts
                 return existingHandlingResult;
             }
 
+            return await CreateSignupUserWithPlacementAsync(signupUserRequest, tenantConfiguration, normalizedEmail, placement);
+        }
+
+        private async Task<BaseAccountResponse> CreateSignupUserWithPlacementAsync(
+            SignupUserRequest signupUserRequest,
+            IamTenantConfiguration tenantConfiguration,
+            string normalizedEmail,
+            SignupOrganizationDecision placement)
+        {
             // Generate user id first so org creation can receive creator id in the same signup flow.
             var signupUserId = Guid.NewGuid().ToString();
 

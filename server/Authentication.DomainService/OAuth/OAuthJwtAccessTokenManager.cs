@@ -333,8 +333,7 @@ namespace Authentication.DomainService.OAuth
                 }
 
                 var rotated = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
-                    tokenRequest.RefreshToken,
-                    oldRefreshTokenCache,
+                    new RefreshTokenPredecessor(tokenRequest.RefreshToken, oldRefreshTokenCache),
                     tokenRequest,
                     authenticationConfiguration,
                     tenant,
@@ -348,8 +347,7 @@ namespace Authentication.DomainService.OAuth
 
             // Initial auth flow: no old token
             var issued = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
-                null,
-                null,
+                RefreshTokenPredecessor.None,
                 tokenRequest,
                 authenticationConfiguration,
                 tenant,

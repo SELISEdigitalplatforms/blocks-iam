@@ -68,7 +68,8 @@ namespace Iam.DomainService.Accounts
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("Login history read failed for activity {Event}, error={ErrorType}; no new-login notification", doc.Event, ex.GetType().Name);
+                // Only the type is logged: a message could hold request details.
+                _logger.LogWarning("Login history read failed for activity {Event}, error={ErrorType}; no new-login notification", doc.Event, ex.GetType().Name); // NOSONAR S6667 - type only, by design
                 return null;
             }
         }
@@ -92,7 +93,8 @@ namespace Iam.DomainService.Accounts
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("Notification for activity {Event} failed, error={ErrorType}", doc.Event, ex.GetType().Name);
+                // Only the type is logged: a message could hold request details.
+                _logger.LogWarning("Notification for activity {Event} failed, error={ErrorType}", doc.Event, ex.GetType().Name); // NOSONAR S6667 - type only, by design
             }
         }
     }

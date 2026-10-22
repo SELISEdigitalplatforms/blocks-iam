@@ -96,8 +96,7 @@ namespace XUnitTest.Auth.Shared
             authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Blocks.Genesis.Entities.Iam.DeviceInformation { Device = "Test" });
 
             var result = await service.CreateOrRotateRefreshToken(
-                "old-token",
-                oldCache,
+                new RefreshTokenPredecessor("old-token", oldCache),
                 tokenRequest,
                 config,
                 tenant,
@@ -169,8 +168,7 @@ namespace XUnitTest.Auth.Shared
             authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Blocks.Genesis.Entities.Iam.DeviceInformation { Device = "Test" });
 
             await service.CreateOrRotateRefreshToken(
-                null,
-                null,
+                RefreshTokenPredecessor.None,
                 tokenRequest,
                 config,
                 tenant,
@@ -253,8 +251,7 @@ namespace XUnitTest.Auth.Shared
             authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Blocks.Genesis.Entities.Iam.DeviceInformation { Device = "Test" });
 
             await service.CreateOrRotateRefreshToken(
-                "old-token",
-                oldCache,
+                new RefreshTokenPredecessor("old-token", oldCache),
                 tokenRequest,
                 config,
                 tenant,
@@ -295,8 +292,7 @@ namespace XUnitTest.Auth.Shared
                 NullLogger<UnifiedTokenSessionService>.Instance);
 
             var login = await service.CreateOrRotateRefreshToken(
-                null,
-                null,
+                RefreshTokenPredecessor.None,
                 new TokenRequest { ClientId = "client-1", GrantType = "authorization_code", Scope = "openid", OrganizationId = "org-a" },
                 new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 30, AbsoluteRefreshTokenValidForNumberMinutes = 10080 },
                 XUnitTest.Auth.OAuth.RefreshTokenAuthenticationServiceTests.MakeTenant(),

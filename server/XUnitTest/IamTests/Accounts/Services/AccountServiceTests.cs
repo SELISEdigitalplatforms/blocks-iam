@@ -36,7 +36,6 @@ namespace XUnitTest.IamTests.Accounts.Services
         private readonly Mock<IUserManagementMutationService> _userMutationMock = new();
         private readonly Mock<IResourceMutationService> _resourceMutationMock = new();
         private readonly Mock<ICaptchaService> _captchaServiceMock = new();
-        private readonly Mock<IDbContextProvider> _dbContextProviderMock = new();
         private readonly Mock<IUserActivityDispatcher> _userActivityDispatcherMock = new();
         private readonly Mock<IOrganizationNameResolver> _organizationNameResolverMock = new();
         // The real placement resolver over a mocked repository, so these tests cover the decision table end to end.
@@ -112,7 +111,6 @@ namespace XUnitTest.IamTests.Accounts.Services
                 _resourceMutationMock.Object,
                 _captchaServiceMock.Object,
                 _captchaConfigurationServiceMock.Object,
-                _dbContextProviderMock.Object,
                 _userActivityDispatcherMock.Object,
                 new SignupOrganizationResolver(_resourceRepositoryMock.Object),
                 http,
@@ -2406,7 +2404,7 @@ namespace XUnitTest.IamTests.Accounts.Services
                 _loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
                 _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,
                 realMutation, _resourceMutationMock.Object, _captchaServiceMock.Object, _captchaConfigurationServiceMock.Object,
-                _dbContextProviderMock.Object, _userActivityDispatcherMock.Object,
+                _userActivityDispatcherMock.Object,
                 new SignupOrganizationResolver(_resourceRepositoryMock.Object));
 
             var result = await service.SignupAccountAsync(new SignupUserRequest { Email = "a@x.io" });

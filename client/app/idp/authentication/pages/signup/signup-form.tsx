@@ -31,13 +31,13 @@ import { buildOIDCNavigationUrl, extractOIDCParams } from "@blocks-idp/authentic
 
 // Server-side org failures that belong on the organization field rather than in
 // the generic error banner.
-const ORG_ERROR_KEYS = [
+const ORG_ERROR_KEYS = new Set([
   "organizationname",
   "name_already_exists",
   "org_creation_disabled",
   "multi_org_disabled",
   "organization_creation_failed",
-];
+]);
 
 // The project's auto-join organization is deleted or disabled.
 const ORGANIZATION_UNAVAILABLE_KEY = "signup_organization_unavailable";
@@ -126,7 +126,7 @@ export const SignupForm = ({
       return false;
     }
     const entry = Object.entries(errors as Record<string, string>).find(([key]) =>
-      ORG_ERROR_KEYS.includes(key.toLowerCase()),
+      ORG_ERROR_KEYS.has(key.toLowerCase()),
     );
     if (!entry) return false;
     form.setError("organizationName", { type: "server", message: entry[1] });

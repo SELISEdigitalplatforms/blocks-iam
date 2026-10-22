@@ -188,7 +188,7 @@ namespace Iam.DomainService.Notifications
             catch (Exception ex)
             {
                 // Only the type is logged: a message could hold request details.
-                _logger.LogWarning("Notification {ConfigurationName} failed for tenant {TenantId}, error={ErrorType}", name, tenantId, ex.GetType().Name);
+                _logger.LogWarning("Notification {ConfigurationName} failed for tenant {TenantId}, error={ErrorType}", name, tenantId, ex.GetType().Name); // NOSONAR S6667 - type only, by design
                 return false;
             }
         }

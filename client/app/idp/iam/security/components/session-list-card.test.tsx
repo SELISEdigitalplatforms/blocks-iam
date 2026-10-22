@@ -25,7 +25,9 @@ vi.mock("../mappers/session.mapper", () => ({
   toSessionCardViewModel: (raw: Record<string, unknown>) => raw,
 }));
 vi.mock("./session-details-drawer", () => ({
-  SessionDetailsDrawer: () => <div data-testid="details-drawer" />,
+  SessionDetailsDrawer: ({ sessionId }: { readonly sessionId: string | null }) => (
+    <div data-testid="details-drawer" data-session-id={sessionId ?? ""} />
+  ),
 }));
 
 import { SessionListCard } from "./session-list-card";
@@ -87,14 +89,13 @@ describe("SessionListCard", () => {
     await waitFor(() => expect(h.showSuccess).toHaveBeenCalled());
   });
 
-  it.each([["Enter"], [" "]])("opens a session row when %s is pressed on it", (key) => {
+  it("opens a session row when it is activated", () => {
     render(<SessionListCard userId="u1" />);
-    const row = screen.getByText("MacBook").closest('[role="button"]') as HTMLElement;
+    const drawer = screen.getByTestId("details-drawer");
+    expect(drawer).toHaveAttribute("data-session-id", "");
 
-    fireEvent.keyDown(row, { key });
+    fireEvent.click(screen.getByRole("button", { name: /MacBook/ }));
 
-    // Selecting a session swaps the list for its detail view, so the row is gone.
-    expect(screen.queryByText("MacBook")).not.toBeNull();
-    expect(row.getAttribute("tabindex")).toBe("0");
+    expect(drawer).toHaveAttribute("data-session-id", "s1");
   });
 });

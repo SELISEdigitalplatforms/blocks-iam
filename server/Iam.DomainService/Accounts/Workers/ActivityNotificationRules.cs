@@ -14,6 +14,8 @@ namespace Iam.DomainService.Accounts
     /// </summary>
     public static class ActivityNotificationRules
     {
+        private const string UserIdKey = "userId";
+
         public const string LoginSuccess = "login_success";
         public const string PriorFailedAttemptsKey = "priorFailedAttempts";
 
@@ -58,7 +60,7 @@ namespace Iam.DomainService.Accounts
                             "Password changed",
                             reset ? "Your password was reset." : "Your password was changed.",
                             null,
-                            new Dictionary<string, object?> { ["userId"] = userId, ["change"] = reset ? "reset" : "changed" });
+                            new Dictionary<string, object?> { [UserIdKey] = userId, ["change"] = reset ? "reset" : "changed" });
                     }
 
                 case MfaEnrollmentCompleted:
@@ -77,7 +79,7 @@ namespace Iam.DomainService.Accounts
                             "Sign-in factor changed",
                             description,
                             activity.Event != MfaEnrollmentFailed,
-                            new Dictionary<string, object?> { ["userId"] = userId, ["change"] = change });
+                            new Dictionary<string, object?> { [UserIdKey] = userId, ["change"] = change });
                     }
 
                 case UserActivated:
@@ -85,7 +87,7 @@ namespace Iam.DomainService.Accounts
                         "Account activated",
                         "An admin activated your account.",
                         null,
-                        new Dictionary<string, object?> { ["userId"] = userId });
+                        new Dictionary<string, object?> { [UserIdKey] = userId });
 
                 case UserRevokedSession:
                     if (!string.Equals(activity.Outcome, IdpConstants.StatusSuccess, StringComparison.OrdinalIgnoreCase))
@@ -99,7 +101,7 @@ namespace Iam.DomainService.Accounts
                         null,
                         new Dictionary<string, object?>
                         {
-                            ["userId"] = userId,
+                            [UserIdKey] = userId,
                             ["clientId"] = string.IsNullOrWhiteSpace(activity.ClientId) ? null : activity.ClientId,
                             ["reason"] = string.IsNullOrWhiteSpace(activity.ReasonCode) ? null : activity.ReasonCode
                         });
@@ -142,7 +144,7 @@ namespace Iam.DomainService.Accounts
                 null,
                 new Dictionary<string, object?>
                 {
-                    ["userId"] = activity.UserId,
+                    [UserIdKey] = activity.UserId,
                     ["reason"] = reason,
                     ["clientId"] = string.IsNullOrWhiteSpace(activity.ClientId) ? null : activity.ClientId
                 });

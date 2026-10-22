@@ -132,31 +132,7 @@ namespace Iam.DomainService.Shared.Serialization
                     return false;
 
                 case JsonValueKind.Object:
-                    if (!CanNest(policy, depth))
-                    {
-                        return null;
-                    }
-
-                    var map = new Dictionary<string, object>();
-                    foreach (var property in element.EnumerateObject())
-                    {
-                        if (map.Count >= policy.MaxKeys)
-                        {
-                            break;
-                        }
-
-                        if (!IsValidKey(property.Name, policy))
-                        {
-                            continue;
-                        }
-
-                        var converted = Convert(property.Value, policy, depth + 1);
-                        if (converted is not null)
-                        {
-                            map[property.Name] = converted;
-                        }
-                    }
-                    return map;
+                    return ConvertJsonObject(element, policy, depth);
 
                 case JsonValueKind.Array:
                     return CanNest(policy, depth) ? ConvertJsonArray(element, policy, depth + 1) : null;
@@ -165,6 +141,36 @@ namespace Iam.DomainService.Shared.Serialization
                     // Null and Undefined: dropped rather than stored as BsonNull.
                     return null;
             }
+        }
+
+        private static Dictionary<string, object>? ConvertJsonObject(JsonElement element, AttributePolicy policy, int depth)
+        {
+            if (!CanNest(policy, depth))
+            {
+                return null;
+            }
+
+            var map = new Dictionary<string, object>();
+            foreach (var property in element.EnumerateObject())
+            {
+                if (map.Count >= policy.MaxKeys)
+                {
+                    break;
+                }
+
+                if (!IsValidKey(property.Name, policy))
+                {
+                    continue;
+                }
+
+                var converted = Convert(property.Value, policy, depth + 1);
+                if (converted is not null)
+                {
+                    map[property.Name] = converted;
+                }
+            }
+
+            return map;
         }
 
         private static List<object> ConvertJsonArray(JsonElement element, AttributePolicy policy, int depth)

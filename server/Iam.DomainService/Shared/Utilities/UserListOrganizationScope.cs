@@ -87,9 +87,9 @@ namespace Iam.DomainService.Utilities
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var result = new List<string>();
 
-            foreach (var organizationId in organizationIds)
+            foreach (var organizationId in organizationIds.Where(id => !string.IsNullOrWhiteSpace(id)))
             {
-                if (!string.IsNullOrWhiteSpace(organizationId) && seen.Add(organizationId))
+                if (seen.Add(organizationId))
                 {
                     result.Add(organizationId);
                 }

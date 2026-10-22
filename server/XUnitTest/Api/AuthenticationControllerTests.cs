@@ -63,7 +63,6 @@ namespace XUnitTest.ApiTests
                 _accountService.Object,
                 _flowService.Object,
                 _configService.Object,
-                _authRepo.Object,
                 _domainService.Object,
                 _signupLinkRedemption.Object);
             controller.ControllerContext = new ControllerContext

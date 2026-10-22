@@ -106,7 +106,6 @@ namespace XUnitTest.IamTests.Accounts.Services
                 new Mock<IResourceMutationService>().Object,
                 new Mock<ICaptchaService>().Object,
                 _captchaConfig.Object,
-                new Mock<IDbContextProvider>().Object,
                 new Mock<IUserActivityDispatcher>().Object,
                 new Mock<ISignupOrganizationResolver>().Object,
                 null,

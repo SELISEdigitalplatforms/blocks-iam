@@ -62,4 +62,4 @@ export const getRuntimeEnv = (key: RuntimeKey): string => {
  * (BLOCKS_LOGIC_BASE_URL etc.) must still come from `getRuntimeEnv`.
  */
 export const getSelfBaseUrl = (): string =>
-  typeof window !== "undefined" ? window.location.origin : "";
+  globalThis.window === undefined ? "" : globalThis.location.origin;

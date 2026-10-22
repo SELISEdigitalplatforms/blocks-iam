@@ -6,14 +6,14 @@ import { buildOidcThemeStyle, OidcBrand, OidcFooter, useOidcResolvedTheme } from
 
 const SUPPORT_URL = "https://docs.seliseblocks.com/";
 
-type Props = {
+type Props = Readonly<{
   template: IOidcUiTemplate;
   title: string;
   subtitle: ReactNode;
   actionTitle?: string;
   actionSubtitle?: string;
   action?: ReactNode;
-};
+}>;
 
 export function OidcThemedConfirmation({ template, title, subtitle, actionTitle, actionSubtitle, action }: Props) {
   const mode = useOidcResolvedTheme();

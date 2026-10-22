@@ -89,7 +89,7 @@ namespace XUnitTest.Auth.Shared
             RefreshTokenCache? oldCache = null,
             IdentityConfiguration? config = null,
             string grantType = "password") =>
-            Sut().CreateOrRotateRefreshToken(oldToken, oldCache, Request(grantType), config ?? Config(),
+            Sut().CreateOrRotateRefreshToken(new RefreshTokenPredecessor(oldToken, oldCache), Request(grantType), config ?? Config(),
                 Tenant(), TestUser(), new[] { "127.0.0.1" }, impersoanted: false);
 
         // ==================== SPEC2 H1 — a new authentication starts a lineage ====================
@@ -371,8 +371,7 @@ namespace XUnitTest.Auth.Shared
             string grantType = "refresh_token",
             string organizationId = "default") =>
             Sut().CreateOrRotateRefreshToken(
-                oldToken,
-                oldCache,
+                new RefreshTokenPredecessor(oldToken, oldCache),
                 new TokenRequest { ClientId = requestedClientId, GrantType = grantType, OrganizationId = organizationId },
                 Config(),
                 Tenant(),
@@ -547,7 +546,7 @@ namespace XUnitTest.Auth.Shared
         {
             var harness = new RefreshTokenLineageTests();
             var result = await harness.Sut().CreateOrRotateRefreshToken(
-                predecessor.RefreshToken, predecessor, request, Config(), Tenant(), TestUser(),
+                new RefreshTokenPredecessor(predecessor.RefreshToken, predecessor), request, Config(), Tenant(), TestUser(),
                 VisitorIps, impersoanted: false).ConfigureAwait(false);
             result.RefreshToken.Should().NotBeNullOrWhiteSpace();
             return (harness._created.Single(), harness.LastCached());

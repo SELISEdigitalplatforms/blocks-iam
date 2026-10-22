@@ -65,12 +65,15 @@ const renderRoute = async (path: string, testId: string, initialEntries = ["/"])
       <Route />
     </MemoryRouter>,
   );
-  expect(screen.getByTestId(testId)).toBeInTheDocument();
+  const element = screen.getByTestId(testId);
+  expect(element).toBeInTheDocument();
+  return element;
 };
 
 describe("dashboard route wrappers", () => {
   it("renders ./dashboard/profile", async () => {
-    await renderRoute("./dashboard/profile", "profile");
+    const element = await renderRoute("./dashboard/profile", "profile");
+    expect(element).toBeVisible();
   });
 });
 

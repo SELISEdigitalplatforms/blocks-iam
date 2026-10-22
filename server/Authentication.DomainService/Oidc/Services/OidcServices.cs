@@ -124,8 +124,7 @@ public sealed class OidcSigningKeyMaterial
             var visitorsIpAddresses = new List<string> { _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
             var userAgent = _httpContextAccessor.HttpContext?.Request?.Headers?["User-Agent"].ToString() ?? string.Empty;
             var (refreshToken, slidingExpiry, absoluteExpiry, refreshTokenSessionId) = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
-                null,
-                null,
+                RefreshTokenPredecessor.None,
                 tokenRequest,
                 authConfiguration,
                 tenant,

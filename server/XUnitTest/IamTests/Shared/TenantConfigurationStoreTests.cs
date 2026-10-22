@@ -168,7 +168,7 @@ public class TenantConfigurationStoreTests : IDisposable
         // The cross-database overload used by the permission propagator.
         await SeedIdentityAsync(FieldValue(multiOrg: true));
 
-        var config = await Store().ReadAsync(_mongo.Database);
+        var config = await TenantConfigurationStore.ReadAsync(_mongo.Database);
 
         config!.IsMultiOrgEnabled.Should().BeTrue();
     }
@@ -179,13 +179,13 @@ public class TenantConfigurationStoreTests : IDisposable
         await SeedIdentityAsync(null);
         await Legacy.InsertOneAsync(LegacyDoc(multiOrg: true));
 
-        (await Store().ReadAsync(_mongo.Database))!.IsMultiOrgEnabled.Should().BeTrue();
+        (await TenantConfigurationStore.ReadAsync(_mongo.Database))!.IsMultiOrgEnabled.Should().BeTrue();
     }
 
     [RealMongoFact]
     public async Task Read_AnotherDatabase_Neither_ReturnsNull()
     {
-        (await Store().ReadAsync(_mongo.Database)).Should().BeNull();
+        (await TenantConfigurationStore.ReadAsync(_mongo.Database)).Should().BeNull();
     }
 
     // ---------- write ----------

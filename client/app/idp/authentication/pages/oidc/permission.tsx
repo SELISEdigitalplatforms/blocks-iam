@@ -61,10 +61,10 @@ export const OIDCPermissionScreen = () => {
     try {
       // Forward the relying party's own challenge verbatim: its verifier lives on the RP. Make a
       // pair only when IAM itself is the RP (same-origin redirect), which keeps the verifier here.
-      const searchParams = new URLSearchParams(window.location.search);
+      const searchParams = new URLSearchParams(globalThis.location.search);
       let challenge = searchParams.get("code_challenge");
       let challengeMethod = searchParams.get("code_challenge_method") || "S256";
-      if (!challenge && new URL(currentContext.redirectUri).origin === window.location.origin) {
+      if (!challenge && new URL(currentContext.redirectUri).origin === globalThis.location.origin) {
         const pair = await generatePkcePair();
         sessionStorage.setItem("oidc-code-verifier", pair.verifier);
         challenge = pair.challenge;

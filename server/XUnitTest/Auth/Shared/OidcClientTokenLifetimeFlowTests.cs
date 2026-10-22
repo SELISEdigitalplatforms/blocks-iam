@@ -358,7 +358,7 @@ namespace XUnitTest.Auth.Shared
             ClientHasCustomLifetimes();
             var before = DateTime.UtcNow;
 
-            var result = await Sessions().CreateOrRotateRefreshToken(null, null, Request("cid"), Project(), MakeTenant(), MakeUser(), ["127.0.0.1"], false);
+            var result = await Sessions().CreateOrRotateRefreshToken(RefreshTokenPredecessor.None, Request("cid"), Project(), MakeTenant(), MakeUser(), ["127.0.0.1"], false);
 
             result.SlidingExpiry.Should().BeCloseTo(before.AddMinutes(1440), TimeSpan.FromSeconds(5));
             result.AbsoluteExpiry.Should().BeCloseTo(before.AddMinutes(43200), TimeSpan.FromSeconds(5));
@@ -375,7 +375,7 @@ namespace XUnitTest.Auth.Shared
                 .ReturnsAsync((IdentityConfiguration? p, string? _) => p);
             var before = DateTime.UtcNow;
 
-            var result = await Sessions().CreateOrRotateRefreshToken(null, null, Request("other"), project, MakeTenant(), MakeUser(), ["127.0.0.1"], false);
+            var result = await Sessions().CreateOrRotateRefreshToken(RefreshTokenPredecessor.None, Request("other"), project, MakeTenant(), MakeUser(), ["127.0.0.1"], false);
 
             result.SlidingExpiry.Should().BeCloseTo(before.AddMinutes(30), TimeSpan.FromSeconds(5));
             result.AbsoluteExpiry.Should().BeCloseTo(before.AddMinutes(10080), TimeSpan.FromSeconds(5));
@@ -388,7 +388,7 @@ namespace XUnitTest.Auth.Shared
         {
             var before = DateTime.UtcNow;
 
-            var result = await Sessions(withLifetimes: false).CreateOrRotateRefreshToken(null, null, Request("cid"), Project(), MakeTenant(), MakeUser(), ["127.0.0.1"], false);
+            var result = await Sessions(withLifetimes: false).CreateOrRotateRefreshToken(RefreshTokenPredecessor.None, Request("cid"), Project(), MakeTenant(), MakeUser(), ["127.0.0.1"], false);
 
             result.SlidingExpiry.Should().BeCloseTo(before.AddMinutes(30), TimeSpan.FromSeconds(5));
             result.AbsoluteExpiry.Should().BeCloseTo(before.AddMinutes(10080), TimeSpan.FromSeconds(5));
@@ -408,7 +408,7 @@ namespace XUnitTest.Auth.Shared
             var before = DateTime.UtcNow;
 
             // The request names another client; the lineage client still decides (existing lineage rule).
-            var result = await Sessions().CreateOrRotateRefreshToken("old-token", old, Request("someone-else", GrantTypes.RefreshToken), Project(), MakeTenant(), MakeUser(), ["127.0.0.1"], false);
+            var result = await Sessions().CreateOrRotateRefreshToken(new RefreshTokenPredecessor("old-token", old), Request("someone-else", GrantTypes.RefreshToken), Project(), MakeTenant(), MakeUser(), ["127.0.0.1"], false);
 
             result.AbsoluteExpiry.Should().Be(lineageAbsolute);
             result.SlidingExpiry.Should().BeCloseTo(before.AddMinutes(1440), TimeSpan.FromSeconds(5));
@@ -428,7 +428,7 @@ namespace XUnitTest.Auth.Shared
                 RefreshTokenSessionId = "lineage-1", UserId = "user-1", AbsoluteExpiresUtc = lineageAbsolute
             };
 
-            var result = await Sessions().CreateOrRotateRefreshToken("old-token", old, Request("cid", GrantTypes.RefreshToken), Project(), MakeTenant(), MakeUser(), ["127.0.0.1"], false);
+            var result = await Sessions().CreateOrRotateRefreshToken(new RefreshTokenPredecessor("old-token", old), Request("cid", GrantTypes.RefreshToken), Project(), MakeTenant(), MakeUser(), ["127.0.0.1"], false);
 
             result.AbsoluteExpiry.Should().Be(lineageAbsolute);
             _cacheTtl.Should().BeLessThanOrEqualTo(2 * 60 * 60);

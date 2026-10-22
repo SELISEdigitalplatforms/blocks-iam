@@ -153,12 +153,18 @@ namespace Iam.DomainService.Resources.TenantPropagation
 
                 return targets;
             }
-            catch (Exception ex)
+            // Let the worker retry; a registry outage is not a successful empty propagation.
+            // The filter logs and returns false, so the original exception propagates untouched.
+            catch (Exception ex) when (LogTargetEnumerationFailure(ex))
             {
-                _logger.LogError(ex, "Failed to enumerate tenants from root DB (Tenants collection).");
-                // Let the worker retry; a registry outage is not a successful empty propagation.
                 throw;
             }
+        }
+
+        private bool LogTargetEnumerationFailure(Exception ex)
+        {
+            _logger.LogError(ex, "Failed to enumerate tenants from root DB (Tenants collection).");
+            return false;
         }
 
         private async Task ProcessTenantAsync(
@@ -246,7 +252,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
             {
                 var payload = BuildPermissionBson(permission);
                 await collection.InsertOneAsync(payload);
-                var tenantConfiguration = await new TenantConfigurationStore(_dbContextProvider).ReadAsync(database);
+                var tenantConfiguration = await TenantConfigurationStore.ReadAsync(database);
                 if (tenantConfiguration == null || !tenantConfiguration.IsMultiOrgEnabled)
                 {
                     return 1;

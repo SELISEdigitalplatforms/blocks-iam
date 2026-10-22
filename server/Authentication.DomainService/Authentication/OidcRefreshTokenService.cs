@@ -32,7 +32,6 @@ namespace Authentication.DomainService.Authentication
         private const string ActiveImpersonationStatus = "active";
 
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
         private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly IAuthenticationService _authenticationService;
@@ -42,7 +41,6 @@ namespace Authentication.DomainService.Authentication
 
         public OidcRefreshTokenService(
             IAuthenticationRepository authenticationRepository,
-            ICacheClient cacheClient,
             ITenants tenants,
             RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             IAuthenticationService authenticationService,
@@ -51,7 +49,6 @@ namespace Authentication.DomainService.Authentication
             ILogger<OidcRefreshTokenService> logger)
         {
             _authenticationRepository = authenticationRepository;
-            _cacheClient = cacheClient;
             _tenants = tenants;
             _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _authenticationService = authenticationService;

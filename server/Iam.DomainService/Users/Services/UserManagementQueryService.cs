@@ -207,11 +207,19 @@ namespace Iam.DomainService.Users
 
         private static Dictionary<string, object> MapToListAccountFields(GetAccounts user, DateTime asOfUtc, string? rolesOrganizationId)
         {
-            var roles = rolesOrganizationId is null
-                ? user.Roles
-                : user.Roles != null && user.Roles.TryGetValue(rolesOrganizationId, out var scopedRoles)
-                    ? new Dictionary<string, List<string>> { [rolesOrganizationId] = scopedRoles }
-                    : new Dictionary<string, List<string>>();
+            Dictionary<string, List<string>>? roles;
+            if (rolesOrganizationId is null)
+            {
+                roles = user.Roles;
+            }
+            else if (user.Roles != null && user.Roles.TryGetValue(rolesOrganizationId, out var scopedRoles))
+            {
+                roles = new Dictionary<string, List<string>> { [rolesOrganizationId] = scopedRoles };
+            }
+            else
+            {
+                roles = new Dictionary<string, List<string>>();
+            }
 
             return new Dictionary<string, object>
             {

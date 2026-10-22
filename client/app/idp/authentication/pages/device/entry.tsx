@@ -23,6 +23,20 @@ type FlowState =
   | { kind: "tenant_mismatch"; payload: DeviceConsentPayload }
   | { kind: "error"; message: string };
 
+function readErrorCode(err: unknown): string | undefined {
+  return (
+    (err as { errors?: { error?: string } })?.errors?.error ??
+    (err as { error?: string })?.error
+  );
+}
+
+function verifyErrorMessage(code?: string): string {
+  if (code === "expired_token") return "This device code has expired.";
+  if (code === "slow_down") return "Too many attempts. Wait a moment, then try again.";
+  if (code === "invalid_grant") return "Invalid code, wrong tenant, or already used.";
+  return "Invalid or expired code.";
+}
+
 export function DeviceEntryPage() {
   const params = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -180,20 +194,6 @@ export function DeviceEntryPage() {
       await animCtx?.failAnimation("Decision failed");
       setDecision(null);
     }
-  }
-
-  function readErrorCode(err: unknown): string | undefined {
-    return (
-      (err as { errors?: { error?: string } })?.errors?.error ??
-      (err as { error?: string })?.error
-    );
-  }
-
-  function verifyErrorMessage(code?: string): string {
-    if (code === "expired_token") return "This device code has expired.";
-    if (code === "slow_down") return "Too many attempts. Wait a moment, then try again.";
-    if (code === "invalid_grant") return "Invalid code, wrong tenant, or already used.";
-    return "Invalid or expired code.";
   }
 
   function onSubmit(e: React.FormEvent) {

@@ -65,7 +65,7 @@ namespace Iam.DomainService.Accounts
 
             RuleFor(o => o.Industry)
                 .MaximumLength(100)
-                .WithMessage("Maximum character limit 100 exceeded")
+                .WithMessage(SignupValidationMessages.MaxLength100)
                 .When(o => !string.IsNullOrWhiteSpace(o.Industry));
 
             RuleFor(o => o.TimeZone)
@@ -133,17 +133,22 @@ namespace Iam.DomainService.Accounts
         }
     }
 
+    internal static class SignupValidationMessages
+    {
+        internal const string MaxLength100 = "Maximum character limit 100 exceeded";
+    }
+
     public class SignupAddressValidator : AbstractValidator<Address>
     {
         public SignupAddressValidator()
         {
-            RuleFor(a => a.Name).MaximumLength(100).WithMessage("Maximum character limit 100 exceeded");
+            RuleFor(a => a.Name).MaximumLength(100).WithMessage(SignupValidationMessages.MaxLength100);
             RuleFor(a => a.AddressLine1).MaximumLength(200).WithMessage("Maximum character limit 200 exceeded");
             RuleFor(a => a.AddressLine2).MaximumLength(200).WithMessage("Maximum character limit 200 exceeded");
-            RuleFor(a => a.City).MaximumLength(100).WithMessage("Maximum character limit 100 exceeded");
-            RuleFor(a => a.State).MaximumLength(100).WithMessage("Maximum character limit 100 exceeded");
+            RuleFor(a => a.City).MaximumLength(100).WithMessage(SignupValidationMessages.MaxLength100);
+            RuleFor(a => a.State).MaximumLength(100).WithMessage(SignupValidationMessages.MaxLength100);
             RuleFor(a => a.PostalCode).MaximumLength(20).WithMessage("Maximum character limit 20 exceeded");
-            RuleFor(a => a.Country).MaximumLength(100).WithMessage("Maximum character limit 100 exceeded");
+            RuleFor(a => a.Country).MaximumLength(100).WithMessage(SignupValidationMessages.MaxLength100);
         }
     }
 
@@ -154,7 +159,7 @@ namespace Iam.DomainService.Accounts
 
         public SignupThemeValidator()
         {
-            RuleFor(t => t.Name).MaximumLength(100).WithMessage("Maximum character limit 100 exceeded");
+            RuleFor(t => t.Name).MaximumLength(100).WithMessage(SignupValidationMessages.MaxLength100);
             RuleFor(t => t.PrimaryColor).Must(BeAHexColor).WithMessage("Primary color must be a hex color. E.g: #124091").When(t => !string.IsNullOrWhiteSpace(t.PrimaryColor));
             RuleFor(t => t.SecondaryColor).Must(BeAHexColor).WithMessage("Secondary color must be a hex color. E.g: #ffffff").When(t => !string.IsNullOrWhiteSpace(t.SecondaryColor));
             RuleFor(t => t.TertiaryColor).Must(BeAHexColor).WithMessage("Tertiary color must be a hex color. E.g: #000000").When(t => !string.IsNullOrWhiteSpace(t.TertiaryColor));

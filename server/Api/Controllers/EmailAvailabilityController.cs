@@ -12,6 +12,8 @@ namespace Api.Controllers;
 [Route("iam")]
 public class EmailAvailabilityController : ControllerBase
 {
+    private const string EmailRequiredMessage = "email is required";
+
     private readonly IUserManagementQueryService _userManagementQueryService;
 
     public EmailAvailabilityController(IUserManagementQueryService userManagementQueryService)
@@ -33,7 +35,7 @@ public class EmailAvailabilityController : ControllerBase
         // answer first with a ProblemDetails carrying a per-request traceId.
         if (string.IsNullOrWhiteSpace(email))
         {
-            return BadRequest(new { error = "email is required" });
+            return BadRequest(new { error = EmailRequiredMessage });
         }
 
         var result = await _userManagementQueryService.IsUserAvailableAsync(new IsEmailAvailableRequest { Email = email });
@@ -50,7 +52,7 @@ public class EmailAvailabilityController : ControllerBase
     {
         if (query == null || string.IsNullOrWhiteSpace(query.Email))
         {
-            return BadRequest(new { error = "email is required" });
+            return BadRequest(new { error = EmailRequiredMessage });
         }
 
         var result = await _userManagementQueryService.IsUserAvailableAsync(query);
@@ -70,7 +72,7 @@ public class EmailAvailabilityController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(email))
         {
-            return BadRequest(new { error = "email is required" });
+            return BadRequest(new { error = EmailRequiredMessage });
         }
 
         var result = await _userManagementQueryService.IsUserExistAsync(email);
@@ -85,7 +87,7 @@ public class EmailAvailabilityController : ControllerBase
         var email = body?.Email;
         if (string.IsNullOrWhiteSpace(email))
         {
-            return BadRequest(new { error = "email is required" });
+            return BadRequest(new { error = EmailRequiredMessage });
         }
 
         var result = await _userManagementQueryService.IsUserExistAsync(email);

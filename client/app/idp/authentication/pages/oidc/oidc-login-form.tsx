@@ -125,7 +125,6 @@ export const OidcLoginForm = ({
   // Kept apart from serverError: this one arrives from a round trip the form cannot retry, and
   // it is shown as a modal rather than a line under the password field.
   const [roundTripError, setRoundTripError] = useState<string | null>(initialError ?? null);
-  const [, setLastAttemptedEmail] = useState("");
   const [showActivationError, setShowActivationError] = useState(false);
   const [activeCodeChallenge, setActiveCodeChallenge] = useState(codeChallenge);
   const [activeCodeChallengeMethod, setActiveCodeChallengeMethod] = useState(
@@ -257,7 +256,6 @@ export const OidcLoginForm = ({
   /** Shows why a login the server refused (non-2xx JSON) failed, by its error code. */
   const showLoginFailure = async (
     data: OidcLoginResponseBody | null | undefined,
-    username: string,
   ) => {
     const errorMsg =
       data?.error_description || data?.message || "Login failed";
@@ -270,7 +268,6 @@ export const OidcLoginForm = ({
       await animCtx?.failAnimation(msg);
     } else if (errorCode === "account_not_verified") {
       animCtx?.resetAnimation();
-      setLastAttemptedEmail(username);
       setShowActivationError(true);
     } else if (errorCode === "captcha_enabled") {
       const msg = "Captcha verification is required. Please complete the given captcha.";
@@ -386,7 +383,7 @@ export const OidcLoginForm = ({
         return;
       }
 
-      await showLoginFailure(data, values.username);
+      await showLoginFailure(data);
     } catch (error) {
       console.error("Login error:", error);
       const msg = "An unexpected error occurred during login. Please try again.";

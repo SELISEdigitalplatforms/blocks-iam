@@ -387,20 +387,5 @@ namespace Iam.DomainService.Resources
                 ActiveUserCount = (int)await _resourceRepository.CountUsersWithRoleAsync(role.Slug, userScopeOrgIds, activeOnly: true)
             };
         }
-
-        /// <summary>
-        /// Mirrors the mutation side's resolution so a preview and the write it previews always
-        /// target the same organization.
-        /// </summary>
-        private static string ResolveOrganizationId(string? organizationId)
-        {
-            if (!string.IsNullOrWhiteSpace(organizationId))
-            {
-                return organizationId;
-            }
-
-            var contextOrgId = BlocksContext.GetContext()?.OrganizationId;
-            return string.IsNullOrWhiteSpace(contextOrgId) ? DefaultOrganizationId : contextOrgId;
-        }
     }
 }
