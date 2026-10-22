@@ -26,6 +26,22 @@ public static class IamDataAccessExtensions
         return scope.Granted ? await scope.Apply(collection).FirstOrDefaultAsync() : default;
     }
 
+    /// <summary>As <see cref="FindListAsync{T}"/>, for results that go back to the API caller: View column (property) rules clear what they may not see. Never save these back.</summary>
+    public static async Task<List<T>> FindListForViewAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
+        FilterDefinition<T> filter, string callSite, string? tenantId = null)
+    {
+        var scope = await access.ReadAsync(schema, filter, callSite, tenantId);
+        return scope.Granted ? scope.ForView(await scope.Apply(collection).ToListAsync()) : [];
+    }
+
+    /// <summary>As <see cref="FindFirstAsync{T}"/>, for a result that goes back to the API caller: View column (property) rules clear what they may not see. Never save it back.</summary>
+    public static async Task<T?> FindFirstForViewAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
+        FilterDefinition<T> filter, string callSite, string? tenantId = null)
+    {
+        var scope = await access.ReadAsync(schema, filter, callSite, tenantId);
+        return scope.Granted ? scope.ForView(await scope.Apply(collection).FirstOrDefaultAsync()) : default;
+    }
+
     public static async Task<long> CountAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
         FilterDefinition<T> filter, string callSite, string? tenantId = null)
     {
@@ -44,7 +60,7 @@ public static class IamDataAccessExtensions
         if (edit is null) return null;
         replacement = options?.IsUpsert == true
             ? await access.PrepareUpsertAsync(schema, replacement, collection, filter, callSite, tenantId)
-            : await access.PrepareWriteAsync(schema, replacement, isInsert: false, callSite, tenantId);
+            : await access.PrepareReplaceAsync(schema, replacement, collection, filter, callSite, tenantId);
         return await collection.ReplaceOneAsync(options?.IsUpsert == true ? filter : edit, replacement, options ?? new ReplaceOptions());
     }
 

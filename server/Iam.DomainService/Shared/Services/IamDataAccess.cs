@@ -12,7 +12,8 @@ namespace Iam.DomainService.Services;
 
 /// <summary>
 /// Wraps <see cref="IDataAccessResolver"/> for iam. Rules (decisions.md 2026-10-15):
-/// row filter + projection only (no column masking), missing schema = log and allow,
+/// row filter + projection, column masking only where a read opts in (ReadScope.ForView: results
+/// for the API caller, never written back), missing schema = log and allow,
 /// no user context or another tenant's DB = <see cref="ShouldSkipResolver"/>.
 /// Writes also get the schema's default values and validation rules (only what the Genesis
 /// allow-list opens), on the same skip path. On insert the requester's user id joins the
@@ -45,7 +46,7 @@ public sealed class IamDataAccess : IIamDataAccess
             ProjectionDefinition<T>? projection = useProjection && resolved.Projection is { ElementCount: > 0 }
                 ? new BsonDocumentProjectionDefinition<T>(resolved.Projection)
                 : null;
-            return new ReadScope<T>(true, new BsonDocumentFilterDefinition<T>(resolved.Filter), projection);
+            return new ReadScope<T>(true, new BsonDocumentFilterDefinition<T>(resolved.Filter), projection, resolved.ApplyReadPolicy);
         }
         catch (KeyNotFoundException ex)
         {
@@ -101,8 +102,35 @@ public sealed class IamDataAccess : IIamDataAccess
         if (ShouldSkipResolver(callSite, tenantId))
             return entity;
 
-        var exists = await collection.Find(filter).Limit(1).AnyAsync();
-        return await PrepareWriteAsync(schema, entity, isInsert: !exists, callSite, tenantId);
+        var stored = await collection.Find(filter).Limit(1).FirstOrDefaultAsync();
+        if (stored is null)
+            return await PrepareWriteAsync(schema, entity, isInsert: true, callSite, tenantId);
+        await KeepHiddenValuesAsync(schema, entity, stored, callSite, tenantId);
+        return await PrepareWriteAsync(schema, entity, isInsert: false, callSite, tenantId);
+    }
+
+    public async Task<T> PrepareReplaceAsync<T>(string schema, T entity, IMongoCollection<T> collection, FilterDefinition<T> filter, string callSite, string? tenantId = null)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        if (ShouldSkipResolver(callSite, tenantId))
+            return entity;
+
+        var stored = await collection.Find(filter).Limit(1).FirstOrDefaultAsync();
+        if (stored is not null)
+            await KeepHiddenValuesAsync(schema, entity, stored, callSite, tenantId);
+        return await PrepareWriteAsync(schema, entity, isInsert: false, callSite, tenantId);
+    }
+
+    /// <summary>
+    /// Puts back into <paramref name="entity"/> the stored values of properties the caller cannot view, where the
+    /// update carries exactly what the masked read showed them (ColumnMask.KeepHidden), so saving what was read
+    /// never erases them.
+    /// </summary>
+    private async Task KeepHiddenValuesAsync<T>(string schema, T entity, T stored, string callSite, string? tenantId)
+    {
+        var scope = await ReadAsync(schema, FilterDefinition<T>.Empty, callSite, tenantId);
+        if (scope.RowMask is not null)
+            CopyInto(entity, ColumnMask.KeepHidden(entity, stored, scope.RowMask));
     }
 
     public async Task CheckUpdateAsync<T>(string schema, UpdateDefinition<T> update, string callSite, string? tenantId = null)

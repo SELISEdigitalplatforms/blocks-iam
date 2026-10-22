@@ -10,11 +10,17 @@ namespace Iam.DomainService.Resources
         Task<Permission> GetPermissionByResourceAsync(string resource, string? organizationId = "default");
         Task<List<Permission>> GetPermissionsByResourcesAsync(List<string> resources, string? organizationId = "default");
         Task<Permission> GetPermissionByIdAsync(string id);
+        /// <summary>As the caller may see it: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<Permission> GetPermissionByIdForViewAsync(string id);
         Task<(IQueryable<Permission>, long)> GetPermissionsAsync(GetPermissionsRequest query, string? orgainzationId = null);
         Task<bool> InsertPermissionAsync(Permission permission);
         Task<bool> UpdatePermissionAsync(Permission permission);
         Task<Role> GetRoleByIdAsync(string id);
+        /// <summary>As the caller may see it: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<Role> GetRoleByIdForViewAsync(string id);
         Task<(IQueryable<Role>, long)> GetRolesAsync(GetRolesRequest query, string? orgainzationId = null);
+        /// <summary>As the caller may see them: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<(IQueryable<Role>, long)> GetRolesForViewAsync(GetRolesRequest query, string? organizationId = null);
         Task<Role> GetRoleBySlugAsync(string slug, string? orgainzationId = null);
         
         /// <summary>
@@ -34,6 +40,8 @@ namespace Iam.DomainService.Resources
         Task<bool> UpdateRolesCountAsync(string slug, string? orgainzationId = null);
         Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync(string? orgainzationId = null);
         Task<Organization> GetOrganizationById(string id);
+        /// <summary>As the caller may see it: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<Organization> GetOrganizationByIdForView(string id);
         Task<Organization> GetOrganizationByNameAsync(string name);
         Task<List<string>> GetOrganizationIdsByUserIdAsync(string userId);
         Task<List<Organization>> GetOrganizationsByIdsAsync(List<string> organizationIds);

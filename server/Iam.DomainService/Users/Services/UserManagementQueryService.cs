@@ -102,7 +102,7 @@ namespace Iam.DomainService.Users
                 scope = new UserListScope(UserListScopeKind.Organizations, [IdpConstants.DefaultOrganizationId]);
             }
 
-            var (data, count) = await _userRepository.GetUsersAsync<GetAccounts, GetUsersRequest>(query, scope);
+            var (data, count) = await _userRepository.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(query, scope);
 
             // One instant for the whole response, per the data contract's "server UTC time at
             // response construction" - so every item in a page is judged against the same moment.

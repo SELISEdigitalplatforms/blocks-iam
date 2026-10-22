@@ -75,6 +75,13 @@ public class SignupLinkConfigurationRepository : ISignupLinkConfigurationReposit
         return await _dataAccess.FindFirstAsync(Collection, IamSchemas.SignupLinkConfiguration, filter, "SignupLinkConfigurationRepository.GetByIdAsync");
     }
 
+    public async Task<SignupLinkConfiguration?> GetByIdForViewAsync(string itemId, string tenantId)
+    {
+        var filter = Builders<SignupLinkConfiguration>.Filter.Eq(x => x.ItemId, itemId)
+            & Builders<SignupLinkConfiguration>.Filter.Eq(x => x.TenantId, tenantId);
+        return await _dataAccess.FindFirstForViewAsync(Collection, IamSchemas.SignupLinkConfiguration, filter, "SignupLinkConfigurationRepository.GetByIdForViewAsync");
+    }
+
     public async Task<SignupLinkConfiguration?> FindByNameAsync(string tenantId, string name, string? excludeItemId = null)
     {
         var filter = Builders<SignupLinkConfiguration>.Filter.Eq(x => x.TenantId, tenantId)
@@ -120,6 +127,6 @@ public class SignupLinkConfigurationRepository : ISignupLinkConfigurationReposit
             .Skip(request.Page * request.PageSize)
             .Limit(request.PageSize)
             .ToListAsync();
-        return (items, total);
+        return (scope.ForView(items), total);
     }
 }

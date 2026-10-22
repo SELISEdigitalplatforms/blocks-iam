@@ -51,6 +51,13 @@ namespace Iam.DomainService.Resources
             return await _dataAccess.FindFirstAsync(collection, IamSchemas.Permission, filter, "ResourceRepository.GetPermissionByIdAsync");
         }
 
+        public async Task<Permission> GetPermissionByIdForViewAsync(string id)
+        {
+            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
+            var filter = Builders<Permission>.Filter.Eq(x => x.ItemId, id);
+            return (await _dataAccess.FindFirstForViewAsync(collection, IamSchemas.Permission, filter, "ResourceRepository.GetPermissionByIdForViewAsync"))!;
+        }
+
         public async Task<bool> InsertPermissionAsync(Permission permission)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Permission>();
@@ -70,6 +77,13 @@ namespace Iam.DomainService.Resources
             var collection = _identityAccessManagementRepository.GetCollection<Role>();
             var filter = Builders<Role>.Filter.Eq(x => x.ItemId, id);
             return await _dataAccess.FindFirstAsync(collection, IamSchemas.Role, filter, "ResourceRepository.GetRoleByIdAsync");
+        }
+
+        public async Task<Role> GetRoleByIdForViewAsync(string id)
+        {
+            var collection = _identityAccessManagementRepository.GetCollection<Role>();
+            var filter = Builders<Role>.Filter.Eq(x => x.ItemId, id);
+            return (await _dataAccess.FindFirstForViewAsync(collection, IamSchemas.Role, filter, "ResourceRepository.GetRoleByIdForViewAsync"))!;
         }
 
         public async Task<bool> InsertRoleAsync(Role role)
@@ -172,7 +186,8 @@ namespace Iam.DomainService.Resources
             var scope = await _dataAccess.ReadAsync(IamSchemas.Permission, filter, "ResourceRepository.GetPermissionsAsync", useProjection: false);
             if (!scope.Granted) return (new List<Permission>().AsQueryable(), 0);
             var count = await collection.CountDocumentsAsync(scope.Filter);
-            var permissions = await scope.Apply(collection).Sort(sort).Limit(query.PageSize).Skip(query.PageSize * query.Page).ToListAsync();
+            // Only the API lists these: View column (property) rules clear what the caller may not see.
+            var permissions = scope.ForView(await scope.Apply(collection).Sort(sort).Limit(query.PageSize).Skip(query.PageSize * query.Page).ToListAsync());
 
             return (permissions.AsQueryable(), count);
         }
@@ -187,7 +202,14 @@ namespace Iam.DomainService.Resources
             return await _dataAccess.FindFirstAsync(collection, IamSchemas.Role, filter, "ResourceRepository.GetRoleBySlugAsync");
         }
 
-        public async Task<(IQueryable<Role>, long)> GetRolesAsync(GetRolesRequest query, string? organizationId = null)
+        public Task<(IQueryable<Role>, long)> GetRolesAsync(GetRolesRequest query, string? organizationId = null) =>
+            QueryRolesAsync(query, organizationId, forView: false);
+
+        /// <summary>As <see cref="GetRolesAsync"/>, for the roles list returned to the caller: View column (property) rules clear what they may not see.</summary>
+        public Task<(IQueryable<Role>, long)> GetRolesForViewAsync(GetRolesRequest query, string? organizationId = null) =>
+            QueryRolesAsync(query, organizationId, forView: true);
+
+        private async Task<(IQueryable<Role>, long)> QueryRolesAsync(GetRolesRequest query, string? organizationId, bool forView)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Role>();
             var resolvedOrgId = ResolveOrganizationId(organizationId);
@@ -222,6 +244,7 @@ namespace Iam.DomainService.Resources
             if (!scope.Granted) return (new List<Role>().AsQueryable(), 0);
             var count = await collection.CountDocumentsAsync(scope.Filter);
             var roles = await scope.Apply(collection).Sort(sort).Limit(query.PageSize).Skip(query.PageSize * query.Page).ToListAsync();
+            if (forView) roles = scope.ForView(roles);
 
             return (roles.AsQueryable(), count);
         }
@@ -641,6 +664,12 @@ namespace Iam.DomainService.Resources
             return (await _dataAccess.FindFirstAsync(collection, IamSchemas.Organization, Builders<Organization>.Filter.Where(r => r.ItemId == id), "ResourceRepository.GetOrganizationById"))!;
         }
 
+        public async Task<Organization> GetOrganizationByIdForView(string id)
+        {
+            var collection = _identityAccessManagementRepository.GetCollection<Organization>();
+            return (await _dataAccess.FindFirstForViewAsync(collection, IamSchemas.Organization, Builders<Organization>.Filter.Where(r => r.ItemId == id), "ResourceRepository.GetOrganizationByIdForView"))!;
+        }
+
         public async Task<Organization> GetOrganizationByNameAsync(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -786,7 +815,8 @@ namespace Iam.DomainService.Resources
                 .Limit(request.PageSize)
                 .ToListAsync();
 
-            return new GetOrganizationsResponse { IsSuccess = true, Organizations = organizations, TotalCount = totalCount };
+            // Only the API lists these: View column (property) rules clear what the caller may not see.
+            return new GetOrganizationsResponse { IsSuccess = true, Organizations = scope.ForView(organizations), TotalCount = totalCount };
         }
 
         public async Task<IamTenantConfiguration> GetTenantConfigurationAsync()

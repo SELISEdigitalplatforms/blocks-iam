@@ -349,7 +349,7 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             return (null, true);
         }
 
-        var entity = await _repository.GetByIdAsync(id, tenantId);
+        var entity = await _repository.GetByIdForViewAsync(id, tenantId);
         if (entity == null)
         {
             return (null, true);

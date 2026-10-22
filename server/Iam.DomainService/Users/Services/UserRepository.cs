@@ -143,7 +143,13 @@ namespace Iam.DomainService.Users
             return await collection.Find(scope.Filter, options).FirstOrDefaultAsync();
         }
 
-        public async Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter>
+        public Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter> =>
+            QueryUsersAsync<T, R>(query, scope, forView: false);
+
+        public Task<(IQueryable<T>?, long)> GetUsersForViewAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter> =>
+            QueryUsersAsync<T, R>(query, scope, forView: true);
+
+        private async Task<(IQueryable<T>?, long)> QueryUsersAsync<T, R>(R query, UserListScope scope, bool forView) where R : BaseGetsRequest<GetUsersFilter>
         {
             var collection = _identityAccessManagementRepository.GetCollection<User>();
 
@@ -168,6 +174,7 @@ namespace Iam.DomainService.Users
 
             var cursor = await collection.FindAsync(filter, options);
             var data = await cursor.ToListAsync();
+            if (forView) data = scoped.ForViewAs(data);
 
             return (data.AsQueryable(), totalCount);
         }

@@ -39,7 +39,7 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<IActionResult> GetAuthenticationConfigAsync()
         {
-            var config = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            var config = await _authenticationRepository.GetAuthenticationConfigurationForViewAsync();
             var publicCertificatePath = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.JwtTokenParameters.PublicCertificatePath;
 
             return new OkObjectResult(new

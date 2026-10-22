@@ -54,7 +54,7 @@ namespace Iam.DomainService.Services
             var scope = await _dataAccess.ReadAsync(IamSchemas.UserActivity, filter, "UserActivityRepository.GetAsync", useProjection: false);
             if (!scope.Granted) return [];
             var cursor = await collection.FindAsync(scope.Filter, options, ct);
-            return await cursor.ToListAsync(ct);
+            return scope.ForView(await cursor.ToListAsync(ct));
         }
 
         public async Task<long> CountAsync(string userId, GetActivitiesRequest req, CancellationToken ct)
