@@ -19,6 +19,7 @@ using FluentValidation;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Activity.Services;
 using Iam.DomainService.Configurations;
+using Iam.DomainService.DelegatedAdministration;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
@@ -218,6 +219,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
             serviceCollection.AddSingleton<ISignupLinkSummaryService, SignupLinkSummaryService>();
             serviceCollection.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
+            serviceCollection.AddDelegatedAdministration();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
 
             serviceCollection.AddSingleton<IUserActivityRepository, UserActivityRepository>();
