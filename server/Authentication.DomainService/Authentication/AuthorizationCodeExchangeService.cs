@@ -235,7 +235,11 @@ namespace Authentication.DomainService.Authentication
                 Permissions = permissions,
                 IsLinkAuthentication = authCode.IsLinkAuthentication,
                 RestrictedRoles = authCode.RestrictedRoles?.ToList() ?? [],
-                RestrictedPermissions = authCode.RestrictedPermissions?.ToList() ?? []
+                RestrictedPermissions = authCode.RestrictedPermissions?.ToList() ?? [],
+                // The code is usually redeemed by a server; the refresh token records the browser
+                // that signed in, as seen when this code was issued.
+                SignInIpAddress = authCode.CreatedByIpAddress,
+                SignInUserAgent = authCode.CreatedByUserAgent
             };
 
 

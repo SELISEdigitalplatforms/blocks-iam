@@ -601,6 +601,61 @@ public class ForwardedHeadersSetupTests : IDisposable
         f.StoredRefreshToken!.IpAddress.Should().Be(Client);
     }
 
+    // ---------- Code grant redeemed by a server: the token records the browser that signed in ----------
+
+    private const string ChromeOnWindows = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
+
+    private static TokenGenerationService CodeGrantTokenService(TokenFixture f)
+    {
+        var tenants = new Mock<ITenants>();
+        tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(XUnitTest.Auth.OAuth.RefreshTokenAuthenticationServiceTests.MakeTenant());
+        var authRepo = new Mock<IAuthenticationRepository>();
+        authRepo.Setup(r => r.GetAuthenticationConfigurationAsync())
+            .ReturnsAsync(new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 30, AbsoluteRefreshTokenValidForNumberMinutes = 10080 });
+        return new TokenGenerationService(
+            new OidcSigningKeyMaterial(), tenants.Object, f.Cache.Object, f.Unified(AuthDomain()),
+            Mock.Of<ICryptoService>(), Mock.Of<ICertificateProviderFactory>(), f.Accessor.Object, authRepo.Object);
+    }
+
+    [Fact]
+    public async Task CodeGrantRefreshToken_RedeemedByAServer_RecordsTheSignInBrowser()
+    {
+        // The redeeming request comes from the server (the outbound address); the claims carry the
+        // browser that signed in, as stored on the authorization code.
+        var ctx = await ThroughTrustedGatewayAsync(OutboundAddress);
+        var f = new TokenFixture(ctx);
+
+        var model = await CodeGrantTokenService(f).GenerateRefreshTokenAsync(
+            new OidcClaims
+            {
+                Sub = "u1", TenantId = "tenant-1", ClientId = "client-1", Scope = "openid",
+                SignInIpAddress = Client, SignInUserAgent = ChromeOnWindows
+            },
+            "https://issuer", isImpersonation: false, idpSessionId: "sess-1");
+
+        model.IpAddress.Should().Be(Client);
+        model.UserAgent.Should().Be(ChromeOnWindows);
+        f.StoredRefreshToken!.IpAddress.Should().Be(Client);
+        f.StoredRefreshToken.UserAgent.Should().Be(ChromeOnWindows);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("unknown")]
+    public async Task CodeGrantRefreshToken_WithoutASignInAddress_RecordsTheRequest(string? signInIpAddress)
+    {
+        var ctx = await ThroughTrustedGatewayAsync(Client);
+        var f = new TokenFixture(ctx);
+
+        var model = await CodeGrantTokenService(f).GenerateRefreshTokenAsync(
+            new OidcClaims { Sub = "u1", TenantId = "tenant-1", ClientId = "client-1", Scope = "openid", SignInIpAddress = signInIpAddress },
+            "https://issuer", isImpersonation: false, idpSessionId: "sess-1");
+
+        model.IpAddress.Should().Be(Client);
+        f.StoredRefreshToken!.IpAddress.Should().Be(Client);
+    }
+
     // ---------- Section 5: performance contract ----------
 
     [Fact]

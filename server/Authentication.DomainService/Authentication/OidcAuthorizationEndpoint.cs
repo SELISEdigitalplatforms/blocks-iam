@@ -382,6 +382,7 @@ namespace Authentication.DomainService.Authentication
                     ExpiresAt = DateTime.UtcNow.AddMinutes(10),
                     CreatedAt = DateTime.UtcNow,
                     CreatedByIpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request),
+                    CreatedByUserAgent = request.Headers.UserAgent.ToString(),
                     IdpSessionId = idpSessionId,
                     IsLinkAuthentication = matchedLinkSession != null,
                     RestrictedRoles = matchedLinkSession?.Roles?.ToList() ?? [],

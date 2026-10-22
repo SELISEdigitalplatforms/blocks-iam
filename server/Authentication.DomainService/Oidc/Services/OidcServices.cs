@@ -119,10 +119,19 @@ public sealed class OidcSigningKeyMaterial
                 RestrictedRoles = claims.RestrictedRoles?.ToList() ?? [],
                 RestrictedPermissions = claims.RestrictedPermissions?.ToList() ?? [],
                 Amr = claims.Amr?.ToList() ?? [],
-                Audience = claims.Audience
+                Audience = claims.Audience,
+                SignInUserAgent = claims.SignInUserAgent
             };
-            var visitorsIpAddresses = new List<string> { _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
-            var userAgent = _httpContextAccessor.HttpContext?.Request?.Headers?["User-Agent"].ToString() ?? string.Empty;
+            // A code is usually redeemed by a server: when the claims carry the browser that signed in,
+            // the refresh token records that browser instead of the redeeming request.
+            var signInIpAddress = string.IsNullOrWhiteSpace(claims.SignInIpAddress)
+                || string.Equals(claims.SignInIpAddress, "unknown", StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : claims.SignInIpAddress;
+            var visitorsIpAddresses = new List<string> { signInIpAddress ?? _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
+            var userAgent = !string.IsNullOrWhiteSpace(claims.SignInUserAgent)
+                ? claims.SignInUserAgent
+                : _httpContextAccessor.HttpContext?.Request?.Headers?["User-Agent"].ToString() ?? string.Empty;
             var (refreshToken, slidingExpiry, absoluteExpiry, refreshTokenSessionId) = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
                 RefreshTokenPredecessor.None,
                 tokenRequest,

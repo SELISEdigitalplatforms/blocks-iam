@@ -125,9 +125,11 @@ namespace Authentication.DomainService.Shared
             DateTime absoluteRefreshTokenExpireOn = inheritedAbsoluteExpiry ?? now.AddMinutes(absoluteLifetime);
 
             var httpContext = _httpContextAccessor.HttpContext;
-            var userAgent = tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent")
-                ? tokenRequest.Request.Headers["User-Agent"].ToString()
-                : string.Empty;
+            var userAgent = !string.IsNullOrWhiteSpace(tokenRequest.SignInUserAgent)
+                ? tokenRequest.SignInUserAgent
+                : tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent")
+                    ? tokenRequest.Request.Headers["User-Agent"].ToString()
+                    : string.Empty;
             var deviceInformation = _authenticationDomainService.GetDeviceInfo(userAgent);
             var ipAddress = string.Join(",", visitorsIpAddresses);
 
