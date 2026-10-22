@@ -1,3 +1,4 @@
+using Iam.DomainService.Notifications;
 ﻿using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Accounts;
@@ -39,6 +40,7 @@ namespace Iam.DomainService.Users
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
         private readonly IConfiguration? _configuration;
         private readonly IUserSessionTerminator? _userSessionTerminator;
+        private readonly IBuiltInNotificationSender? _notificationSender;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -55,7 +57,8 @@ namespace Iam.DomainService.Users
             IHttpContextAccessor? httpContextAccessor = null,
             IDefaultOidcClientResolver? defaultOidcClientResolver = null,
             IConfiguration? configuration = null,
-            IUserSessionTerminator? userSessionTerminator = null
+            IUserSessionTerminator? userSessionTerminator = null,
+            IBuiltInNotificationSender? notificationSender = null
         )
         {
             _logger = logger;
@@ -74,6 +77,7 @@ namespace Iam.DomainService.Users
             _defaultOidcClientResolver = defaultOidcClientResolver;
             _configuration = configuration;
             _userSessionTerminator = userSessionTerminator;
+            _notificationSender = notificationSender;
         }
 
         public async Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command)
@@ -798,8 +802,9 @@ namespace Iam.DomainService.Users
             user.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? request.UserId;
             user.LastUpdatedDate = DateTime.Now;
 
+            var update = _userRepository.UpdateUserAsync(user);
             await Task.WhenAll(
-            _userRepository.UpdateUserAsync(user),
+            update,
             _messageClient.SendToConsumerAsync(new ConsumerMessage<UserStatusChangedEvent>
             {
                 ConsumerName = IdpConstants.IamUserQueue,
@@ -813,6 +818,19 @@ namespace Iam.DomainService.Users
             // A deactivated account keeps no live session: its refresh tokens and IdP session
             // accounts end now, the same way password reset / change end them.
             await EndAllSessionsAsync(request.UserId, "user_deactivated");
+
+            if (update.Result)
+            {
+                await _notificationSender.TrySendAsync(new BuiltInNotification(
+                    BlocksContext.GetContext()?.TenantId,
+                    BuiltInNotificationNames.UserDeactivated,
+                    BuiltInNotificationSender.Recipients(user.ItemId),
+                    BuiltInNotificationSender.Payload(
+                        BuiltInNotificationNames.UserDeactivated,
+                        "Account deactivated",
+                        "An admin deactivated your account.",
+                        fields: new Dictionary<string, object?> { ["userId"] = user.ItemId })));
+            }
 
             return new BaseResponse { IsSuccess = true };
         }
@@ -1279,6 +1297,8 @@ namespace Iam.DomainService.Users
                     user, organizationId, organization, IdpConstants.OrganizationMemberAddedMailPurpose);
             }
 
+            await NotifyRolesChangedAsync(user.ItemId, blocksContext?.UserId, organizationId, "updated");
+
             //await SendEvent(user.ItemId, MutationEventType.Update);
 
             //await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
@@ -1445,6 +1465,8 @@ namespace Iam.DomainService.Users
                 await NotifyOrganizationMembershipChangedAsync(
                     user, organizationId, organization, IdpConstants.OrganizationMemberRemovedMailPurpose);
             }
+
+            await NotifyRolesChangedAsync(user.ItemId, blocksContext?.UserId, organizationId, "revoked");
 
             _logger.LogInformation("Revoke User Access Control end -- Success");
             return new BaseMutationResponse
@@ -1919,6 +1941,8 @@ namespace Iam.DomainService.Users
 
             var batchId = $"b_{Guid.NewGuid():N}"[..10];
             var tenantId = BlocksContext.GetContext()?.TenantId;
+            var requestedBy = BlocksContext.GetContext()?.UserId;
+            var parts = (userIds.Count + BulkRoleChunkSize - 1) / BulkRoleChunkSize;
 
             try
             {
@@ -1937,7 +1961,10 @@ namespace Iam.DomainService.Users
                                 TenantId = tenantId,
                                 AddRoles = plan.AddRoles,
                                 RemoveRoles = plan.RemoveRoles,
-                                UserIds = chunk
+                                UserIds = chunk,
+                                RequestedBy = requestedBy,
+                                Part = offset / BulkRoleChunkSize + 1,
+                                Parts = parts
                             }
                         });
                 }
@@ -1981,6 +2008,10 @@ namespace Iam.DomainService.Users
                 command.BatchId,
                 command.UserIds.Count);
 
+            var applied = new List<string>();
+            var unchanged = 0;
+            var failed = 0;
+
             foreach (var userId in command.UserIds)
             {
                 // Per-user failures are logged and swallowed. Rethrowing would have the broker
@@ -1991,6 +2022,7 @@ namespace Iam.DomainService.Users
                     var user = await _userRepository.GetUserByIdAsync(userId);
                     if (user is null)
                     {
+                        failed++;
                         _logger.LogWarning(
                             "Bulk role change -- batch {BatchId}, user {UserId}: failed (not found)",
                             command.BatchId,
@@ -2000,6 +2032,7 @@ namespace Iam.DomainService.Users
 
                     if (!ApplyRoleDelta(user, command.OrganizationId, command.AddRoles, command.RemoveRoles))
                     {
+                        unchanged++;
                         _logger.LogInformation(
                             "Bulk role change -- batch {BatchId}, user {UserId}: no-op",
                             command.BatchId,
@@ -2014,6 +2047,7 @@ namespace Iam.DomainService.Users
 
                     if (updated)
                     {
+                        applied.Add(userId);
                         _logger.LogInformation(
                             "Bulk role change -- batch {BatchId}, user {UserId}: applied",
                             command.BatchId,
@@ -2021,6 +2055,7 @@ namespace Iam.DomainService.Users
                     }
                     else
                     {
+                        failed++;
                         _logger.LogWarning(
                             "Bulk role change -- batch {BatchId}, user {UserId}: failed (update rejected)",
                             command.BatchId,
@@ -2029,6 +2064,7 @@ namespace Iam.DomainService.Users
                 }
                 catch (Exception ex)
                 {
+                    failed++;
                     _logger.LogError(
                         ex,
                         "Bulk role change -- batch {BatchId}, user {UserId}: failed",
@@ -2038,6 +2074,94 @@ namespace Iam.DomainService.Users
             }
 
             _logger.LogInformation("Bulk role change apply end -- batch {BatchId}", command.BatchId);
+
+            await NotifyBulkRoleChangeAsync(command, applied, unchanged, failed);
+        }
+
+        /// <summary>
+        /// One call for every user whose roles this chunk changed, then one "finished" call to the
+        /// submitter with this chunk's counts. Best effort: never fails the chunk.
+        /// </summary>
+        private async Task NotifyBulkRoleChangeAsync(BulkUserRoleChangeEvent command, List<string> applied, int unchanged, int failed)
+        {
+            var tenantId = !string.IsNullOrWhiteSpace(command.TenantId) ? command.TenantId : BlocksContext.GetContext()?.TenantId;
+
+            if (applied.Count > 0)
+            {
+                await _notificationSender.TrySendAsync(new BuiltInNotification(
+                    tenantId,
+                    BuiltInNotificationNames.UserRolesChanged,
+                    BuiltInNotificationSender.Recipients(applied.Where(id => !string.Equals(id, command.RequestedBy, StringComparison.Ordinal))),
+                    BuiltInNotificationSender.Payload(
+                        BuiltInNotificationNames.UserRolesChanged,
+                        "Your roles changed",
+                        "An admin changed your roles.",
+                        fields: new Dictionary<string, object?>
+                        {
+                            ["organizationId"] = command.OrganizationId,
+                            ["change"] = "updated",
+                            ["batchId"] = command.BatchId
+                        })));
+            }
+
+            if (string.IsNullOrWhiteSpace(command.RequestedBy))
+            {
+                _logger.LogDebug("Bulk role change -- batch {BatchId}: no submitter, finished notification skipped", command.BatchId);
+                return;
+            }
+
+            var parts = command.Parts > 0 ? command.Parts : 1;
+            var part = command.Part > 0 ? command.Part : 1;
+            await _notificationSender.TrySendAsync(new BuiltInNotification(
+                tenantId,
+                BuiltInNotificationNames.BulkRoleChangeFinished,
+                BuiltInNotificationSender.Recipients(command.RequestedBy),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.BulkRoleChangeFinished,
+                    "Bulk role change finished",
+                    failed == 0
+                        ? $"Part {part} of {parts}: {applied.Count} changed, {unchanged} unchanged."
+                        : $"Part {part} of {parts}: {applied.Count} changed, {unchanged} unchanged, {failed} failed.",
+                    isSuccess: failed == 0,
+                    fields: new Dictionary<string, object?>
+                    {
+                        ["batchId"] = command.BatchId,
+                        ["organizationId"] = command.OrganizationId,
+                        ["part"] = part,
+                        ["parts"] = parts,
+                        ["applied"] = applied.Count,
+                        ["unchanged"] = unchanged,
+                        ["failed"] = failed
+                    })));
+        }
+
+        /// <summary>
+        /// Tells a user an admin changed their access in one organization. Not sent when the
+        /// actor is the user. Best effort.
+        /// </summary>
+        private Task NotifyRolesChangedAsync(string userId, string? actorUserId, string organizationId, string change)
+        {
+            if (string.Equals(userId, actorUserId, StringComparison.Ordinal))
+            {
+                return Task.CompletedTask;
+            }
+
+            return _notificationSender.TrySendAsync(new BuiltInNotification(
+                BlocksContext.GetContext()?.TenantId,
+                BuiltInNotificationNames.UserRolesChanged,
+                BuiltInNotificationSender.Recipients(userId),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.UserRolesChanged,
+                    "Your roles changed",
+                    change == "revoked"
+                        ? "An admin removed your access to an organization."
+                        : "An admin changed your roles.",
+                    fields: new Dictionary<string, object?>
+                    {
+                        ["userId"] = userId,
+                        ["organizationId"] = organizationId,
+                        ["change"] = change
+                    })));
         }
 
         /// <summary>

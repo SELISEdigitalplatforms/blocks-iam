@@ -1,3 +1,4 @@
+using Iam.DomainService.Notifications;
 using Blocks.Genesis;
 using Authentication.DomainService.Utilities;
 using DeviceDetectorNET;
@@ -31,6 +32,7 @@ namespace Authentication.DomainService.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
         private readonly ILogger<AuthenticationDomainService>? _logger;
+        private readonly IBuiltInNotificationSender? _notificationSender;
 
         public const string TokenLifetimesSaveFailedMessage = "Token lifetimes could not be saved. Try again.";
 
@@ -47,8 +49,10 @@ namespace Authentication.DomainService.Services
                                            ITenants tenants,
                                            IHttpClientFactory httpClientFactory,
                                            IOidcClientTokenLifetimeService? clientTokenLifetimes = null,
-                                           ILogger<AuthenticationDomainService>? logger = null)
+                                           ILogger<AuthenticationDomainService>? logger = null,
+                                           IBuiltInNotificationSender? notificationSender = null)
         {
+            _notificationSender = notificationSender;
             _messageClient = messageClient;
             _authenticationRepository = authenticationRepository;
             _oidcClientValidator = oidcClientValidator;
@@ -252,7 +256,47 @@ namespace Authentication.DomainService.Services
                 };
             }
 
+            if (isNewClient)
+            {
+                await NotifyClientCredentialChangedAsync(OidcClientKind, "created", credential.ClientId, credential.CreatedBy, null);
+            }
+
             return new SaveOIDCClientResponse { IsSuccess = true, ItemId = credential.ItemId };
+        }
+
+        private const string OidcClientKind = "oidc-client";
+        private const string ClientCredentialKind = "client-credential";
+
+        /// <summary>
+        /// Tells the acting user and the record's creator that a client was created, its secret
+        /// rotated, or it was deleted. Only the client id goes out, never a secret. Best effort.
+        /// </summary>
+        private Task NotifyClientCredentialChangedAsync(string kind, string change, string? clientId, string? createdBy, string? organizationId)
+        {
+            var bc = BlocksContext.GetContext();
+            var what = kind == OidcClientKind ? "An OIDC client" : "A client credential";
+            var description = change switch
+            {
+                "created" => $"{what} was created.",
+                "secret-rotated" => $"{what} had its secret rotated.",
+                _ => $"{what} was deleted."
+            };
+
+            return _notificationSender.TrySendAsync(new BuiltInNotification(
+                bc?.TenantId,
+                BuiltInNotificationNames.ClientCredentialChanged,
+                BuiltInNotificationSender.Recipients(bc?.UserId, createdBy),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.ClientCredentialChanged,
+                    "Client credential changed",
+                    description,
+                    fields: new Dictionary<string, object?>
+                    {
+                        ["kind"] = kind,
+                        ["change"] = change,
+                        ["clientId"] = clientId,
+                        ["organizationId"] = organizationId
+                    })));
         }
 
         /// <summary>
@@ -540,6 +584,11 @@ namespace Authentication.DomainService.Services
                 }
             }
 
+            if (credential != null)
+            {
+                await NotifyClientCredentialChangedAsync(OidcClientKind, "deleted", credential.ClientId, credential.CreatedBy, null);
+            }
+
             return new BaseResponse { IsSuccess = true };
         }
 
@@ -614,6 +663,11 @@ namespace Authentication.DomainService.Services
             };
 
             var createResult = await _authenticationRepository.SaveClientCredentialAsync(clientCredential);
+            if (createResult.IsSuccess)
+            {
+                // A client credential's item id is its client id.
+                await NotifyClientCredentialChangedAsync(ClientCredentialKind, "created", clientCredential.ItemId, clientCredential.CreatedBy, clientCredential.OrganizationId);
+            }
             return new SaveClientCredentialResponse
             {
                 IsSuccess = createResult.IsSuccess,
@@ -641,6 +695,11 @@ namespace Authentication.DomainService.Services
             credential.LastUpdatedDate = DateTime.UtcNow;
 
             var saveResult = await _authenticationRepository.SaveClientCredentialAsync(credential);
+            if (saveResult.IsSuccess)
+            {
+                await NotifyClientCredentialChangedAsync(ClientCredentialKind, "secret-rotated", credential.ItemId, credential.CreatedBy, credential.OrganizationId);
+            }
+
             return new RotateClientCredentialSecretResponse
             {
                 IsSuccess = saveResult.IsSuccess,
@@ -733,6 +792,7 @@ namespace Authentication.DomainService.Services
                 return ClientCredentialNotFound(request.ItemId);
 
             await _authenticationRepository.DeleteClientCredentialAsync(request);
+            await NotifyClientCredentialChangedAsync(ClientCredentialKind, "deleted", existing.ItemId, existing.CreatedBy, existing.OrganizationId);
             return new BaseResponse { IsSuccess = true };
         }
 
@@ -989,6 +1049,8 @@ namespace Authentication.DomainService.Services
                     await _authenticationRepository.UpdateIdentityProviderAsync(linkedProvider);
                 }
             }
+
+            await NotifyClientCredentialChangedAsync(OidcClientKind, "secret-rotated", credential.ClientId, credential.CreatedBy, null);
 
             return new RotateOidcClientSecretResponse
             {

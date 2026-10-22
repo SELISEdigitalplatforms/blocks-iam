@@ -25,5 +25,17 @@ namespace Iam.DomainService.Dtos
 
         /// <summary>The resolved ids for this chunk; disjoint from every other chunk of the batch.</summary>
         public List<string> UserIds { get; set; } = new();
+
+        /// <summary>
+        /// The user who submitted the batch; gets the "finished" notification. Null on messages
+        /// queued before this field existed: those apply as before and send no such notification.
+        /// </summary>
+        public string? RequestedBy { get; set; }
+
+        /// <summary>1-based number of this chunk in the batch (0 when unknown).</summary>
+        public int Part { get; set; }
+
+        /// <summary>How many chunks the batch has (0 when unknown).</summary>
+        public int Parts { get; set; }
     }
 }

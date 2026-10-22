@@ -177,6 +177,10 @@ namespace Authentication.DomainService.Utilities
             #endregion
 
             #region IAM
+            // Built-in notifications to the Notifier (blocks-logic). Best effort; both hosts use it.
+            serviceCollection.AddHttpClient();
+            serviceCollection.AddSingleton<Iam.DomainService.Notifications.IBuiltInNotificationSender, Iam.DomainService.Notifications.BuiltInNotificationSender>();
+
             serviceCollection.AddSingleton<IUserManagementMutationService, UserManagementMutationService>();
             serviceCollection.AddSingleton<IUserRepository, UserRepository>();
 

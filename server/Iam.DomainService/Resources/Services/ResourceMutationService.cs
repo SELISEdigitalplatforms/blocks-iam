@@ -1,3 +1,4 @@
+using Iam.DomainService.Notifications;
 ﻿using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Dtos;
@@ -47,6 +48,8 @@ namespace Iam.DomainService.Resources
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IUserRepository _userRepository;
 
+        private readonly IBuiltInNotificationSender? _notificationSender;
+
         public ResourceMutationService(
             ILogger<ResourceMutationService> logger,
             IResourceRepository resourceRepository,
@@ -56,9 +59,11 @@ namespace Iam.DomainService.Resources
             IValidator<CreateRoleRequest> roleValidator,
             ITenantPermissionPropagator tenantPermissionPropagator,
             IUserActivityDispatcher userActivityDispatcher,
-            IUserRepository userRepository
+            IUserRepository userRepository,
+            IBuiltInNotificationSender? notificationSender = null
         )
         {
+            _notificationSender = notificationSender;
             _logger = logger;
             _resourceRepository = resourceRepository;
             _identityAccessManagementService = identityAccessManagementService;
@@ -1708,6 +1713,27 @@ namespace Iam.DomainService.Resources
             _logger.LogInformation(
                 "Tenant permission propagation done. ItemId={ItemId} Action={Action} Attempted={Attempted} Succeeded={Succeeded} Failed={Failed}",
                 context.ItemId, context.Action, summary.TenantsAttempted, summary.TenantsSucceeded, summary.TenantsFailed);
+
+            if (summary.TenantsFailed > 0)
+            {
+                var bc = BlocksContext.GetContext();
+                await _notificationSender.TrySendAsync(new BuiltInNotification(
+                    bc?.TenantId,
+                    BuiltInNotificationNames.PermissionPropagationFailed,
+                    BuiltInNotificationSender.Recipients(bc?.UserId),
+                    BuiltInNotificationSender.Payload(
+                        BuiltInNotificationNames.PermissionPropagationFailed,
+                        "Permission change not copied everywhere",
+                        $"The permission change was not copied to {summary.TenantsFailed} of {summary.TenantsAttempted} tenants.",
+                        isSuccess: false,
+                        fields: new Dictionary<string, object?>
+                        {
+                            ["permissionId"] = context.ItemId,
+                            ["action"] = context.Action.ToString(),
+                            ["tenantsAttempted"] = summary.TenantsAttempted,
+                            ["tenantsFailed"] = summary.TenantsFailed
+                        })));
+            }
         }
 
         public async Task<bool> ProcessPermissionAsync(ResourceSetToPermissionMutationEvent command)
@@ -2221,7 +2247,8 @@ namespace Iam.DomainService.Resources
             _logger.LogInformation("Organization provisioning start for OrganizationId: {OrganizationId}", command.OrganizationId);
             var copyRoleResult = await CopyRoleFromDefault(command.OrganizationId, command.UserId);
             var copyPermissionResult = await CopyPermissionsFromDefault(command.OrganizationId, command.UserId);
-            if (copyRoleResult && copyPermissionResult)
+            var isSuccess = copyRoleResult && copyPermissionResult;
+            if (isSuccess)
             {
                 _logger.LogInformation("Organization provisioning completed successfully for OrganizationId: {OrganizationId}", command.OrganizationId);
             }
@@ -2229,6 +2256,19 @@ namespace Iam.DomainService.Resources
             {
                 _logger.LogError("Organization provisioning encountered errors for OrganizationId: {OrganizationId}", command.OrganizationId);
             }
+
+            await _notificationSender.TrySendAsync(new BuiltInNotification(
+                BlocksContext.GetContext()?.TenantId,
+                BuiltInNotificationNames.OrganizationSetupFinished,
+                BuiltInNotificationSender.Recipients(command.UserId),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.OrganizationSetupFinished,
+                    isSuccess ? "Organization ready" : "Organization setup failed",
+                    isSuccess
+                        ? "Default roles and permissions were set up for the new organization."
+                        : "Default roles or permissions could not be set up for the new organization.",
+                    isSuccess: isSuccess,
+                    fields: new Dictionary<string, object?> { ["organizationId"] = command.OrganizationId })));
         }
 
         private async Task<bool> CopyRoleFromDefault(string organizationId, string userId)

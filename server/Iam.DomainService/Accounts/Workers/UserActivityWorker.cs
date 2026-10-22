@@ -1,3 +1,4 @@
+using Iam.DomainService.Notifications;
 using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -11,11 +12,13 @@ namespace Iam.DomainService.Accounts
     {
         private readonly IUserActivityRepository _repo;
         private readonly ILogger<UserActivityWorker> _logger;
+        private readonly IBuiltInNotificationSender? _notificationSender;
 
-        public UserActivityWorker(IUserActivityRepository repo, ILogger<UserActivityWorker> logger)
+        public UserActivityWorker(IUserActivityRepository repo, ILogger<UserActivityWorker> logger, IBuiltInNotificationSender? notificationSender = null)
         {
             _repo = repo;
             _logger = logger;
+            _notificationSender = notificationSender;
         }
 
         public async Task Consume(UserActivityEvent e)
@@ -47,7 +50,50 @@ namespace Iam.DomainService.Accounts
                 CreatedBy = bc?.UserId ?? e.ActorUserId ?? e.UserId
             };
 
+            // Read before the insert, so this login is not counted as its own history.
+            var loginHistory = _notificationSender != null && ActivityNotificationRules.NeedsLoginHistory(doc)
+                ? await TryGetLoginHistoryAsync(doc)
+                : null;
+
             await _repo.InsertAsync(doc, CancellationToken.None);
+
+            await NotifyAsync(doc, loginHistory);
+        }
+
+        private async Task<LoginHistory?> TryGetLoginHistoryAsync(UserActivity doc)
+        {
+            try
+            {
+                return await _repo.GetLoginHistoryAsync(doc.UserId!, doc.Event!, doc.Context?.IpAddress, doc.Context?.UserAgent, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Login history read failed for activity {Event}, error={ErrorType}; no new-login notification", doc.Event, ex.GetType().Name);
+                return null;
+            }
+        }
+
+        // Best effort and after the activity is stored: a failure here never fails the message,
+        // so the broker does not redeliver it.
+        private async Task NotifyAsync(UserActivity doc, LoginHistory? loginHistory)
+        {
+            if (_notificationSender == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var notification = ActivityNotificationRules.Build(doc, loginHistory);
+                if (notification != null)
+                {
+                    await _notificationSender.TrySendAsync(notification);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Notification for activity {Event} failed, error={ErrorType}", doc.Event, ex.GetType().Name);
+            }
         }
     }
 }
