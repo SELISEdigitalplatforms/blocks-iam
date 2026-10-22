@@ -28,6 +28,7 @@ export const OidcErrorDialog = ({
 }: OidcErrorDialogProps) => {
   const actionRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
 
   // Resolved at commit rather than during render: the shell is this component's parent, so on
@@ -41,6 +42,18 @@ export const OidcErrorDialog = ({
 
   useEffect(() => {
     actionRef.current?.focus();
+  }, [host]);
+
+  // Swallow backdrop presses rather than treating them as a dismissal. Guarded on the
+  // target so a press on the dialog itself still reaches the button.
+  useEffect(() => {
+    const backdrop = backdropRef.current;
+    if (!backdrop) return;
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.target === event.currentTarget) event.preventDefault();
+    };
+    backdrop.addEventListener("mousedown", onMouseDown);
+    return () => backdrop.removeEventListener("mousedown", onMouseDown);
   }, [host]);
 
   useEffect(() => {
@@ -83,14 +96,9 @@ export const OidcErrorDialog = ({
 
   return createPortal(
     <div
-      role="presentation"
+      ref={backdropRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "color-mix(in srgb, var(--bg) 82%, transparent)" }}
-      // Swallow backdrop presses rather than treating them as a dismissal. Guarded on the
-      // target so a press on the dialog itself still reaches the button.
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) event.preventDefault();
-      }}
     >
       <div
         ref={dialogRef}

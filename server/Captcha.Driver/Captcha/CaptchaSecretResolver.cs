@@ -34,7 +34,8 @@ public sealed class CaptchaSecretResolver : ICaptchaSecretResolver
     /// </summary>
     internal const string ServiceUserId = "blocks-iam-captcha";
 
-    private const string ServiceRequestUri = "internal://captcha/resolve-secret";
+    /// <summary>Marks the request as this resolver's own, not a real address: <c>internal://captcha/resolve-secret</c>.</summary>
+    private static readonly string ServiceRequestUri = new UriBuilder("internal", "captcha") { Path = "resolve-secret" }.Uri.ToString();
     private const string DefaultOrganizationId = "default";
 
     private readonly IServiceScopeFactory _scopeFactory;

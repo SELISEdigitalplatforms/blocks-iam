@@ -305,6 +305,16 @@ function scrollToBottom(el: HTMLElement | null) {
   if (el) el.scrollTop = el.scrollHeight;
 }
 
+/** Shows success node <i>i</i> as running, replacing any earlier entry for it. */
+const activateSuccessNode = (i: number) => (prev: VisibleNode[]): VisibleNode[] => [
+  ...prev.filter(n => !(n.kind === "success" && n.index === i)),
+  { kind: "success", index: i, state: "active" },
+];
+
+/** Marks success node <i>i</i> as done. */
+const completeSuccessNode = (i: number) => (prev: VisibleNode[]): VisibleNode[] =>
+  prev.map(n => (n.kind === "success" && n.index === i ? { ...n, state: "complete" } : n));
+
 function scheduleSuccessCascade(
   config: OidcPanelConfig,
   setVisible: SetVisible,
@@ -323,17 +333,8 @@ function scheduleSuccessCascade(
   }, NODE_START_DELAY_MS);
 
   config.successNodes.forEach((_, i) => {
-    t(() => {
-      setVisible(prev => [
-        ...prev.filter(n => !(n.kind === "success" && n.index === i)),
-        { kind: "success", index: i, state: "active" },
-      ]);
-    }, NODE_START_DELAY_MS + i * NODE_STEP_MS);
-    t(() => {
-      setVisible(prev => prev.map(n =>
-        n.kind === "success" && n.index === i ? { ...n, state: "complete" } : n
-      ));
-    }, NODE_START_DELAY_MS + (i + 1) * NODE_STEP_MS);
+    t(() => setVisible(activateSuccessNode(i)), NODE_START_DELAY_MS + i * NODE_STEP_MS);
+    t(() => setVisible(completeSuccessNode(i)), NODE_START_DELAY_MS + (i + 1) * NODE_STEP_MS);
   });
 
   const totalDuration = config.successNodes.length * NODE_STEP_MS + 300;
@@ -466,8 +467,7 @@ export function NodesPanelOidc({ config, phase, errorMessage, idleContent, insta
     instant: NodesPanelOidcProps["instant"];
   } | null>(null);
   if (
-    !syncedFor ||
-    syncedFor.phase !== phase ||
+    syncedFor?.phase !== phase ||
     syncedFor.config !== config ||
     syncedFor.errorMessage !== errorMessage ||
     syncedFor.instant !== instant

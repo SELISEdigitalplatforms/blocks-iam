@@ -28,7 +28,7 @@ public static class PasswordPolicyRegexValidator
 
         // Deliberately a literal-token scan, not a parser or a rewrite of the stored rule.
         if (UnsupportedTokens.Any(token => pattern.Contains(token, StringComparison.Ordinal))
-            || Regex.IsMatch(pattern, @"\(\?<[A-Za-z0-9_]*-"))
+            || Regex.IsMatch(pattern, @"\(\?<[A-Za-z0-9_]*-", RegexOptions.None, TimeSpan.FromMilliseconds(100)))
             return "PasswordStrengthCheckerRegex_Not_Javascript_Compatible";
 
         var regex = new Regex(pattern, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));

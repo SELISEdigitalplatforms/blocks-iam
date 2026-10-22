@@ -25,7 +25,6 @@ namespace XUnitTest.Auth.Shared
         private readonly Mock<IValidator<SaveOidcUiTemplateRequest>> _oidcUiTemplateValidator = new();
         private readonly Mock<IValidator<SaveIdentityProviderRequest>> _saveIdpValidator = new();
         private readonly Mock<IValidator<UpdateIdentityProviderRequest>> _updateIdpValidator = new();
-        private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<IHttpClientFactory> _httpFactory = new();
 
         public AuthenticationDomainServiceExtraTests()
@@ -49,8 +48,8 @@ namespace XUnitTest.Auth.Shared
 
         private AuthenticationDomainService Create() =>
             new(_message.Object, _repo.Object,
-                _oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                _updateIdpValidator.Object, _tenants.Object, _httpFactory.Object);
+                new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
+                    _updateIdpValidator.Object), _httpFactory.Object);
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
         {

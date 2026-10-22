@@ -55,6 +55,7 @@ namespace Authentication.DomainService.Utilities
             #region Authentication
             serviceCollection.AddHttpClient(OidcDiscoveryClient.HttpClientName);
             serviceCollection.AddSingleton<OidcDiscoveryClient>();
+            serviceCollection.AddSingleton<AuthenticationRequestValidators>();
             serviceCollection.AddSingleton<IAuthenticationDomainService, AuthenticationDomainService>();
             serviceCollection.AddSingleton<IAuthenticationRepository, AuthenticationRepository>();
             // Satisfies Iam.DomainService's account-action email builders, which need the

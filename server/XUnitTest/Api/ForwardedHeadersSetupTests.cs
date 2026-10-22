@@ -300,9 +300,10 @@ public class ForwardedHeadersSetupTests : IDisposable
 
     private static AuthenticationDomainService AuthDomain() => new(
         Mock.Of<IMessageClient>(), Mock.Of<IAuthenticationRepository>(),
-        Mock.Of<IValidator<SaveOIDCClientRequest>>(), Mock.Of<IValidator<SaveOidcUiTemplateRequest>>(),
-        Mock.Of<IValidator<SaveIdentityProviderRequest>>(), Mock.Of<IValidator<UpdateIdentityProviderRequest>>(),
-        Mock.Of<ITenants>(), Mock.Of<IHttpClientFactory>());
+        new AuthenticationRequestValidators(
+            Mock.Of<IValidator<SaveOIDCClientRequest>>(), Mock.Of<IValidator<SaveOidcUiTemplateRequest>>(),
+            Mock.Of<IValidator<SaveIdentityProviderRequest>>(), Mock.Of<IValidator<UpdateIdentityProviderRequest>>()),
+        Mock.Of<IHttpClientFactory>());
 
     [Fact]
     public async Task H12_GetVisitorsIpAddresses_ReturnsOnlyTheResolvedClient()

@@ -243,19 +243,17 @@ namespace Mfa.DomainService.TOTP
             var tOTP = new Totp(key);
             bool isValid = tOTP.VerifyTotp(request.VerificationCode ?? string.Empty, out long timeStepMatched, VerificationWindow.RfcSpecifiedNetworkDelay);
 
-            if (isValid)
-            {
-                // Single use. Deleting the login session is the atomic gate: of any number of
-                // parallel submits with the same mfa_id, only the one that really deleted the key
-                // may continue.
-                // A time-step is single use per user: the same code (or the same step) cannot be
-                // replayed under a new mfa_id. SET NX is atomic, so parallel submits race safely.
-                if (!await _cacheClient.RemoveKeyAsync(request.MfaId ?? string.Empty)
+            // Single use. Deleting the login session is the atomic gate: of any number of
+            // parallel submits with the same mfa_id, only the one that really deleted the key
+            // may continue.
+            // A time-step is single use per user: the same code (or the same step) cannot be
+            // replayed under a new mfa_id. SET NX is atomic, so parallel submits race safely.
+            if (isValid
+                && (!await _cacheClient.RemoveKeyAsync(request.MfaId ?? string.Empty)
                     || !await _cacheClient.CacheDatabase().StringSetAsync(
-                        $"totp:used:{tOTPInfo.CreatedBy}:{timeStepMatched}", "1", UsedTimeStepLifetime, When.NotExists))
-                {
-                    isValid = false;
-                }
+                        $"totp:used:{tOTPInfo.CreatedBy}:{timeStepMatched}", "1", UsedTimeStepLifetime, When.NotExists)))
+            {
+                isValid = false;
             }
 
             return new OtpVerificationResponse { IsSuccess = true, IsValid = isValid, UserId = tOTPInfo.CreatedBy };

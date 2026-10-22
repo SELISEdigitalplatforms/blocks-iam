@@ -103,11 +103,12 @@ namespace XUnitTest.Auth.Shared
                 .ReturnsAsync(new ValidationResult());
             _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
             return new AuthenticationDomainService(
-                new Mock<IMessageClient>().Object, _repo.Object, _oidcValidator.Object,
-                new Mock<IValidator<SaveOidcUiTemplateRequest>>().Object,
-                new Mock<IValidator<SaveIdentityProviderRequest>>().Object,
-                new Mock<IValidator<UpdateIdentityProviderRequest>>().Object,
-                new Mock<ITenants>().Object, new Mock<IHttpClientFactory>().Object,
+                new Mock<IMessageClient>().Object, _repo.Object,
+                new AuthenticationRequestValidators(_oidcValidator.Object,
+                    new Mock<IValidator<SaveOidcUiTemplateRequest>>().Object,
+                    new Mock<IValidator<SaveIdentityProviderRequest>>().Object,
+                    new Mock<IValidator<UpdateIdentityProviderRequest>>().Object),
+                new Mock<IHttpClientFactory>().Object,
                 withLifetimes ? _lifetimes.Object : null,
                 NullLogger<AuthenticationDomainService>.Instance);
         }

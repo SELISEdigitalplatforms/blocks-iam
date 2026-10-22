@@ -594,11 +594,12 @@ namespace XUnitTest.IamTests.Notifications
 
         private AuthenticationDomainService Create() =>
             new(new Mock<IMessageClient>().Object, _repo.Object,
-                new Mock<IValidator<SaveOIDCClientRequest>>().Object,
-                new Mock<IValidator<SaveOidcUiTemplateRequest>>().Object,
-                new Mock<IValidator<SaveIdentityProviderRequest>>().Object,
-                new Mock<IValidator<UpdateIdentityProviderRequest>>().Object,
-                new Mock<ITenants>().Object, new Mock<IHttpClientFactory>().Object,
+                new AuthenticationRequestValidators(
+                    new Mock<IValidator<SaveOIDCClientRequest>>().Object,
+                    new Mock<IValidator<SaveOidcUiTemplateRequest>>().Object,
+                    new Mock<IValidator<SaveIdentityProviderRequest>>().Object,
+                    new Mock<IValidator<UpdateIdentityProviderRequest>>().Object),
+                new Mock<IHttpClientFactory>().Object,
                 null, NullLogger<AuthenticationDomainService>.Instance, _sender);
 
         [Fact]

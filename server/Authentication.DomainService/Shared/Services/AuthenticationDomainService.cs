@@ -31,7 +31,6 @@ namespace Authentication.DomainService.Services
         private readonly IValidator<SaveOidcUiTemplateRequest> _oidcUiTemplateValidator;
         private readonly IValidator<SaveIdentityProviderRequest> _saveIdpValidator;
         private readonly IValidator<UpdateIdentityProviderRequest> _updateIdpValidator;
-        private readonly ITenants _tenants;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
         private readonly ILogger<AuthenticationDomainService>? _logger;
@@ -45,11 +44,7 @@ namespace Authentication.DomainService.Services
 
         public AuthenticationDomainService(IMessageClient messageClient,
                                            IAuthenticationRepository authenticationRepository,
-                                           IValidator<SaveOIDCClientRequest> oidcClientValidator,
-                                           IValidator<SaveOidcUiTemplateRequest> oidcUiTemplateValidator,
-                                           IValidator<SaveIdentityProviderRequest> saveIdpValidator,
-                                           IValidator<UpdateIdentityProviderRequest> updateIdpValidator,
-                                           ITenants tenants,
+                                           AuthenticationRequestValidators validators,
                                            IHttpClientFactory httpClientFactory,
                                            IOidcClientTokenLifetimeService? clientTokenLifetimes = null,
                                            ILogger<AuthenticationDomainService>? logger = null,
@@ -58,11 +53,10 @@ namespace Authentication.DomainService.Services
             _notificationSender = notificationSender;
             _messageClient = messageClient;
             _authenticationRepository = authenticationRepository;
-            _oidcClientValidator = oidcClientValidator;
-            _oidcUiTemplateValidator = oidcUiTemplateValidator;
-            _saveIdpValidator = saveIdpValidator;
-            _updateIdpValidator = updateIdpValidator;
-            _tenants = tenants;
+            _oidcClientValidator = validators.OidcClient;
+            _oidcUiTemplateValidator = validators.OidcUiTemplate;
+            _saveIdpValidator = validators.SaveIdentityProvider;
+            _updateIdpValidator = validators.UpdateIdentityProvider;
             _httpClientFactory = httpClientFactory;
             _clientTokenLifetimes = clientTokenLifetimes;
             _logger = logger;

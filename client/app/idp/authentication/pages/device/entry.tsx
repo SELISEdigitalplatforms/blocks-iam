@@ -37,6 +37,38 @@ function verifyErrorMessage(code?: string): string {
   return "Invalid or expired code.";
 }
 
+/** Where the sign-in request came from, as far as the device told us; nothing when it told us nothing. */
+function DeviceRequestDetails({ payload }: Readonly<{ payload: DeviceConsentPayload }>) {
+  if (!(payload.requestIpAddress || payload.requestUserAgent || payload.deviceName || payload.deviceInfo)) return null;
+  return (
+    <div
+      className="rounded-md p-3 text-xs oidc-font-rajdhani"
+      style={{ background: "var(--panel)", border: "1px solid var(--border)", color: "var(--muted)" }}
+    >
+      {payload.deviceName && (
+        <p>
+          Device: <span style={{ color: "var(--fg)" }}>{payload.deviceName}</span>
+        </p>
+      )}
+      {payload.requestIpAddress && (
+        <p>
+          Request IP: <span style={{ color: "var(--fg)" }}>{payload.requestIpAddress}</span>
+        </p>
+      )}
+      {payload.requestUserAgent && (
+        <p className="wrap-break-word">
+          Browser: <span style={{ color: "var(--fg)" }}>{payload.requestUserAgent}</span>
+        </p>
+      )}
+      {payload.deviceInfo && (
+        <p className="wrap-break-word">
+          Details: <span style={{ color: "var(--fg)" }}>{payload.deviceInfo}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function DeviceEntryPage() {
   const params = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -359,33 +391,7 @@ export function DeviceEntryPage() {
                 )}
               </div>
 
-              {(payload.requestIpAddress || payload.requestUserAgent || payload.deviceName || payload.deviceInfo) && (
-                <div
-                  className="rounded-md p-3 text-xs oidc-font-rajdhani"
-                  style={{ background: "var(--panel)", border: "1px solid var(--border)", color: "var(--muted)" }}
-                >
-                  {payload.deviceName && (
-                    <p>
-                      Device: <span style={{ color: "var(--fg)" }}>{payload.deviceName}</span>
-                    </p>
-                  )}
-                  {payload.requestIpAddress && (
-                    <p>
-                      Request IP: <span style={{ color: "var(--fg)" }}>{payload.requestIpAddress}</span>
-                    </p>
-                  )}
-                  {payload.requestUserAgent && (
-                    <p className="wrap-break-word">
-                      Browser: <span style={{ color: "var(--fg)" }}>{payload.requestUserAgent}</span>
-                    </p>
-                  )}
-                  {payload.deviceInfo && (
-                    <p className="wrap-break-word">
-                      Details: <span style={{ color: "var(--fg)" }}>{payload.deviceInfo}</span>
-                    </p>
-                  )}
-                </div>
-              )}
+              <DeviceRequestDetails payload={payload} />
 
               {serverError && (
                 <p

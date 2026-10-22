@@ -315,7 +315,9 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
           knownName,
           collectPassword: collectPasswordOnActivation,
           resend: {
-            onResend: handleResendActivation,
+            onResend: () => {
+              void handleResendActivation();
+            },
             disabled: !activationUserId || isResendPending || resendSuccess,
             isPending: isResendPending,
             message: resendMessage,

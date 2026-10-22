@@ -168,6 +168,40 @@ namespace Iam.DomainService.Resources
 
         }
 
+        /// <summary>
+        /// The new role's name must be free in its organization, and its slug is derived for that organization
+        /// (written back to <paramref name="command"/>). Null when both are fine, otherwise the failure to return.
+        /// </summary>
+        private async Task<BaseMutationResponse?> CheckRoleNameAndSlugAsync(CreateRoleRequest command, string organizationId)
+        {
+            // Name is checked before the slug because it is the thing the administrator typed and
+            // recognises; failing on the derived slug first would report a value they never chose.
+            if (!string.IsNullOrWhiteSpace(command.Name)
+                && await _resourceRepository.HasOwnedRoleWithNameAsync(command.Name, organizationId))
+            {
+                _logger.LogInformation("Role creation end -- Duplicate Name In Organization");
+                return Failure("Name", "Role_Name_Already_Exists_In_Organization");
+            }
+
+            // The stored slug is derived here, never taken from the request verbatim, so a caller
+            // cannot mint a slug attributed to another organization. Runs before validation so the
+            // validator's org-scoped uniqueness check sees the value that will actually be stored.
+            if (string.IsNullOrWhiteSpace(command.Slug))
+            {
+                return null;
+            }
+
+            var (resolvedSlug, slugError) = await ResolveRoleSlugAsync(command.Slug, organizationId);
+            if (slugError != null)
+            {
+                _logger.LogInformation("Role creation end -- Slug Unavailable");
+                return Failure("Slug", slugError);
+            }
+
+            command.Slug = resolvedSlug!;
+            return null;
+        }
+
         public async Task<BaseMutationResponse> CreateRoleAsync(CreateRoleRequest command)
         {
             _logger.LogInformation("Role creation start");
@@ -192,28 +226,10 @@ namespace Iam.DomainService.Resources
                 return Failure("forbidden", "Multi_Org_Required_For_Organization_Role");
             }
 
-            // Name is checked before the slug because it is the thing the administrator typed and
-            // recognises; failing on the derived slug first would report a value they never chose.
-            if (!string.IsNullOrWhiteSpace(command.Name)
-                && await _resourceRepository.HasOwnedRoleWithNameAsync(command.Name, organizationId))
+            var nameOrSlugFailure = await CheckRoleNameAndSlugAsync(command, organizationId);
+            if (nameOrSlugFailure != null)
             {
-                _logger.LogInformation("Role creation end -- Duplicate Name In Organization");
-                return Failure("Name", "Role_Name_Already_Exists_In_Organization");
-            }
-
-            // The stored slug is derived here, never taken from the request verbatim, so a caller
-            // cannot mint a slug attributed to another organization. Runs before validation so the
-            // validator's org-scoped uniqueness check sees the value that will actually be stored.
-            if (!string.IsNullOrWhiteSpace(command.Slug))
-            {
-                var (resolvedSlug, slugError) = await ResolveRoleSlugAsync(command.Slug, organizationId);
-                if (slugError != null)
-                {
-                    _logger.LogInformation("Role creation end -- Slug Unavailable");
-                    return Failure("Slug", slugError);
-                }
-
-                command.Slug = resolvedSlug!;
+                return nameOrSlugFailure;
             }
 
             // Advisory, default-organization callers only, and only when the caller has not already
