@@ -32,6 +32,18 @@ namespace Iam.DomainService.Dtos
         /// </summary>
         public string? RequestedBy { get; set; }
 
+        /// <summary>
+        /// The submitter's organization, so the worker can re-check every user against the
+        /// submitter's power (delegated administration, R3) after the request is gone.
+        /// </summary>
+        public string? RequestedByOrganizationId { get; set; }
+
+        /// <summary>
+        /// True when the submitter was the system user, to whom no delegated-administration rule
+        /// applies. Null on messages queued before this field existed: those apply as before.
+        /// </summary>
+        public bool? RequestedBySystemCaller { get; set; }
+
         /// <summary>1-based number of this chunk in the batch (0 when unknown).</summary>
         public int Part { get; set; }
 

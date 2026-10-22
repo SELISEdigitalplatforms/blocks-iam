@@ -2,6 +2,7 @@ using Iam.DomainService.Notifications;
 ﻿using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.DelegatedAdministration;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
@@ -27,6 +28,9 @@ namespace Iam.DomainService.Users
         private const string OrganizationIdKey = "organizationId";
         private const string RolesKey = "Roles";
         private const int MaxPermissionsPerUser = 5;
+
+        /// <summary>The log target for a user that has no id yet; the email is kept out of the log.</summary>
+        private const string NewUserTarget = "(new user)";
         private readonly ILogger<UserManagementMutationService> _logger;
         private readonly IValidator<CreateUserRequest> _createValidator;
         private readonly IValidator<UpdateUserRequest> _updateValidator;
@@ -44,6 +48,7 @@ namespace Iam.DomainService.Users
         private readonly IConfiguration? _configuration;
         private readonly IUserSessionTerminator? _userSessionTerminator;
         private readonly IBuiltInNotificationSender? _notificationSender;
+        private readonly IDelegatedAdministrationService? _delegatedAdministration;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -61,7 +66,10 @@ namespace Iam.DomainService.Users
             IDefaultOidcClientResolver? defaultOidcClientResolver = null,
             IConfiguration? configuration = null,
             IUserSessionTerminator? userSessionTerminator = null,
-            IBuiltInNotificationSender? notificationSender = null
+            IBuiltInNotificationSender? notificationSender = null,
+            // Trailing and optional like the dependencies above; DI always supplies it. Without it
+            // no delegated-administration rule runs.
+            IDelegatedAdministrationService? delegatedAdministration = null
         )
         {
             _logger = logger;
@@ -81,6 +89,7 @@ namespace Iam.DomainService.Users
             _configuration = configuration;
             _userSessionTerminator = userSessionTerminator;
             _notificationSender = notificationSender;
+            _delegatedAdministration = delegatedAdministration;
         }
 
         public async Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command)
@@ -116,7 +125,13 @@ namespace Iam.DomainService.Users
                 return permissionCountFailure;
             }
 
-            var (existingUser, addedToOrganization) = await TryGrantOrganizationToExistingUserAsync(
+            var grantScope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (!await AuthorizeCreateUserAsync(grantScope, command).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
+            var (existingUser, addedToOrganization, removedAccess) = await TryGrantOrganizationToExistingUserAsync(
                 command.Email,
                 organizationId,
                 command.Roles,
@@ -124,6 +139,8 @@ namespace Iam.DomainService.Users
 
             if (existingUser != null)
             {
+                await EndSessionsIfAccessRemovedAsync(grantScope, existingUser.ItemId, removedAccess, "access_replaced").ConfigureAwait(false);
+
                 _logger.LogInformation(
                     "User creation end -- email already has an account; granted organization {OrganizationId} instead of creating a duplicate",
                     organizationId);
@@ -304,7 +321,7 @@ namespace Iam.DomainService.Users
         /// than refuse -- so the decision belongs with that feature, not with this lookup.
         /// </para>
         /// </summary>
-        private async Task<(User? User, bool AddedToOrganization)> TryGrantOrganizationToExistingUserAsync(
+        private async Task<(User? User, bool AddedToOrganization, bool RemovedAccess)> TryGrantOrganizationToExistingUserAsync(
             string email,
             string organizationId,
             List<string>? roles,
@@ -313,10 +330,11 @@ namespace Iam.DomainService.Users
             var existingUser = await _userRepository.GetUserByEmailAsync(email);
             if (existingUser == null)
             {
-                return (null, false);
+                return (null, false, false);
             }
 
             var addedToOrganization = !IsOrganizationMember(existingUser, organizationId);
+            var removedAccess = RemovesAccess(existingUser, organizationId, roles, permissions);
 
             GrantOrganization(existingUser, organizationId, roles, permissions);
 
@@ -325,7 +343,7 @@ namespace Iam.DomainService.Users
 
             await _userRepository.UpdateUserAsync(existingUser);
 
-            return (existingUser, addedToOrganization);
+            return (existingUser, addedToOrganization, removedAccess);
         }
 
         /// <summary>
@@ -432,6 +450,76 @@ namespace Iam.DomainService.Users
             user.Permissions[organizationId] = permissions?.Count > 0
                 ? permissions
                 : user.Permissions.GetValueOrDefault(organizationId, []);
+        }
+
+        /// <summary>The delegated-administration refusal; the controller answers it with 403.</summary>
+        private static BaseMutationResponse GrantNotAllowed() =>
+            new() { IsSuccess = false, Errors = DelegatedAdministrationErrors.Create() };
+
+        /// <summary>
+        /// True when writing these lists through <see cref="GrantOrganization"/> would take at least
+        /// one role or permission away from the user in the organization (R12). An empty list keeps
+        /// what is stored, so it removes nothing.
+        /// </summary>
+        private static bool RemovesAccess(User user, string organizationId, List<string>? roles, List<string>? permissions) =>
+            DelegatedAdministrationRules.Delta(DelegatedAdministrationRules.GrantsIn(user.Roles, organizationId), roles).Removed.Count > 0
+            || DelegatedAdministrationRules.Delta(DelegatedAdministrationRules.GrantsIn(user.Permissions, organizationId), permissions).Removed.Count > 0;
+
+        /// <summary>True when the user holds at least one role or permission in the organization.</summary>
+        private static bool HoldsAccessIn(User user, string organizationId) =>
+            DelegatedAdministrationRules.GrantsIn(user.Roles, organizationId).Any()
+            || DelegatedAdministrationRules.GrantsIn(user.Permissions, organizationId).Any();
+
+        /// <summary>
+        /// R4 with R3 for a list replace of the user's access in the scope's organization, plus the
+        /// R11 warning for the roles it adds.
+        /// </summary>
+        private async Task<bool> AuthorizeAccessChangeAsync(GrantScope? scope, User user, List<string>? roles, List<string>? permissions)
+        {
+            if (scope is null || scope.IsSystem)
+            {
+                return true;
+            }
+
+            var (addedRoles, _) = DelegatedAdministrationRules.Delta(
+                DelegatedAdministrationRules.GrantsIn(user.Roles, scope.OrganizationId), roles);
+            await _delegatedAdministration.WarnOnPolicyPowerIfWiredAsync(scope, addedRoles).ConfigureAwait(false);
+            return _delegatedAdministration.AuthorizeScopeIfWired(scope, s =>
+                DelegatedAdministrationRules.CheckAccessChange(s, user, roles, permissions));
+        }
+
+        /// <summary>R12 for one user, when the write took at least one role or permission away.</summary>
+        private Task EndSessionsIfAccessRemovedAsync(GrantScope? scope, string userId, bool removedAccess, string reason) =>
+            removedAccess
+                ? _delegatedAdministration.EndSessionsAfterRemovalIfWiredAsync(scope, [userId], reason)
+                : Task.CompletedTask;
+
+        /// <summary>The bag exactly as it would be stored, so R10 compares what will actually land.</summary>
+        private static Dictionary<string, object>? NormalizeAttributes(Dictionary<string, object>? attributes) =>
+            attributes is null ? null : AttributeNormalizer.Normalize(attributes, AttributePolicy.Internal);
+
+        /// <summary>
+        /// The delegated-administration gate for users/create. A new account is a plain grant: R1 on
+        /// its roles, R2 on its permissions, R10 on its access attributes. An email that already has
+        /// an account is not created but has its access in the organization replaced, so it is
+        /// checked like users/access: R4 on the delta and R3 on the account as stored.
+        /// </summary>
+        private async Task<bool> AuthorizeCreateUserAsync(GrantScope? scope, CreateUserRequest command)
+        {
+            if (scope is null || scope.IsSystem)
+            {
+                return true;
+            }
+
+            var existing = await _userRepository.GetUserByEmailAsync(command.Email).ConfigureAwait(false);
+            if (existing is not null)
+            {
+                return await AuthorizeAccessChangeAsync(scope, existing, command.Roles, command.Permissions).ConfigureAwait(false);
+            }
+
+            return _delegatedAdministration.AuthorizeScopeIfWired(scope, s =>
+                    DelegatedAdministrationRules.CheckAccessAttributes(s, NewUserTarget, null, NormalizeAttributes(command.Attributes)))
+                && await _delegatedAdministration.AuthorizeGrantIfWiredAsync(scope, command.Roles, command.Permissions).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -610,6 +698,14 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            // R3 on the user, and R10 on any access attribute the new bag would change.
+            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope =>
+                    DelegatedAdministrationRules.CheckManageUser(scope, user)
+                    ?? DelegatedAdministrationRules.CheckAccessAttributes(scope, user.ItemId, user.Attributes, NormalizeAttributes(command.Attributes))).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
             var blocksContext = BlocksContext.GetContext();
             var organizationId = !string.IsNullOrWhiteSpace(command.OrganizationId) ? command.OrganizationId: blocksContext.OrganizationId;
 
@@ -704,6 +800,14 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            // R10: the caller's own access attributes are power over data, so it may only give up
+            // values here, never add ones it does not already hold.
+            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope =>
+                    DelegatedAdministrationRules.CheckAccessAttributes(scope, user.ItemId, user.Attributes, NormalizeAttributes(command.Attributes))).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
             WarnOnRetiredFields(command.UnmappedFields, userId);
 
             ApplyProfileFields(user, new ProfilePatch(
@@ -795,6 +899,11 @@ namespace Iam.DomainService.Users
             if (user == null)
             {
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "user_not_found", $"No user found with id {request.UserId}" } } };
+            }
+
+            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope => DelegatedAdministrationRules.CheckManageUser(scope, user)).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
             }
 
             user.Active = false;
@@ -916,6 +1025,11 @@ namespace Iam.DomainService.Users
                         { nameof(request.UserId), "User is already active" }
                     }
                 };
+            }
+
+            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope => DelegatedAdministrationRules.CheckManageUser(scope, user)).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
             }
 
             var blocksContext = BlocksContext.GetContext();
@@ -1280,7 +1394,14 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            var grantScope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (!await AuthorizeAccessChangeAsync(grantScope, user, command.Roles, command.Permissions).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
             var addedToOrganization = !IsOrganizationMember(user, organizationId);
+            var removedAccess = RemovesAccess(user, organizationId, command.Roles, command.Permissions);
 
             GrantOrganization(user, organizationId, command.Roles, command.Permissions);
 
@@ -1293,6 +1414,8 @@ namespace Iam.DomainService.Users
                 _logger.LogError("Update User Access Control end -- Repository Error for UserId {UserId}", command.UserId);
                 return new BaseMutationResponse();
             }
+
+            await EndSessionsIfAccessRemovedAsync(grantScope, user.ItemId, removedAccess, "access_replaced").ConfigureAwait(false);
 
             if (command.NotifyUser && addedToOrganization)
             {
@@ -1405,9 +1528,19 @@ namespace Iam.DomainService.Users
                 }
             }
 
+            // R3: revoking takes away every role and permission the user holds here, so each must
+            // be one the caller could grant. A non-member holds nothing here, so it passes.
+            var grantScope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (!_delegatedAdministration.AuthorizeScopeIfWired(grantScope, scope =>
+                    DelegatedAdministrationRules.CheckManageUser(scope, user, requireMembership: false)))
+            {
+                return GrantNotAllowed();
+            }
+
             // Revoking an organization the user never belonged to still succeeds, but must not tell
             // them they were removed from it.
             var wasMember = IsOrganizationMember(user, organizationId);
+            var removedAccess = HoldsAccessIn(user, organizationId);
 
             user.OrganizationIds.Remove(organizationId);
             user.Roles.Remove(organizationId);
@@ -1429,6 +1562,8 @@ namespace Iam.DomainService.Users
                     }
                 };
             }
+
+            await EndSessionsIfAccessRemovedAsync(grantScope, user.ItemId, removedAccess, "access_revoked").ConfigureAwait(false);
 
             await SendEvent(user.ItemId, MutationEventType.Update);
 
@@ -1485,7 +1620,7 @@ namespace Iam.DomainService.Users
             // Inviting an email that already has an account is a join, not a signup: the invited
             // organization is granted on that account rather than opening a second one for the
             // same person.
-            var (existingUser, _) = await TryGrantOrganizationToExistingUserAsync(email, organizationId, roles, permissions);
+            var (existingUser, _, _) = await TryGrantOrganizationToExistingUserAsync(email, organizationId, roles, permissions);
 
             if (existingUser != null)
             {
@@ -1620,7 +1755,7 @@ namespace Iam.DomainService.Users
             // SSO consent reaches this method on every exchange, not only for unknown emails, so
             // without a lookup here each sign-in minted another account. An email that already has
             // one is signing in, not signing up: grant the organization and skip the welcome mail.
-            var (existingUser, _) = await TryGrantOrganizationToExistingUserAsync(
+            var (existingUser, _, _) = await TryGrantOrganizationToExistingUserAsync(
                 command.Email,
                 command.OrganizationId,
                 command.Roles,
@@ -1918,6 +2053,7 @@ namespace Iam.DomainService.Users
             var batchId = $"b_{Guid.NewGuid():N}"[..10];
             var tenantId = BlocksContext.GetContext()?.TenantId;
             var requestedBy = BlocksContext.GetContext()?.UserId;
+            var submitter = _delegatedAdministration?.CurrentCaller();
             var parts = (userIds.Count + BulkRoleChunkSize - 1) / BulkRoleChunkSize;
 
             try
@@ -1939,6 +2075,8 @@ namespace Iam.DomainService.Users
                                 RemoveRoles = plan.RemoveRoles,
                                 UserIds = chunk,
                                 RequestedBy = requestedBy,
+                                RequestedByOrganizationId = submitter?.OrganizationId,
+                                RequestedBySystemCaller = submitter?.IsSystem,
                                 Part = offset / BulkRoleChunkSize + 1,
                                 Parts = parts
                             }
@@ -1985,73 +2123,139 @@ namespace Iam.DomainService.Users
                 command.UserIds.Count);
 
             var applied = new List<string>();
+            var removedFrom = new List<string>();
             var unchanged = 0;
             var failed = 0;
 
+            // The submitter's power is re-read now, not trusted from submit time: roles and
+            // permissions can change while the batch waits in the queue.
+            var grantScope = await GetBulkSubmitterScopeAsync(command).ConfigureAwait(false);
+            var deltaAllowed = _delegatedAdministration.AuthorizeScopeIfWired(grantScope, scope =>
+                DelegatedAdministrationRules.CheckRoleDelta(scope, command.AddRoles, command.RemoveRoles));
+
             foreach (var userId in command.UserIds)
             {
-                // Per-user failures are logged and swallowed. Rethrowing would have the broker
-                // redeliver the whole chunk, re-scanning hundreds of healthy users for one bad id and
-                // looping forever on a permanently failing one.
-                try
+                switch (await ApplyBulkRoleChangeToUserAsync(command, userId, grantScope, deltaAllowed).ConfigureAwait(false))
                 {
-                    var user = await _userRepository.GetUserByIdAsync(userId);
-                    if (user is null)
-                    {
-                        failed++;
-                        _logger.LogWarning(
-                            "Bulk role change -- batch {BatchId}, user {UserId}: failed (not found)",
-                            command.BatchId,
-                            userId);
-                        continue;
-                    }
-
-                    if (!ApplyRoleDelta(user, command.OrganizationId, command.AddRoles, command.RemoveRoles))
-                    {
-                        unchanged++;
-                        _logger.LogInformation(
-                            "Bulk role change -- batch {BatchId}, user {UserId}: no-op",
-                            command.BatchId,
-                            userId);
-                        continue;
-                    }
-
-                    user.LastUpdatedDate = DateTime.UtcNow;
-                    user.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? user.ItemId;
-
-                    var updated = await _userRepository.UpdateUserAsync(user);
-
-                    if (updated)
-                    {
+                    case BulkUserOutcome.Applied:
                         applied.Add(userId);
-                        _logger.LogInformation(
-                            "Bulk role change -- batch {BatchId}, user {UserId}: applied",
-                            command.BatchId,
-                            userId);
-                    }
-                    else
-                    {
+                        break;
+                    case BulkUserOutcome.AppliedWithRemoval:
+                        applied.Add(userId);
+                        removedFrom.Add(userId);
+                        break;
+                    case BulkUserOutcome.Unchanged:
+                        unchanged++;
+                        break;
+                    default:
                         failed++;
-                        _logger.LogWarning(
-                            "Bulk role change -- batch {BatchId}, user {UserId}: failed (update rejected)",
-                            command.BatchId,
-                            userId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    failed++;
-                    _logger.LogError(
-                        ex,
-                        "Bulk role change -- batch {BatchId}, user {UserId}: failed",
-                        command.BatchId,
-                        userId);
+                        break;
                 }
             }
+
+            await _delegatedAdministration.EndSessionsAfterRemovalIfWiredAsync(grantScope, removedFrom, "bulk_role_change").ConfigureAwait(false);
 
             _logger.LogInformation("Bulk role change apply end -- batch {BatchId}", command.BatchId);
 
             await NotifyBulkRoleChangeAsync(command, applied, unchanged, failed);
+        }
+
+        private enum BulkUserOutcome
+        {
+            Applied,
+            AppliedWithRemoval,
+            Unchanged,
+            Failed
+        }
+
+        /// <summary>
+        /// The submitter as the batch recorded it. A message queued before the submitter was
+        /// recorded reads as the system user, so it applies exactly as it did when it was queued.
+        /// </summary>
+        private async Task<GrantScope?> GetBulkSubmitterScopeAsync(BulkUserRoleChangeEvent command)
+        {
+            if (_delegatedAdministration is null)
+            {
+                return null;
+            }
+
+            var submitter = new DelegationCaller(
+                command.RequestedBy ?? string.Empty,
+                command.OrganizationId,
+                command.RequestedBySystemCaller != false);
+            return await _delegatedAdministration.GetScopeAsync(submitter).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// One user of a chunk. Per-user failures are logged and swallowed: rethrowing would have
+        /// the broker redeliver the whole chunk, re-scanning hundreds of healthy users for one bad id
+        /// and looping forever on a permanently failing one.
+        /// </summary>
+        private async Task<BulkUserOutcome> ApplyBulkRoleChangeToUserAsync(
+            BulkUserRoleChangeEvent command,
+            string userId,
+            GrantScope? grantScope,
+            bool deltaAllowed)
+        {
+            try
+            {
+                var user = await _userRepository.GetUserByIdAsync(userId);
+                if (user is null)
+                {
+                    _logger.LogWarning(
+                        "Bulk role change -- batch {BatchId}, user {UserId}: failed (not found)",
+                        command.BatchId,
+                        userId);
+                    return BulkUserOutcome.Failed;
+                }
+
+                // R3 per user, against the submitter's power: a user who holds more than the
+                // submitter is left alone, as the single-user endpoint would leave them.
+                if (!deltaAllowed || !_delegatedAdministration.AuthorizeScopeIfWired(grantScope, scope =>
+                        DelegatedAdministrationRules.CheckManageUser(scope, user, requireMembership: false)))
+                {
+                    return BulkUserOutcome.Failed;
+                }
+
+                var removesRole = DelegatedAdministrationRules.GrantsIn(user.Roles, command.OrganizationId)
+                    .Any(role => command.RemoveRoles.Contains(role, StringComparer.Ordinal));
+
+                if (!ApplyRoleDelta(user, command.OrganizationId, command.AddRoles, command.RemoveRoles))
+                {
+                    _logger.LogInformation(
+                        "Bulk role change -- batch {BatchId}, user {UserId}: no-op",
+                        command.BatchId,
+                        userId);
+                    return BulkUserOutcome.Unchanged;
+                }
+
+                user.LastUpdatedDate = DateTime.UtcNow;
+                user.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? user.ItemId;
+
+                if (!await _userRepository.UpdateUserAsync(user))
+                {
+                    _logger.LogWarning(
+                        "Bulk role change -- batch {BatchId}, user {UserId}: failed (update rejected)",
+                        command.BatchId,
+                        userId);
+                    return BulkUserOutcome.Failed;
+                }
+
+                _logger.LogInformation(
+                    "Bulk role change -- batch {BatchId}, user {UserId}: applied",
+                    command.BatchId,
+                    userId);
+                return removesRole ? BulkUserOutcome.AppliedWithRemoval : BulkUserOutcome.Applied;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Bulk role change -- batch {BatchId}, user {UserId}: failed",
+                    command.BatchId,
+                    userId);
+                return BulkUserOutcome.Failed;
+            }
         }
 
         /// <summary>
@@ -2188,6 +2392,16 @@ namespace Iam.DomainService.Users
             if (rolesError is not null)
             {
                 return (rolesError, null);
+            }
+
+            // R1 on every role the batch adds or removes, with the R11 warning for the added ones.
+            // Each user is checked again (R3) by the worker that applies the change.
+            var grantScope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
+            await _delegatedAdministration.WarnOnPolicyPowerIfWiredAsync(grantScope, addRoles).ConfigureAwait(false);
+            if (!_delegatedAdministration.AuthorizeScopeIfWired(grantScope, scope =>
+                    DelegatedAdministrationRules.CheckRoleDelta(scope, addRoles, removeRoles)))
+            {
+                return (DelegatedAdministrationErrors.Create(), null);
             }
 
             var target = command.Target;
