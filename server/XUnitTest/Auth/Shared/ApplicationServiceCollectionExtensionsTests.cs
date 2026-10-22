@@ -53,7 +53,7 @@ namespace XUnitTest.Auth.Shared
             services.Should().Contain(d => d.ServiceType == typeof(Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationService) && d.Lifetime == ServiceLifetime.Singleton);
             services.Should().Contain(d => d.ServiceType == typeof(Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationRepository));
             services.Should().Contain(d => d.ServiceType == typeof(IClientCredentialDelegationGuard));
-            services.Should().NotContain(d => d.ServiceType.Name == "IGrantAuthorizationService");
+            services.Should().Contain(d => d.ServiceType.Name == "IGrantAuthorizationService", "the system user keeps the grant check it always had");
 
             using var provider = services.BuildServiceProvider();
             provider.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<Iam.DomainService.DelegatedAdministration.DelegatedAdministrationOptions>>()

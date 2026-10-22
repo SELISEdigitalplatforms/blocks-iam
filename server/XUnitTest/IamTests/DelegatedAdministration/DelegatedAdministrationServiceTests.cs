@@ -254,18 +254,6 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         }
 
         [Fact]
-        public async Task AssignableRolesKeepTheHierarchyAndStandaloneSplit()
-        {
-            _kit.WithStandardTree("default");
-            DelegationTestKit.SignIn("caller", "default");
-
-            var result = await _kit.Service().GetAssignableRolesAsync();
-
-            result.Hierarchy.Select(r => r.Slug).Should().BeEquivalentTo("admin", "manager", "viewer");
-            result.Standalone.Select(r => r.Slug).Should().BeEquivalentTo("auditor", "owner");
-        }
-
-        [Fact]
         public async Task DelegationScopeDescribesTheCaller()
         {
             var result = await _kit.Service().GetDelegationScopeAsync();
@@ -276,19 +264,6 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             result.ManagedRoles.Should().Equal("viewer");
             result.AssignableRoles.Should().Equal("auditor", "viewer");
             result.HeldPermissions.Should().Equal("read", "write");
-        }
-
-        [Fact]
-        public async Task DelegationScopeOfTheSystemUserListsEveryRoleAsAssignable()
-        {
-            _kit.WithStandardTree("default");
-            DelegationTestKit.SignIn("caller", "default");
-
-            var result = await _kit.Service().GetDelegationScopeAsync();
-
-            result.IsSystemUser.Should().BeTrue();
-            result.HeldRoles.Should().BeEmpty();
-            result.AssignableRoles.Should().HaveCount(5);
         }
     }
 }

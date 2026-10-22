@@ -21,6 +21,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
     private readonly ISignupLinkRepository _linkRepository;
     private readonly ISignupLinkConfigurationRepository _configurationRepository;
     private readonly IOidcClientRegistrationLookup _oidcLookup;
+    private readonly IGrantAuthorizationService _grantAuthorization;
     private readonly IDelegatedAdministrationService _delegation;
     private readonly IUserRepository _userRepository;
     private readonly IConfiguration _configuration;
@@ -37,6 +38,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         _linkRepository = repositories.Links;
         _configurationRepository = repositories.Configurations;
         _oidcLookup = repositories.Oidc;
+        _grantAuthorization = repositories.GrantAuthorization;
         _delegation = repositories.Delegation;
         _userRepository = repositories.Users;
         _configuration = validators.Configuration;
@@ -93,12 +95,10 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         var roles = UsePayloadOrDefault(request.Roles, config.DefaultRoles);
         var permissions = UsePayloadOrDefault(request.Permissions, config.DefaultPermissions);
 
-        // R9: a link hands out exactly what R1/R2 would let the caller assign directly. Which
-        // role or permission failed stays in the server log; the response is the generic refusal.
-        var grantScope = await _delegation.GetScopeAsync().ConfigureAwait(false);
-        if (!await _delegation.AuthorizeGrantAsync(grantScope, roles, permissions, DelegatedAdministrationRules.SignupLink).ConfigureAwait(false))
+        var grantFailure = await CheckGrantAsync(roles, permissions).ConfigureAwait(false);
+        if (grantFailure != null)
         {
-            return GenerateSignupLinkResult.Fail(403, DelegatedAdministrationErrors.Create());
+            return grantFailure;
         }
 
         var forwardedTo = !string.IsNullOrWhiteSpace(request.ForwardedTo)
@@ -277,6 +277,34 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             IsSuccess = true,
             RevokedCount = count
         };
+    }
+
+    /// <summary>
+    /// What the link may hand out. A non-system caller gets R9: exactly what R1/R2 would let it
+    /// assign directly, refused with the generic error (the reason stays in the server log). The
+    /// system user -- every caller of a single-organization tenant -- keeps the check it always
+    /// had, so delegated administration never loosens it.
+    /// </summary>
+    private async Task<GenerateSignupLinkResult?> CheckGrantAsync(List<string> roles, List<string> permissions)
+    {
+        var grantScope = await _delegation.GetScopeAsync().ConfigureAwait(false);
+        if (!grantScope.IsSystem)
+        {
+            return await _delegation.AuthorizeGrantAsync(grantScope, roles, permissions, DelegatedAdministrationRules.SignupLink).ConfigureAwait(false)
+                ? null
+                : GenerateSignupLinkResult.Fail(403, DelegatedAdministrationErrors.Create());
+        }
+
+        var deniedRole = await _grantAuthorization.FindUngrantableRoleAsync(roles).ConfigureAwait(false);
+        if (deniedRole != null)
+        {
+            return GenerateSignupLinkResult.Fail(403, "Roles", $"You cannot grant the role: {deniedRole}");
+        }
+
+        var deniedPermission = _grantAuthorization.FindUngrantablePermission(permissions);
+        return deniedPermission != null
+            ? GenerateSignupLinkResult.Fail(403, "Permissions", $"You cannot grant the permission: {deniedPermission}")
+            : null;
     }
 
     /// <summary>

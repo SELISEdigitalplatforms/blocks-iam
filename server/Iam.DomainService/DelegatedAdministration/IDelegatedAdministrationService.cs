@@ -63,7 +63,10 @@ namespace Iam.DomainService.DelegatedAdministration
         /// </summary>
         Task EndSessionsAfterRemovalAsync(GrantScope scope, IEnumerable<string> userIds, string reason);
 
-        /// <summary><c>GET roles/assignable</c>: the roles that pass R1 for the current caller.</summary>
+        /// <summary>
+        /// <c>GET roles/assignable</c>: the roles that pass R1 for a non-system caller; for the
+        /// system user, unchanged from before (<see cref="SignupLinks.IGrantAuthorizationService"/>).
+        /// </summary>
         Task<GetAssignableRolesResponse> GetAssignableRolesAsync();
 
         /// <summary><c>GET iam/delegation-scope</c> for the token organization.</summary>

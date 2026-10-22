@@ -2,6 +2,7 @@ using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Services;
+using Iam.DomainService.SignupLinks;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -16,6 +17,7 @@ namespace Iam.DomainService.DelegatedAdministration
         private readonly ITenants _tenants;
         private readonly IIdentityAccessManagementService _identityAccessManagementService;
         private readonly ILogger<DelegatedAdministrationService> _logger;
+        private readonly IGrantAuthorizationService _systemGrantAuthorization;
         private readonly IUserSessionTerminator? _userSessionTerminator;
 
         public DelegatedAdministrationService(
@@ -24,6 +26,7 @@ namespace Iam.DomainService.DelegatedAdministration
             ITenants tenants,
             IIdentityAccessManagementService identityAccessManagementService,
             ILogger<DelegatedAdministrationService> logger,
+            IGrantAuthorizationService systemGrantAuthorization,
             // Optional: registered by RegisterAllServices (Api and Worker) but not by the iam-only
             // registration. Without it R12 falls back to the logout-all queue.
             IUserSessionTerminator? userSessionTerminator = null)
@@ -33,6 +36,7 @@ namespace Iam.DomainService.DelegatedAdministration
             _tenants = tenants;
             _identityAccessManagementService = identityAccessManagementService;
             _logger = logger;
+            _systemGrantAuthorization = systemGrantAuthorization;
             _userSessionTerminator = userSessionTerminator;
         }
 
@@ -207,9 +211,15 @@ namespace Iam.DomainService.DelegatedAdministration
 
         private async Task<GetAssignableRolesResponse> BuildAssignableRolesAsync(GrantScope scope)
         {
-            var roles = scope.IsSystem
-                ? await _repository.GetRolesAsync(scope.OrganizationId).ConfigureAwait(false)
-                : scope.Roles.ToList();
+            // The system user keeps the picker it always had (its token roles' CanCreateOwn trees
+            // plus standalone roles): single-organization tenants are always the system user, and
+            // R1 must not loosen what they could hand out before.
+            if (scope.IsSystem)
+            {
+                return await _systemGrantAuthorization.GetAssignableRolesAsync().ConfigureAwait(false);
+            }
+
+            var roles = scope.Roles.ToList();
 
             var referencedAncestorSlugs = roles
                 .SelectMany(x => x.AncestorRoleSlugs ?? [])

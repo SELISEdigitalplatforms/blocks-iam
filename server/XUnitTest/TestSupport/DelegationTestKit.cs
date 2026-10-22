@@ -1,7 +1,9 @@
 using Blocks.Genesis;
 using Blocks.Genesis.Entities.Iam;
 using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
+using Iam.DomainService.SignupLinks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -36,12 +38,17 @@ namespace XUnitTest.TestSupport
                     .Where(u => u.Roles.TryGetValue(org, out var held) && held.Contains(slug))
                     .Select(u => u.ItemId)
                     .ToList());
+            LegacyResources.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
+                .ReturnsAsync((new List<Role>().AsQueryable(), 0L));
             Terminator.Setup(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
         }
 
         public Mock<IDelegatedAdministrationRepository> Repository { get; } = new();
 
         public Mock<IUserSessionTerminator> Terminator { get; } = new();
+
+        /// <summary>What the system user's unchanged, pre-existing grant check reads.</summary>
+        public Mock<IResourceRepository> LegacyResources { get; } = new();
 
         public Mock<IIdentityAccessManagementService> Iam { get; } = new();
 
@@ -54,7 +61,8 @@ namespace XUnitTest.TestSupport
         public HashSet<string> PolicyRoles { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public DelegatedAdministrationService Service() =>
-            new(Repository.Object, Options, Tenants.Object, Iam.Object, Logger, Terminator.Object);
+            new(Repository.Object, Options, Tenants.Object, Iam.Object, Logger,
+                new GrantAuthorizationService(LegacyResources.Object), Terminator.Object);
 
         public DelegationTestKit WithRole(string slug, string? parent = null, string organizationId = Org)
         {

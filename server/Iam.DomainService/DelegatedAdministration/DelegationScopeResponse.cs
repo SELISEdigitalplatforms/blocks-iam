@@ -3,7 +3,7 @@ namespace Iam.DomainService.DelegatedAdministration
     /// <summary>
     /// What the caller may administer in its token organization, so a console can disable what the
     /// server would refuse. For the system user only <see cref="IsSystemUser"/>, <see cref="Mode"/>
-    /// and <see cref="AssignableRoles"/> (every live role) are filled: no rule limits it.
+    /// and <see cref="AssignableRoles"/> (the picker it always had) are filled.
     /// </summary>
     public sealed class DelegationScopeResponse
     {

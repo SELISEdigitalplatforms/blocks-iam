@@ -14,6 +14,7 @@ public sealed class SignupLinkGenerationRepositories
     public ISignupLinkRepository Links { get; }
     public ISignupLinkConfigurationRepository Configurations { get; }
     public IOidcClientRegistrationLookup Oidc { get; }
+    public IGrantAuthorizationService GrantAuthorization { get; }
     public IDelegatedAdministrationService Delegation { get; }
     public IUserRepository Users { get; }
 
@@ -21,12 +22,14 @@ public sealed class SignupLinkGenerationRepositories
         ISignupLinkRepository links,
         ISignupLinkConfigurationRepository configurations,
         IOidcClientRegistrationLookup oidc,
+        IGrantAuthorizationService grantAuthorization,
         IDelegatedAdministrationService delegation,
         IUserRepository users)
     {
         Links = links;
         Configurations = configurations;
         Oidc = oidc;
+        GrantAuthorization = grantAuthorization;
         Delegation = delegation;
         Users = users;
     }
