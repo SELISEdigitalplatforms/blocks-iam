@@ -136,6 +136,38 @@ public class ForwardedHeadersSetupTests : IDisposable
             .WithMessage($"ForwardedHeaders:KnownNetworks entry '{bad}' is not a valid CIDR network.");
     }
 
+    [Theory]
+    [InlineData("1", 1)]
+    [InlineData("4", 4)]
+    [InlineData(" 10 ", 10)]
+    public void BuildOptions_ForwardLimit_ReadFromConfiguration(string configured, int expected)
+    {
+        var options = ForwardedHeadersSetup.BuildOptions(ConfigWithForwardLimit(configured, GatewayNetwork))!;
+
+        options.ForwardLimit.Should().Be(expected);
+    }
+
+    [Fact]
+    public void BuildOptions_ForwardLimit_UnsetOrBlank_DefaultsToOne()
+    {
+        ForwardedHeadersSetup.BuildOptions(ConfigWithForwardLimit("", GatewayNetwork))!.ForwardLimit.Should().Be(1);
+        ForwardedHeadersSetup.BuildOptions(ConfigWithForwardLimit(null, GatewayNetwork))!.ForwardLimit.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("11")]
+    [InlineData("-1")]
+    [InlineData("1.5")]
+    [InlineData("four")]
+    public void BuildOptions_ForwardLimit_OutOfRangeOrNotANumber_ThrowsNamingTheKey(string bad)
+    {
+        var act = () => ForwardedHeadersSetup.BuildOptions(ConfigWithForwardLimit(bad, GatewayNetwork));
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage($"ForwardedHeaders:ForwardLimit '{bad}' must be a whole number from 1 to 10.");
+    }
+
     [Fact]
     public void Apply_NullOptions_RegistersNothing()
     {
@@ -294,6 +326,91 @@ public class ForwardedHeadersSetupTests : IDisposable
         seen.Should().BeNull();
         AuthDomain().GetVisitorsIpAddresses(ctx).Should().BeEmpty();
         OidcRedirectUrlBuilder.GetClientIpAddress(ctx.Request).Should().Be("unknown");
+    }
+
+    // ---------- Multi-hop paths: ForwardLimit with bridge proxies ----------
+    // Shapes observed on dev (pre-#594 refresh tokens): a bridge proxy behind the gateway re-sends to the
+    // public API URL, so IAM receives "client, <gateway as seen by the bridge>, <cluster outbound>" and,
+    // when the bridge reached the API through a CDN, "<CDN edge>" last. Documentation addresses stand in
+    // for the outbound address and the CDN edge.
+
+    private const string OutboundNetwork = "192.0.2.50/32";
+    private const string OutboundAddress = "192.0.2.50";
+    private const string EdgeNetwork = "192.0.2.128/25";
+    private const string EdgeAddress = "192.0.2.130";
+    private const string BridgedChain = Client + ", " + GatewayAddress + ", " + OutboundAddress;
+
+    private static async Task<(DefaultHttpContext Ctx, string? Seen)> RunWithLimitAsync(string forwardLimit, string[] networks, string xff)
+    {
+        string? seen = "not-run";
+        var pipeline = Build(ForwardedHeadersSetup.BuildOptions(ConfigWithForwardLimit(forwardLimit, networks)), c => seen = c.Connection.RemoteIpAddress?.ToString());
+        var ctx = NewContext(GatewayAddress, xff);
+        await pipeline(ctx);
+        return (ctx, seen);
+    }
+
+    [Fact]
+    public async Task MultiHop_BridgedThroughOutbound_WalksBackToClient()
+    {
+        var (ctx, seen) = await RunWithLimitAsync("3", new[] { GatewayNetwork, OutboundNetwork }, BridgedChain);
+
+        seen.Should().Be(Client);
+        AuthDomain().GetVisitorsIpAddresses(ctx).Should().Equal(Client);
+    }
+
+    [Fact]
+    public async Task MultiHop_BridgedThroughOutboundAndCdnEdge_WalksBackToClient()
+    {
+        var (_, seen) = await RunWithLimitAsync("4", new[] { GatewayNetwork, OutboundNetwork, EdgeNetwork }, BridgedChain + ", " + EdgeAddress);
+
+        seen.Should().Be(Client);
+    }
+
+    [Fact]
+    public async Task MultiHop_EntriesTheClientWroteItself_AreNeverReached()
+    {
+        // The walk stops at the client (outside KnownNetworks), so a spare limit never reaches the
+        // spoofed entry to its left.
+        var (ctx, seen) = await RunWithLimitAsync("5", new[] { GatewayNetwork, OutboundNetwork }, Spoofed + ", " + BridgedChain);
+
+        seen.Should().Be(Client);
+        AuthDomain().GetVisitorsIpAddresses(ctx).Should().NotContain(Spoofed);
+    }
+
+    [Fact]
+    public async Task MultiHop_DirectPath_LargerLimitChangesNothing()
+    {
+        var (_, seen) = await RunWithLimitAsync("4", new[] { GatewayNetwork, OutboundNetwork }, Client);
+
+        seen.Should().Be(Client);
+    }
+
+    [Fact]
+    public async Task MultiHop_OutboundNotTrusted_StopsAtOutbound()
+    {
+        var (_, seen) = await RunWithLimitAsync("4", new[] { GatewayNetwork }, BridgedChain);
+
+        seen.Should().Be(OutboundAddress);
+    }
+
+    [Theory]
+    [InlineData("1", OutboundAddress)]
+    [InlineData("2", GatewayAddress)]
+    public async Task MultiHop_LimitBelowHopCount_StopsShortOfClient(string forwardLimit, string expected)
+    {
+        var (_, seen) = await RunWithLimitAsync(forwardLimit, new[] { GatewayNetwork, OutboundNetwork }, BridgedChain);
+
+        seen.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task MultiHop_TrustedOutbound_BelievesWhatItForwards()
+    {
+        // The trade-off of trusting a shared outbound address: anything calling the public URL from
+        // behind it can name the client. Only list outbound addresses used by our own proxies.
+        var (_, seen) = await RunWithLimitAsync("4", new[] { GatewayNetwork, OutboundNetwork }, Spoofed + ", " + OutboundAddress);
+
+        seen.Should().Be(Spoofed);
     }
 
     // ---------- Writers fed by a middleware-resolved request ----------
