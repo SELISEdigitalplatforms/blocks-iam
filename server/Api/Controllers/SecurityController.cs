@@ -3,6 +3,7 @@ using Authentication.DomainService.Security.Models;
 using Authentication.DomainService.Security.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Activity.RequestModel;
+using Iam.DomainService.DelegatedAdministration;
 using Iam.DomainService.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Blocks.Genesis.Entities.Iam;
@@ -20,15 +21,18 @@ namespace Api.Controllers
         private readonly ISecurityQueryService _securityQueryService;
         private readonly ISessionRevocationService _sessionRevocationService;
         private readonly IActivityQueryService _activityQueryService;
+        private readonly IDelegatedAdministrationService _delegatedAdministration;
 
         public SecurityController(
             ISecurityQueryService securityQueryService,
             ISessionRevocationService sessionRevocationService,
-            IActivityQueryService activityQueryService)
+            IActivityQueryService activityQueryService,
+            IDelegatedAdministrationService delegatedAdministration)
         {
             _securityQueryService = securityQueryService;
             _sessionRevocationService = sessionRevocationService;
             _activityQueryService = activityQueryService;
+            _delegatedAdministration = delegatedAdministration;
         }
 
         [HttpGet("summary")]
@@ -86,6 +90,11 @@ namespace Api.Controllers
             CancellationToken ct)
         {
             var actor = ResolveActor(req.UserId);
+            if (!await MayRevokeForAsync(actor).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
             var currentSessionId = await _securityQueryService.ResolveCurrentSessionIdAsync(actor, ct);
 
             var result = await _sessionRevocationService.RevokeSessionAsync(
@@ -109,6 +118,11 @@ namespace Api.Controllers
             CancellationToken ct)
         {
             var actor = ResolveActor(req.UserId);
+            if (!await MayRevokeForAsync(actor).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
             var currentSessionId = await _securityQueryService.ResolveCurrentSessionIdAsync(actor, ct);
 
             var result = await _sessionRevocationService.RevokeRefreshTokenAsync(
@@ -169,6 +183,18 @@ namespace Api.Controllers
             public string? Search { get; set; }
             public string? UserId { get; set; }
         }
+
+        /// <summary>
+        /// Revoking another user's session is managing that user (delegated administration, R3);
+        /// revoking one's own is self-service and always allowed.
+        /// </summary>
+        private Task<bool> MayRevokeForAsync(string actor) =>
+            string.Equals(actor, BlocksContext.GetContext()?.UserId, StringComparison.Ordinal)
+                ? Task.FromResult(true)
+                : _delegatedAdministration.AuthorizeManageUserAsync(actor);
+
+        private ObjectResult GrantNotAllowed() =>
+            StatusCode(StatusCodes.Status403Forbidden, new { error = DelegatedAdministrationErrors.GrantNotAllowed });
 
         private static string ResolveActor(string? userIdOverride = null) =>
             !string.IsNullOrWhiteSpace(userIdOverride)

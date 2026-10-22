@@ -777,7 +777,7 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().CreateOrganization(new CreateOrganizationRequest { Name = "Acme" });
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
         }
 
         [Fact]
@@ -835,7 +835,7 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().SaveOrganizationConfig(new SaveOrganizationConfigRequest());
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
         }
 
         [Fact]
@@ -857,7 +857,7 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().SaveSignUpSetting(new SaveSignUpSettingRequest());
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
         }
 
         [Fact]

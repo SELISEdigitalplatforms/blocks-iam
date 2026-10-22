@@ -190,6 +190,12 @@
             Preferred over deletion for temporary disabling
             </summary>
         </member>
+        <member name="M:Api.Controllers.AuthenticationController.GrantNotAllowed(Blocks.Genesis.BaseResponse)">
+            <summary>
+            A delegated-administration refusal (R8): 403 with the generic error, in the response shape
+            the endpoint always returns.
+            </summary>
+        </member>
         <member name="T:Api.Controllers.DeviceController">
             <summary>
             Browser-facing RFC 8628 device flow endpoints. The SPA already owns /oidc/* so it ships /device/*
@@ -254,6 +260,18 @@
             at realistic sizes. Guarded by the roles read permission, not mutate-roles -- it changes
             nothing, and a reader who can open the role should be able to see the consequence of a
             change before deciding to ask someone else to make it.
+            </remarks>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetDelegationScope(Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationService)">
+            <summary>
+            What the caller may administer in its token organization (delegated administration):
+            whether it is the system user, the mode, the roles it holds and manages, the roles it may
+            assign, and the permissions it holds. Read from the database, never from the token.
+            </summary>
+            <remarks>
+            Guarded by the roles read permission, like <c>roles/assignable</c>: every screen that
+            uses it already lists roles. The service is taken per action so the controller's
+            constructor does not grow.
             </remarks>
         </member>
         <member name="M:Api.Controllers.IamController.PreviewBulkRoleChange(Iam.DomainService.Users.BulkRoleChangeRequest)">
@@ -362,6 +380,12 @@
             load -- and on save write -- the root tenant's settings into the project. Guarded by the
             permission that already guards saving them, so no new permission has to be seeded.
             </para>
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IamController.MutationResult(System.Object,System.Boolean,System.Collections.Generic.IDictionary{System.String,System.String})">
+            <summary>
+            The answer every mutation endpoint gives: 200 on success, 403 for a delegated-administration
+            refusal (<c>Access_Grant_Not_Allowed</c>), 400 for any other failure.
             </summary>
         </member>
         <member name="T:Api.Controllers.IdpController">
@@ -494,6 +518,12 @@
             <summary>
             Self-service security endpoints.
             All routes live under <c>/security</c>.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.SecurityController.MayRevokeForAsync(System.String)">
+            <summary>
+            Revoking another user's session is managing that user (delegated administration, R3);
+            revoking one's own is self-service and always allowed.
             </summary>
         </member>
         <member name="T:Api.Middleware.DataValidationExceptionFilter">

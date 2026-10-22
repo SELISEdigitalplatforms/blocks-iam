@@ -219,6 +219,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
             serviceCollection.AddSingleton<ISignupLinkSummaryService, SignupLinkSummaryService>();
             serviceCollection.AddDelegatedAdministration();
+            serviceCollection.AddSingleton<IClientCredentialDelegationGuard, ClientCredentialDelegationGuard>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
 
             serviceCollection.AddSingleton<IUserActivityRepository, UserActivityRepository>();

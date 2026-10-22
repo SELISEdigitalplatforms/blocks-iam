@@ -3,6 +3,7 @@ using Authentication.DomainService.Utilities;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.DelegatedAdministration;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.RequestModel;
@@ -54,7 +55,7 @@ namespace Api.Controllers
         public async Task<IActionResult> CreatePermission([FromBody] CreatePermissionRequest command)
         {
             var result = await _resourceMutationService.CreatePermissionAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("permissions/{id}")]
@@ -63,7 +64,7 @@ namespace Api.Controllers
         {
             command.ItemId = id;
             var result = await _resourceMutationService.UpdatePermissionAsync(id, command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpDelete("permissions/{id}")]
@@ -71,7 +72,7 @@ namespace Api.Controllers
         public async Task<IActionResult> ArchivePermission([FromRoute] string id, [FromQuery] bool confirmRevokeFromUsers = false)
         {
             var result = await _resourceMutationService.ArchivePermissionAsync(id, confirmRevokeFromUsers);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("roles/create")]
@@ -79,7 +80,7 @@ namespace Api.Controllers
         public async Task<IActionResult> CreateRole([FromBody] CreateRoleRequest command)
         {
             var result = await _resourceMutationService.CreateRoleAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("roles/update")]
@@ -87,7 +88,7 @@ namespace Api.Controllers
         public async Task<IActionResult> UpdateRole([FromBody] UpdateRoleRequest command)
         {
             var result = await _resourceMutationService.UpdateRoleAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpDelete("roles/{id}")]
@@ -95,7 +96,7 @@ namespace Api.Controllers
         public async Task<IActionResult> ArchiveRole([FromRoute] string id, [FromQuery] bool confirmRevokeFromUsers = false)
         {
             var result = await _resourceMutationService.ArchiveRoleAsync(id, confirmRevokeFromUsers);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("permissions")]
@@ -172,7 +173,7 @@ namespace Api.Controllers
         public async Task<IActionResult> AssignRolePermissions([FromBody] SetRolesRequest command)
         {
             var result = await _resourceMutationService.SetRolesAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpGet("roles/assignable")]
@@ -180,6 +181,24 @@ namespace Api.Controllers
         public async Task<GetAssignableRolesResponse> GetAssignableRoles()
         {
             return await _resourceQueryService.GetAssignableRolesAsync();
+        }
+
+        /// <summary>
+        /// What the caller may administer in its token organization (delegated administration):
+        /// whether it is the system user, the mode, the roles it holds and manages, the roles it may
+        /// assign, and the permissions it holds. Read from the database, never from the token.
+        /// </summary>
+        /// <remarks>
+        /// Guarded by the roles read permission, like <c>roles/assignable</c>: every screen that
+        /// uses it already lists roles. The service is taken per action so the controller's
+        /// constructor does not grow.
+        /// </remarks>
+        [HttpGet("delegation-scope")]
+        [ProtectedEndPoint("blocks-iam::iam::roles")]
+        public async Task<DelegationScopeResponse> GetDelegationScope([FromServices] IDelegatedAdministrationService delegatedAdministration)
+        {
+            ArgumentNullException.ThrowIfNull(delegatedAdministration);
+            return await delegatedAdministration.GetDelegationScopeAsync().ConfigureAwait(false);
         }
 
         [HttpGet("resource-groups")]
@@ -205,7 +224,7 @@ namespace Api.Controllers
         public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest command)
         {
             var result = await _userManagementMutationService.CreateUserAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("users/{id}")]
@@ -214,7 +233,7 @@ namespace Api.Controllers
         {
             command.ItemId = id;
             var result = await _userManagementMutationService.UpdateUserAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("users/deactivate")]
@@ -222,7 +241,7 @@ namespace Api.Controllers
         public async Task<IActionResult> DeactivateUser([FromBody] DeactivateUserRequest request)
         {
             var result = await _userManagementMutationService.DeactivateUserAsync(request);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("users/activate")]
@@ -230,7 +249,7 @@ namespace Api.Controllers
         public async Task<IActionResult> ActivateUser([FromBody] ActivateUserByAdminRequest request)
         {
             var result = await _userManagementMutationService.ActivateUserAsync(request);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("users")]
@@ -261,7 +280,7 @@ namespace Api.Controllers
         {
             DomainResolver.ResetToOriginalBlocksContextForImpersonation();
             var result = await _userManagementMutationService.UpdateMyAccountAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("users/access")]
@@ -269,7 +288,7 @@ namespace Api.Controllers
         public async Task<IActionResult> UpdateUserAccessControl(UpdateUserAccessControlRequest command)
         {
             var result = await _userManagementMutationService.UpdateUserAccessControlAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         /// <summary>
@@ -280,6 +299,11 @@ namespace Api.Controllers
         public async Task<IActionResult> PreviewBulkRoleChange(BulkRoleChangeRequest command)
         {
             var result = await _userManagementMutationService.PreviewBulkRoleChangeAsync(command);
+            if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
             return result.Errors is { Count: > 0 } ? BadRequest(result) : Ok(result);
         }
 
@@ -292,6 +316,11 @@ namespace Api.Controllers
         public async Task<IActionResult> SubmitBulkRoleChange(BulkRoleChangeRequest command)
         {
             var result = await _userManagementMutationService.SubmitBulkRoleChangeAsync(command);
+            if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
             return result.Errors is { Count: > 0 } ? BadRequest(result) : Accepted(result);
         }
 
@@ -300,7 +329,7 @@ namespace Api.Controllers
         public async Task<IActionResult> RevokeUserAccessControl(RevokeUserAccessControlRequest command)
         {
             var result = await _userManagementMutationService.RevokeUserAccessControlAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         // Email availability / existence endpoints live in EmailAvailabilityController
@@ -400,9 +429,15 @@ namespace Api.Controllers
         /// </remarks>
         [HttpPost("organizations/create")]
         [ProtectedEndPoint("blocks-iam::iam::create-organizations")]
-        public async Task<BaseMutationResponse> CreateOrganization([FromBody] CreateOrganizationRequest request)
+        public async Task<ActionResult<BaseMutationResponse>> CreateOrganization([FromBody] CreateOrganizationRequest request)
         {
-            return await _resourceMutationService.CreateOrganizationAsync(request);
+            var result = await _resourceMutationService.CreateOrganizationAsync(request);
+            if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
+            return result;
         }
 
         [HttpPost("organizations/{id}")]
@@ -438,9 +473,15 @@ namespace Api.Controllers
 
         [HttpPost("organizations/config")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-tenant-configs")]
-        public async Task<BaseResponse> SaveOrganizationConfig([FromBody] SaveOrganizationConfigRequest request)
+        public async Task<ActionResult<BaseResponse>> SaveOrganizationConfig([FromBody] SaveOrganizationConfigRequest request)
         {
-            return await _resourceMutationService.SaveOrganizationConfigAsync(request);
+            var result = await _resourceMutationService.SaveOrganizationConfigAsync(request);
+            if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -489,9 +530,15 @@ namespace Api.Controllers
 
         [HttpPost("signup-settings")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-tenant-configs")]
-        public async Task<SaveSignUpSettingResponse> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
+        public async Task<ActionResult<SaveSignUpSettingResponse>> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
         {
-            return await _accountService.SaveSignUpSettingAsync(request);
+            var result = await _accountService.SaveSignUpSettingAsync(request);
+            if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
+            return result;
         }
 
         [HttpGet("signup-settings")]
@@ -531,5 +578,26 @@ namespace Api.Controllers
         }
 
         #endregion
+
+        /// <summary>
+        /// The answer every mutation endpoint gives: 200 on success, 403 for a delegated-administration
+        /// refusal (<c>Access_Grant_Not_Allowed</c>), 400 for any other failure.
+        /// </summary>
+        private IActionResult MutationResult(object result, bool isSuccess, IDictionary<string, string>? errors)
+        {
+            if (isSuccess)
+            {
+                return Ok(result);
+            }
+
+            if (DelegatedAdministrationErrors.IsGrantNotAllowed(errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
+            return BadRequest(result);
+        }
+
+        private ObjectResult GrantNotAllowed(object result) => StatusCode(StatusCodes.Status403Forbidden, result);
     }
 }

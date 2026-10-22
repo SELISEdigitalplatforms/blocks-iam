@@ -9,6 +9,7 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
 using Mfa.DomainService.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace XUnitTest.Auth.Shared
@@ -38,6 +39,37 @@ namespace XUnitTest.Auth.Shared
                 d.ServiceType == typeof(IValidator<SaveOidcUiTemplateRequest>) &&
                 d.ImplementationType == typeof(SaveOidcUiTemplateRequestValidator) &&
                 d.Lifetime == ServiceLifetime.Transient);
+        }
+
+        [Fact]
+        public void RegisterAllServicesRegistersDelegatedAdministrationAndBindsItsMode()
+        {
+            var services = Registered();
+            services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(
+                new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+                    .AddInMemoryCollection(new Dictionary<string, string?> { ["DelegatedAdministration:Mode"] = "Enforce" })
+                    .Build());
+
+            services.Should().Contain(d => d.ServiceType == typeof(Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationService) && d.Lifetime == ServiceLifetime.Singleton);
+            services.Should().Contain(d => d.ServiceType == typeof(Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationRepository));
+            services.Should().Contain(d => d.ServiceType == typeof(IClientCredentialDelegationGuard));
+            services.Should().NotContain(d => d.ServiceType.Name == "IGrantAuthorizationService");
+
+            using var provider = services.BuildServiceProvider();
+            provider.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<Iam.DomainService.DelegatedAdministration.DelegatedAdministrationOptions>>()
+                .CurrentValue.Mode.Should().Be(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationMode.Enforce);
+        }
+
+        [Fact]
+        public void DelegatedAdministrationModeDefaultsToAuditWhenNotConfigured()
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+            Iam.DomainService.DelegatedAdministration.DelegatedAdministrationServiceCollectionExtensions.AddDelegatedAdministration(services);
+
+            using var provider = services.BuildServiceProvider();
+            provider.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<Iam.DomainService.DelegatedAdministration.DelegatedAdministrationOptions>>()
+                .CurrentValue.Mode.Should().Be(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationMode.Audit);
         }
 
         [Fact]
