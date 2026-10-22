@@ -48,17 +48,19 @@ namespace XUnitTest.IamTests.Resources
         {
             var permission = new Permission { ItemId = "p1", Name = "Read", Resource = "res.read" };
             _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(permission);
+            _repo.Setup(r => r.GetPermissionByIdForViewAsync("p1")).ReturnsAsync(permission);
 
             var result = await Create().GetPermissionAsync("p1");
 
             result.Data.Should().BeSameAs(permission);
-            _repo.Verify(r => r.GetPermissionByIdAsync("p1"), Times.Once);
+            _repo.Verify(r => r.GetPermissionByIdForViewAsync("p1"), Times.Once);
         }
 
         [Fact]
         public async Task GetPermission_ReturnsNullData_WhenRepositoryReturnsNull()
         {
             _repo.Setup(r => r.GetPermissionByIdAsync("missing")).ReturnsAsync((Permission)null!);
+            _repo.Setup(r => r.GetPermissionByIdForViewAsync("missing")).ReturnsAsync((Permission)null!);
 
             var result = await Create().GetPermissionAsync("missing");
 
@@ -136,6 +138,7 @@ namespace XUnitTest.IamTests.Resources
         {
             var role = new Role { ItemId = "r1", Slug = "admin", Name = "Admin" };
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(role);
+            _repo.Setup(r => r.GetRoleByIdForViewAsync("r1")).ReturnsAsync(role);
 
             var result = await Create().GetRoleAsync("r1");
 
@@ -151,13 +154,15 @@ namespace XUnitTest.IamTests.Resources
             var roles = new List<Role> { new() { Slug = "a" } }.AsQueryable();
             _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
                 .ReturnsAsync((roles, 1L));
+            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
+                .ReturnsAsync((roles, 1L));
 
             var query = new GetRolesRequest { OrganizationId = "org-x" };
             var result = await Create().GetRolesAsync(query);
 
             result.Data.Should().BeSameAs(roles);
             result.TotalCount.Should().Be(1);
-            _repo.Verify(r => r.GetRolesAsync(query, "org-x"), Times.Once);
+            _repo.Verify(r => r.GetRolesForViewAsync(query, "org-x"), Times.Once);
         }
 
         [Fact]
@@ -167,11 +172,13 @@ namespace XUnitTest.IamTests.Resources
             var roles = new List<Role>().AsQueryable();
             _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
                 .ReturnsAsync((roles, 0L));
+            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
+                .ReturnsAsync((roles, 0L));
 
             var query = new GetRolesRequest { OrganizationId = "org-x" };
             await Create().GetRolesAsync(query);
 
-            _repo.Verify(r => r.GetRolesAsync(query, It.Is<string>(o => o == null)), Times.Once);
+            _repo.Verify(r => r.GetRolesForViewAsync(query, It.Is<string>(o => o == null)), Times.Once);
         }
 
         // ---------- Optional filter fields must stay optional ----------
@@ -211,6 +218,8 @@ namespace XUnitTest.IamTests.Resources
             var roles = new List<Role> { new() { Slug = "manager" } }.AsQueryable();
             _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
                 .ReturnsAsync((roles, 1L));
+            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
+                .ReturnsAsync((roles, 1L));
 
             var query = new GetRolesRequest
             {
@@ -222,7 +231,7 @@ namespace XUnitTest.IamTests.Resources
 
             query.Filter.Search.Should().BeNull();
             result.TotalCount.Should().Be(1);
-            _repo.Verify(r => r.GetRolesAsync(query, "org-x"), Times.Once);
+            _repo.Verify(r => r.GetRolesForViewAsync(query, "org-x"), Times.Once);
         }
 
         // ---------- GetResourceGroupsAsync ----------
@@ -321,6 +330,8 @@ namespace XUnitTest.IamTests.Resources
             }.AsQueryable();
             _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
                 .ReturnsAsync((roles, 4L));
+            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
+                .ReturnsAsync((roles, 4L));
 
             var result = await Create().GetAssignableRolesAsync();
 
@@ -337,6 +348,8 @@ namespace XUnitTest.IamTests.Resources
             SetContext(roles: new List<string> { "manager" });
             var roles = new List<Role>().AsQueryable();
             _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
+                .ReturnsAsync((roles, 0L));
+            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
                 .ReturnsAsync((roles, 0L));
 
             await Create().GetAssignableRolesAsync();
@@ -356,6 +369,8 @@ namespace XUnitTest.IamTests.Resources
             }.AsQueryable();
             _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
                 .ReturnsAsync((roles, 2L));
+            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
+                .ReturnsAsync((roles, 2L));
 
             var result = await Create().GetAssignableRolesAsync();
 
@@ -373,6 +388,8 @@ namespace XUnitTest.IamTests.Resources
                 new() { Slug = "manager", Name = "Manager", CanCreateOwn = true, AncestorRoleSlugs = new() },
             }.AsQueryable();
             _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
+                .ReturnsAsync((roles, 1L));
+            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
                 .ReturnsAsync((roles, 1L));
 
             var result = await Create().GetAssignableRolesAsync();
@@ -394,6 +411,8 @@ namespace XUnitTest.IamTests.Resources
                 new() { Slug = "child", Name = "Child", CanCreateOwn = true, ParentRoleSlug = "root", AncestorRoleSlugs = new() { "root" } },
             }.AsQueryable();
             _repo.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
+                .ReturnsAsync((roles, 2L));
+            _repo.Setup(r => r.GetRolesForViewAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
                 .ReturnsAsync((roles, 2L));
 
             var result = await Create().GetAssignableRolesAsync();
@@ -423,6 +442,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task RoleArchiveImpact_NotFound_ReturnsErrorAndCountsNothing()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("nope")).ReturnsAsync((Role)null!);
+            _repo.Setup(r => r.GetRoleByIdForViewAsync("nope")).ReturnsAsync((Role)null!);
 
             var result = await Create().GetRoleArchiveImpactAsync("nope");
 
@@ -435,6 +455,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task RoleArchiveImpact_CountsOtherOrganizationsAndUsers()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            _repo.Setup(r => r.GetRoleByIdForViewAsync("r1")).ReturnsAsync(ImpactRole());
             MultiOrg(true);
             _repo.Setup(r => r.GetNonArchivedRolesBySlugAsync("manager"))
                 .ReturnsAsync(new List<Role> { ImpactRole(), ImpactCopy("c-acme", "acme"), ImpactCopy("c-globex", "globex") });
@@ -457,6 +478,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task RoleArchiveImpact_ReportsWhetherTheRoleIsASignUpDefault()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            _repo.Setup(r => r.GetRoleByIdForViewAsync("r1")).ReturnsAsync(ImpactRole());
             _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
             {
                 DefaultRolesForNewUserOnSignUp = new List<string> { "viewer", "MANAGER" }
@@ -473,6 +495,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task RoleArchiveImpact_NotASignUpDefault_ReportsFalse()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            _repo.Setup(r => r.GetRoleByIdForViewAsync("r1")).ReturnsAsync(ImpactRole());
             _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
             {
                 DefaultRolesForNewUserOnSignUp = new List<string> { "viewer" },
@@ -489,6 +512,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task RoleArchiveImpact_NoTenantConfiguration_ReportsNotASignUpDefault()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            _repo.Setup(r => r.GetRoleByIdForViewAsync("r1")).ReturnsAsync(ImpactRole());
             MultiOrg(false);
 
             var result = await Create().GetRoleArchiveImpactAsync("r1");
@@ -502,6 +526,7 @@ namespace XUnitTest.IamTests.Resources
         {
             IEnumerable<string>? scoped = null;
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            _repo.Setup(r => r.GetRoleByIdForViewAsync("r1")).ReturnsAsync(ImpactRole());
             MultiOrg(true);
             // GetNonArchivedRolesBySlugAsync filters archived copies at the source, so globex is absent.
             _repo.Setup(r => r.GetNonArchivedRolesBySlugAsync("manager"))
@@ -522,6 +547,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task RoleArchiveImpact_SingleOrgTenant_ReportsNoOrganizationsAndDoesNotThrow()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            _repo.Setup(r => r.GetRoleByIdForViewAsync("r1")).ReturnsAsync(ImpactRole());
             MultiOrg(false);
             _repo.Setup(r => r.CountUsersWithRoleAsync("manager", It.IsAny<IEnumerable<string>>(), false)).ReturnsAsync(1);
             _repo.Setup(r => r.CountUsersWithRoleAsync("manager", It.IsAny<IEnumerable<string>>(), true)).ReturnsAsync(0);
@@ -540,6 +566,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task RoleArchiveImpact_ChildRoles_BlocksButStillReportsCounts()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            _repo.Setup(r => r.GetRoleByIdForViewAsync("r1")).ReturnsAsync(ImpactRole());
             MultiOrg(true);
             _repo.Setup(r => r.GetNonArchivedRolesBySlugAsync("manager"))
                 .ReturnsAsync(new List<Role> { ImpactRole(), ImpactCopy("c-acme", "acme") });
@@ -560,6 +587,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task RoleArchiveImpact_NothingAffected_ReturnsZeros()
         {
             _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            _repo.Setup(r => r.GetRoleByIdForViewAsync("r1")).ReturnsAsync(ImpactRole());
             MultiOrg(true);
             _repo.Setup(r => r.GetNonArchivedRolesBySlugAsync("manager")).ReturnsAsync(new List<Role> { ImpactRole() });
 
@@ -574,6 +602,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task PermissionArchiveImpact_NotFound_ReturnsError()
         {
             _repo.Setup(r => r.GetPermissionByIdAsync("nope")).ReturnsAsync((Permission)null!);
+            _repo.Setup(r => r.GetPermissionByIdForViewAsync("nope")).ReturnsAsync((Permission)null!);
 
             var result = await Create().GetPermissionArchiveImpactAsync("nope");
 
@@ -586,6 +615,7 @@ namespace XUnitTest.IamTests.Resources
         {
             var permission = new Permission { ItemId = "p1", Name = "Export", Resource = "reports::export", OrganizationId = "default" };
             _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(permission);
+            _repo.Setup(r => r.GetPermissionByIdForViewAsync("p1")).ReturnsAsync(permission);
             MultiOrg(true);
             _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
             {
@@ -615,6 +645,7 @@ namespace XUnitTest.IamTests.Resources
         {
             var permission = new Permission { ItemId = "p1", Name = "Export", Resource = "reports::export", OrganizationId = "default" };
             _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(permission);
+            _repo.Setup(r => r.GetPermissionByIdForViewAsync("p1")).ReturnsAsync(permission);
             _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
             {
                 DefaultPermissionsForNewUserOnSignUp = new List<string> { "reports::export" },
@@ -632,6 +663,7 @@ namespace XUnitTest.IamTests.Resources
         {
             var permission = new Permission { ItemId = "p1", Name = "Export", Resource = "reports::export", OrganizationId = "default" };
             _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(permission);
+            _repo.Setup(r => r.GetPermissionByIdForViewAsync("p1")).ReturnsAsync(permission);
             MultiOrg(false);
 
             var result = await Create().GetPermissionArchiveImpactAsync("p1");
@@ -644,6 +676,7 @@ namespace XUnitTest.IamTests.Resources
         {
             var permission = new Permission { ItemId = "p1", Resource = "reports::export", OrganizationId = "default" };
             _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(permission);
+            _repo.Setup(r => r.GetPermissionByIdForViewAsync("p1")).ReturnsAsync(permission);
             MultiOrg(true);
             _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
             {

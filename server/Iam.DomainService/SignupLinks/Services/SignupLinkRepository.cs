@@ -193,7 +193,7 @@ public class SignupLinkRepository : ISignupLinkRepository
             .Skip(request.Page * request.PageSize)
             .Limit(request.PageSize)
             .ToListAsync();
-        return (items, total);
+        return (scope.ForView(items), total);
     }
 
     public async Task<long> RevokeActiveByConfigurationAsync(

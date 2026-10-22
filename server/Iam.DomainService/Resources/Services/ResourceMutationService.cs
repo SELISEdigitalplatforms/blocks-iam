@@ -2647,7 +2647,7 @@ namespace Iam.DomainService.Resources
                 };
             }
 
-            var organization = await _resourceRepository.GetOrganizationById(id);
+            var organization = await _resourceRepository.GetOrganizationByIdForView(id);
             return new GetOrganizationResponse { IsSuccess = true, Organization = organization };
         }
 

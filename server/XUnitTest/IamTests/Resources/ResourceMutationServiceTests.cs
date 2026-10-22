@@ -615,6 +615,7 @@ namespace XUnitTest.IamTests.Resources
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationById("id1")).ReturnsAsync((Organization)null!);
+            _repo.Setup(r => r.GetOrganizationByIdForView("id1")).ReturnsAsync((Organization)null!);
             var result = await Create().UpdateOrganizationAsync("id1", new SaveOrganizationRequest { Name = "N" });
             result.Errors.Should().ContainKey("not_found");
         }
@@ -625,6 +626,7 @@ namespace XUnitTest.IamTests.Resources
             _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             var org = new Organization { ItemId = "id1", Name = "Old" };
             _repo.Setup(r => r.GetOrganizationById("id1")).ReturnsAsync(org);
+            _repo.Setup(r => r.GetOrganizationByIdForView("id1")).ReturnsAsync(org);
             _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
 
             var result = await Create().UpdateOrganizationAsync("id1", new SaveOrganizationRequest { Name = "New", Email = "e@x.com" });
@@ -652,6 +654,7 @@ namespace XUnitTest.IamTests.Resources
 
             var org = new Organization { ItemId = "id1", Name = currentName };
             _repo.Setup(r => r.GetOrganizationById("id1")).ReturnsAsync(org);
+            _repo.Setup(r => r.GetOrganizationByIdForView("id1")).ReturnsAsync(org);
             _repo.Setup(r => r.GetOrganizationByNameAsync(It.IsAny<string>())).ReturnsAsync(nameHolder!);
             _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
             return org;
@@ -766,6 +769,7 @@ namespace XUnitTest.IamTests.Resources
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationById("id1")).ReturnsAsync(new Organization { ItemId = "id1", Name = "N" });
+            _repo.Setup(r => r.GetOrganizationByIdForView("id1")).ReturnsAsync(new Organization { ItemId = "id1", Name = "N" });
             var result = await Create().GetOrganizationAsync("id1");
             result.IsSuccess.Should().BeTrue();
             result.Organization!.ItemId.Should().Be("id1");
@@ -904,6 +908,8 @@ namespace XUnitTest.IamTests.Resources
             StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationById("org-sales"))
                 .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
+            _repo.Setup(r => r.GetOrganizationByIdForView("org-sales"))
+                .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
 
             var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
             {
@@ -939,6 +945,8 @@ namespace XUnitTest.IamTests.Resources
         {
             StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true, SignupAutoJoinOrganizationId = "org-sales" });
             _repo.Setup(r => r.GetOrganizationById("org-sales"))
+                .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
+            _repo.Setup(r => r.GetOrganizationByIdForView("org-sales"))
                 .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
 
             var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { IsSignupAutoJoinEnabled = true });
@@ -1003,6 +1011,8 @@ namespace XUnitTest.IamTests.Resources
             StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationById("org-gone"))
                 .ReturnsAsync(exists ? new Organization { ItemId = "org-gone", Name = "Gone", IsDisabled = true } : null!);
+            _repo.Setup(r => r.GetOrganizationByIdForView("org-gone"))
+                .ReturnsAsync(exists ? new Organization { ItemId = "org-gone", Name = "Gone", IsDisabled = true } : null!);
 
             var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest
             {
@@ -1022,6 +1032,7 @@ namespace XUnitTest.IamTests.Resources
         {
             StoredConfig(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationById("org-gone")).ReturnsAsync((Organization)null!);
+            _repo.Setup(r => r.GetOrganizationByIdForView("org-gone")).ReturnsAsync((Organization)null!);
 
             var result = await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest { SignupAutoJoinOrganizationId = "org-gone" });
 
@@ -1104,6 +1115,7 @@ namespace XUnitTest.IamTests.Resources
         {
             StoredConfig(new IamTenantConfiguration { IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = "org-gone" });
             _repo.Setup(r => r.GetOrganizationById("org-gone")).ReturnsAsync((Organization)null!);
+            _repo.Setup(r => r.GetOrganizationByIdForView("org-gone")).ReturnsAsync((Organization)null!);
 
             var result = await Create().SaveOrganizationConfigAsync(SwitchMultiOrgOn());
 
@@ -1117,6 +1129,8 @@ namespace XUnitTest.IamTests.Resources
         {
             StoredConfig(new IamTenantConfiguration { IsSignupAutoJoinEnabled = true, SignupAutoJoinOrganizationId = "org-sales" });
             _repo.Setup(r => r.GetOrganizationById("org-sales"))
+                .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
+            _repo.Setup(r => r.GetOrganizationByIdForView("org-sales"))
                 .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
 
             var result = await Create().SaveOrganizationConfigAsync(SwitchMultiOrgOn());

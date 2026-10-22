@@ -82,7 +82,8 @@ namespace Iam.DomainService.Services
             {
                 Projection = project
             });
-            return await cursor.FirstOrDefaultAsync();
+            // Only GET iam/me and iam/users/{id} read this: View column (property) rules clear what the caller may not see.
+            return scope.ForViewAs(await cursor.FirstOrDefaultAsync());
         }
 
         public async Task<bool> CheckPasswordBlackListedAsync(string password)

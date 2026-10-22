@@ -72,7 +72,7 @@ namespace XUnitTest.IamTests.Users
                 new() { ItemId = "u1", Email = "u1@e.com", FirstName = "A" },
                 new() { ItemId = "u2", Email = "u2@e.com", FirstName = "B" },
             }.AsQueryable();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((accounts, 2L));
 
             var result = await Create().GetUsersAsync(new GetUsersRequest());
@@ -86,7 +86,7 @@ namespace XUnitTest.IamTests.Users
         public async Task GetUsers_HandlesNullData()
         {
             InstallContext();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync(((IQueryable<GetAccounts>?)null, 0L));
 
             var result = await Create().GetUsersAsync(new GetUsersRequest());
@@ -99,7 +99,7 @@ namespace XUnitTest.IamTests.Users
         public async Task GetUsers_WithNoOrganizationInTheToken_ReturnsNothingAndNeverQueries()
         {
             InstallContext(orgId: string.Empty);
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ThrowsAsync(new InvalidOperationException("the repository must not be reached"));
 
@@ -107,7 +107,7 @@ namespace XUnitTest.IamTests.Users
 
             result.TotalCount.Should().Be(0);
             result.Data.Should().BeEmpty();
-            _repo.Verify(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Verify(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                 It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()), Times.Never);
             _iam.Verify(r => r.GetTenantConfigurationAsync(), Times.Never);
         }
@@ -117,7 +117,7 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext();
             UserListScope? captured = null;
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .Callback<GetUsersRequest, UserListScope>((_, scope) => captured = scope)
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
@@ -132,7 +132,7 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext();
             UserListScope? captured = null;
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .Callback<GetUsersRequest, UserListScope>((_, scope) => captured = scope)
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
@@ -151,7 +151,7 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext(orgId: "org-a");
             UserListScope? captured = null;
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .Callback<GetUsersRequest, UserListScope>((_, scope) => captured = scope)
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
@@ -168,7 +168,7 @@ namespace XUnitTest.IamTests.Users
         public async Task GetUsers_DeniedScopeWithRoles_ReturnsNothingWithoutTenantConfigOrRepository()
         {
             InstallContext(orgId: " ");
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ThrowsAsync(new InvalidOperationException("the repository must not be reached"));
             _iam.Setup(r => r.GetTenantConfigurationAsync())
@@ -182,7 +182,7 @@ namespace XUnitTest.IamTests.Users
             result.TotalCount.Should().Be(0);
             result.Data.Should().BeEmpty();
             result.Errors.Should().BeNull();
-            _repo.Verify(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Verify(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                 It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()), Times.Never);
             _iam.Verify(r => r.GetTenantConfigurationAsync(), Times.Never);
         }
@@ -193,7 +193,7 @@ namespace XUnitTest.IamTests.Users
             InstallContext();
             _iam.Setup(r => r.GetTenantConfigurationAsync())
                 .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ThrowsAsync(new InvalidOperationException("the repository must not be reached"));
 
@@ -206,7 +206,7 @@ namespace XUnitTest.IamTests.Users
             result.Data.Should().BeEmpty();
             result.Errors.Should().ContainSingle();
             result.Errors!["OrganizationIds"].Should().Be("OrganizationIds_Required_For_Role_Filter");
-            _repo.Verify(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Verify(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                 It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()), Times.Never);
         }
 
@@ -217,7 +217,7 @@ namespace XUnitTest.IamTests.Users
             _iam.Setup(r => r.GetTenantConfigurationAsync())
                 .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = false });
             UserListScope? captured = null;
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .Callback<GetUsersRequest, UserListScope>((_, scope) => captured = scope)
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
@@ -235,7 +235,7 @@ namespace XUnitTest.IamTests.Users
         public async Task GetUsers_AllOrganizationsWithoutRoles_DoesNotFetchTenantConfig()
         {
             InstallContext();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
 
@@ -448,7 +448,7 @@ namespace XUnitTest.IamTests.Users
                 MemberOf("u2", "org-a"),
                 new() { ItemId = "u3", Email = "u3@e.com", OrganizationIds = ["org-a"] }
             }.AsQueryable();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((accounts, 3L));
 
             var result = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.ToList();
@@ -465,7 +465,7 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext();
             var account = MemberOf("u1", "org-a", "org-b");
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((new List<GetAccounts> { account }.AsQueryable(), 1L));
 
             var request = narrowedToOrganizations
@@ -564,7 +564,7 @@ namespace XUnitTest.IamTests.Users
             {
                 Account("locked", future), Account("never", null), Account("expired", past)
             }.AsQueryable();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((accounts, 3L));
 
             var items = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.ToList();
@@ -610,7 +610,7 @@ namespace XUnitTest.IamTests.Users
             InstallContext();
             // C2. Does not claim to prove "no lockout computation" - the helper is private and
             // there are no items to map regardless.
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
 
             var result = await CreateAt(Now).GetUsersAsync(new GetUsersRequest());
@@ -626,7 +626,7 @@ namespace XUnitTest.IamTests.Users
             // C2's literal clause: "no lockout computation is attempted". Asserting the output alone
             // could not show that - an implementation that computed and discarded would pass. A clock
             // that throws when touched is what actually demonstrates it.
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
 
             var svc = new UserManagementQueryService(
@@ -755,7 +755,7 @@ namespace XUnitTest.IamTests.Users
                 CreatedDate = Now.AddDays(-30), LockoutUntilUtc = null,
                 Roles = new Dictionary<string, List<string>> { { "default", new List<string> { "admin" } } }
             };
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((new[] { account }.AsQueryable(), 1L));
 
             var item = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.Single();
@@ -920,7 +920,7 @@ namespace XUnitTest.IamTests.Users
                 new() { ItemId = "invited", Email = "i@e.com", Active = false, Status = UserLifecycleStatus.Active, IsVerified = false },
                 new() { ItemId = "deactivated", Email = "d@e.com", Active = false, Status = UserLifecycleStatus.Disabled, IsVerified = true },
             }.AsQueryable();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((accounts, 3L));
 
             var items = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.ToList();

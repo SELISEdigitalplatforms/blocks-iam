@@ -45,18 +45,26 @@ namespace Authentication.DomainService.Services
         Task<User?> IncrementFailedMfaAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
         Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "");
         Task<List<IdentityProvider>> GetIdentityProvidersAsync();
+        /// <summary>As the caller may see it: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<List<IdentityProvider>> GetIdentityProvidersForViewAsync();
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider, string providerType);
         Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id);
+        /// <summary>As the caller may see it: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<IdentityProvider?> GetIdentityProviderByIdForViewAsync(string id);
         Task<IdentityProvider?> GetIdentityProviderByClientIdAsync(string clientId);
         Task<IdentityProvider?> GetIdentityProviderByClientIdAndRedirectUriAsync(string clientId, string redirectUri);
         Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider);
         Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider);
         Task DeleteIdentityProviderAsync(string id);
         Task<IdentityConfiguration> GetAuthenticationConfigurationAsync();
+        /// <summary>As the caller may see it: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<IdentityConfiguration> GetAuthenticationConfigurationForViewAsync();
         Task UpdateAuthenticationConfigurationAsync(IdentityConfiguration authenticationConfiguration);
         Task<OidcClientRegistration> GetOidcClientRegistrationAsync(string clientId);
         Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantAsync();
+        /// <summary>As the caller may see it: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantForViewAsync();
         Task SaveOidcClientRegistrationAsync(OidcClientRegistration credential);
         Task<OidcUiTemplate?> GetOidcUiTemplateAsync();
         Task SaveOidcUiTemplateAsync(OidcUiTemplate template);

@@ -57,6 +57,8 @@ namespace XUnitTest.IamTests.Resources
             // in these tests can only have come from the scope check.
             _repo.Setup(r => r.GetOrganizationById(It.IsAny<string>()))
                 .ReturnsAsync((string id) => new Organization { ItemId = id, Name = id });
+            _repo.Setup(r => r.GetOrganizationByIdForView(It.IsAny<string>()))
+                .ReturnsAsync((string id) => new Organization { ItemId = id, Name = id });
         }
 
         private static void InstallContext(string? orgId = "default")
@@ -227,6 +229,7 @@ namespace XUnitTest.IamTests.Resources
             InstallContext(OrgA);
             var stored = new Organization { ItemId = OrgA, Name = "Old" };
             _repo.Setup(r => r.GetOrganizationById(OrgA)).ReturnsAsync(stored);
+            _repo.Setup(r => r.GetOrganizationByIdForView(OrgA)).ReturnsAsync(stored);
 
             var result = await Create().UpdateOrganizationAsync(OrgA, new SaveOrganizationRequest { Name = "New" });
 
@@ -272,6 +275,7 @@ namespace XUnitTest.IamTests.Resources
                 DefaultPermissionsForMembers = ["blocks-iam::iam::users"]
             };
             _repo.Setup(r => r.GetOrganizationById(OrgA)).ReturnsAsync(stored);
+            _repo.Setup(r => r.GetOrganizationByIdForView(OrgA)).ReturnsAsync(stored);
 
             var result = await Create().UpdateOrganizationAsync(OrgA, new SaveOrganizationRequest
             {
@@ -298,6 +302,7 @@ namespace XUnitTest.IamTests.Resources
                 DefaultPermissionsForMembers = ["blocks-iam::iam::users"]
             };
             _repo.Setup(r => r.GetOrganizationById(OrgA)).ReturnsAsync(stored);
+            _repo.Setup(r => r.GetOrganizationByIdForView(OrgA)).ReturnsAsync(stored);
 
             var result = await Create().UpdateOrganizationAsync(OrgA, new SaveOrganizationRequest
             {

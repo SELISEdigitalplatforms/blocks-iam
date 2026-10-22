@@ -32,7 +32,7 @@ namespace Iam.DomainService.Resources
         {
             _logger.LogInformation("Permission get start");
 
-            var permission = await _resourceRepository.GetPermissionByIdAsync(id);
+            var permission = await _resourceRepository.GetPermissionByIdForViewAsync(id);
 
             _logger.LogInformation("Permission get end");
 
@@ -70,7 +70,7 @@ namespace Iam.DomainService.Resources
         {
             _logger.LogInformation("Role get start");
 
-            var role = await _resourceRepository.GetRoleByIdAsync(id);
+            var role = await _resourceRepository.GetRoleByIdForViewAsync(id);
 
             _logger.LogInformation("Role get end");
 
@@ -88,7 +88,7 @@ namespace Iam.DomainService.Resources
                 ? query.OrganizationId
                 : null;
 
-            var (data, count) = await _resourceRepository.GetRolesAsync(query, orgId);
+            var (data, count) = await _resourceRepository.GetRolesForViewAsync(query, orgId);
 
             _logger.LogInformation("Roles get end");
 

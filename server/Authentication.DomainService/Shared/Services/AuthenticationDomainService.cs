@@ -505,7 +505,7 @@ namespace Authentication.DomainService.Services
 
         public async Task<GetOIDCClientsResponse> GetOidcClientsAsync()
         {
-            var clients = await _authenticationRepository.GetOIDCCredentialsByTenantAsync();
+            var clients = await _authenticationRepository.GetOIDCCredentialsByTenantForViewAsync();
 
             return new GetOIDCClientsResponse
             {
@@ -895,12 +895,12 @@ namespace Authentication.DomainService.Services
 
         public async Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id)
         {
-            return await _authenticationRepository.GetIdentityProviderByIdAsync(id);
+            return await _authenticationRepository.GetIdentityProviderByIdForViewAsync(id);
         }
 
         public async Task<List<IdentityProvider>> GetAllIdentityProvidersAsync()
         {
-            return await _authenticationRepository.GetIdentityProvidersAsync();
+            return await _authenticationRepository.GetIdentityProvidersForViewAsync();
         }
 
         public async Task<BaseResponse> UpdateIdentityProviderAsync(string id, UpdateIdentityProviderRequest request)
