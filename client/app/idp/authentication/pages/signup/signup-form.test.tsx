@@ -182,38 +182,42 @@ describe("SignupForm", () => {
     await waitFor(() => expect(screen.getByText("Something went wrong")).toBeInTheDocument());
   });
 
-  // ---------- Join-or-create ----------
+  // ---------- Create-organization opt-in ----------
 
   describe("organization choice", () => {
     const COPY = {
-      legend: "How would you like to start?",
-      join: "Join this project's organization",
-      create: "Create my own organization",
-      unavailable: "This project's organization isn't available right now.",
+      create: "Create a new organization",
+      createHint: "Start your own workspace and invite your team.",
+      nameRequired: "One more step: name your organization to finish signing up.",
+      unavailable: "Sign-up isn't available right now. Please contact your administrator.",
     };
+    // The page must never tell the user about the organization they join by default.
+    const PROJECT_ORGANIZATION = /this project's organization|join this/i;
     const submitButton = () => screen.getByRole("button", { name: /Create Account/ });
     const nameField = () => screen.queryByPlaceholderText("Acme Inc.");
+    const createBox = () => screen.queryByRole("checkbox", { name: COPY.create });
     const submit = async () => {
       await waitFor(() => expect(submitButton()).toBeEnabled());
       fireEvent.click(submitButton());
     };
 
-    it("H12: offers the choice with Join preselected and no name field when auto-join and creation are on", () => {
+    it("H12: offers an unticked create-organization box and no name field when auto-join and creation are on", () => {
       renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
 
-      const group = screen.getByRole("group", { name: COPY.legend });
-      expect(group.tagName).toBe("FIELDSET");
-      expect(screen.getByRole("radio", { name: COPY.join })).toBeChecked();
-      expect(screen.getByRole("radio", { name: COPY.create })).not.toBeChecked();
+      expect(createBox()).not.toBeChecked();
+      expect(createBox()).toHaveAccessibleDescription(COPY.createHint);
+      expect(screen.queryByRole("radio")).toBeNull();
+      expect(screen.queryByText(PROJECT_ORGANIZATION)).toBeNull();
       expect(nameField()).toBeNull();
     });
 
-    it("H13: Create reveals a required name field; Join hides it and drops its value and errors", async () => {
+    it("H13: ticking reveals a required name field; unticking hides it and drops its value and errors", async () => {
       h.mutateAsync.mockResolvedValue({ isSuccess: false, errors: { name_already_exists: "Name taken" } });
       renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
       fillForm();
 
-      fireEvent.click(screen.getByRole("radio", { name: COPY.create }));
+      fireEvent.click(createBox()!);
+      expect(createBox()).toBeChecked();
       expect(nameField()).toBeInTheDocument();
       // Required: the form cannot be submitted until a name is typed.
       await waitFor(() => expect(submitButton()).toBeDisabled());
@@ -222,16 +226,17 @@ describe("SignupForm", () => {
       await submit();
       await waitFor(() => expect(nameField()).toHaveAttribute("aria-invalid", "true"));
 
-      fireEvent.click(screen.getByRole("radio", { name: COPY.join }));
+      fireEvent.click(createBox()!);
+      expect(createBox()).not.toBeChecked();
       expect(nameField()).toBeNull();
       await waitFor(() => expect(submitButton()).toBeEnabled());
 
-      fireEvent.click(screen.getByRole("radio", { name: COPY.create }));
+      fireEvent.click(createBox()!);
       expect(nameField()).toHaveValue("");
       expect(nameField()).toHaveAttribute("aria-invalid", "false");
     });
 
-    it("H14: Join passes createOrganizationDuringSignup=false and no name to the hook", async () => {
+    it("H14: an unticked box passes createOrganizationDuringSignup=false and no name to the hook", async () => {
       h.mutateAsync.mockResolvedValue({ isSuccess: true });
       renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
       fillForm();
@@ -246,11 +251,11 @@ describe("SignupForm", () => {
       expect(payload).not.toHaveProperty("organizationChoice");
     });
 
-    it("H14: Create sends the creation flag with the name", async () => {
+    it("H14: a ticked box sends the creation flag with the name", async () => {
       h.mutateAsync.mockResolvedValue({ isSuccess: true });
       renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
       fillForm();
-      fireEvent.click(screen.getByRole("radio", { name: COPY.create }));
+      fireEvent.click(createBox()!);
       fireEvent.input(nameField()!, { target: { value: "AJ Org 2" } });
 
       await submit();
@@ -265,16 +270,16 @@ describe("SignupForm", () => {
     it("H15: auto-join on and creation off renders no organization UI", () => {
       renderForm({ collectOrganizationName: false, signupAutoJoinEnabled: true });
 
-      expect(screen.queryByRole("group", { name: COPY.legend })).toBeNull();
+      expect(createBox()).toBeNull();
       expect(screen.queryByRole("radio")).toBeNull();
       expect(nameField()).toBeNull();
     });
 
-    it("H16: auto-join off and creation on renders today's required name field and no choice", async () => {
+    it("H16: auto-join off and creation on renders today's required name field and no opt-in", async () => {
       h.mutateAsync.mockResolvedValue({ isSuccess: true });
       renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: false });
 
-      expect(screen.queryByRole("radio")).toBeNull();
+      expect(createBox()).toBeNull();
       expect(screen.getByLabelText("Organization Name")).toBeInTheDocument();
       fillForm();
       await waitFor(() => expect(submitButton()).toBeDisabled());
@@ -288,7 +293,7 @@ describe("SignupForm", () => {
       );
     });
 
-    it("C7: an unavailable organization is announced, switches to Create and focuses the name field", async () => {
+    it("C7: an unavailable organization ticks the box, asks for a name and focuses the field", async () => {
       h.mutateAsync
         .mockResolvedValueOnce({
           isSuccess: false,
@@ -300,8 +305,10 @@ describe("SignupForm", () => {
 
       await submit();
 
-      expect(await screen.findByRole("alert")).toHaveTextContent(COPY.unavailable);
-      expect(screen.getByRole("radio", { name: COPY.create })).toBeChecked();
+      expect(await screen.findByRole("alert")).toHaveTextContent(COPY.nameRequired);
+      expect(screen.queryByText(PROJECT_ORGANIZATION)).toBeNull();
+      expect(screen.queryByText("server sentence")).toBeNull();
+      expect(createBox()).toBeChecked();
       await waitFor(() => expect(nameField()).toHaveFocus());
 
       fireEvent.input(nameField()!, { target: { value: "AJ Org 2" } });
@@ -324,11 +331,11 @@ describe("SignupForm", () => {
 
       await submit();
 
-      expect(await screen.findByRole("alert")).toHaveTextContent(COPY.unavailable);
-      expect(screen.getByRole("radio", { name: COPY.create })).toBeChecked();
+      expect(await screen.findByRole("alert")).toHaveTextContent(COPY.nameRequired);
+      expect(createBox()).toBeChecked();
     });
 
-    it("S5: with creation off the unavailable message shows and no organization UI appears", async () => {
+    it("S5: with creation off the unavailable message names no organization and no organization UI appears", async () => {
       h.mutateAsync.mockResolvedValue({
         isSuccess: false,
         errors: { signup_organization_unavailable: "server sentence" },
@@ -339,16 +346,16 @@ describe("SignupForm", () => {
       await submit();
 
       expect(await screen.findByRole("alert")).toHaveTextContent(COPY.unavailable);
-      expect(screen.queryByRole("radio")).toBeNull();
+      expect(screen.queryByText(PROJECT_ORGANIZATION)).toBeNull();
+      expect(createBox()).toBeNull();
       expect(nameField()).toBeNull();
     });
 
-    it("disables the radios while the sign-up is submitting", () => {
+    it("disables the create-organization box while the sign-up is submitting", () => {
       h.isPending = true;
       renderForm({ collectOrganizationName: true, signupAutoJoinEnabled: true });
 
-      expect(screen.getByRole("radio", { name: COPY.join })).toBeDisabled();
-      expect(screen.getByRole("radio", { name: COPY.create })).toBeDisabled();
+      expect(createBox()).toBeDisabled();
     });
 
     it("keeps the server-error area announced for other errors too", async () => {

@@ -18,7 +18,7 @@ import { Link, useNavigate } from "react-router";
 import React, { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
-import { ArrowRight, Loader } from "lucide-react";
+import { ArrowRight, Info, Loader } from "lucide-react";
 import { SsoSignin } from "../login/sso-signin";
 import {
   buildSignupFormSchema,
@@ -67,11 +67,15 @@ export const SignupForm = ({
 }) => {
   const [isChecked, setIsChecked] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  // Set when an unavailable auto-join organization ticked "create" for the user; the name field
+  // then explains that naming an organization is the last step.
+  const [organizationNameRequired, setOrganizationNameRequired] = useState(false);
   // Set when an unavailable auto-join organization switched the choice to "create"; the effect
   // below focuses the revealed name field once it is rendered and enabled again.
   const focusOrganizationNameRef = useRef(false);
-  // Join-or-create: offered only when the user may both join the project's organization and
-  // create their own. With creation off they simply join; with auto-join off they create (or not).
+  // Create-organization opt-in: offered only when the user may both join the project's
+  // organization and create their own. Unticked, they join it; the page never names it. With
+  // creation off they simply join; with auto-join off they create (or not).
   const offerOrganizationChoice = collectOrganizationName && signupAutoJoinEnabled;
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
@@ -143,15 +147,18 @@ export const SignupForm = ({
     form.setValue("organizationChoice", choice, { shouldValidate: true });
   };
 
-  // The server error for the error area. An unavailable auto-join organization gets the built-in
-  // sentence and, where the user may create their own, switches the choice to "create".
+  // The server error for the error area. An unavailable auto-join organization never surfaces as
+  // such: where the user may create their own, "create" is ticked and the name field asks for a
+  // name; otherwise the error area shows a sentence that does not mention the organization.
   const surfaceServerError = (errors: unknown, fallback: string): string => {
     if (hasErrorKey(errors, ORGANIZATION_UNAVAILABLE_KEY)) {
-      setServerError(SIGNUP_ORGANIZATION_CHOICE_COPY.unavailableMessage);
       if (offerOrganizationChoice) {
+        setOrganizationNameRequired(true);
         focusOrganizationNameRef.current = true;
         selectOrganizationChoice("create");
+        return SIGNUP_ORGANIZATION_CHOICE_COPY.nameRequiredMessage;
       }
+      setServerError(SIGNUP_ORGANIZATION_CHOICE_COPY.unavailableMessage);
       return SIGNUP_ORGANIZATION_CHOICE_COPY.unavailableMessage;
     }
     const handledOnField = applyOrganizationError(errors);
@@ -161,6 +168,7 @@ export const SignupForm = ({
 
   const onSubmitHandler = async (values: z.infer<typeof signupFormSchema>) => {
     setServerError(null);
+    setOrganizationNameRequired(false);
     animCtx?.startAnimation();
     try {
       // The activation email is built server-side, long after this page is gone, so the
@@ -174,7 +182,7 @@ export const SignupForm = ({
         tenantId,
         clientId,
         redirectUri,
-        // "Join" passes false here; auth.service drops the flag and the name from the request
+        // An unticked box passes false here; auth.service drops the flag and the name from the request
         // unless both are set, so the server places the user itself.
         createOrganizationDuringSignup: wantsCreateOrganization,
         organizationName: wantsCreateOrganization ? values.organizationName : undefined,
@@ -232,6 +240,35 @@ export const SignupForm = ({
   const signupCopy = oidcUiConfig.template.pages.signup;
 
   const showSocialLogin = ssoSignUpEnabled && !!loginOption?.ssoInfo?.length;
+
+  const organizationNameField = (
+    <FormField
+      control={form.control}
+      name="organizationName"
+      render={({ field }) => (
+        <FormItem>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="signup-organization-name" className="oidc-sci-fi-label">
+              {signupCopy.organizationNameLabel}
+            </label>
+            <FormControl>
+              <input
+                id="signup-organization-name"
+                type="text"
+                autoComplete="organization"
+                placeholder="Acme Inc."
+                className="oidc-sci-fi-input"
+                aria-invalid={!!form.formState.errors.organizationName}
+                disabled={isAuthenticating}
+                {...field}
+              />
+            </FormControl>
+            <FormMessage className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }} />
+          </div>
+        </FormItem>
+      )}
+    />
+  );
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -331,75 +368,76 @@ export const SignupForm = ({
               )}
             />
 
-            {/* Join-or-create — only when the tenant both auto-joins sign-ups and allows creation */}
+            {/* Create-organization opt-in — only when the tenant both auto-joins sign-ups and
+                allows creation. The name field opens inside the same box once it is ticked. */}
             {offerOrganizationChoice && (
-              <fieldset className="m-0 min-w-0 border-0 p-0">
-                <legend className="oidc-sci-fi-label mb-2">{SIGNUP_ORGANIZATION_CHOICE_COPY.legend}</legend>
-                <div className="flex flex-col gap-2">
-                  {(
-                    [
-                      ["join", SIGNUP_ORGANIZATION_CHOICE_COPY.joinOption],
-                      ["create", SIGNUP_ORGANIZATION_CHOICE_COPY.createOption],
-                    ] as const
-                  ).map(([choice, label]) => (
+              <div
+                className="flex flex-col border"
+                style={{
+                  borderColor: wantsCreateOrganization ? "var(--accent)" : "var(--border)",
+                  background: wantsCreateOrganization ? "var(--accent-softer)" : "transparent",
+                  borderRadius: "var(--radius-lg)",
+                  transition: "border-color var(--dur-base) ease, background-color var(--dur-base) ease",
+                }}
+              >
+                <div className="flex items-start gap-3 px-4 py-3">
+                  <input
+                    id="signup-create-organization"
+                    type="checkbox"
+                    checked={wantsCreateOrganization}
+                    onChange={(e) => selectOrganizationChoice(e.target.checked ? "create" : "join")}
+                    disabled={isAuthenticating}
+                    aria-describedby="signup-create-organization-hint"
+                    style={{
+                      marginTop: "3px",
+                      accentColor: "var(--accent)",
+                      width: "14px",
+                      height: "14px",
+                      flexShrink: 0,
+                      cursor: "pointer",
+                    }}
+                  />
+                  <div className="flex flex-col gap-0.5">
                     <label
-                      key={choice}
-                      htmlFor={`signup-organization-choice-${choice}`}
-                      className="flex items-center gap-3 text-xs oidc-font-rajdhani"
-                      style={{ color: "var(--fg)", lineHeight: 1.5, cursor: "pointer" }}
+                      htmlFor="signup-create-organization"
+                      className="text-sm font-semibold oidc-font-rajdhani"
+                      style={{ color: "var(--fg)", lineHeight: 1.4, cursor: "pointer" }}
                     >
-                      <input
-                        id={`signup-organization-choice-${choice}`}
-                        type="radio"
-                        name="signup-organization-choice"
-                        value={choice}
-                        checked={organizationChoice === choice}
-                        onChange={() => selectOrganizationChoice(choice)}
-                        disabled={isAuthenticating}
-                        style={{
-                          accentColor: "var(--accent)",
-                          width: "14px",
-                          height: "14px",
-                          flexShrink: 0,
-                          cursor: "pointer",
-                        }}
-                      />
-                      {label}
+                      {SIGNUP_ORGANIZATION_CHOICE_COPY.createOption}
                     </label>
-                  ))}
+                    <span
+                      id="signup-create-organization-hint"
+                      className="text-xs oidc-font-rajdhani"
+                      style={{ color: "var(--muted)", lineHeight: 1.5 }}
+                    >
+                      {SIGNUP_ORGANIZATION_CHOICE_COPY.createHint}
+                    </span>
+                  </div>
                 </div>
-              </fieldset>
+                {wantsCreateOrganization && (
+                  <div className="flex flex-col gap-2 pb-4 pr-4" style={{ paddingLeft: "42px" }}>
+                    {organizationNameField}
+                    {organizationNameRequired ? (
+                      <p
+                        role="alert"
+                        className="flex items-start gap-2 text-xs oidc-font-rajdhani"
+                        style={{ color: "var(--fg)", lineHeight: 1.5 }}
+                      >
+                        <Info size={14} aria-hidden style={{ color: "var(--accent)", flexShrink: 0, marginTop: "2px" }} />
+                        {SIGNUP_ORGANIZATION_CHOICE_COPY.nameRequiredMessage}
+                      </p>
+                    ) : (
+                      <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)", lineHeight: 1.5 }}>
+                        {SIGNUP_ORGANIZATION_CHOICE_COPY.organizationNameHint}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
-            {/* Organization name — when the user is creating an organization at signup */}
-            {wantsCreateOrganization && (
-              <FormField
-                control={form.control}
-                name="organizationName"
-                render={({ field }) => (
-                  <FormItem>
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="signup-organization-name" className="oidc-sci-fi-label">
-                        {signupCopy.organizationNameLabel}
-                      </label>
-                      <FormControl>
-                        <input
-                          id="signup-organization-name"
-                          type="text"
-                          autoComplete="organization"
-                          placeholder="Acme Inc."
-                          className="oidc-sci-fi-input"
-                          aria-invalid={!!form.formState.errors.organizationName}
-                          disabled={isAuthenticating}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }} />
-                    </div>
-                  </FormItem>
-                )}
-              />
-            )}
+            {/* Organization name — creation from sign-up without auto-join: today's required field */}
+            {wantsCreateOrganization && !offerOrganizationChoice && organizationNameField}
 
             {/* CAPTCHA (shown when captcha is enabled and form is valid) */}
             {captchaEnabled && isValid && (
