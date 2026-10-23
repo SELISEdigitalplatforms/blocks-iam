@@ -1065,8 +1065,9 @@ namespace Iam.DomainService.Accounts
             await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Reset, key, user.ItemId, config.RecoverAccountUrlLifetimeInMinutes * 60);
 
             emailPurpose = string.IsNullOrWhiteSpace(emailPurpose) ? AccountMailPurposes.RecoverAccount : emailPurpose;
-            var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose);
 
+            // Stored before the mail goes out: a reset spends this row, so it must exist by the time the
+            // link can be clicked.
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
                 ItemId = Guid.NewGuid().ToString(),
@@ -1077,6 +1078,8 @@ namespace Iam.DomainService.Accounts
                 Value = recoverAccountUrl,
                 MailPurpose = emailPurpose
             });
+
+            var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose);
 
             _logger.LogInformation("Send Activation for {UserId} is {Send}", user.ItemId, result ? "sent" : "not sent");
             return true;
@@ -1134,6 +1137,14 @@ namespace Iam.DomainService.Accounts
             if (user == null)
             {
                 _logger.LogError("User not found for user id: {AccId}", userId);
+                return false;
+            }
+
+            // Spend the code before the password changes, in one conditional write: of two requests
+            // carrying the same code, only one gets past this line. A code that is lost here stays spent.
+            if (!await _repository.TryConsumeUserKeyMapAsync(resetPasswordRequest.Code, userId, DateTime.UtcNow))
+            {
+                _logger.LogWarning("Password reset refused for user {UserId}: the code is already used or expired", userId);
                 return false;
             }
 

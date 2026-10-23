@@ -38,6 +38,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         private readonly Mock<IValidator<RecoveryUserRequest>> _recoverValidator = new();
         private readonly List<SendMail> _sentMails = new();
         private readonly Dictionary<string, User> _users = new();
+        private readonly List<UserKeyMap> _keyMaps = new();
 
         public AccountCodesTests()
         {
@@ -58,7 +59,24 @@ namespace XUnitTest.IamTests.Accounts.Services
             _repo.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>()))
                 .ReturnsAsync((string email) => _users.Values.FirstOrDefault(u => u.Email == email)!);
             _repo.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
-            _repo.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
+            _repo.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()))
+                .ReturnsAsync((UserKeyMap row) => { lock (_keyMaps) { _keyMaps.Add(row); } return true; });
+            // Same contract as the Mongo conditional update: one caller turns an unused, live row into a used one.
+            _repo.Setup(r => r.TryConsumeUserKeyMapAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()))
+                .ReturnsAsync((string key, string userId, DateTime nowUtc) =>
+                {
+                    lock (_keyMaps)
+                    {
+                        var row = _keyMaps.Find(r => r.Key == key && r.UserId == userId && !r.Activated && r.ExpireDate.ToUniversalTime() > nowUtc);
+                        if (row == null)
+                        {
+                            return false;
+                        }
+
+                        row.Activated = true;
+                        return true;
+                    }
+                });
             _repo.Setup(r => r.GetActiveUserKeyMapAsync(It.IsAny<string>())).ReturnsAsync(new List<UserKeyMap>());
             _repo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>())).ReturnsAsync(false);
 
@@ -374,6 +392,72 @@ namespace XUnitTest.IamTests.Accounts.Services
 
             (await ActivateAsync(service, code)).IsSuccess.Should().BeTrue();
         }
+
+        // ---- single use, enforced by the store ----
+
+        [Fact]
+        public async Task SpentResetCode_StillResolvingInTheCache_IsRefused()
+        {
+            var service = CreateService();
+            var user = AddUser("u1", active: true, UserLifecycleStatus.Active);
+            var code = await IssueResetAsync(service, user);
+            var cacheBefore = new Dictionary<string, string>(_store);
+
+            (await ResetAsync(service, code)).IsSuccess.Should().BeTrue();
+            _users["u1"].Password = "set-by-first-reset";
+
+            // The cache retire did not happen (lost write, or a request that read the cache earlier).
+            foreach (var kv in cacheBefore)
+            {
+                _store[kv.Key] = kv.Value;
+            }
+
+            (await service.ProcessResetPasswordAsync(new ResetPasswordRequest { Code = code, Password = "An0ther!Passw0rd" })).Should().BeFalse();
+            _users["u1"].Password.Should().Be("set-by-first-reset");
+        }
+
+        [Fact]
+        public async Task ExpiredKeyMapRow_RefusesTheReset_EvenWhenTheCacheStillHasTheCode()
+        {
+            var service = CreateService();
+            var user = AddUser("u1", active: true, UserLifecycleStatus.Active);
+            var code = await IssueResetAsync(service, user);
+            _keyMaps.Single(r => r.Key == code).ExpireDate = DateTime.UtcNow.AddSeconds(-1);
+
+            ShouldNotReset(await ResetAsync(service, code));
+            _users["u1"].Password.Should().Be("hashed:old");
+        }
+
+        [Fact]
+        public async Task TwoResetsWithTheSameCodeAtOnce_OnlyOneChangesThePassword()
+        {
+            var service = CreateService();
+            var user = AddUser("u1", active: true, UserLifecycleStatus.Active);
+            var code = await IssueResetAsync(service, user);
+
+            // Hold both requests after their cache check, so both have seen a live code before either spends it.
+            var bothResolved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var arrived = 0;
+            _repo.Setup(r => r.GetUserByIdAsync("u1")).Returns(async () =>
+            {
+                if (Interlocked.Increment(ref arrived) == 2)
+                {
+                    bothResolved.SetResult();
+                }
+
+                await bothResolved.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                return _users["u1"];
+            });
+
+            var results = await Task.WhenAll(
+                Task.Run(() => service.ProcessResetPasswordAsync(new ResetPasswordRequest { Code = code, Password = "First!Passw0rd1" })),
+                Task.Run(() => service.ProcessResetPasswordAsync(new ResetPasswordRequest { Code = code, Password = "Second!Passw0rd2" })));
+
+            results.Count(r => r).Should().Be(1);
+            _repo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Once);
+        }
+
+        private static void ShouldNotReset(BaseAccountResponse result) => result.IsSuccess.Should().BeFalse();
 
         // ---- validate-activation ----
 

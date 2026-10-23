@@ -83,6 +83,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
             _repositoryMock.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
             _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration());
+            _repositoryMock.Setup(r => r.TryConsumeUserKeyMapAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(true);
 
             // By default, signup test path consults the captcha configuration collection.
             // Returning an empty (disabled) collection disables captcha checks.
@@ -997,6 +999,38 @@ namespace XUnitTest.IamTests.Accounts.Services
                 IdpConstants.AuthenticationQueue,
                 It.Is<LogoutAllEvent>(e => e.UserId == user.ItemId)),
                 Times.Once);
+        }
+
+        [Fact]
+        public async Task Reset_CodeAlreadySpentInTheStore_ReturnsFalse_AndChangesNothing()
+        {
+            var user = SetupValidReset();
+            _repositoryMock.Setup(r => r.TryConsumeUserKeyMapAsync("x", user.ItemId, It.IsAny<DateTime>())).ReturnsAsync(false);
+
+            var result = await CreateService(sessionTerminator: _sessionTerminatorMock.Object)
+                .ResetAccountPasswordAsync(new ResetPasswordRequest { Code = "x", Password = "NewP@ssw0rd" });
+
+            result.IsSuccess.Should().BeFalse();
+            _repositoryMock.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+            _sessionTerminatorMock.Verify(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _userActivityDispatcherMock.Verify(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Reset_SpendsTheCodeBeforeThePasswordIsWritten()
+        {
+            var user = SetupValidReset();
+            var order = new List<string>();
+            _repositoryMock.Setup(r => r.TryConsumeUserKeyMapAsync("x", user.ItemId, It.IsAny<DateTime>()))
+                .Callback(() => order.Add("consume"))
+                .ReturnsAsync(true);
+            _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>()))
+                .Callback(() => order.Add("update"))
+                .ReturnsAsync(true);
+
+            await CreateService().ResetAccountPasswordAsync(new ResetPasswordRequest { Code = "x", Password = "NewP@ssw0rd" });
+
+            order.Should().Equal("consume", "update");
         }
 
         private User SetupValidReset()

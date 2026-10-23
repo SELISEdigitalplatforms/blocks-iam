@@ -192,6 +192,25 @@ namespace Iam.DomainService.Services
             return result?.IsAcknowledged ?? false;
         }
 
+        public async Task<bool> TryConsumeUserKeyMapAsync(string key, string userId, DateTime nowUtc)
+        {
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(userId))
+            {
+                return false;
+            }
+
+            var collection = GetCollection<UserKeyMap>();
+            var filter = Builders<UserKeyMap>.Filter.Eq(u => u.Key, key)
+                & Builders<UserKeyMap>.Filter.Eq(u => u.UserId, userId)
+                & Builders<UserKeyMap>.Filter.Ne(u => u.Activated, true)
+                & Builders<UserKeyMap>.Filter.Gt(u => u.ExpireDate, nowUtc);
+            var update = Builders<UserKeyMap>.Update.Set(u => u.Activated, true);
+
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.UserKeyMap, filter, update, "IdentityAccessManagementRepository.TryConsumeUserKeyMapAsync");
+
+            return result is { IsAcknowledged: true, ModifiedCount: 1 };
+        }
+
         public async Task<List<UserKeyMap>> GetActiveUserKeyMapAsync(string userId)
         {
             var collection = GetCollection<UserKeyMap>();
