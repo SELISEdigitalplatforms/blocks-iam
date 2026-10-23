@@ -486,9 +486,8 @@ public class SignupLinkGenerationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task AuditModeAllowsWhatEnforceWouldRefuseAndLogsIt()
+    public async Task RefusalIsLogged()
     {
-        _delegation.Options.CurrentValue = new DelegatedAdministrationOptions { Mode = DelegatedAdministrationMode.Audit };
         InstallContext(orgId: "org-acme", roles: ["site-manager"], permissions: ["read:project"]);
         SetupRoleTreeForBob();
 
@@ -498,8 +497,8 @@ public class SignupLinkGenerationServiceTests : IDisposable
             r.Roles = ["tenant-admin"];
         }));
 
-        result.IsSuccess.Should().BeTrue();
-        _delegation.Logged("DelegatedAdministration would deny R9-SignupLink").Should().BeTrue();
+        result.StatusCode.Should().Be(403);
+        _delegation.Logged("DelegatedAdministration denied R9-SignupLink").Should().BeTrue();
     }
 
     [Fact]

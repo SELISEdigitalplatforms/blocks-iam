@@ -5,14 +5,13 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.SignupLinks;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Moq;
 
 namespace XUnitTest.TestSupport
 {
     /// <summary>
     /// A real <see cref="DelegatedAdministrationService"/> over an in-memory organization, for tests
-    /// of the rules and of every call site. Enforce by default, so a would-deny is visible as a refusal.
+    /// of the rules and of every call site. A would-deny is visible as a refusal.
     /// </summary>
     internal sealed class DelegationTestKit
     {
@@ -23,9 +22,8 @@ namespace XUnitTest.TestSupport
         private readonly Dictionary<string, List<Role>> _roles = new(StringComparer.Ordinal);
         private readonly Dictionary<string, List<Permission>> _permissions = new(StringComparer.Ordinal);
 
-        public DelegationTestKit(DelegatedAdministrationMode mode = DelegatedAdministrationMode.Enforce)
+        public DelegationTestKit()
         {
-            Options = new TestOptionsMonitor(new DelegatedAdministrationOptions { Mode = mode });
             Repository.Setup(r => r.GetUserAsync(It.IsAny<string>()))
                 .ReturnsAsync((string id) => _users.GetValueOrDefault(id));
             Repository.Setup(r => r.GetRolesAsync(It.IsAny<string>()))
@@ -54,14 +52,12 @@ namespace XUnitTest.TestSupport
 
         public Mock<ITenants> Tenants { get; } = new();
 
-        public TestOptionsMonitor Options { get; }
-
         public ListLogger Logger { get; } = new();
 
         public HashSet<string> PolicyRoles { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public DelegatedAdministrationService Service() =>
-            new(Repository.Object, Options, Tenants.Object, Iam.Object, Logger,
+            new(Repository.Object, Tenants.Object, Iam.Object, Logger,
                 new GrantAuthorizationService(LegacyResources.Object), Terminator.Object);
 
         public DelegationTestKit WithRole(string slug, string? parent = null, string organizationId = Org)
@@ -183,17 +179,6 @@ namespace XUnitTest.TestSupport
         }
 
         public bool Logged(string fragment) => Logger.Messages.Any(m => m.Contains(fragment, StringComparison.Ordinal));
-    }
-
-    internal sealed class TestOptionsMonitor : IOptionsMonitor<DelegatedAdministrationOptions>
-    {
-        public TestOptionsMonitor(DelegatedAdministrationOptions value) => CurrentValue = value;
-
-        public DelegatedAdministrationOptions CurrentValue { get; set; }
-
-        public DelegatedAdministrationOptions Get(string? name) => CurrentValue;
-
-        public IDisposable? OnChange(Action<DelegatedAdministrationOptions, string?> listener) => null;
     }
 
     internal sealed class ListLogger : ILogger<DelegatedAdministrationService>

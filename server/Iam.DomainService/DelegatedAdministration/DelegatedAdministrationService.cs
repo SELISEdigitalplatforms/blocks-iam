@@ -5,7 +5,6 @@ using Iam.DomainService.Services;
 using Iam.DomainService.SignupLinks;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Iam.DomainService.DelegatedAdministration
 {
@@ -13,7 +12,6 @@ namespace Iam.DomainService.DelegatedAdministration
     public sealed partial class DelegatedAdministrationService : IDelegatedAdministrationService
     {
         private readonly IDelegatedAdministrationRepository _repository;
-        private readonly IOptionsMonitor<DelegatedAdministrationOptions> _options;
         private readonly ITenants _tenants;
         private readonly IIdentityAccessManagementService _identityAccessManagementService;
         private readonly ILogger<DelegatedAdministrationService> _logger;
@@ -22,7 +20,6 @@ namespace Iam.DomainService.DelegatedAdministration
 
         public DelegatedAdministrationService(
             IDelegatedAdministrationRepository repository,
-            IOptionsMonitor<DelegatedAdministrationOptions> options,
             ITenants tenants,
             IIdentityAccessManagementService identityAccessManagementService,
             ILogger<DelegatedAdministrationService> logger,
@@ -32,15 +29,12 @@ namespace Iam.DomainService.DelegatedAdministration
             IUserSessionTerminator? userSessionTerminator = null)
         {
             _repository = repository;
-            _options = options;
             _tenants = tenants;
             _identityAccessManagementService = identityAccessManagementService;
             _logger = logger;
             _systemGrantAuthorization = systemGrantAuthorization;
             _userSessionTerminator = userSessionTerminator;
         }
-
-        public DelegatedAdministrationMode Mode => _options.CurrentValue?.Mode ?? DelegatedAdministrationMode.Audit;
 
         public DelegationCaller CurrentCaller()
         {
@@ -78,14 +72,8 @@ namespace Iam.DomainService.DelegatedAdministration
                 return true;
             }
 
-            if (Mode == DelegatedAdministrationMode.Enforce)
-            {
-                LogDenied(_logger, denial.Rule, scope.CallerId, scope.OrganizationId, denial.Target, denial.Reason);
-                return false;
-            }
-
-            LogWouldDeny(_logger, denial.Rule, scope.CallerId, scope.OrganizationId, denial.Target, denial.Reason);
-            return true;
+            LogDenied(_logger, denial.Rule, scope.CallerId, scope.OrganizationId, denial.Target, denial.Reason);
+            return false;
         }
 
         public bool AuthorizeSystemOnly(string target)
@@ -177,12 +165,6 @@ namespace Iam.DomainService.DelegatedAdministration
 
             foreach (var userId in userIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal))
             {
-                if (Mode != DelegatedAdministrationMode.Enforce)
-                {
-                    LogWouldEndSessions(_logger, userId, scope.CallerId, scope.OrganizationId, reason);
-                    continue;
-                }
-
                 await EndSessionsAsync(userId, reason).ConfigureAwait(false);
             }
         }
@@ -201,7 +183,6 @@ namespace Iam.DomainService.DelegatedAdministration
             return new DelegationScopeResponse
             {
                 IsSystemUser = scope.IsSystem,
-                Mode = Mode.ToString(),
                 HeldRoles = Sorted(scope.HeldRoles),
                 ManagedRoles = Sorted(scope.ManagedRoles),
                 AssignableRoles = Sorted(assignable.Hierarchy.Concat(assignable.Standalone).Select(r => r.Slug)),
@@ -294,10 +275,6 @@ namespace Iam.DomainService.DelegatedAdministration
         private static List<string> Sorted(IEnumerable<string> values) =>
             values.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal).ToList();
 
-        [LoggerMessage(EventId = 9101, Level = LogLevel.Warning,
-            Message = "DelegatedAdministration would deny {Rule} {CallerId} {OrgId} {Target} {Reason}")]
-        private static partial void LogWouldDeny(ILogger logger, string rule, string callerId, string orgId, string target, string reason);
-
         [LoggerMessage(EventId = 9102, Level = LogLevel.Warning,
             Message = "DelegatedAdministration denied {Rule} {CallerId} {OrgId} {Target} {Reason}")]
         private static partial void LogDenied(ILogger logger, string rule, string callerId, string orgId, string target, string reason);
@@ -309,10 +286,6 @@ namespace Iam.DomainService.DelegatedAdministration
         [LoggerMessage(EventId = 9104, Level = LogLevel.Warning,
             Message = "DelegatedAdministration could not read data-access policies for organization {OrgId}; the policy-power warning was skipped")]
         private static partial void LogPolicyReadFailed(ILogger logger, Exception exception, string orgId);
-
-        [LoggerMessage(EventId = 9105, Level = LogLevel.Warning,
-            Message = "DelegatedAdministration would end sessions {UserId} {CallerId} {OrgId} {Reason}")]
-        private static partial void LogWouldEndSessions(ILogger logger, string userId, string callerId, string orgId, string reason);
 
         [LoggerMessage(EventId = 9106, Level = LogLevel.Error,
             Message = "DelegatedAdministration: ending sessions inline failed for user {UserId}; queueing logout-all")]

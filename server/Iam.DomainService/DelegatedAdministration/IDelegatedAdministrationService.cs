@@ -4,14 +4,12 @@ namespace Iam.DomainService.DelegatedAdministration
 {
     /// <summary>
     /// Delegated administration -- "grant only what you hold" -- in one place: who the system user
-    /// is, the caller's <see cref="GrantScope"/>, what the mode does with a would-deny, the
+    /// is, the caller's <see cref="GrantScope"/>, what a refusal does, the
     /// hidden-power warning (R11) and ending sessions after a removal (R12). The rules themselves
     /// are <see cref="DelegatedAdministrationRules"/>.
     /// </summary>
     public interface IDelegatedAdministrationService
     {
-        DelegatedAdministrationMode Mode { get; }
-
         /// <summary>The current caller from <c>BlocksContext</c>; never null.</summary>
         DelegationCaller CurrentCaller();
 
@@ -22,12 +20,12 @@ namespace Iam.DomainService.DelegatedAdministration
         Task<GrantScope> GetScopeAsync(DelegationCaller caller);
 
         /// <summary>
-        /// Applies the mode to a check's result. Passes, and the system user, return true silently.
-        /// A denial is logged; in Audit it returns true, in Enforce false.
+        /// Applies a check's result. Passes, and the system user, return true silently.
+        /// A denial is logged and returns false.
         /// </summary>
         bool Authorize(GrantScope scope, DelegationDenial? denial);
 
-        /// <summary>R6 for the current caller, then the mode. Needs no reads: only who the caller is matters.</summary>
+        /// <summary>R6 for the current caller, then refuses a denial. Needs no reads: only who the caller is matters.</summary>
         bool AuthorizeSystemOnly(string target);
 
         /// <summary>Loads the current caller's scope, runs <paramref name="check"/>, and applies the mode.</summary>
@@ -59,7 +57,7 @@ namespace Iam.DomainService.DelegatedAdministration
 
         /// <summary>
         /// R12: a non-system caller removed at least one role or permission from these users, so
-        /// every session they hold ends (Enforce) or would end (Audit, logged). Never throws.
+        /// every session they hold ends. Never throws.
         /// </summary>
         Task EndSessionsAfterRemovalAsync(GrantScope scope, IEnumerable<string> userIds, string reason);
 

@@ -7,8 +7,7 @@ namespace Iam.DomainService.DelegatedAdministration
     /// </summary>
     /// <remarks>
     /// Every check returns null when it passes and a <see cref="DelegationDenial"/> when it would
-    /// refuse; whether a denial refuses the request or is only logged is the service's call
-    /// (<see cref="DelegatedAdministrationMode"/>). Every check passes for the system user, so a
+    /// refuse; the service logs it and refuses the request. Every check passes for the system user, so a
     /// single-organization tenant -- whose callers always resolve to <c>default</c> -- is never
     /// affected. Peers are allowed (same power passes), several roles are a union, and a slug the
     /// organization does not know is never a source of power.

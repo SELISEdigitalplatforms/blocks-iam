@@ -78,9 +78,6 @@ namespace XUnitTest.IamTests.Users
         private static void ShouldBeRefused(BaseResponse result) =>
             result.Errors.Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
 
-        private void Audit() =>
-            _kit.Options.CurrentValue = new DelegatedAdministrationOptions { Mode = DelegatedAdministrationMode.Audit };
-
         // ---------- users/create ----------
 
         [Fact]
@@ -229,21 +226,19 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
-        public async Task AuditAllowsARefusedAccessChangeAndLogsIt()
+        public async Task RefusedAccessChangeIsLogged()
         {
-            Audit();
             _kit.WithUser("member", ["viewer"]);
 
             var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest { UserId = "member", OrganizationId = Org, Roles = ["owner"] });
 
-            result.IsSuccess.Should().BeTrue();
-            _kit.Logged($"DelegatedAdministration would deny R4-AccessDelta caller {Org} owner").Should().BeTrue();
+            ShouldBeRefused(result);
+            _kit.Logged($"DelegatedAdministration denied R4-AccessDelta caller {Org} owner").Should().BeTrue();
         }
 
         [Fact]
         public async Task AccessChangeWarnsWhenAnAddedRoleCarriesPolicyPower()
         {
-            Audit();
             _kit.PolicyRoles.Add("owner");
             _kit.WithUser("member", ["viewer"]);
 

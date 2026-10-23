@@ -1284,9 +1284,9 @@ namespace XUnitTest.IamTests.Accounts.Services
                 _userActivityDispatcherMock.Object, new SignupOrganizationResolver(_resourceRepositoryMock.Object),
                 delegatedAdministration: delegation);
 
-        private XUnitTest.TestSupport.DelegationTestKit ResendKit(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationMode mode)
+        private XUnitTest.TestSupport.DelegationTestKit ResendKit()
         {
-            var kit = new XUnitTest.TestSupport.DelegationTestKit(mode).WithStandardTree();
+            var kit = new XUnitTest.TestSupport.DelegationTestKit().WithStandardTree();
             kit.WithUser("caller", ["manager"]);
             foreach (var user in new[] { kit.WithUser("boss", ["owner"]), kit.WithUser("junior", ["viewer"]), kit.FindUser("caller")! })
             {
@@ -1304,7 +1304,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         [Fact]
         public async Task ResendActivationToAUserAboveTheCallerIsRefused()
         {
-            var kit = ResendKit(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationMode.Enforce);
+            var kit = ResendKit();
 
             var refused = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "boss" });
             var allowed = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "junior" });
@@ -1317,7 +1317,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         [Fact]
         public async Task ResendActivationToYourselfIsNeverChecked()
         {
-            var kit = ResendKit(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationMode.Enforce);
+            var kit = ResendKit();
 
             var result = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "caller" });
 
@@ -1326,14 +1326,14 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
-        public async Task ResendActivationInAuditSendsAndLogs()
+        public async Task ResendActivationRefusalIsLogged()
         {
-            var kit = ResendKit(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationMode.Audit);
+            var kit = ResendKit();
 
             var result = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "boss" });
 
-            result.IsSuccess.Should().BeTrue();
-            kit.Logged("DelegatedAdministration would deny R3-ManageUser caller").Should().BeTrue();
+            result.Errors.Should().ContainKey(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationErrors.GrantNotAllowed);
+            kit.Logged("DelegatedAdministration denied R3-ManageUser caller").Should().BeTrue();
         }
 
         [Fact]

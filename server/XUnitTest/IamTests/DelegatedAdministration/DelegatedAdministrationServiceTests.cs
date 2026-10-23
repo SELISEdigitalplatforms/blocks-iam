@@ -10,7 +10,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
 {
     /// <summary>
     /// The service around the rules: who the system user is, power read from the database, what
-    /// Audit and Enforce do with a would-deny, the policy-power warning (R11), ending sessions after
+    /// a would-deny does, the policy-power warning (R11), ending sessions after
     /// a removal (R12), the assignable-roles picker and the delegation-scope read.
     /// </summary>
     public sealed class DelegatedAdministrationServiceTests : IDisposable
@@ -96,33 +96,16 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             scope.HeldPermissions.Should().NotContain("billing");
         }
 
-        // ---------- Audit vs Enforce ----------
+        // ---------- Refusal ----------
 
         [Fact]
-        public async Task EnforceRefusesAndLogsTheReason()
+        public async Task RefusesAndLogsTheReason()
         {
             var service = _kit.Service();
             var scope = await service.GetScopeAsync();
 
             service.Authorize(scope, DelegatedAdministrationRules.CheckAssignRole(scope, "owner")).Should().BeFalse();
             _kit.Logged($"DelegatedAdministration denied R1-AssignRole caller {Org} owner role_carries_permission_not_held").Should().BeTrue();
-        }
-
-        [Fact]
-        public async Task AuditAllowsAndLogsAStructuredWouldDeny()
-        {
-            _kit.Options.CurrentValue = new DelegatedAdministrationOptions { Mode = DelegatedAdministrationMode.Audit };
-            var service = _kit.Service();
-            var scope = await service.GetScopeAsync();
-
-            service.Authorize(scope, DelegatedAdministrationRules.CheckAssignRole(scope, "owner")).Should().BeTrue();
-            _kit.Logged($"DelegatedAdministration would deny R1-AssignRole caller {Org} owner role_carries_permission_not_held").Should().BeTrue();
-        }
-
-        [Fact]
-        public void ModeDefaultsToAudit()
-        {
-            new DelegatedAdministrationOptions().Mode.Should().Be(DelegatedAdministrationMode.Audit);
         }
 
         [Fact]
@@ -165,7 +148,6 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         [Fact]
         public async Task GrantingAPolicyRoleTheCallerDoesNotHoldOrManageWarns()
         {
-            _kit.Options.CurrentValue = new DelegatedAdministrationOptions { Mode = DelegatedAdministrationMode.Audit };
             _kit.PolicyRoles.Add("auditor");
             _kit.PolicyRoles.Add("viewer");
             var service = _kit.Service();
@@ -191,7 +173,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         // ---------- R12 ----------
 
         [Fact]
-        public async Task EnforceEndsEverySessionOfUsersWhoLostAccess()
+        public async Task EndsEverySessionOfUsersWhoLostAccess()
         {
             var service = _kit.Service();
             var scope = await service.GetScopeAsync();
@@ -200,19 +182,6 @@ namespace XUnitTest.IamTests.DelegatedAdministration
 
             _kit.Terminator.Verify(t => t.EndAllSessionsAsync("u1", "access_replaced"), Times.Once);
             _kit.Terminator.Verify(t => t.EndAllSessionsAsync("u2", "access_replaced"), Times.Once);
-        }
-
-        [Fact]
-        public async Task AuditOnlyLogsTheSessionsItWouldEnd()
-        {
-            _kit.Options.CurrentValue = new DelegatedAdministrationOptions { Mode = DelegatedAdministrationMode.Audit };
-            var service = _kit.Service();
-            var scope = await service.GetScopeAsync();
-
-            await service.EndSessionsAfterRemovalAsync(scope, ["u1"], "access_replaced");
-
-            _kit.Terminator.Verify(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-            _kit.Logged("DelegatedAdministration would end sessions u1").Should().BeTrue();
         }
 
         [Fact]
@@ -259,7 +228,6 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             var result = await _kit.Service().GetDelegationScopeAsync();
 
             result.IsSystemUser.Should().BeFalse();
-            result.Mode.Should().Be("Enforce");
             result.HeldRoles.Should().Equal("manager");
             result.ManagedRoles.Should().Equal("viewer");
             result.AssignableRoles.Should().Equal("auditor", "viewer");

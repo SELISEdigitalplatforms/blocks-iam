@@ -78,9 +78,6 @@ namespace XUnitTest.IamTests.Resources
         private static void ShouldBeRefused(BaseResponse result) =>
             result.Errors.Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
 
-        private void Audit() =>
-            _kit.Options.CurrentValue = new DelegatedAdministrationOptions { Mode = DelegatedAdministrationMode.Audit };
-
         // ---------- R6 permissions ----------
 
         [Fact]
@@ -91,17 +88,6 @@ namespace XUnitTest.IamTests.Resources
             ShouldBeRefused(await service.CreatePermissionAsync(new CreatePermissionRequest { Name = "x", Resource = "x" }));
             ShouldBeRefused(await service.UpdatePermissionAsync("p1", new UpdatePermissionRequest { Name = "x" }));
             ShouldBeRefused(await service.ArchivePermissionAsync("p1"));
-        }
-
-        [Fact]
-        public async Task AuditKeepsTheExistingDefaultOrganizationRefusalForPermissions()
-        {
-            Audit();
-
-            var result = await Create().CreatePermissionAsync(new CreatePermissionRequest { Name = "x", Resource = "x" });
-
-            result.Errors.Should().ContainKey("forbidden");
-            _kit.Logged($"DelegatedAdministration would deny R6-SystemOnly caller {Org} permissions/create").Should().BeTrue();
         }
 
         // ---------- R5 roles/create ----------
