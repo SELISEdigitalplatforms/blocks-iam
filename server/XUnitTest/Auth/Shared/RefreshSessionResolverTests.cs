@@ -160,7 +160,7 @@ namespace XUnitTest.Auth.Shared
 
             result.Should().BeNull();
             _repo.Verify(r => r.GetByTokenIdAsync("rt-1"), Times.Once);
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
         }
 
@@ -171,7 +171,7 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.GetByTokenIdAsync("A")).ReturnsAsync((RefreshTokenModel)null!);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         // ==================== SPEC1 H2, H3, H5 — grace-window replay ====================
@@ -190,7 +190,7 @@ namespace XUnitTest.Auth.Shared
             result.Should().NotBeNull();
             result!.RefreshToken.Should().Be("B");
             // A retry is an already-counted use: nothing is revoked and no new token is minted.
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _repo.Verify(r => r.CreateAsync(It.IsAny<RefreshTokenModel>()), Times.Never);
         }
 
@@ -264,7 +264,7 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.GetByTokenIdAsync("B")).ReturnsAsync((RefreshTokenModel)null!);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
@@ -276,7 +276,7 @@ namespace XUnitTest.Auth.Shared
                 Token("B", isRevoked: true, revokeReason: "logout", revokedAt: DateTime.UtcNow.AddSeconds(-30)));
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
@@ -288,7 +288,7 @@ namespace XUnitTest.Auth.Shared
                 Token("B", absoluteExpiry: DateTime.UtcNow.AddMinutes(-1)));
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         // ==================== SPEC1 C1 / SPEC2 C4 — replay past the grace window ====================
@@ -299,11 +299,11 @@ namespace XUnitTest.Auth.Shared
             CacheMiss();
             Persisted(Token("A", isRevoked: true, revokeReason: Rotation,
                 revokedAt: DateTime.UtcNow.AddMinutes(-6), supersededBy: "B"));
-            _repo.Setup(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(3);
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(3);
             _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected"), Times.Once);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected"), Times.Once);
             _cache.Verify(c => c.RemoveKeyAsync("A"), Times.Once);
         }
 
@@ -313,11 +313,11 @@ namespace XUnitTest.Auth.Shared
             CacheMiss();
             Persisted(Token("A", isRevoked: true, revokeReason: Rotation,
                 revokedAt: DateTime.UtcNow.AddMinutes(-6), supersededBy: "B", lineage: null));
-            _repo.Setup(r => r.RevokeAllByRefreshTokenSessionIdAsync("A", "token_reuse_detected")).ReturnsAsync(1);
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("A", "token_reuse_detected")).ReturnsAsync(1);
             _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync("A", "token_reuse_detected"), Times.Once);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("A", "token_reuse_detected"), Times.Once);
         }
 
         // ==================== SPEC1 C2 — no successor pointer ====================
@@ -328,11 +328,11 @@ namespace XUnitTest.Auth.Shared
             CacheMiss();
             Persisted(Token("A", isRevoked: true, revokeReason: Rotation,
                 revokedAt: DateTime.UtcNow.AddMinutes(-1), supersededBy: null));
-            _repo.Setup(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(1);
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(1);
             _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected"), Times.Once);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected"), Times.Once);
         }
 
         // ==================== SPEC1 C4 — other revocation reasons never escalate ====================
@@ -347,7 +347,7 @@ namespace XUnitTest.Auth.Shared
             Persisted(Token("A", isRevoked: true, revokeReason: reason, revokedAt: DateTime.UtcNow.AddMinutes(-1)));
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _repo.Verify(r => r.GetByTokenIdAsync("B"), Times.Never);
         }
 
@@ -362,11 +362,11 @@ namespace XUnitTest.Auth.Shared
             Persisted(
                 Token("A", isRevoked: true, revokeReason: Rotation, revokedAt: DateTime.UtcNow.AddSeconds(-1), supersededBy: "B"),
                 Token("B"));
-            _repo.Setup(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(2);
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(2);
             _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config(graceMinutes: graceMinutes))).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected"), Times.Once);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected"), Times.Once);
         }
 
         [Fact]
@@ -374,11 +374,11 @@ namespace XUnitTest.Auth.Shared
         {
             CacheMiss();
             Persisted(Token("A", isRevoked: true, revokeReason: Rotation, revokedAt: null, supersededBy: "B"));
-            _repo.Setup(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(1);
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(1);
             _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected"), Times.Once);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected"), Times.Once);
         }
 
         // ==================== SPEC1 C6 — concurrent replay ====================
@@ -410,7 +410,7 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.GetByTokenIdAsync("A")).ThrowsAsync(new TimeoutException("mongo down"));
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _repo.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _cache.Verify(c => c.RemoveKeyAsync(It.IsAny<string>()), Times.Never);
         }
@@ -423,7 +423,7 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.GetByTokenIdAsync("B")).ThrowsAsync(new TimeoutException("mongo down"));
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

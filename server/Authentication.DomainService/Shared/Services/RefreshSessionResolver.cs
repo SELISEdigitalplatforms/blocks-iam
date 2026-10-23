@@ -242,11 +242,12 @@ namespace Authentication.DomainService.Shared.Services
         /// <summary>
         /// Replay outside the grace window is the only genuine theft signal available here. The whole
         /// lineage goes, not just the presented token — an attacker holding an old value would otherwise
-        /// keep the newest one alive.
+        /// keep the newest one alive. Every lineage key leaves the cache too, because a cache hit is not
+        /// checked against the store.
         /// </summary>
         private async Task HandleReuseAsync(RefreshTokenModel persisted, string presentedTokenId, string fingerprint, string lineageId)
         {
-            var revokedCount = await _refreshTokenRepository.RevokeAllByRefreshTokenSessionIdAsync(lineageId, ReuseDetectedReason);
+            var revokedCount = await _refreshTokenRepository.RevokeLineageAndEvictAsync(lineageId, ReuseDetectedReason);
             await _cacheClient.RemoveKeyAsync(presentedTokenId);
 
             _logger.LogWarning(

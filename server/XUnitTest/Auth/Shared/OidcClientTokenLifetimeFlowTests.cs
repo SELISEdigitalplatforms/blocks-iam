@@ -339,6 +339,7 @@ namespace XUnitTest.Auth.Shared
             _refreshRepo.Setup(r => r.CreateAsync(It.IsAny<RefreshTokenModel>()))
                 .Callback<RefreshTokenModel>(m => _persisted = m)
                 .ReturnsAsync("ok");
+            _refreshRepo.Setup(r => r.TryClaimForRotationAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
             _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()))
                 .Callback<string, string, long>((_, _, ttl) => _cacheTtl = ttl)
                 .ReturnsAsync(true);
