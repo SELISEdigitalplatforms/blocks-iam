@@ -272,6 +272,13 @@ namespace XUnitTest.IamTests.Users
             (await Sut().GetProjectIdFromProjectPeopleAsync("u1")).Should().Be("tenant-9");
         }
 
+        [Fact]
+        public async Task GetProjectIdFromProjectPeopleAsync_NoRow_ReturnsEmpty()
+        {
+            Register(Array.Empty<ProjectPeople>());
+            (await Sut().GetProjectIdFromProjectPeopleAsync("u1")).Should().BeEmpty();
+        }
+
         // ---------------------------------------------------------------------
         // User list filtering (issue #403)
         //
