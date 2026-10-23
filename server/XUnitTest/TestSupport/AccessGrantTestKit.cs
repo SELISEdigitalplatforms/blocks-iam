@@ -21,11 +21,14 @@ namespace XUnitTest.TestSupport
         private readonly Dictionary<string, User> _users = new(StringComparer.Ordinal);
         private readonly Dictionary<string, List<Role>> _roles = new(StringComparer.Ordinal);
         private readonly Dictionary<string, List<Permission>> _permissions = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, ClientCredential> _clients = new(StringComparer.Ordinal);
 
         public AccessGrantTestKit()
         {
             Repository.Setup(r => r.GetUserAsync(It.IsAny<string>()))
                 .ReturnsAsync((string id) => _users.GetValueOrDefault(id));
+            Repository.Setup(r => r.GetClientCredentialAsync(It.IsAny<string>()))
+                .ReturnsAsync((string id) => _clients.GetValueOrDefault(id));
             Repository.Setup(r => r.GetRolesAsync(It.IsAny<string>()))
                 .ReturnsAsync((string org) => _roles.GetValueOrDefault(org)?.ToList() ?? []);
             Repository.Setup(r => r.GetPermissionsAsync(It.IsAny<string>()))
@@ -119,6 +122,26 @@ namespace XUnitTest.TestSupport
 
         public User? FindUser(string id) => _users.GetValueOrDefault(id);
 
+        public ClientCredential WithClient(
+            string id,
+            IEnumerable<string>? roles = null,
+            IEnumerable<string>? permissions = null,
+            string organizationId = Org,
+            bool isActive = true)
+        {
+            var client = new ClientCredential
+            {
+                ItemId = id,
+                Name = id,
+                OrganizationId = organizationId,
+                Roles = (roles ?? []).ToList(),
+                Permissions = (permissions ?? []).ToList(),
+                IsActive = isActive
+            };
+            _clients[id] = client;
+            return client;
+        }
+
         public IList<Role> RolesOf(string organizationId = Org)
         {
             if (!_roles.TryGetValue(organizationId, out var roles))
@@ -170,6 +193,17 @@ namespace XUnitTest.TestSupport
                 permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
                 userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
                 originalTenantId: Tenant, impersonationSessionId: string.Empty, applicationDomain: "test"));
+        }
+
+        /// <summary>Installs a client-credentials caller (a client id, no user) as the current BlocksContext.</summary>
+        public static void SignInClient(string clientId, string? organizationId = Org, bool authenticated = true)
+        {
+            BlocksContext.IsTestMode = true;
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: Tenant, roles: null, userId: null, isAuthenticated: authenticated,
+                requestUri: "https://test", organizationId: organizationId, expireOn: DateTime.UtcNow.AddHours(1),
+                email: null, permissions: null, userName: null, phoneNumber: null, displayName: null,
+                oauthToken: null, originalTenantId: Tenant, applicationDomain: "test", clientId: clientId));
         }
 
         public static void SignOut()

@@ -381,7 +381,8 @@ namespace Iam.DomainService.AccessGrant
                 ? Clean(inScope)
                 : [];
 
-        private static IEnumerable<string> Clean(IEnumerable<string>? values) =>
+        /// <summary>The values without blanks and case-insensitive duplicates.</summary>
+        public static IEnumerable<string> Clean(IEnumerable<string>? values) =>
             (values ?? []).Where(v => !string.IsNullOrWhiteSpace(v)).Distinct(StringComparer.OrdinalIgnoreCase);
     }
 }

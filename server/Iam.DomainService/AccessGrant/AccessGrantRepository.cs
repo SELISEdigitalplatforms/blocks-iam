@@ -12,6 +12,9 @@ namespace Iam.DomainService.AccessGrant
     {
         Task<User?> GetUserAsync(string userId);
 
+        /// <summary>The client credential behind a client caller, without its secret; null when missing.</summary>
+        Task<ClientCredential?> GetClientCredentialAsync(string clientId);
+
         /// <summary>Non-archived roles of one organization.</summary>
         Task<List<Role>> GetRolesAsync(string organizationId);
 
@@ -56,6 +59,26 @@ namespace Iam.DomainService.AccessGrant
 
         public async Task<User?> GetUserAsync(string userId) =>
             string.IsNullOrWhiteSpace(userId) ? null : await _userRepository.GetUserByIdAsync(userId).ConfigureAwait(false);
+
+        public async Task<ClientCredential?> GetClientCredentialAsync(string clientId)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return null;
+            }
+
+            // Read directly, as the token issuer reads it (no user context, so no row rules): this is
+            // the caller's own power from its signed client_id, never returned to it. A row rule
+            // hiding the record from the client must not decide what the client may grant.
+            var collection = _identityAccessManagementRepository.GetCollection<ClientCredential>();
+            var filter = Builders<ClientCredential>.Filter.Eq(x => x.ItemId, clientId);
+            var withoutSecret = Builders<ClientCredential>.Projection.Exclude(x => x.ClientSecret);
+            return await collection
+                .Find(filter)
+                .Project<ClientCredential>(withoutSecret)
+                .FirstOrDefaultAsync()
+                .ConfigureAwait(false);
+        }
 
         public async Task<List<Role>> GetRolesAsync(string organizationId) =>
             await _resourceRepository.GetRolesByOrgAsync(organizationId).ConfigureAwait(false) ?? [];
