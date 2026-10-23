@@ -54,6 +54,8 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.CreateAsync(It.IsAny<RefreshTokenModel>()))
                 .Callback<RefreshTokenModel>(m => _created.Add(m))
                 .ReturnsAsync("ok");
+            _repo.Setup(r => r.TryClaimForRotationAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
         }
 
         private UnifiedTokenSessionService Sut() =>
@@ -182,7 +184,7 @@ namespace XUnitTest.Auth.Shared
 
             result.RefreshToken.Should().BeEmpty();
             _repo.Verify(r => r.CreateAsync(It.IsAny<RefreshTokenModel>()), Times.Never);
-            _repo.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.TryClaimForRotationAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         // ==================== SPEC1 H1 — the successor pointer is written on rotation ====================
@@ -192,7 +194,7 @@ namespace XUnitTest.Auth.Shared
         {
             var result = await Issue("old-token", Predecessor("old-token", "lineage-1", DateTime.UtcNow.AddDays(6)));
 
-            _repo.Verify(r => r.RevokeByTokenIdAsync("old-token", "superseded_by_rotation", result.RefreshToken), Times.Once);
+            _repo.Verify(r => r.TryClaimForRotationAsync("old-token", result.RefreshToken, "superseded_by_rotation"), Times.Once);
         }
 
         // ==================== SPEC2 H3 / C5 — Redis TTL never outlives the cap ====================
@@ -530,7 +532,7 @@ namespace XUnitTest.Auth.Shared
             var act = () => Rotate(LongOldToken, oldCache, requestedClientId: null);
 
             await act.Should().ThrowAsync<TimeoutException>();
-            _repo.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.ReleaseRotationClaimAsync(LongOldToken, It.IsAny<string>()), Times.Once);
             _cache.Verify(c => c.RemoveKeyAsync(LongOldToken), Times.Never);
         }
 

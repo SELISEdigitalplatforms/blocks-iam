@@ -179,6 +179,51 @@ namespace Authentication.DomainService.Oidc.Repositories
             return result?.ModifiedCount > 0;
         }
 
+        public async Task<bool> TryClaimForRotationAsync(string tokenId, string successorTokenId, string reason)
+        {
+            if (string.IsNullOrWhiteSpace(tokenId) || string.IsNullOrWhiteSpace(successorTokenId))
+            {
+                return false;
+            }
+
+            var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+            var b = Builders<RefreshTokenModel>.Filter;
+            var filter = b.And(
+                b.Eq(t => t.TokenId, tokenId),
+                b.Eq(t => t.IsRevoked, false));
+            var update = Builders<RefreshTokenModel>.Update
+                .Set(t => t.IsRevoked, true)
+                .Set(t => t.RevokeReason, reason)
+                .Set(t => t.RevokedAt, DateTime.UtcNow)
+                .Set(t => t.SupersededByTokenId, successorTokenId);
+
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.RefreshTokenModel, filter, update, "RefreshTokenRepository.TryClaimForRotationAsync");
+            return result?.ModifiedCount == 1;
+        }
+
+        public async Task<bool> ReleaseRotationClaimAsync(string tokenId, string successorTokenId)
+        {
+            if (string.IsNullOrWhiteSpace(tokenId) || string.IsNullOrWhiteSpace(successorTokenId))
+            {
+                return false;
+            }
+
+            var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+            var b = Builders<RefreshTokenModel>.Filter;
+            var filter = b.And(
+                b.Eq(t => t.TokenId, tokenId),
+                b.Eq(t => t.IsRevoked, true),
+                b.Eq(t => t.SupersededByTokenId, successorTokenId));
+            var update = Builders<RefreshTokenModel>.Update
+                .Set(t => t.IsRevoked, false)
+                .Set(t => t.RevokeReason, null)
+                .Set(t => t.RevokedAt, null)
+                .Set(t => t.SupersededByTokenId, null);
+
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.RefreshTokenModel, filter, update, "RefreshTokenRepository.ReleaseRotationClaimAsync");
+            return result?.ModifiedCount == 1;
+        }
+
         public async Task<int> RevokeAllByRefreshTokenSessionIdAsync(string refreshTokenSessionId, string reason)
         {
             if (string.IsNullOrWhiteSpace(refreshTokenSessionId))

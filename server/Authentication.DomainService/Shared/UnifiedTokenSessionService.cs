@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Services;
@@ -31,6 +32,10 @@ namespace Authentication.DomainService.Shared
         internal const string SupersededByRotationReason = "superseded_by_rotation";
         internal const string SupersededByLoginReason = "superseded_by_login";
 
+        /// <summary>A lost claim can arrive before the winner has stored its successor: up to ~200 ms of short waits.</summary>
+        private const int LostClaimSuccessorChecks = 5;
+        private static readonly TimeSpan LostClaimSuccessorDelay = TimeSpan.FromMilliseconds(50);
+
         private static readonly Action<ILogger, string, string, string, string, Exception?> LogClientMismatch =
             LoggerMessage.Define<string, string, string, string>(
                 LogLevel.Warning,
@@ -46,6 +51,7 @@ namespace Authentication.DomainService.Shared
         private readonly IUserRepository _userRepository;
         private readonly ILogger<UnifiedTokenSessionService> _logger;
         private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
+        private readonly IRefreshSessionResolver? _refreshSessionResolver;
 
         public UnifiedTokenSessionService(
             ICacheClient cacheClient,
@@ -56,9 +62,11 @@ namespace Authentication.DomainService.Shared
             IHttpContextAccessor httpContextAccessor,
             IUserRepository userRepository,
             ILogger<UnifiedTokenSessionService> logger,
-            IOidcClientTokenLifetimeService? clientTokenLifetimes = null)
+            IOidcClientTokenLifetimeService? clientTokenLifetimes = null,
+            IRefreshSessionResolver? refreshSessionResolver = null)
         {
             _clientTokenLifetimes = clientTokenLifetimes;
+            _refreshSessionResolver = refreshSessionResolver;
             _cacheClient = cacheClient;
             _authenticationDomainService = authenticationDomainService;
             _refreshTokenRepository = refreshTokenRepository;
@@ -176,15 +184,6 @@ namespace Authentication.DomainService.Shared
                 Audience = tokenRequest.Audience
             };
 
-            // Persist to Redis cache. The TTL never reaches past the lineage's cap, so no cached entry
-            // can outlive the session it belongs to.
-            var cacheTtlSeconds = RefreshTokenLifetimeResolver.ResolveCacheTtlSeconds(
-                refreshTokenLifetime,
-                absoluteRefreshTokenExpireOn,
-                now);
-            await _cacheClient.AddStringValueAsync(refreshTokenCache.RefreshToken!, JsonSerializer.Serialize(refreshTokenCache), cacheTtlSeconds);
-
-            // Persist to MongoDB. Validation in CreateAsync rejects empty TokenId/UserId/TenantId/ClientId/SessionId.
             var refreshTokenModel = new Blocks.Genesis.Entities.Iam.RefreshTokenModel
             {
                 TokenId = refreshTokenCache.RefreshToken!,
@@ -211,7 +210,23 @@ namespace Authentication.DomainService.Shared
                 Amr = tokenRequest.Amr?.ToList() ?? [],
                 Audience = tokenRequest.Audience
             };
-            await _refreshTokenRepository.CreateAsync(refreshTokenModel);
+
+            // One atomic claim decides which concurrent rotation may mint, so the lineage cannot fork.
+            if (isRotation && !await _refreshTokenRepository.TryClaimForRotationAsync(oldRefreshToken!, refreshTokenId, SupersededByRotationReason))
+            {
+                return await ResolveLostRotationClaimAsync(oldRefreshToken!, tokenRequest, authenticationConfiguration);
+            }
+
+            // Persist to MongoDB. Validation in CreateAsync rejects empty TokenId/UserId/TenantId/ClientId/SessionId.
+            await PersistSuccessorAsync(refreshTokenModel, isRotation ? oldRefreshToken : null);
+
+            // Persist to Redis cache. The TTL never reaches past the lineage's cap, so no cached entry
+            // can outlive the session it belongs to.
+            var cacheTtlSeconds = RefreshTokenLifetimeResolver.ResolveCacheTtlSeconds(
+                refreshTokenLifetime,
+                absoluteRefreshTokenExpireOn,
+                now);
+            await _cacheClient.AddStringValueAsync(refreshTokenCache.RefreshToken!, JsonSerializer.Serialize(refreshTokenCache), cacheTtlSeconds);
 
             // First-issue user-login counters update (replaces the old RefreshTokenWorkerService async path).
             // Rotation — including impersonate start/stop and switch-organization — never runs this.
@@ -236,10 +251,6 @@ namespace Authentication.DomainService.Shared
             if (isRotation)
             {
                 await _cacheClient.RemoveKeyAsync(oldRefreshToken!);
-                await _refreshTokenRepository.RevokeByTokenIdAsync(
-                    oldRefreshToken!,
-                    SupersededByRotationReason,
-                    refreshTokenId);
                 if (oldRefreshTokenCache != null)
                 {
                     await SendSupersededTokenActivityEventAsync(oldRefreshTokenCache, tokenRequest, impersoanted);
@@ -247,6 +258,87 @@ namespace Authentication.DomainService.Shared
             }
 
             return (refreshTokenId, refreshTokenExpireOn, absoluteRefreshTokenExpireOn, refreshTokenSessionId);
+        }
+
+        /// <summary>A failed store releases the claim, so the presented token keeps working.</summary>
+        private async Task PersistSuccessorAsync(Blocks.Genesis.Entities.Iam.RefreshTokenModel successor, string? claimedPredecessor)
+        {
+            try
+            {
+                await _refreshTokenRepository.CreateAsync(successor);
+            }
+            catch (Exception) when (!string.IsNullOrWhiteSpace(claimedPredecessor))
+            {
+                await _refreshTokenRepository.ReleaseRotationClaimAsync(claimedPredecessor!, successor.TokenId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Another rotation won: mint nothing and resolve the token again like a grace-window replay (outside
+        /// grace that is reuse). Only a plain refresh takes the successor; other grants change context, so they fail.
+        /// </summary>
+        private async Task<(string RefreshToken, DateTime SlidingExpiry, DateTime AbsoluteExpiry, string RefreshTokenSessionId)> ResolveLostRotationClaimAsync(
+            string presentedToken,
+            TokenRequest tokenRequest,
+            IdentityConfiguration configuration)
+        {
+            // Revoked now, so its cache entry must not answer for it again.
+            await _cacheClient.RemoveKeyAsync(presentedToken);
+
+            var successor = await ResolveAfterLostClaimAsync(presentedToken, configuration);
+            var handBack = successor != null
+                           && !string.IsNullOrWhiteSpace(successor.RefreshToken)
+                           && !string.Equals(successor.RefreshToken, presentedToken, StringComparison.Ordinal)
+                           && string.Equals(tokenRequest.GrantType, GrantTypes.RefreshToken, StringComparison.Ordinal);
+
+            _logger.LogInformation(
+                "Refresh token rotation lost the claim on its predecessor. reason=rotation_claim_lost tokenFingerprint={TokenFingerprint} grantType={GrantType} successorReturned={SuccessorReturned}",
+                Fingerprint(presentedToken),
+                tokenRequest.GrantType,
+                handBack);
+
+            if (!handBack)
+            {
+                return (string.Empty, default, default, string.Empty);
+            }
+
+            return (successor!.RefreshToken!, successor.ExpiresUtc, successor.AbsoluteExpiresUtc, successor.RefreshTokenSessionId ?? string.Empty);
+        }
+
+        private async Task<RefreshTokenCache?> ResolveAfterLostClaimAsync(string presentedToken, IdentityConfiguration configuration)
+        {
+            if (_refreshSessionResolver == null)
+            {
+                return null;
+            }
+
+            await WaitForWinningSuccessorAsync(presentedToken);
+            return await _refreshSessionResolver.TryResolveRefreshSessionAsync(presentedToken, configuration);
+        }
+
+        /// <summary>Waits for the winner's successor so the grace chain reaches it and reuse handling revokes it too.</summary>
+        private async Task WaitForWinningSuccessorAsync(string presentedToken)
+        {
+            var predecessor = await _refreshTokenRepository.GetByTokenIdAsync(presentedToken);
+            var successorId = predecessor?.SupersededByTokenId;
+            if (string.IsNullOrWhiteSpace(successorId))
+            {
+                return;
+            }
+
+            for (var attempt = 0; attempt < LostClaimSuccessorChecks; attempt++)
+            {
+                if (attempt > 0)
+                {
+                    await Task.Delay(LostClaimSuccessorDelay);
+                }
+
+                if (await _refreshTokenRepository.GetByTokenIdAsync(successorId!) != null)
+                {
+                    return;
+                }
+            }
         }
 
         /// <summary>
