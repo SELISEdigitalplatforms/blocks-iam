@@ -680,5 +680,90 @@ namespace XUnitTest.Auth.Oidc
             _authRepo.Verify(r => r.UpdateImpersonationSessionAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>()), Times.Never);
         }
 
+            // ---------- the token is redeemable only by the client it was issued to ----------
+
+        private void SetupLineage(string lineageClientId)
+        {
+            SetupValidRefreshToken(
+                new RefreshTokenCache { UserId = "u1", ClientId = lineageClientId, TenantId = "tenant-1", OrganizationId = "default", RefreshToken = "rt-1", RefreshTokenSessionId = "lineage-1" },
+                new User { ItemId = "u1" });
+        }
+
+        [Fact]
+        public async Task Rotate_RequestClientMatchesLineageClient_Rotates()
+        {
+            SetupClient("c1");
+            SetupLineage("c1");
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("c1")));
+
+            result.Should().BeOfType<OkObjectResult>();
+            minted.Should().ContainSingle().Which.ClientId.Should().Be("c1");
+        }
+
+        [Fact]
+        public async Task Rotate_RequestClientDiffersFromLineageClient_ReturnsInvalidGrant_AndMintsNothing()
+        {
+            SetupClient("c2");
+            SetupClient("c1");
+            SetupLineage("c1");
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("c2")));
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            bad.Value.Should().BeEquivalentTo(new { error = "invalid_grant", error_description = "Refresh token was not issued to this client" });
+            minted.Should().BeEmpty();
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Rotate_ClientIdComparison_IsCaseSensitive()
+        {
+            SetupClient("C1");
+            SetupClient("c1");
+            SetupLineage("c1");
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("C1")));
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+            minted.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task Rotate_PublicClientWithoutSecret_MatchingLineage_Rotates()
+        {
+            SetupValidRefreshToken(
+                new RefreshTokenCache { UserId = "u1", ClientId = "spa", TenantId = "tenant-1", OrganizationId = "default", RefreshToken = "rt-1" },
+                new User { ItemId = "u1" });
+            // A public client has no secret to send; it only has to be the token's client.
+            _authRepo.Setup(r => r.GetOidcClientRegistrationAsync("spa"))
+                .ReturnsAsync(new OidcClientRegistration { ClientId = "spa", ClientType = "public", TokenEndpointAuthMethod = "none", UseTokensCookie = false });
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("spa")));
+
+            result.Should().BeOfType<OkObjectResult>();
+            minted.Should().ContainSingle();
+        }
+
+        [Fact]
+        public async Task Rotate_LineageWithoutClient_KeepsTheInvalidClientAnswer()
+        {
+            // Unchanged behavior: a client-less lineage was refused before the binding check existed.
+            SetupClient("c1");
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
+            _sessionResolver.Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync(new RefreshTokenCache { UserId = "u1", ClientId = "", TenantId = "tenant-1" });
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("c1")));
+
+            var unauth = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
+            unauth.Value.Should().BeEquivalentTo(new { error = "invalid_client", error_description = "Client configuration not found" });
+            minted.Should().BeEmpty();
+        }
     }
 }
