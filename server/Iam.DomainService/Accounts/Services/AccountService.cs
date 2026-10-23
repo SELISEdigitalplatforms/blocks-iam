@@ -970,6 +970,9 @@ namespace Iam.DomainService.Accounts
             user.FailedLoginCount = 0;
             user.LastFailedLoginUtc = null;
             user.LockoutUntilUtc = null;
+            // Same as an admin unlock: a new password starts the lockout backoff from the first step.
+            user.LockoutCount = 0;
+            user.LastLockoutUtc = null;
         }
 
         public async Task<BaseAccountResponse> RecoverAccountAsync(RecoveryUserRequest recoveryRequest)

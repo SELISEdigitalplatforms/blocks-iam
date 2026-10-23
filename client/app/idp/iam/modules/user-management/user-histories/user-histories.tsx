@@ -26,16 +26,18 @@ export const UserHistories = ({ id }: HistoriesProps) => {
 
   return (
     <Card className="flex h-full min-h-0 flex-col">
-      <CardContent className="scrollbar-slim flex-1">
-        <ActivityList isLoading={loading} rows={rows} />
-        {!loading && data && data.totalCount > filter.pageSize && (
-          <div className="mt-5 flex md:justify-end">
+      <CardContent className="flex min-h-0 flex-1 flex-col">
+        <div className="scrollbar-slim min-h-0 flex-1 overflow-auto">
+          <ActivityList isLoading={loading} rows={rows} />
+        </div>
+        {!loading && !!data?.totalCount && (
+          <div className="mt-auto flex shrink-0 pt-5 md:justify-end">
             <Pagination
               page={filter.page}
               pageSize={filter.pageSize}
               onChange={(page) => setFilter((f) => ({ ...f, page }))}
               totalCount={data?.totalCount || 0}
-              onPageSizeChange={(pageSize) => setFilter((f) => ({ ...f, pageSize }))}
+              onPageSizeChange={(pageSize) => setFilter({ page: 0, pageSize })}
               pageSizeOptions={[5, 10, 20, 40]}
             />
           </div>

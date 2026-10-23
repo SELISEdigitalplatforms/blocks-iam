@@ -42,4 +42,17 @@ describe("UserHistories", () => {
     render(<UserHistories id="u1" projectKey="p1" />);
     expect(h.listProps?.isLoading).toBe(true);
   });
+
+  it("shows the pagination even when there is only one record", () => {
+    h.data = { items: [{ itemId: "a" }], totalCount: 1 };
+    render(<UserHistories id="u1" projectKey="p1" />);
+    expect(screen.getByText("Page 1 of 1")).toBeInTheDocument();
+    // One record fits every size, so there is nothing to choose.
+    expect(screen.queryByText("Rows per page")).not.toBeInTheDocument();
+  });
+
+  it("hides the pagination when there are no records", () => {
+    render(<UserHistories id="u1" projectKey="p1" />);
+    expect(screen.queryByText(/Page \d+ of/)).not.toBeInTheDocument();
+  });
 });

@@ -38,6 +38,17 @@ export function Pagination({
   const totalPage = Math.ceil(totalCount / pageSize);
   const canGoNextPage = page < totalPage - 1;
 
+  // Offer only sizes that change what is shown: every size below the total plus the
+  // first one that fits it all. The current size always stays listed. When even the
+  // smallest size fits every row, there is nothing to choose.
+  const firstFitAll = pageSizeOptions?.find((size) => size >= totalCount);
+  const sizeChoices =
+    totalCount > Math.min(...(pageSizeOptions ?? [0]))
+      ? (pageSizeOptions ?? []).filter(
+          (size) => size < totalCount || size === firstFitAll || size === pageSize,
+        )
+      : [];
+
   const onPageSizeChangeHandler = (value: string) => {
     if (onPageSizeChange) onPageSizeChange(+value);
   };
@@ -49,7 +60,7 @@ export function Pagination({
         compact && "flex-row items-center gap-2",
       )}
     >
-      {pageSizeOptions && pageSizeOptions?.length > 0 ? (
+      {sizeChoices.length > 1 ? (
         <div className={cn("flex items-center space-x-2", compact && "shrink-0 space-x-1.5")}>
           <p className={cn("text-sm font-medium", compact && "hidden md:block")}>Rows per page</p>
           <Select value={`${pageSize}`} onValueChange={onPageSizeChangeHandler}>
@@ -59,7 +70,7 @@ export function Pagination({
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent side="top">
-              {pageSizeOptions?.map((pageSize) => (
+              {sizeChoices.map((pageSize) => (
                 <SelectItem key={pageSize} value={`${pageSize}`}>
                   {pageSize}
                 </SelectItem>
