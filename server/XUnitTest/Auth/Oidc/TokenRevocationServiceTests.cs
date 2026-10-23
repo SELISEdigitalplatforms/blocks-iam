@@ -92,6 +92,25 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
+        public async Task Revoke_RefreshToken_LogsFingerprintNotRawToken()
+        {
+            const string rawToken = "rt-0123456789abcdef";
+            var logger = new CapturingLogger();
+            var rt = new RefreshTokenModel { TokenId = rawToken, ClientId = "client-1", IsRevoked = false };
+            _refreshRepo.Setup(r => r.GetByTokenIdAsync(rawToken)).ReturnsAsync(rt);
+            _refreshRepo.Setup(r => r.RevokeByTokenIdAsync(rawToken, "user_revoked")).ReturnsAsync(true);
+            _refreshRepo.Setup(r => r.RevokeAllByTokenIdsAsync(It.IsAny<IEnumerable<string>>(), "revoked")).ReturnsAsync(1);
+            var service = new TokenRevocationService(_revocationRepo.Object, _refreshRepo.Object, _authRepo.Object, _cache.Object, logger);
+
+            var result = await service.RevokeTokenAsync(rawToken, "refresh_token", "client-1");
+
+            result.Success.Should().BeTrue();
+            logger.Messages.Should().NotBeEmpty();
+            logger.Messages.Should().NotContain(m => m.Contains(rawToken));
+            logger.Messages.Should().Contain(m => m.Contains("rt-01234..."));
+        }
+
+        [Fact]
         public async Task Revoke_RefreshToken_WrongClient_ReturnsInvalidClient()
         {
             var rt = new RefreshTokenModel { TokenId = "rt-1", ClientId = "other-client", IsRevoked = false };
@@ -346,6 +365,19 @@ namespace XUnitTest.Auth.Oidc
             var act = async () => await Create().GetRevocationHistoryAsync("user-1");
 
             await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        private sealed class CapturingLogger : Microsoft.Extensions.Logging.ILogger<TokenRevocationService>
+        {
+            public List<string> Messages { get; } = new();
+
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+            public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+                TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+                => Messages.Add(formatter(state, exception));
         }
     }
 }
