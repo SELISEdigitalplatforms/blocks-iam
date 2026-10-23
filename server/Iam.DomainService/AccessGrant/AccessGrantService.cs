@@ -1,4 +1,5 @@
 using Blocks.Genesis;
+using Blocks.Genesis.Entities.Iam;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Services;
@@ -46,14 +47,25 @@ namespace Iam.DomainService.AccessGrant
             // Blank collapses to "default" here on purpose, unlike the write-scope resolvers: for
             // this feature "default" is the system user, and every caller the platform itself
             // makes -- workers, signup, SSO provisioning -- carries no organization.
-            var isSystem = context is null
+            if (context is null
                 || !context.IsAuthenticated
-                || string.IsNullOrWhiteSpace(context.UserId)
                 || string.Equals(organizationId, IdpConstants.DefaultOrganizationId, StringComparison.Ordinal)
                 || context.Impersonated
-                || IsRootTenant(context.TenantId);
+                || IsRootTenant(context.TenantId))
+            {
+                return new GrantCaller(context?.UserId ?? string.Empty, organizationId, true);
+            }
 
-            return new GrantCaller(context?.UserId ?? string.Empty, organizationId, isSystem);
+            if (!string.IsNullOrWhiteSpace(context.UserId))
+            {
+                return new GrantCaller(context.UserId, organizationId, false);
+            }
+
+            // A client-credentials token carries a client id and no user: it holds only the
+            // client's own power. No user and no client is a platform call (workers, signup, SSO).
+            return string.IsNullOrWhiteSpace(context.ClientId)
+                ? new GrantCaller(string.Empty, organizationId, true)
+                : new GrantCaller(string.Empty, organizationId, false, context.ClientId);
         }
 
         public Task<GrantScope> GetScopeAsync() => GetScopeAsync(CurrentCaller());
@@ -231,11 +243,23 @@ namespace Iam.DomainService.AccessGrant
 
         private async Task<GrantScope> BuildScopeAsync(GrantCaller caller)
         {
-            var callerUser = await _repository.GetUserAsync(caller.UserId).ConfigureAwait(false);
-            var roles = await _repository.GetRolesAsync(caller.OrganizationId).ConfigureAwait(false);
-            var permissions = await _repository.GetPermissionsAsync(caller.OrganizationId).ConfigureAwait(false);
+            if (caller.IsClient)
+            {
+                var client = await _repository.GetClientCredentialAsync(caller.ClientId).ConfigureAwait(false);
+                var (clientRoles, clientPermissions) = await GetCatalogAsync(caller.OrganizationId).ConfigureAwait(false);
+                return GrantScope.BuildForClient(caller, client, clientRoles, clientPermissions);
+            }
 
+            var callerUser = await _repository.GetUserAsync(caller.UserId).ConfigureAwait(false);
+            var (roles, permissions) = await GetCatalogAsync(caller.OrganizationId).ConfigureAwait(false);
             return GrantScope.Build(caller, callerUser, roles, permissions);
+        }
+
+        private async Task<(List<Role> Roles, List<Permission> Permissions)> GetCatalogAsync(string organizationId)
+        {
+            var roles = await _repository.GetRolesAsync(organizationId).ConfigureAwait(false);
+            var permissions = await _repository.GetPermissionsAsync(organizationId).ConfigureAwait(false);
+            return (roles, permissions);
         }
 
         // Same order as the user-mutation path: inline first, so the sessions are dead before the
