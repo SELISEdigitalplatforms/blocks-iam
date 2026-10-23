@@ -690,6 +690,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             user.TokenVersion = 1;
             user.SecurityStamp = "old-stamp";
             user.FailedLoginCount = 3;
+            user.LockoutCount = 2;
+            user.LastLockoutUtc = DateTime.UtcNow.AddHours(-1);
             _cacheClientMock.Setup(c => c.GetStringValueAsync("code-1")).ReturnsAsync(user.ItemId);
             _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Activation, user.ItemId))).ReturnsAsync("code-1");
             _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
@@ -709,7 +711,9 @@ namespace XUnitTest.IamTests.Accounts.Services
                 u.TokenVersion == 2 &&
                 u.SecurityStamp != "old-stamp" &&
                 u.FailedLoginCount == 0 &&
-                u.LockoutUntilUtc == null)),
+                u.LockoutUntilUtc == null &&
+                u.LockoutCount == 0 &&
+                u.LastLockoutUtc == null)),
                 Times.Once);
         }
 

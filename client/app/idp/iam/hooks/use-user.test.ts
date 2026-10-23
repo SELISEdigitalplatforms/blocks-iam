@@ -1,4 +1,6 @@
+import React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createWrapper } from "@/test-utils/test-providers/query-client";
 import {
@@ -118,6 +120,40 @@ describe("use-user hooks", () => {
       result.current.mutate(mockUpdateUserPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(userService.updateUser).toHaveBeenCalledWith(mockUpdateUserPayload);
+    });
+
+    it("refreshes the console header query after an own profile update", async () => {
+      vi.mocked(userService.updateMe).mockResolvedValue(undefined as never);
+      const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+      const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(QueryClientProvider, { client: queryClient }, children);
+
+      const { result } = renderHook(
+        () => useUpdateUser({ id: MOCK_USER_ITEM_ID, projectKey: TEST_PROJECT_KEY, own: true }),
+        { wrapper },
+      );
+
+      result.current.mutate(mockUpdateUserPayload);
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["user-info"] });
+    });
+
+    it("leaves the console header query alone when an admin edits another user", async () => {
+      vi.mocked(userService.updateUser).mockResolvedValue(undefined as never);
+      const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+      const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(QueryClientProvider, { client: queryClient }, children);
+
+      const { result } = renderHook(
+        () => useUpdateUser({ id: MOCK_USER_ITEM_ID, projectKey: TEST_PROJECT_KEY }),
+        { wrapper },
+      );
+
+      result.current.mutate(mockUpdateUserPayload);
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["user-info"] });
     });
   });
 
