@@ -5,7 +5,7 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,10 +17,10 @@ namespace XUnitTest.IamTests.Resources
     public class ResourceQueryServiceTests : IDisposable
     {
         private readonly Mock<IResourceRepository> _repo = new();
-        private readonly Mock<IDelegatedAdministrationService> _delegation = new();
+        private readonly Mock<IAccessGrantService> _accessGrant = new();
 
         private ResourceQueryService Create() =>
-            new(NullLogger<ResourceQueryService>.Instance, _repo.Object, _delegation.Object);
+            new(NullLogger<ResourceQueryService>.Instance, _repo.Object, _accessGrant.Object);
 
         private static void SetContext(
             string orgId = "default",
@@ -318,14 +318,14 @@ namespace XUnitTest.IamTests.Resources
         // ---------- GetAssignableRolesAsync ----------
 
         [Fact]
-        public async Task GetAssignableRolesComesFromDelegatedAdministration()
+        public async Task GetAssignableRolesComesFromAccessGrant()
         {
             var response = new GetAssignableRolesResponse
             {
                 Hierarchy = [new AssignableRole { Slug = "manager", Name = "Manager" }],
                 Standalone = [new AssignableRole { Slug = "guest", Name = "Guest" }]
             };
-            _delegation.Setup(d => d.GetAssignableRolesAsync()).ReturnsAsync(response);
+            _accessGrant.Setup(d => d.GetAssignableRolesAsync()).ReturnsAsync(response);
 
             var result = await Create().GetAssignableRolesAsync();
 

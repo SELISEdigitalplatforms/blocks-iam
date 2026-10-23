@@ -5,7 +5,7 @@ using Authentication.DomainService.Security.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Activity.RequestModel;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
@@ -26,7 +26,7 @@ namespace XUnitTest.Auth.Security
         private readonly Mock<ISessionRevocationService> _revocation;
         private readonly Mock<IActivityQueryService> _activity;
         private readonly Mock<IRefreshTokenRepository> _refreshTokens;
-        private readonly Mock<IDelegatedAdministrationService> _delegation = new();
+        private readonly Mock<IAccessGrantService> _accessGrant = new();
 
         public SecurityControllerTests()
         {
@@ -68,7 +68,7 @@ namespace XUnitTest.Auth.Security
                 _securityQuery.Object,
                 _revocation.Object,
                 _activity.Object,
-                _delegation.Object);
+                _accessGrant.Object);
         }
 
         [Fact]
@@ -195,7 +195,7 @@ namespace XUnitTest.Auth.Security
         [Fact]
         public async Task RevokeAnotherUsersSessionIsRefusedWhenTheCallerMayNotManageThem()
         {
-            _delegation.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(false);
+            _accessGrant.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(false);
 
             var result = await CreateController().RevokeSession(
                 "their-session",
@@ -208,7 +208,7 @@ namespace XUnitTest.Auth.Security
         [Fact]
         public async Task RevokeAnotherUsersRefreshTokenIsRefusedWhenTheCallerMayNotManageThem()
         {
-            _delegation.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(false);
+            _accessGrant.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(false);
 
             var result = await CreateController().RevokeRefreshToken(
                 "their-token",
@@ -221,7 +221,7 @@ namespace XUnitTest.Auth.Security
         [Fact]
         public async Task RevokeAnotherUsersSessionProceedsWhenTheCallerMayManageThem()
         {
-            _delegation.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(true);
+            _accessGrant.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(true);
             _securityQuery.Setup(s => s.ResolveCurrentSessionIdAsync("other-user", It.IsAny<CancellationToken>()))
                 .ReturnsAsync("their-current");
             var response = new RevokeSessionResponse { SessionId = "their-session", Warnings = new List<string>() };
@@ -237,7 +237,7 @@ namespace XUnitTest.Auth.Security
         }
 
         [Fact]
-        public async Task RevokingOwnSessionNeverAsksDelegatedAdministration()
+        public async Task RevokingOwnSessionNeverAsksAccessGrant()
         {
             _securityQuery.Setup(s => s.ResolveCurrentSessionIdAsync(ActorUserId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync("current-session");
@@ -246,7 +246,7 @@ namespace XUnitTest.Auth.Security
 
             await CreateController().RevokeSession("old-session", new() { UserId = ActorUserId }, CancellationToken.None);
 
-            _delegation.Verify(d => d.AuthorizeManageUserAsync(It.IsAny<string>()), Times.Never);
+            _accessGrant.Verify(d => d.AuthorizeManageUserAsync(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

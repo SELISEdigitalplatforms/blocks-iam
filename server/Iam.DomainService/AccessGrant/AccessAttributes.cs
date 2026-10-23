@@ -1,7 +1,7 @@
 using System.Collections;
 using System.Text.Json;
 
-namespace Iam.DomainService.DelegatedAdministration
+namespace Iam.DomainService.AccessGrant
 {
     /// <summary>
     /// Reads the org-scoped access attributes data policies use:

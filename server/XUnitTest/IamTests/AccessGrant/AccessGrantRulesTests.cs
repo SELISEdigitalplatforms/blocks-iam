@@ -1,29 +1,29 @@
 using Blocks.Genesis.Entities.Iam;
 using FluentAssertions;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using XUnitTest.TestSupport;
 
-namespace XUnitTest.IamTests.DelegatedAdministration
+namespace XUnitTest.IamTests.AccessGrant
 {
     /// <summary>
     /// R1-R10 as pure functions of a grant scope, over the standard tree:
     /// admin &gt; manager &gt; viewer, standalone auditor (read) and owner (read/write/delete/billing).
     /// </summary>
-    public class DelegatedAdministrationRulesTests
+    public class AccessGrantRulesTests
     {
-        private const string Org = DelegationTestKit.Org;
+        private const string Org = AccessGrantTestKit.Org;
 
-        private readonly DelegationTestKit _kit = new DelegationTestKit().WithStandardTree();
+        private readonly AccessGrantTestKit _kit = new AccessGrantTestKit().WithStandardTree();
 
         private GrantScope ScopeOf(string userId, IEnumerable<string>? roles = null, IEnumerable<string>? permissions = null,
             Dictionary<string, object>? attributes = null)
         {
             var user = _kit.WithUser(userId, roles, permissions, attributes: attributes);
-            return GrantScope.Build(new DelegationCaller(userId, Org, false), user, _kit.RolesOf(), _kit.PermissionsOf());
+            return GrantScope.Build(new GrantCaller(userId, Org, false), user, _kit.RolesOf(), _kit.PermissionsOf());
         }
 
         private static GrantScope SystemScope() =>
-            GrantScope.WithoutPower(new DelegationCaller("root-admin", "default", true));
+            GrantScope.WithoutPower(new GrantCaller("root-admin", "default", true));
 
         // ---------- GrantScope ----------
 
@@ -54,7 +54,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var user = _kit.WithUser("c", ["admin"], organizationId: "org-other");
 
-            var scope = GrantScope.Build(new DelegationCaller("c", Org, false), user, _kit.RolesOf(), _kit.PermissionsOf());
+            var scope = GrantScope.Build(new GrantCaller("c", Org, false), user, _kit.RolesOf(), _kit.PermissionsOf());
 
             scope.HeldRoles.Should().BeEmpty();
             scope.HeldPermissions.Should().BeEmpty();
@@ -73,7 +73,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["manager", "auditor"]);
 
-            (DelegatedAdministrationRules.CheckAssignRole(scope, slug) is null).Should().Be(allowed);
+            (AccessGrantRules.CheckAssignRole(scope, slug) is null).Should().Be(allowed);
         }
 
         [Fact]
@@ -81,8 +81,8 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["manager"]);
 
-            DelegatedAdministrationRules.CheckAssignRole(scope, "manager")!.Reason.Should().Be("managed_role_outside_caller_tree");
-            DelegatedAdministrationRules.CheckAssignRole(scope, "viewer").Should().BeNull();
+            AccessGrantRules.CheckAssignRole(scope, "manager")!.Reason.Should().Be("managed_role_outside_caller_tree");
+            AccessGrantRules.CheckAssignRole(scope, "viewer").Should().BeNull();
         }
 
         [Fact]
@@ -90,8 +90,8 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["owner"]);
 
-            DelegatedAdministrationRules.CheckAssignRole(scope, "owner").Should().BeNull();
-            DelegatedAdministrationRules.CheckAssignRole(scope, "admin").Should().BeNull("owner holds read/write/delete");
+            AccessGrantRules.CheckAssignRole(scope, "owner").Should().BeNull();
+            AccessGrantRules.CheckAssignRole(scope, "admin").Should().BeNull("owner holds read/write/delete");
         }
 
         [Fact]
@@ -99,19 +99,19 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["auditor"], permissions: ["write", "delete"]);
 
-            DelegatedAdministrationRules.CheckAssignRole(scope, "admin").Should().BeNull();
-            DelegatedAdministrationRules.CheckAssignRole(scope, "owner").Should().NotBeNull("billing is not held");
+            AccessGrantRules.CheckAssignRole(scope, "admin").Should().BeNull();
+            AccessGrantRules.CheckAssignRole(scope, "owner").Should().NotBeNull("billing is not held");
         }
 
         [Fact]
         public void WithoutAnyTreeEveryRoleIsJudgedOnItsPermissions()
         {
-            var kit = new DelegationTestKit().WithRole("a").WithRole("b").WithPermission("x", Org, "a").WithPermission("y", Org, "b");
+            var kit = new AccessGrantTestKit().WithRole("a").WithRole("b").WithPermission("x", Org, "a").WithPermission("y", Org, "b");
             var user = kit.WithUser("c", ["a"]);
-            var scope = GrantScope.Build(new DelegationCaller("c", Org, false), user, kit.RolesOf(), kit.PermissionsOf());
+            var scope = GrantScope.Build(new GrantCaller("c", Org, false), user, kit.RolesOf(), kit.PermissionsOf());
 
-            DelegatedAdministrationRules.CheckAssignRole(scope, "a").Should().BeNull();
-            DelegatedAdministrationRules.CheckAssignRole(scope, "b").Should().NotBeNull();
+            AccessGrantRules.CheckAssignRole(scope, "a").Should().BeNull();
+            AccessGrantRules.CheckAssignRole(scope, "b").Should().NotBeNull();
         }
 
         // ---------- R2 grant permission ----------
@@ -121,8 +121,8 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["admin"]);
 
-            DelegatedAdministrationRules.CheckGrantPermission(scope, "delete").Should().BeNull();
-            DelegatedAdministrationRules.CheckGrantPermission(scope, "billing")!.Rule.Should().Be(DelegatedAdministrationRules.GrantPermission);
+            AccessGrantRules.CheckGrantPermission(scope, "delete").Should().BeNull();
+            AccessGrantRules.CheckGrantPermission(scope, "billing")!.Rule.Should().Be(AccessGrantRules.GrantPermission);
         }
 
         [Fact]
@@ -130,9 +130,9 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["admin"]);
 
-            DelegatedAdministrationRules.CheckGrant(scope, ["viewer", " "], ["read", ""]).Should().BeNull();
-            DelegatedAdministrationRules.CheckGrant(scope, ["owner"], ["read"], DelegatedAdministrationRules.SignupLink)!
-                .Rule.Should().Be(DelegatedAdministrationRules.SignupLink);
+            AccessGrantRules.CheckGrant(scope, ["viewer", " "], ["read", ""]).Should().BeNull();
+            AccessGrantRules.CheckGrant(scope, ["owner"], ["read"], AccessGrantRules.SignupLink)!
+                .Rule.Should().Be(AccessGrantRules.SignupLink);
         }
 
         // ---------- R3 manage user ----------
@@ -142,14 +142,14 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["admin"]);
 
-            DelegatedAdministrationRules.CheckManageUser(scope, _kit.FindUser("c")!)!.Reason.Should().Be("cannot_manage_self");
-            DelegatedAdministrationRules.CheckManageUser(scope, _kit.WithUser("outsider", ["viewer"], organizationId: "org-other"))!
+            AccessGrantRules.CheckManageUser(scope, _kit.FindUser("c")!)!.Reason.Should().Be("cannot_manage_self");
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("outsider", ["viewer"], organizationId: "org-other"))!
                 .Reason.Should().Be("user_not_member_of_organization");
-            DelegatedAdministrationRules.CheckManageUser(scope, _kit.WithUser("boss", ["owner"]))!
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("boss", ["owner"]))!
                 .Reason.Should().Be("user_holds_role_above_caller");
-            DelegatedAdministrationRules.CheckManageUser(scope, _kit.WithUser("direct", ["viewer"], ["billing"]))!
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("direct", ["viewer"], ["billing"]))!
                 .Reason.Should().Be("user_holds_permission_above_caller");
-            DelegatedAdministrationRules.CheckManageUser(scope, _kit.WithUser("peer", ["auditor"])).Should().BeNull();
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("peer", ["auditor"])).Should().BeNull();
         }
 
         [Fact]
@@ -157,7 +157,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["admin"]);
 
-            DelegatedAdministrationRules.CheckManageUser(scope, _kit.WithUser("u", ["viewer", "ghost"])).Should().BeNull();
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("u", ["viewer", "ghost"])).Should().BeNull();
         }
 
         [Fact]
@@ -166,7 +166,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             var scope = ScopeOf("c", roles: ["admin"]);
             var outsider = _kit.WithUser("outsider", ["owner"], organizationId: "org-other");
 
-            DelegatedAdministrationRules.CheckManageUser(scope, outsider, requireMembership: false).Should().BeNull();
+            AccessGrantRules.CheckManageUser(scope, outsider, requireMembership: false).Should().BeNull();
         }
 
         // ---------- R4 delta ----------
@@ -177,8 +177,8 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             var scope = ScopeOf("c", roles: ["manager"]);
             var user = _kit.WithUser("u", ["viewer"], ["read"]);
 
-            DelegatedAdministrationRules.CheckAccessChange(scope, user, ["viewer", "auditor"], ["read", "write"]).Should().BeNull();
-            DelegatedAdministrationRules.CheckAccessChange(scope, user, ["auditor"], null).Should().BeNull("removing viewer is within the caller's tree");
+            AccessGrantRules.CheckAccessChange(scope, user, ["viewer", "auditor"], ["read", "write"]).Should().BeNull();
+            AccessGrantRules.CheckAccessChange(scope, user, ["auditor"], null).Should().BeNull("removing viewer is within the caller's tree");
         }
 
         [Fact]
@@ -187,18 +187,18 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             var scope = ScopeOf("c", roles: ["manager"]);
             var user = _kit.WithUser("u", ["viewer"], ["read"]);
 
-            DelegatedAdministrationRules.CheckAccessChange(scope, user, ["viewer", "owner"], null).Should().NotBeNull();
-            DelegatedAdministrationRules.CheckAccessChange(scope, user, null, ["read", "billing"]).Should().NotBeNull();
-            DelegatedAdministrationRules.CheckAccessChange(scope, user, ["viewer"], null).Should().BeNull();
+            AccessGrantRules.CheckAccessChange(scope, user, ["viewer", "owner"], null).Should().NotBeNull();
+            AccessGrantRules.CheckAccessChange(scope, user, null, ["read", "billing"]).Should().NotBeNull();
+            AccessGrantRules.CheckAccessChange(scope, user, ["viewer"], null).Should().BeNull();
         }
 
         [Fact]
         public void EmptyRequestListsKeepWhatIsStored()
         {
-            var (keptAdded, keptRemoved) = DelegatedAdministrationRules.Delta(["viewer"], []);
+            var (keptAdded, keptRemoved) = AccessGrantRules.Delta(["viewer"], []);
             keptAdded.Should().BeEmpty();
             keptRemoved.Should().BeEmpty();
-            var (added, removed) = DelegatedAdministrationRules.Delta(["viewer", "auditor"], ["viewer", "manager"]);
+            var (added, removed) = AccessGrantRules.Delta(["viewer", "auditor"], ["viewer", "manager"]);
             added.Should().BeEquivalentTo("manager");
             removed.Should().BeEquivalentTo("auditor");
         }
@@ -208,9 +208,9 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["manager"]);
 
-            DelegatedAdministrationRules.CheckRoleDelta(scope, [], ["ghost"]).Should().BeNull();
-            DelegatedAdministrationRules.CheckRoleDelta(scope, ["ghost"], []).Should().NotBeNull();
-            DelegatedAdministrationRules.CheckRoleDelta(scope, [], ["owner"]).Should().NotBeNull();
+            AccessGrantRules.CheckRoleDelta(scope, [], ["ghost"]).Should().BeNull();
+            AccessGrantRules.CheckRoleDelta(scope, ["ghost"], []).Should().NotBeNull();
+            AccessGrantRules.CheckRoleDelta(scope, [], ["owner"]).Should().NotBeNull();
         }
 
         // ---------- R5 edit / create role ----------
@@ -221,9 +221,9 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             var scope = ScopeOf("c", roles: ["admin"]);
             Role Role(string slug) => _kit.RolesOf().Single(r => r.Slug == slug);
 
-            DelegatedAdministrationRules.CheckEditRole(scope, Role("admin"))!.Reason.Should().Be("cannot_edit_own_role");
-            DelegatedAdministrationRules.CheckEditRole(scope, Role("owner")).Should().NotBeNull();
-            DelegatedAdministrationRules.CheckEditRole(scope, Role("manager")).Should().BeNull();
+            AccessGrantRules.CheckEditRole(scope, Role("admin"))!.Reason.Should().Be("cannot_edit_own_role");
+            AccessGrantRules.CheckEditRole(scope, Role("owner")).Should().NotBeNull();
+            AccessGrantRules.CheckEditRole(scope, Role("manager")).Should().BeNull();
         }
 
         [Fact]
@@ -232,10 +232,10 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             var scope = ScopeOf("c", roles: ["admin"]);
             var viewer = _kit.RolesOf().Single(r => r.Slug == "viewer");
 
-            DelegatedAdministrationRules.CheckEditRole(scope, viewer, "admin", parentChanged: true).Should().BeNull();
-            DelegatedAdministrationRules.CheckEditRole(scope, viewer, "auditor", parentChanged: true)!
+            AccessGrantRules.CheckEditRole(scope, viewer, "admin", parentChanged: true).Should().BeNull();
+            AccessGrantRules.CheckEditRole(scope, viewer, "auditor", parentChanged: true)!
                 .Reason.Should().Be("parent_not_held_or_managed");
-            DelegatedAdministrationRules.CheckEditRole(scope, viewer, null, parentChanged: true).Should().BeNull("moving to the top is allowed");
+            AccessGrantRules.CheckEditRole(scope, viewer, null, parentChanged: true).Should().BeNull("moving to the top is allowed");
         }
 
         [Fact]
@@ -244,8 +244,8 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             var scope = ScopeOf("c", roles: ["admin"]);
             var viewer = _kit.RolesOf().Single(r => r.Slug == "viewer");
 
-            DelegatedAdministrationRules.CheckEditRole(scope, viewer, changedPermissions: ["write"]).Should().BeNull();
-            DelegatedAdministrationRules.CheckEditRole(scope, viewer, changedPermissions: ["billing"]).Should().NotBeNull();
+            AccessGrantRules.CheckEditRole(scope, viewer, changedPermissions: ["write"]).Should().BeNull();
+            AccessGrantRules.CheckEditRole(scope, viewer, changedPermissions: ["billing"]).Should().NotBeNull();
         }
 
         [Fact]
@@ -253,10 +253,10 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["manager"]);
 
-            DelegatedAdministrationRules.CheckCreateRole(scope, null).Should().BeNull();
-            DelegatedAdministrationRules.CheckCreateRole(scope, "manager").Should().BeNull();
-            DelegatedAdministrationRules.CheckCreateRole(scope, "viewer").Should().BeNull();
-            DelegatedAdministrationRules.CheckCreateRole(scope, "admin").Should().NotBeNull();
+            AccessGrantRules.CheckCreateRole(scope, null).Should().BeNull();
+            AccessGrantRules.CheckCreateRole(scope, "manager").Should().BeNull();
+            AccessGrantRules.CheckCreateRole(scope, "viewer").Should().BeNull();
+            AccessGrantRules.CheckCreateRole(scope, "admin").Should().NotBeNull();
         }
 
         [Theory]
@@ -270,7 +270,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
                 ? new List<string>()
                 : new List<string> { parent }.Concat(_kit.RolesOf().Single(r => r.Slug == parent).AncestorRoleSlugs).ToList();
 
-            DelegatedAdministrationRules.CreatesCycle(slug, parent, ancestorsOfParent).Should().Be(cycle);
+            AccessGrantRules.CreatesCycle(slug, parent, ancestorsOfParent).Should().Be(cycle);
         }
 
         // ---------- R6 ----------
@@ -278,8 +278,8 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         [Fact]
         public void SystemOnlyRefusesEveryNonSystemCaller()
         {
-            DelegatedAdministrationRules.CheckSystemOnly(ScopeOf("c", roles: ["owner"]), "signup-settings").Should().NotBeNull();
-            DelegatedAdministrationRules.CheckSystemOnly(SystemScope(), "signup-settings").Should().BeNull();
+            AccessGrantRules.CheckSystemOnly(ScopeOf("c", roles: ["owner"]), "signup-settings").Should().NotBeNull();
+            AccessGrantRules.CheckSystemOnly(SystemScope(), "signup-settings").Should().BeNull();
         }
 
         // ---------- R10 access attributes ----------
@@ -298,10 +298,10 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["admin"], attributes: Access(Org, "region", "eu", "us"));
 
-            DelegatedAdministrationRules.CheckAccessAttributes(scope, "u", null, Access(Org, "region", "eu")).Should().BeNull();
-            DelegatedAdministrationRules.CheckAccessAttributes(scope, "u", null, Access(Org, "region", "apac"))!
+            AccessGrantRules.CheckAccessAttributes(scope, "u", null, Access(Org, "region", "eu")).Should().BeNull();
+            AccessGrantRules.CheckAccessAttributes(scope, "u", null, Access(Org, "region", "apac"))!
                 .Reason.Should().Be("access_attribute_value_not_held");
-            DelegatedAdministrationRules.CheckAccessAttributes(scope, "u", Access(Org, "region", "apac"), new Dictionary<string, object>())!
+            AccessGrantRules.CheckAccessAttributes(scope, "u", Access(Org, "region", "apac"), new Dictionary<string, object>())!
                 .Reason.Should().Be("access_attribute_value_not_held", "removing a value the caller lacks is a change too");
         }
 
@@ -310,7 +310,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["admin"], attributes: Access(Org, "region", "eu"));
 
-            DelegatedAdministrationRules.CheckAccessAttributes(scope, "u", null, Access("org-other", "region", "eu"))!
+            AccessGrantRules.CheckAccessAttributes(scope, "u", null, Access("org-other", "region", "eu"))!
                 .Reason.Should().Be("access_attributes_of_other_organization");
         }
 
@@ -323,8 +323,8 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             var requested = Access(Org, "region", "apac");
             requested["plan"] = "platinum";
 
-            DelegatedAdministrationRules.CheckAccessAttributes(scope, "u", stored, requested).Should().BeNull();
-            DelegatedAdministrationRules.CheckAccessAttributes(scope, "u", stored, null).Should().BeNull("the request leaves attributes alone");
+            AccessGrantRules.CheckAccessAttributes(scope, "u", stored, requested).Should().BeNull();
+            AccessGrantRules.CheckAccessAttributes(scope, "u", stored, null).Should().BeNull("the request leaves attributes alone");
         }
 
         [Fact]
@@ -332,7 +332,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var scope = ScopeOf("c", roles: ["admin"]);
 
-            DelegatedAdministrationRules.CheckAccessAttributes(scope, "u", null, new Dictionary<string, object> { [AccessAttributes.Key] = "everything" })!
+            AccessGrantRules.CheckAccessAttributes(scope, "u", null, new Dictionary<string, object> { [AccessAttributes.Key] = "everything" })!
                 .Reason.Should().Be("access_attributes_malformed");
         }
 
@@ -359,15 +359,15 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             var user = _kit.WithUser("u", ["owner"], ["billing"]);
             var owner = _kit.RolesOf().Single(r => r.Slug == "owner");
 
-            DelegatedAdministrationRules.CheckAssignRole(system, "ghost").Should().BeNull();
-            DelegatedAdministrationRules.CheckGrantPermission(system, "anything").Should().BeNull();
-            DelegatedAdministrationRules.CheckGrant(system, ["owner"], ["billing"]).Should().BeNull();
-            DelegatedAdministrationRules.CheckManageUser(system, user).Should().BeNull();
-            DelegatedAdministrationRules.CheckAccessChange(system, user, ["admin"], []).Should().BeNull();
-            DelegatedAdministrationRules.CheckRoleDelta(system, ["owner"], ["admin"]).Should().BeNull();
-            DelegatedAdministrationRules.CheckCreateRole(system, "owner").Should().BeNull();
-            DelegatedAdministrationRules.CheckEditRole(system, owner, "admin", true, ["billing"]).Should().BeNull();
-            DelegatedAdministrationRules.CheckAccessAttributes(system, "u", null, Access("any", "x", "y")).Should().BeNull();
+            AccessGrantRules.CheckAssignRole(system, "ghost").Should().BeNull();
+            AccessGrantRules.CheckGrantPermission(system, "anything").Should().BeNull();
+            AccessGrantRules.CheckGrant(system, ["owner"], ["billing"]).Should().BeNull();
+            AccessGrantRules.CheckManageUser(system, user).Should().BeNull();
+            AccessGrantRules.CheckAccessChange(system, user, ["admin"], []).Should().BeNull();
+            AccessGrantRules.CheckRoleDelta(system, ["owner"], ["admin"]).Should().BeNull();
+            AccessGrantRules.CheckCreateRole(system, "owner").Should().BeNull();
+            AccessGrantRules.CheckEditRole(system, owner, "admin", true, ["billing"]).Should().BeNull();
+            AccessGrantRules.CheckAccessAttributes(system, "u", null, Access("any", "x", "y")).Should().BeNull();
         }
     }
 }

@@ -1,21 +1,21 @@
 using Blocks.Genesis.Entities.Iam;
 
-namespace Iam.DomainService.DelegatedAdministration
+namespace Iam.DomainService.AccessGrant
 {
-    /// <summary>Who is asking, as the delegated-administration rules see it.</summary>
+    /// <summary>Who is asking, as the access grant rules see it.</summary>
     /// <param name="UserId">The caller's user id; empty for a call with no user (workers, system).</param>
     /// <param name="OrganizationId">The caller's effective organization; blank reads as <c>default</c>.</param>
     /// <param name="IsSystem">
     /// True for the system user: effective organization <c>default</c>, no user, or a root-tenant /
     /// impersonated platform call. No rule applies to it.
     /// </param>
-    public sealed record DelegationCaller(string UserId, string OrganizationId, bool IsSystem);
+    public sealed record GrantCaller(string UserId, string OrganizationId, bool IsSystem);
 
     /// <summary>Why a rule would refuse. Server log only; the caller only ever sees the generic error.</summary>
     /// <param name="Rule">The rule that refused (R1-R12).</param>
     /// <param name="Target">What the rule was applied to: a role slug, permission, user id or endpoint.</param>
     /// <param name="Reason">A short, fixed reason code.</param>
-    public sealed record DelegationDenial(string Rule, string Target, string Reason);
+    public sealed record GrantDenial(string Rule, string Target, string Reason);
 
     /// <summary>
     /// The caller's power in one organization, read from the database, never from the token.
@@ -35,7 +35,7 @@ namespace Iam.DomainService.DelegatedAdministration
         private readonly Dictionary<string, HashSet<string>> _callerAccessAttributes;
 
         private GrantScope(
-            DelegationCaller caller,
+            GrantCaller caller,
             Dictionary<string, Role> roles,
             Dictionary<string, HashSet<string>> rolePermissions,
             Dictionary<string, string> permissionResourcesById,
@@ -51,7 +51,7 @@ namespace Iam.DomainService.DelegatedAdministration
             HeldPermissions = Empty;
         }
 
-        public DelegationCaller Caller { get; }
+        public GrantCaller Caller { get; }
 
         public bool IsSystem => Caller.IsSystem;
 
@@ -75,19 +75,19 @@ namespace Iam.DomainService.DelegatedAdministration
         /// A scope that holds nothing and made no reads: the system user's (no rule applies to it),
         /// or a non-system caller's for a check that needs only who the caller is (R6).
         /// </summary>
-        public static GrantScope WithoutPower(DelegationCaller caller) =>
+        public static GrantScope WithoutPower(GrantCaller caller) =>
             new(caller, new(StringComparer.OrdinalIgnoreCase), new(StringComparer.OrdinalIgnoreCase),
                 new(StringComparer.Ordinal), new(StringComparer.Ordinal));
 
         /// <summary>
-        /// Computes the caller's power in <see cref="DelegationCaller.OrganizationId"/>.
+        /// Computes the caller's power in <see cref="GrantCaller.OrganizationId"/>.
         /// </summary>
         /// <param name="caller">The caller; must not be the system user.</param>
         /// <param name="callerUser">The caller's user document, or null when it no longer exists (holds nothing).</param>
         /// <param name="roles">Non-archived roles of the organization.</param>
         /// <param name="permissions">Non-archived permissions of the organization.</param>
         public static GrantScope Build(
-            DelegationCaller caller,
+            GrantCaller caller,
             User? callerUser,
             IEnumerable<Role> roles,
             IEnumerable<Permission> permissions)
@@ -107,7 +107,7 @@ namespace Iam.DomainService.DelegatedAdministration
             var (rolePermissions, resourcesById) = IndexPermissions(permissions);
 
             var held = new HashSet<string>(
-                DelegatedAdministrationRules.GrantsIn(callerUser?.Roles, organizationId).Where(roleMap.ContainsKey),
+                AccessGrantRules.GrantsIn(callerUser?.Roles, organizationId).Where(roleMap.ContainsKey),
                 StringComparer.OrdinalIgnoreCase);
 
             var managed = new HashSet<string>(
@@ -119,7 +119,7 @@ namespace Iam.DomainService.DelegatedAdministration
             var heldPermissions = new HashSet<string>(
                 held.Concat(managed).SelectMany(slug => rolePermissions.GetValueOrDefault(slug) ?? []),
                 StringComparer.OrdinalIgnoreCase);
-            heldPermissions.UnionWith(DelegatedAdministrationRules.GrantsIn(callerUser?.Permissions, organizationId));
+            heldPermissions.UnionWith(AccessGrantRules.GrantsIn(callerUser?.Permissions, organizationId));
 
             var callerAccess = AccessAttributes.Read(callerUser?.Attributes)
                 .TryGetValue(organizationId, out var ownValues)

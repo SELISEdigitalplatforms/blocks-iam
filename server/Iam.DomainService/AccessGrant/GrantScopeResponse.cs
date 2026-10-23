@@ -1,11 +1,11 @@
-namespace Iam.DomainService.DelegatedAdministration
+namespace Iam.DomainService.AccessGrant
 {
     /// <summary>
     /// What the caller may administer in its token organization, so a console can disable what the
     /// server would refuse. For the system user only <see cref="IsSystemUser"/>
     /// and <see cref="AssignableRoles"/> (the picker it always had) are filled.
     /// </summary>
-    public sealed class DelegationScopeResponse
+    public sealed class GrantScopeResponse
     {
         public bool IsSystemUser { get; init; }
 

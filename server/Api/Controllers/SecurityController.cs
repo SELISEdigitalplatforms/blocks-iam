@@ -3,7 +3,7 @@ using Authentication.DomainService.Security.Models;
 using Authentication.DomainService.Security.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Activity.RequestModel;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Blocks.Genesis.Entities.Iam;
@@ -21,18 +21,18 @@ namespace Api.Controllers
         private readonly ISecurityQueryService _securityQueryService;
         private readonly ISessionRevocationService _sessionRevocationService;
         private readonly IActivityQueryService _activityQueryService;
-        private readonly IDelegatedAdministrationService _delegatedAdministration;
+        private readonly IAccessGrantService _accessGrant;
 
         public SecurityController(
             ISecurityQueryService securityQueryService,
             ISessionRevocationService sessionRevocationService,
             IActivityQueryService activityQueryService,
-            IDelegatedAdministrationService delegatedAdministration)
+            IAccessGrantService accessGrant)
         {
             _securityQueryService = securityQueryService;
             _sessionRevocationService = sessionRevocationService;
             _activityQueryService = activityQueryService;
-            _delegatedAdministration = delegatedAdministration;
+            _accessGrant = accessGrant;
         }
 
         [HttpGet("summary")]
@@ -185,16 +185,16 @@ namespace Api.Controllers
         }
 
         /// <summary>
-        /// Revoking another user's session is managing that user (delegated administration, R3);
+        /// Revoking another user's session is managing that user (access grant, R3);
         /// revoking one's own is self-service and always allowed.
         /// </summary>
         private Task<bool> MayRevokeForAsync(string actor) =>
             string.Equals(actor, BlocksContext.GetContext()?.UserId, StringComparison.Ordinal)
                 ? Task.FromResult(true)
-                : _delegatedAdministration.AuthorizeManageUserAsync(actor);
+                : _accessGrant.AuthorizeManageUserAsync(actor);
 
         private ObjectResult GrantNotAllowed() =>
-            StatusCode(StatusCodes.Status403Forbidden, new { error = DelegatedAdministrationErrors.GrantNotAllowed });
+            StatusCode(StatusCodes.Status403Forbidden, new { error = AccessGrantErrors.GrantNotAllowed });
 
         private static string ResolveActor(string? userIdOverride = null) =>
             !string.IsNullOrWhiteSpace(userIdOverride)

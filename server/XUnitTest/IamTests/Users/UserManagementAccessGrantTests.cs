@@ -3,7 +3,7 @@ using Blocks.Genesis.Entities.Iam;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
@@ -18,16 +18,16 @@ using XUnitTest.TestSupport;
 namespace XUnitTest.IamTests.Users
 {
     /// <summary>
-    /// Delegated administration on every user path: users/create (new and existing email),
+    /// access grant on every user path: users/create (new and existing email),
     /// users/{id}, me, activate, deactivate, users/access, users/revoke-access, users/roles/bulk
     /// (preview, submit and the worker's per-user re-check). The caller "caller" holds "manager"
     /// in org-acme over the standard tree.
     /// </summary>
-    public sealed class UserManagementDelegationTests : IDisposable
+    public sealed class UserManagementAccessGrantTests : IDisposable
     {
-        private const string Org = DelegationTestKit.Org;
+        private const string Org = AccessGrantTestKit.Org;
 
-        private readonly DelegationTestKit _kit = new DelegationTestKit().WithStandardTree();
+        private readonly AccessGrantTestKit _kit = new AccessGrantTestKit().WithStandardTree();
         private readonly Mock<IValidator<CreateUserRequest>> _createValidator = new();
         private readonly Mock<IValidator<UpdateUserRequest>> _updateValidator = new();
         private readonly Mock<IValidator<UpdateMyAccountRequest>> _myAccountValidator = new();
@@ -38,10 +38,10 @@ namespace XUnitTest.IamTests.Users
         private readonly List<User> _created = [];
         private readonly List<BulkUserRoleChangeEvent> _bulk = [];
 
-        public UserManagementDelegationTests()
+        public UserManagementAccessGrantTests()
         {
             _kit.WithUser("caller", ["manager"], attributes: Access("eu"));
-            DelegationTestKit.SignIn("caller");
+            AccessGrantTestKit.SignIn("caller");
 
             _createValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateUserRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
             _updateValidator.Setup(v => v.Validate(It.IsAny<UpdateUserRequest>())).Returns(new ValidationResult());
@@ -58,13 +58,13 @@ namespace XUnitTest.IamTests.Users
                 .Returns(Task.CompletedTask);
         }
 
-        public void Dispose() => DelegationTestKit.SignOut();
+        public void Dispose() => AccessGrantTestKit.SignOut();
 
         private UserManagementMutationService Create(bool wired = true) =>
             new(NullLogger<UserManagementMutationService>.Instance, _createValidator.Object, _updateValidator.Object,
                 _myAccountValidator.Object, _iam.Object, _userRepo.Object, _message.Object, Mock.Of<ICacheClient>(),
                 Mock.Of<ITenants>(), Mock.Of<IUserActivityDispatcher>(), null, _resourceRepo.Object,
-                delegatedAdministration: wired ? _kit.Service() : null);
+                accessGrant: wired ? _kit.Service() : null);
 
         private static Dictionary<string, object> Access(params string[] regions) =>
             new()
@@ -76,7 +76,7 @@ namespace XUnitTest.IamTests.Users
             };
 
         private static void ShouldBeRefused(BaseResponse result) =>
-            result.Errors.Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
+            result.Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
 
         // ---------- users/create ----------
 
@@ -160,7 +160,7 @@ namespace XUnitTest.IamTests.Users
             _kit.WithUser("junior", ["viewer"]);
 
             (await Create().UpdateUserAsync(new UpdateUserRequest { ItemId = "junior", Attributes = Access("apac") })).Errors
-                .Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
+                .Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
             (await Create().UpdateUserAsync(new UpdateUserRequest { ItemId = "junior", Attributes = Access("eu") })).IsSuccess
                 .Should().BeTrue();
         }
@@ -233,7 +233,7 @@ namespace XUnitTest.IamTests.Users
             var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest { UserId = "member", OrganizationId = Org, Roles = ["owner"] });
 
             ShouldBeRefused(result);
-            _kit.Logged($"DelegatedAdministration denied R4-AccessDelta caller {Org} owner").Should().BeTrue();
+            _kit.Logged($"AccessGrant denied R4-AccessDelta caller {Org} owner").Should().BeTrue();
         }
 
         [Fact]
@@ -244,13 +244,13 @@ namespace XUnitTest.IamTests.Users
 
             await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest { UserId = "member", OrganizationId = Org, Roles = ["owner"] });
 
-            _kit.Logged("DelegatedAdministration.RoleCarriesPolicyPower owner").Should().BeTrue();
+            _kit.Logged("AccessGrant.RoleCarriesPolicyPower owner").Should().BeTrue();
         }
 
         [Fact]
         public async Task SystemUserAccessChangeIsUnchanged()
         {
-            DelegationTestKit.SignIn("caller", "default");
+            AccessGrantTestKit.SignIn("caller", "default");
             _kit.WithUser("member", ["viewer"], organizationId: "default");
 
             var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest { UserId = "member", OrganizationId = "default", Roles = ["anything"] });
@@ -299,9 +299,9 @@ namespace XUnitTest.IamTests.Users
             var add = new BulkRoleChangeRequest { OrganizationId = Org, AddRoles = ["owner"], Target = new BulkRoleTarget { UserIds = ["member"] } };
             var remove = new BulkRoleChangeRequest { OrganizationId = Org, RemoveRoles = ["admin"], Target = new BulkRoleTarget { UserIds = ["member"] } };
 
-            (await Create().PreviewBulkRoleChangeAsync(add)).Errors.Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
-            (await Create().SubmitBulkRoleChangeAsync(add)).Errors.Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
-            (await Create().SubmitBulkRoleChangeAsync(remove)).Errors.Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
+            (await Create().PreviewBulkRoleChangeAsync(add)).Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
+            (await Create().SubmitBulkRoleChangeAsync(add)).Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
+            (await Create().SubmitBulkRoleChangeAsync(remove)).Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
             _bulk.Should().BeEmpty();
         }
 
@@ -323,7 +323,7 @@ namespace XUnitTest.IamTests.Users
             {
                 BatchId = "b_1",
                 OrganizationId = Org,
-                TenantId = DelegationTestKit.Tenant,
+                TenantId = AccessGrantTestKit.Tenant,
                 AddRoles = add,
                 RemoveRoles = remove,
                 UserIds = userIds.ToList(),

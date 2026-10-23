@@ -1277,16 +1277,16 @@ namespace XUnitTest.IamTests.Accounts.Services
             _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
 
-        private AccountService CreateServiceWithDelegation(Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationService delegation) =>
+        private AccountService CreateServiceWithAccessGrant(Iam.DomainService.AccessGrant.IAccessGrantService accessGrant) =>
             new(_loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
                 _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,
                 _userMutationMock.Object, _resourceMutationMock.Object, _captchaServiceMock.Object, _captchaConfigurationServiceMock.Object,
                 _userActivityDispatcherMock.Object, new SignupOrganizationResolver(_resourceRepositoryMock.Object),
-                delegatedAdministration: delegation);
+                accessGrant: accessGrant);
 
-        private XUnitTest.TestSupport.DelegationTestKit ResendKit()
+        private XUnitTest.TestSupport.AccessGrantTestKit ResendKit()
         {
-            var kit = new XUnitTest.TestSupport.DelegationTestKit().WithStandardTree();
+            var kit = new XUnitTest.TestSupport.AccessGrantTestKit().WithStandardTree();
             kit.WithUser("caller", ["manager"]);
             foreach (var user in new[] { kit.WithUser("boss", ["owner"]), kit.WithUser("junior", ["viewer"]), kit.FindUser("caller")! })
             {
@@ -1297,7 +1297,7 @@ namespace XUnitTest.IamTests.Accounts.Services
             _repositoryMock.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
             _iamServiceMock.Setup(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(true);
-            XUnitTest.TestSupport.DelegationTestKit.SignIn("caller");
+            XUnitTest.TestSupport.AccessGrantTestKit.SignIn("caller");
             return kit;
         }
 
@@ -1306,10 +1306,10 @@ namespace XUnitTest.IamTests.Accounts.Services
         {
             var kit = ResendKit();
 
-            var refused = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "boss" });
-            var allowed = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "junior" });
+            var refused = await CreateServiceWithAccessGrant(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "boss" });
+            var allowed = await CreateServiceWithAccessGrant(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "junior" });
 
-            refused.Errors.Should().ContainKey(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationErrors.GrantNotAllowed);
+            refused.Errors.Should().ContainKey(Iam.DomainService.AccessGrant.AccessGrantErrors.GrantNotAllowed);
             allowed.IsSuccess.Should().BeTrue();
             _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.Is<User>(u => u.ItemId == "boss"), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
@@ -1319,7 +1319,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         {
             var kit = ResendKit();
 
-            var result = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "caller" });
+            var result = await CreateServiceWithAccessGrant(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "caller" });
 
             result.IsSuccess.Should().BeTrue();
             kit.Repository.Verify(r => r.GetRolesAsync(It.IsAny<string>()), Times.Never);
@@ -1330,10 +1330,10 @@ namespace XUnitTest.IamTests.Accounts.Services
         {
             var kit = ResendKit();
 
-            var result = await CreateServiceWithDelegation(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "boss" });
+            var result = await CreateServiceWithAccessGrant(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "boss" });
 
-            result.Errors.Should().ContainKey(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationErrors.GrantNotAllowed);
-            kit.Logged("DelegatedAdministration denied R3-ManageUser caller").Should().BeTrue();
+            result.Errors.Should().ContainKey(Iam.DomainService.AccessGrant.AccessGrantErrors.GrantNotAllowed);
+            kit.Logged("AccessGrant denied R3-ManageUser caller").Should().BeTrue();
         }
 
         [Fact]
@@ -1612,19 +1612,19 @@ namespace XUnitTest.IamTests.Accounts.Services
         [Fact]
         public async Task SaveSignUpSettingBelongsToTheSystemUser()
         {
-            var delegation = new Mock<Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationService>();
-            delegation.Setup(d => d.AuthorizeSystemOnly("signup-settings")).Returns(false);
+            var accessGrant = new Mock<Iam.DomainService.AccessGrant.IAccessGrantService>();
+            accessGrant.Setup(d => d.AuthorizeSystemOnly("signup-settings")).Returns(false);
             var service = new AccountService(
                 _loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
                 _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,
                 _userMutationMock.Object, _resourceMutationMock.Object, _captchaServiceMock.Object, _captchaConfigurationServiceMock.Object,
                 _userActivityDispatcherMock.Object, new SignupOrganizationResolver(_resourceRepositoryMock.Object),
-                delegatedAdministration: delegation.Object);
+                accessGrant: accessGrant.Object);
 
             var result = await service.SaveSignUpSettingAsync(new SaveSignUpSettingRequest { DefaultRolesForNewUserOnSignUp = ["admin"] });
 
             result.IsSuccess.Should().BeFalse();
-            result.Errors.Should().ContainKey(Iam.DomainService.DelegatedAdministration.DelegatedAdministrationErrors.GrantNotAllowed);
+            result.Errors.Should().ContainKey(Iam.DomainService.AccessGrant.AccessGrantErrors.GrantNotAllowed);
             _repositoryMock.Verify(r => r.SaveSignUpSettingAsync(It.IsAny<IamTenantConfiguration>()), Times.Never);
         }
 

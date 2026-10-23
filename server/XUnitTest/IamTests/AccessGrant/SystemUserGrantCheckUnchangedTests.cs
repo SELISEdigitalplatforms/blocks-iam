@@ -5,29 +5,29 @@ using Iam.DomainService.Resources;
 using Moq;
 using XUnitTest.TestSupport;
 
-namespace XUnitTest.IamTests.DelegatedAdministration
+namespace XUnitTest.IamTests.AccessGrant
 {
     /// <summary>
     /// The system user -- every caller of a single-organization tenant -- keeps the assignable-roles
-    /// picker it had before delegated administration: the CanCreateOwn trees of its token roles plus
+    /// picker it had before access grant: the CanCreateOwn trees of its token roles plus
     /// standalone roles. These are the pre-existing ResourceQueryService cases, run through the new
     /// service, with the same expected outputs.
     /// </summary>
     public sealed class SystemUserGrantCheckUnchangedTests : IDisposable
     {
-        private readonly DelegationTestKit _kit = new();
+        private readonly AccessGrantTestKit _kit = new();
 
-        public void Dispose() => DelegationTestKit.SignOut();
+        public void Dispose() => AccessGrantTestKit.SignOut();
 
         private static void SignInDefault(IEnumerable<string> tokenRoles)
         {
             BlocksContext.IsTestMode = true;
             BlocksContext.SetContext(BlocksContext.Create(
-                tenantId: DelegationTestKit.Tenant, roles: tokenRoles, userId: "actor-1", impersonated: false,
+                tenantId: AccessGrantTestKit.Tenant, roles: tokenRoles, userId: "actor-1", impersonated: false,
                 isAuthenticated: true, requestUri: "https://test", organizationId: "default",
                 permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
                 userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
-                originalTenantId: DelegationTestKit.Tenant, impersonationSessionId: string.Empty, applicationDomain: "test"));
+                originalTenantId: AccessGrantTestKit.Tenant, impersonationSessionId: string.Empty, applicationDomain: "test"));
         }
 
         private void Roles(params Role[] roles) =>
@@ -101,7 +101,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         }
 
         [Fact]
-        public async Task DelegationScopeOfTheSystemUserShowsTheSamePicker()
+        public async Task GrantScopeOfTheSystemUserShowsTheSamePicker()
         {
             SignInDefault(["manager"]);
             Roles(
@@ -109,7 +109,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
                 new Role { Slug = "admin", Name = "Admin", CanCreateOwn = true, AncestorRoleSlugs = [] },
                 new Role { Slug = "guest", Name = "Guest", CanCreateOwn = false, AncestorRoleSlugs = [] });
 
-            var result = await _kit.Service().GetDelegationScopeAsync();
+            var result = await _kit.Service().GetGrantScopeAsync();
 
             result.IsSystemUser.Should().BeTrue();
             result.AssignableRoles.Should().Equal("guest", "manager");

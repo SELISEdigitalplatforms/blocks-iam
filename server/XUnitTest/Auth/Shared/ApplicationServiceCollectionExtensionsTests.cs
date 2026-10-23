@@ -42,16 +42,16 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
-        public void RegisterAllServicesRegistersDelegatedAdministrationAndBindsItsMode()
+        public void RegisterAllServicesRegistersAccessGrantAndBindsItsMode()
         {
             var services = Registered();
             services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(
                 new Microsoft.Extensions.Configuration.ConfigurationBuilder()
                                         .Build());
 
-            services.Should().Contain(d => d.ServiceType == typeof(Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationService) && d.Lifetime == ServiceLifetime.Singleton);
-            services.Should().Contain(d => d.ServiceType == typeof(Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationRepository));
-            services.Should().Contain(d => d.ServiceType == typeof(IClientCredentialDelegationGuard));
+            services.Should().Contain(d => d.ServiceType == typeof(Iam.DomainService.AccessGrant.IAccessGrantService) && d.Lifetime == ServiceLifetime.Singleton);
+            services.Should().Contain(d => d.ServiceType == typeof(Iam.DomainService.AccessGrant.IAccessGrantRepository));
+            services.Should().Contain(d => d.ServiceType == typeof(IClientCredentialGrantGuard));
             services.Should().Contain(d => d.ServiceType.Name == "IGrantAuthorizationService", "the system user keeps the grant check it always had");
         }
 

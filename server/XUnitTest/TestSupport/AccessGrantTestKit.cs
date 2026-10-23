@@ -1,6 +1,6 @@
 using Blocks.Genesis;
 using Blocks.Genesis.Entities.Iam;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.SignupLinks;
@@ -10,10 +10,10 @@ using Moq;
 namespace XUnitTest.TestSupport
 {
     /// <summary>
-    /// A real <see cref="DelegatedAdministrationService"/> over an in-memory organization, for tests
+    /// A real <see cref="AccessGrantService"/> over an in-memory organization, for tests
     /// of the rules and of every call site. A would-deny is visible as a refusal.
     /// </summary>
-    internal sealed class DelegationTestKit
+    internal sealed class AccessGrantTestKit
     {
         public const string Org = "org-acme-1234";
         public const string Tenant = "tenant-1";
@@ -22,7 +22,7 @@ namespace XUnitTest.TestSupport
         private readonly Dictionary<string, List<Role>> _roles = new(StringComparer.Ordinal);
         private readonly Dictionary<string, List<Permission>> _permissions = new(StringComparer.Ordinal);
 
-        public DelegationTestKit()
+        public AccessGrantTestKit()
         {
             Repository.Setup(r => r.GetUserAsync(It.IsAny<string>()))
                 .ReturnsAsync((string id) => _users.GetValueOrDefault(id));
@@ -41,7 +41,7 @@ namespace XUnitTest.TestSupport
             Terminator.Setup(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>())).Returns(Task.CompletedTask);
         }
 
-        public Mock<IDelegatedAdministrationRepository> Repository { get; } = new();
+        public Mock<IAccessGrantRepository> Repository { get; } = new();
 
         public Mock<IUserSessionTerminator> Terminator { get; } = new();
 
@@ -56,11 +56,11 @@ namespace XUnitTest.TestSupport
 
         public HashSet<string> PolicyRoles { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-        public DelegatedAdministrationService Service() =>
+        public AccessGrantService Service() =>
             new(Repository.Object, Tenants.Object, Iam.Object, Logger,
                 new GrantAuthorizationService(LegacyResources.Object), Terminator.Object);
 
-        public DelegationTestKit WithRole(string slug, string? parent = null, string organizationId = Org)
+        public AccessGrantTestKit WithRole(string slug, string? parent = null, string organizationId = Org)
         {
             var roles = RolesOf(organizationId);
             var ancestors = new List<string>();
@@ -84,7 +84,7 @@ namespace XUnitTest.TestSupport
             return this;
         }
 
-        public DelegationTestKit WithPermission(string resource, string organizationId = Org, params string[] roles)
+        public AccessGrantTestKit WithPermission(string resource, string organizationId = Org, params string[] roles)
         {
             PermissionsOf(organizationId).Add(new Permission
             {
@@ -146,7 +146,7 @@ namespace XUnitTest.TestSupport
         /// admin carries read/write/delete, manager read/write, viewer read, auditor read,
         /// owner read/write/delete/billing.
         /// </summary>
-        public DelegationTestKit WithStandardTree(string organizationId = Org)
+        public AccessGrantTestKit WithStandardTree(string organizationId = Org)
         {
             WithRole("admin", organizationId: organizationId)
                 .WithRole("manager", "admin", organizationId)
@@ -181,7 +181,7 @@ namespace XUnitTest.TestSupport
         public bool Logged(string fragment) => Logger.Messages.Any(m => m.Contains(fragment, StringComparison.Ordinal));
     }
 
-    internal sealed class ListLogger : ILogger<DelegatedAdministrationService>
+    internal sealed class ListLogger : ILogger<AccessGrantService>
     {
         private readonly List<string> _messages = [];
 

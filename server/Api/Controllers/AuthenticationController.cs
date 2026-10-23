@@ -9,7 +9,7 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Authentication.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -37,7 +37,7 @@ public class AuthenticationController : ControllerBase
     private readonly IAuthenticationConfigurationService _configurationService;
     private readonly IAuthenticationDomainService _authenticationDomainService;
     private readonly ISignupLinkRedemptionOrchestrator _signupLinkRedemption;
-    private readonly IClientCredentialDelegationGuard _clientCredentialDelegation;
+    private readonly IClientCredentialGrantGuard _clientCredentialGrant;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
@@ -46,7 +46,7 @@ public class AuthenticationController : ControllerBase
         IAuthenticationConfigurationService configurationService,
         IAuthenticationDomainService authenticationDomainService,
         ISignupLinkRedemptionOrchestrator signupLinkRedemption,
-        IClientCredentialDelegationGuard clientCredentialDelegation
+        IClientCredentialGrantGuard clientCredentialGrant
     )
     {
         _authenticationService = authenticationService;
@@ -55,7 +55,7 @@ public class AuthenticationController : ControllerBase
         _configurationService= configurationService;
         _authenticationDomainService = authenticationDomainService;
         _signupLinkRedemption = signupLinkRedemption;
-        _clientCredentialDelegation = clientCredentialDelegation;
+        _clientCredentialGrant = clientCredentialGrant;
     }
 
     /// <summary>
@@ -212,7 +212,7 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> ResendActivation([FromBody] ResendActivationRequest command)
     {
         var result = await _accountService.ResendActivationAsync(command);
-        if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+        if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
         {
             return StatusCode(StatusCodes.Status403Forbidden, result);
         }
@@ -571,7 +571,7 @@ public class AuthenticationController : ControllerBase
     [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
     public async Task<ActionResult<SaveClientCredentialResponse>> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
     {
-        if (!await _clientCredentialDelegation.MaySaveAsync(request).ConfigureAwait(false))
+        if (!await _clientCredentialGrant.MaySaveAsync(request).ConfigureAwait(false))
         {
             return GrantNotAllowed(new SaveClientCredentialResponse());
         }
@@ -583,7 +583,7 @@ public class AuthenticationController : ControllerBase
     [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
     public async Task<ActionResult<RotateClientCredentialSecretResponse>> RotateClientCredentialSecret([FromRoute] string id)
     {
-        if (!await _clientCredentialDelegation.MayChangeAsync(id).ConfigureAwait(false))
+        if (!await _clientCredentialGrant.MayChangeAsync(id).ConfigureAwait(false))
         {
             return GrantNotAllowed(new RotateClientCredentialSecretResponse());
         }
@@ -595,7 +595,7 @@ public class AuthenticationController : ControllerBase
     [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
     public async Task<ActionResult<BaseResponse>> DeleteClientCredential([FromRoute] string id)
     {
-        if (!await _clientCredentialDelegation.MayChangeAsync(id).ConfigureAwait(false))
+        if (!await _clientCredentialGrant.MayChangeAsync(id).ConfigureAwait(false))
         {
             return GrantNotAllowed(new BaseResponse());
         }
@@ -607,13 +607,13 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// A delegated-administration refusal (R8): 403 with the generic error, in the response shape
+    /// A access grant refusal (R8): 403 with the generic error, in the response shape
     /// the endpoint always returns.
     /// </summary>
     private ObjectResult GrantNotAllowed(BaseResponse response)
     {
         response.IsSuccess = false;
-        response.Errors = DelegatedAdministrationErrors.Create();
+        response.Errors = AccessGrantErrors.Create();
         return StatusCode(StatusCodes.Status403Forbidden, response);
     }
 

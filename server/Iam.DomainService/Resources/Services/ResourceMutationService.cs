@@ -1,7 +1,7 @@
 using Iam.DomainService.Notifications;
 ﻿using Blocks.Genesis;
 using FluentValidation;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
@@ -54,7 +54,7 @@ namespace Iam.DomainService.Resources
         private readonly IUserRepository _userRepository;
 
         private readonly IBuiltInNotificationSender? _notificationSender;
-        private readonly IDelegatedAdministrationService? _delegatedAdministration;
+        private readonly IAccessGrantService? _accessGrant;
 
         public ResourceMutationService(
             ILogger<ResourceMutationService> logger,
@@ -68,12 +68,12 @@ namespace Iam.DomainService.Resources
             IUserRepository userRepository,
             IBuiltInNotificationSender? notificationSender = null,
             // Trailing and optional like the sender above, so existing fixtures keep compiling; DI
-            // always supplies it. Without it no delegated-administration rule runs.
-            IDelegatedAdministrationService? delegatedAdministration = null
+            // always supplies it. Without it no access grant rule runs.
+            IAccessGrantService? accessGrant = null
         )
         {
             _notificationSender = notificationSender;
-            _delegatedAdministration = delegatedAdministration;
+            _accessGrant = accessGrant;
             _logger = logger;
             _resourceRepository = resourceRepository;
             _identityAccessManagementService = identityAccessManagementService;
@@ -87,7 +87,7 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> CreatePermissionAsync(CreatePermissionRequest command)
         {
-            if (!_delegatedAdministration.AuthorizeSystemOnlyIfWired("permissions/create"))
+            if (!_accessGrant.AuthorizeSystemOnlyIfWired("permissions/create"))
             {
                 return GrantNotAllowed();
             }
@@ -269,7 +269,7 @@ namespace Iam.DomainService.Resources
 
             // R5: a non-system caller may hang a new role only below a role it holds or manages.
             // The role starts empty, so its parent is the only power it can carry.
-            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope => DelegatedAdministrationRules.CheckCreateRole(scope, command.ParentRoleSlug)).ConfigureAwait(false))
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckCreateRole(scope, command.ParentRoleSlug)).ConfigureAwait(false))
             {
                 return GrantNotAllowed();
             }
@@ -410,7 +410,7 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> UpdatePermissionAsync(string id, UpdatePermissionRequest command)
         {
-            if (!_delegatedAdministration.AuthorizeSystemOnlyIfWired("permissions/update"))
+            if (!_accessGrant.AuthorizeSystemOnlyIfWired("permissions/update"))
             {
                 return GrantNotAllowed();
             }
@@ -538,7 +538,7 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> ArchivePermissionAsync(string id, bool confirmRevokeFromUsers = false)
         {
-            if (!_delegatedAdministration.AuthorizeSystemOnlyIfWired("permissions/delete"))
+            if (!_accessGrant.AuthorizeSystemOnlyIfWired("permissions/delete"))
             {
                 return GrantNotAllowed();
             }
@@ -701,9 +701,9 @@ namespace Iam.DomainService.Resources
             };
         }
 
-        /// <summary>The delegated-administration refusal; the controller answers it with 403.</summary>
+        /// <summary>The access grant refusal; the controller answers it with 403.</summary>
         private static BaseMutationResponse GrantNotAllowed() =>
-            new() { IsSuccess = false, Errors = DelegatedAdministrationErrors.Create() };
+            new() { IsSuccess = false, Errors = AccessGrantErrors.Create() };
 
         /// <summary>
         /// R7. The roles and permissions <see cref="GrantCreatorMembershipAsync"/> will write: the
@@ -712,15 +712,15 @@ namespace Iam.DomainService.Resources
         /// </summary>
         private async Task<bool> AuthorizeCreatorGrantAsync(CreateOrganizationRequest request)
         {
-            var scope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
+            var scope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
             if (scope is null || scope.IsSystem)
             {
                 return true;
             }
 
             var roles = request.DefaultRoleForMembers.Count > 0 ? request.DefaultRoleForMembers : scope.HeldRoles.ToList();
-            return await _delegatedAdministration
-                .AuthorizeGrantIfWiredAsync(scope, roles, request.DefaultPermissionsForMembers, DelegatedAdministrationRules.CreateOrganization)
+            return await _accessGrant
+                .AuthorizeGrantIfWiredAsync(scope, roles, request.DefaultPermissionsForMembers, AccessGrantRules.CreateOrganization)
                 .ConfigureAwait(false);
         }
 
@@ -809,8 +809,8 @@ namespace Iam.DomainService.Resources
 
             // R5: archiving takes the role, and every permission it carries, away from its holders,
             // so the caller must be able to grant all of it -- and may not archive a role it holds.
-            var grantScope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
-            if (!_delegatedAdministration.AuthorizeScopeIfWired(grantScope, scope => DelegatedAdministrationRules.CheckEditRole(scope, role)))
+            var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (!_accessGrant.AuthorizeScopeIfWired(grantScope, scope => AccessGrantRules.CheckEditRole(scope, role)))
             {
                 return GrantNotAllowed();
             }
@@ -843,7 +843,7 @@ namespace Iam.DomainService.Resources
             }
 
             // R12 needs to know whose access the cleanup below removes, and only before it runs.
-            var removedFromUserIds = await _delegatedAdministration.GetRoleHoldersIfWiredAsync(grantScope, role.Slug).ConfigureAwait(false);
+            var removedFromUserIds = await _accessGrant.GetRoleHoldersIfWiredAsync(grantScope, role.Slug).ConfigureAwait(false);
 
             // Cleanup precedes the archive deliberately. If the archive write then fails, a slug
             // removed from permissions without the role being archived is the safer half-state and
@@ -855,7 +855,7 @@ namespace Iam.DomainService.Resources
             {
                 // Right after the removal, not after the archive: the users have lost the role even
                 // if a later step below fails.
-                await _delegatedAdministration.EndSessionsAfterRemovalIfWiredAsync(grantScope, removedFromUserIds, "role_archived").ConfigureAwait(false);
+                await _accessGrant.EndSessionsAfterRemovalIfWiredAsync(grantScope, removedFromUserIds, "role_archived").ConfigureAwait(false);
             }
 
             // The signup defaults are the third reference, and the one that keeps acting after the
@@ -1093,7 +1093,7 @@ namespace Iam.DomainService.Resources
         {
             // GetRoleByIdAsync has no organization scope, so an organization-scoped caller could
             // otherwise edit another organization's role by id. Always on, whatever the
-            // delegated-administration mode; a tenant-wide token is excepted, as it is everywhere.
+            // access grant mode; a tenant-wide token is excepted, as it is everywhere.
             if (!IsInTokenOrganizationScope(role.OrganizationId))
             {
                 ResourceMutationLog.RoleUpdateOutsideTokenOrganization(_logger, role.ItemId);
@@ -1113,8 +1113,8 @@ namespace Iam.DomainService.Resources
 
             // R5: no edits to a role the caller holds; the role must be one it could assign, and a
             // new parent one it holds or manages.
-            var allowed = await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope =>
-                DelegatedAdministrationRules.CheckEditRole(scope, role, normalizedParentRoleSlug, parentChanged)).ConfigureAwait(false);
+            var allowed = await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope =>
+                AccessGrantRules.CheckEditRole(scope, role, normalizedParentRoleSlug, parentChanged)).ConfigureAwait(false);
             return allowed ? null : GrantNotAllowed();
         }
 
@@ -1142,7 +1142,7 @@ namespace Iam.DomainService.Resources
             // The walk above stops on a loop already in the data, but not on the one this
             // request would close: a parent that is the role itself or sits below it walks up
             // through the role and out again, and would be stored as a cycle.
-            if (DelegatedAdministrationRules.CreatesCycle(role.Slug, role.ParentRoleSlug, ancestorRoleSlugs))
+            if (AccessGrantRules.CreatesCycle(role.Slug, role.ParentRoleSlug, ancestorRoleSlugs))
             {
                 ResourceMutationLog.RoleParentWouldCloseCycle(_logger, role.Slug);
                 return Failure(nameof(UpdateRoleRequest.ParentRoleSlug), "Role_Hierarchy_Cycle_Detected");
@@ -1227,7 +1227,7 @@ namespace Iam.DomainService.Resources
 
             // R5: every permission added to or taken from the role must be one the caller holds,
             // and the role itself one it could assign but does not hold.
-            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope => DelegatedAdministrationRules.CheckEditRole(
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckEditRole(
                     scope,
                     isExist,
                     changedPermissions: command.AddPermissions
@@ -1235,7 +1235,7 @@ namespace Iam.DomainService.Resources
                         .Select(scope.ResourceOfPermissionId)
                         .OfType<string>())).ConfigureAwait(false))
             {
-                return new SetRolesResponse { Errors = DelegatedAdministrationErrors.Create() };
+                return new SetRolesResponse { Errors = AccessGrantErrors.Create() };
             }
 
             if (command.AddPermissions.Any())
@@ -2959,9 +2959,9 @@ namespace Iam.DomainService.Resources
             ArgumentNullException.ThrowIfNull(request);
 
             // R6: tenant configuration belongs to the system user.
-            if (!_delegatedAdministration.AuthorizeSystemOnlyIfWired("organizations/config"))
+            if (!_accessGrant.AuthorizeSystemOnlyIfWired("organizations/config"))
             {
-                return new BaseResponse { IsSuccess = false, Errors = DelegatedAdministrationErrors.Create() };
+                return new BaseResponse { IsSuccess = false, Errors = AccessGrantErrors.Create() };
             }
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();

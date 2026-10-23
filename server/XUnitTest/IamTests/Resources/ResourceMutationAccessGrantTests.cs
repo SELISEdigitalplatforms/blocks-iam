@@ -3,7 +3,7 @@ using Blocks.Genesis.Entities.Iam;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
@@ -16,16 +16,16 @@ using XUnitTest.TestSupport;
 namespace XUnitTest.IamTests.Resources
 {
     /// <summary>
-    /// Delegated administration on the role, permission, organization and configuration paths:
+    /// access grant on the role, permission, organization and configuration paths:
     /// permissions (R6), roles/create, roles/update, DELETE roles/{id}, roles/assign-permissions (R5),
     /// organizations/create (R7), organizations/config (R6), and the always-on roles/update
     /// organization pin. The caller "caller" holds "admin" in org-acme over the standard tree.
     /// </summary>
-    public sealed class ResourceMutationDelegationTests : IDisposable
+    public sealed class ResourceMutationAccessGrantTests : IDisposable
     {
-        private const string Org = DelegationTestKit.Org;
+        private const string Org = AccessGrantTestKit.Org;
 
-        private readonly DelegationTestKit _kit = new DelegationTestKit().WithStandardTree();
+        private readonly AccessGrantTestKit _kit = new AccessGrantTestKit().WithStandardTree();
         private readonly Mock<IResourceRepository> _repo = new();
         private readonly Mock<IIdentityAccessManagementService> _iam = new();
         private readonly Mock<IValidator<CreateRoleRequest>> _roleValidator = new();
@@ -33,10 +33,10 @@ namespace XUnitTest.IamTests.Resources
         private readonly List<Role> _inserted = [];
         private readonly List<Role> _bulkUpdated = [];
 
-        public ResourceMutationDelegationTests()
+        public ResourceMutationAccessGrantTests()
         {
             _kit.WithUser("caller", ["admin"]);
-            DelegationTestKit.SignIn("caller");
+            AccessGrantTestKit.SignIn("caller");
 
             _roleValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateRoleRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
             _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
@@ -63,7 +63,7 @@ namespace XUnitTest.IamTests.Resources
             _iam.Setup(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<object>())).Returns(Task.CompletedTask);
         }
 
-        public void Dispose() => DelegationTestKit.SignOut();
+        public void Dispose() => AccessGrantTestKit.SignOut();
 
         private IEnumerable<Role> AllRoles() => _kit.RolesOf(Org).Concat(_kit.RolesOf("org-other")).Concat(_kit.RolesOf("default"));
 
@@ -73,10 +73,10 @@ namespace XUnitTest.IamTests.Resources
             new(NullLogger<ResourceMutationService>.Instance, _repo.Object, _iam.Object,
                 Mock.Of<IValidator<CreatePermissionRequest>>(), Mock.Of<IValidator<UpdatePermissionRequest>>(), _roleValidator.Object,
                 Mock.Of<ITenantPermissionPropagator>(), Mock.Of<IUserActivityDispatcher>(), _users.Object,
-                delegatedAdministration: wired ? _kit.Service() : null);
+                accessGrant: wired ? _kit.Service() : null);
 
         private static void ShouldBeRefused(BaseResponse result) =>
-            result.Errors.Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
+            result.Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
 
         // ---------- R6 permissions ----------
 
@@ -130,7 +130,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task UpdateRoleOfAnotherOrganizationStaysOpenToTheTenantWideCaller()
         {
-            DelegationTestKit.SignIn("caller", "default");
+            AccessGrantTestKit.SignIn("caller", "default");
             _kit.WithRole("theirs", organizationId: "org-other");
 
             var result = await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = RoleNamed("theirs", "org-other").ItemId, Name = "Renamed" });
@@ -157,7 +157,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task MovingARoleBelowItsOwnDescendantIsACycle()
         {
             _kit.WithStandardTree("default");
-            DelegationTestKit.SignIn("caller", "default");
+            AccessGrantTestKit.SignIn("caller", "default");
             _repo.Setup(r => r.GetRoleBySlugAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync((string slug, string? _) => _kit.RolesOf("default").FirstOrDefault(r => r.Slug == slug)!);
             var admin = RoleNamed("admin", "default");
@@ -223,7 +223,7 @@ namespace XUnitTest.IamTests.Resources
             var refused = await service.SetRolesAsync(new SetRolesRequest { Slug = "viewer", AddPermissions = ["perm-billing"] });
             var allowed = await service.SetRolesAsync(new SetRolesRequest { Slug = "viewer", AddPermissions = ["perm-write"], RemovePermissions = ["perm-read"] });
 
-            refused.Errors.Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
+            refused.Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
             allowed.Success.Should().BeTrue();
             _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("viewer", It.Is<List<string>>(l => l.Contains("perm-billing")), It.IsAny<string>()), Times.Never);
         }
@@ -233,7 +233,7 @@ namespace XUnitTest.IamTests.Resources
         {
             var result = await Create().SetRolesAsync(new SetRolesRequest { Slug = "admin", RemovePermissions = ["perm-read"] });
 
-            result.Errors.Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
+            result.Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
         }
 
         // ---------- organizations/create (R7) ----------
@@ -289,7 +289,7 @@ namespace XUnitTest.IamTests.Resources
             ShouldBeRefused(await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest()));
             _repo.Verify(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>()), Times.Never);
 
-            DelegationTestKit.SignIn("caller", "default");
+            AccessGrantTestKit.SignIn("caller", "default");
             _repo.Setup(r => r.SaveOrganizationConfig(It.IsAny<IamTenantConfiguration>())).Returns(Task.CompletedTask);
             (await Create().SaveOrganizationConfigAsync(new SaveOrganizationConfigRequest())).IsSuccess.Should().BeTrue();
         }
@@ -300,7 +300,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task SystemUserRoleEditsAreUnchanged()
         {
             _kit.WithStandardTree("default");
-            DelegationTestKit.SignIn("caller", "default");
+            AccessGrantTestKit.SignIn("caller", "default");
             _repo.Setup(r => r.GetRoleBySlugAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync((string slug, string? _) => _kit.RolesOf("default").FirstOrDefault(r => r.Slug == slug)!);
 

@@ -4,7 +4,7 @@ using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
@@ -24,7 +24,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
     private readonly Mock<ISignupLinkConfigurationRepository> _configs = new();
     private readonly Mock<IOidcClientRegistrationLookup> _oidc = new();
     private readonly Mock<IResourceRepository> _resources = new();
-    private readonly DelegationTestKit _delegation = new();
+    private readonly AccessGrantTestKit _accessGrant = new();
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<IValidator<GenerateSignupLinkRequest>> _generateValidator = new();
     private readonly Mock<IValidator<QuerySignupLinksRequest>> _queryValidator = new();
@@ -107,21 +107,21 @@ public class SignupLinkGenerationServiceTests : IDisposable
 
     private void SetupRoleTreeForBob()
     {
-        if (_delegation.RolesOf("org-acme").Count > 0)
+        if (_accessGrant.RolesOf("org-acme").Count > 0)
         {
             return;
         }
 
-        _delegation
+        _accessGrant
             .WithRole("site-manager", organizationId: "org-acme")
             .WithRole("site-viewer", "site-manager", "org-acme")
             .WithRole("root", organizationId: "org-acme")
             .WithRole("tenant-admin", "root", "org-acme")
             .WithRole("contractor", organizationId: "org-acme");
-        _delegation
+        _accessGrant
             .WithPermission("read:project", "org-acme", "site-manager", "site-viewer", "contractor", "root", "tenant-admin")
             .WithPermission("write:secret", "org-acme", "root", "tenant-admin");
-        _delegation.WithUser(ActorId, roles: ["site-manager"], organizationId: "org-acme");
+        _accessGrant.WithUser(ActorId, roles: ["site-manager"], organizationId: "org-acme");
     }
 
     private static SignupLinkConfiguration ActiveConfig() => new()
@@ -145,7 +145,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
             _configs.Object,
             _oidc.Object,
             new GrantAuthorizationService(_resources.Object),
-            _delegation.Service(),
+            _accessGrant.Service(),
             _users.Object),
         new SignupLinkGenerationValidators(
             _configuration,
@@ -301,7 +301,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(403);
-        result.Errors!.Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
+        result.Errors!.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
         result.Errors.Should().HaveCount(1, "the refusal is generic; the role stays in the server log");
         _links.Verify(l => l.InsertAsync(It.IsAny<SignupLink>()), Times.Never);
     }
@@ -467,7 +467,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
 
         result.StatusCode.Should().Be(403);
         result.Errors!["Roles"].Should().Be("You cannot grant the role: site-viewer");
-        _delegation.Repository.Verify(r => r.GetUserAsync(It.IsAny<string>()), Times.Never);
+        _accessGrant.Repository.Verify(r => r.GetUserAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
@@ -481,7 +481,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
             r.Permissions = ["write:secret"];
         }));
         result.StatusCode.Should().Be(403);
-        result.Errors!.Should().ContainKey(DelegatedAdministrationErrors.GrantNotAllowed);
+        result.Errors!.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
         _links.Verify(l => l.InsertAsync(It.IsAny<SignupLink>()), Times.Never);
     }
 
@@ -498,7 +498,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
         }));
 
         result.StatusCode.Should().Be(403);
-        _delegation.Logged("DelegatedAdministration denied R9-SignupLink").Should().BeTrue();
+        _accessGrant.Logged("AccessGrant denied R9-SignupLink").Should().BeTrue();
     }
 
     [Fact]

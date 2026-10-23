@@ -5,10 +5,10 @@ using Iam.DomainService.Services;
 using Iam.DomainService.Users;
 using MongoDB.Driver;
 
-namespace Iam.DomainService.DelegatedAdministration
+namespace Iam.DomainService.AccessGrant
 {
-    /// <summary>The reads delegated administration needs, so the service itself holds no collection logic.</summary>
-    public interface IDelegatedAdministrationRepository
+    /// <summary>The reads access grant needs, so the service itself holds no collection logic.</summary>
+    public interface IAccessGrantRepository
     {
         Task<User?> GetUserAsync(string userId);
 
@@ -28,7 +28,7 @@ namespace Iam.DomainService.DelegatedAdministration
         Task<List<string>> GetUserIdsWithRoleAsync(string slug, string organizationId);
     }
 
-    public sealed class DelegatedAdministrationRepository : IDelegatedAdministrationRepository
+    public sealed class AccessGrantRepository : IAccessGrantRepository
     {
         /// <summary>Genesis collection naming: the entity name plus "s", as blocks-data writes it.</summary>
         private const string DataAccessPolicyCollectionName = "DataAccessPolicys";
@@ -42,7 +42,7 @@ namespace Iam.DomainService.DelegatedAdministration
         private readonly IIdentityAccessManagementRepository _identityAccessManagementRepository;
         private readonly IIamDataAccess _dataAccess;
 
-        public DelegatedAdministrationRepository(
+        public AccessGrantRepository(
             IResourceRepository resourceRepository,
             IUserRepository userRepository,
             IIdentityAccessManagementRepository identityAccessManagementRepository,
@@ -69,7 +69,7 @@ namespace Iam.DomainService.DelegatedAdministration
             var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId)
                 & Builders<Permission>.Filter.Ne(x => x.IsArchived, true);
             var scope = await _dataAccess
-                .ReadAsync(IamSchemas.Permission, filter, "DelegatedAdministrationRepository.GetPermissionsAsync", useProjection: false)
+                .ReadAsync(IamSchemas.Permission, filter, "AccessGrantRepository.GetPermissionsAsync", useProjection: false)
                 .ConfigureAwait(false);
 
             return scope.Granted ? await scope.Apply(collection).ToListAsync().ConfigureAwait(false) : [];
@@ -106,7 +106,7 @@ namespace Iam.DomainService.DelegatedAdministration
             var collection = _identityAccessManagementRepository.GetCollection<User>();
             var filter = Builders<User>.Filter.AnyEq($"Roles.{organizationId}", slug);
             var scope = await _dataAccess
-                .ReadAsync(IamSchemas.User, filter, "DelegatedAdministrationRepository.GetUserIdsWithRoleAsync", useProjection: false)
+                .ReadAsync(IamSchemas.User, filter, "AccessGrantRepository.GetUserIdsWithRoleAsync", useProjection: false)
                 .ConfigureAwait(false);
             if (!scope.Granted)
             {

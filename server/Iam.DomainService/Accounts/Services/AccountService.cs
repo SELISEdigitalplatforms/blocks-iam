@@ -4,7 +4,7 @@
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentValidation;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -70,7 +70,7 @@ namespace Iam.DomainService.Accounts
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
         private readonly IUserSessionTerminator? _userSessionTerminator;
         private readonly IFailedLoginTracker? _failedLoginTracker;
-        private readonly IDelegatedAdministrationService? _delegatedAdministration;
+        private readonly IAccessGrantService? _accessGrant;
         private readonly IValidator<SignupOrganizationInfo>? _signupOrganizationValidator;
         private readonly IOrganizationNameResolver? _organizationNameResolver;
         private readonly IConfiguration? _configuration;
@@ -101,7 +101,7 @@ namespace Iam.DomainService.Accounts
             IConfiguration? configuration = null,
             IUserSessionTerminator? userSessionTerminator = null,
             IFailedLoginTracker? failedLoginTracker = null,
-            IDelegatedAdministrationService? delegatedAdministration = null)
+            IAccessGrantService? accessGrant = null)
         {
             _logger = logger;
             _repository = repository;
@@ -124,7 +124,7 @@ namespace Iam.DomainService.Accounts
             _configuration = configuration;
             _userSessionTerminator = userSessionTerminator;
             _failedLoginTracker = failedLoginTracker;
-            _delegatedAdministration = delegatedAdministration;
+            _accessGrant = accessGrant;
         }
 
         public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
@@ -1316,11 +1316,11 @@ namespace Iam.DomainService.Accounts
                 return new BaseAccountResponse();
             }
 
-            // Sending another user an activation link is managing that user (delegated
-            // administration, R3). Asking for one's own is self-service.
+            // Sending another user an activation link is managing that user (access
+            // grant, R3). Asking for one's own is self-service.
             if (!await MayResendActivationToAsync(user).ConfigureAwait(false))
             {
-                return new BaseAccountResponse { Errors = DelegatedAdministrationErrors.Create() };
+                return new BaseAccountResponse { Errors = AccessGrantErrors.Create() };
             }
 
             var result = await SendReActivationAsync(user);
@@ -1334,7 +1334,7 @@ namespace Iam.DomainService.Accounts
         private Task<bool> MayResendActivationToAsync(User user) =>
             string.Equals(user.ItemId, BlocksContext.GetContext()?.UserId, StringComparison.Ordinal)
                 ? Task.FromResult(true)
-                : _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope => DelegatedAdministrationRules.CheckManageUser(scope, user));
+                : _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckManageUser(scope, user));
 
         public async Task<bool> SendReActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {
@@ -1500,9 +1500,9 @@ namespace Iam.DomainService.Accounts
         {
             // R6: signup settings are tenant-wide -- they hand roles to every future signup -- so
             // they belong to the system user.
-            if (!_delegatedAdministration.AuthorizeSystemOnlyIfWired("signup-settings"))
+            if (!_accessGrant.AuthorizeSystemOnlyIfWired("signup-settings"))
             {
-                return new SaveSignUpSettingResponse { IsSuccess = false, Errors = DelegatedAdministrationErrors.Create() };
+                return new SaveSignUpSettingResponse { IsSuccess = false, Errors = AccessGrantErrors.Create() };
             }
 
             var settings = await _repository.GetTenantConfigurationAsync();

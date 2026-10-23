@@ -1,7 +1,7 @@
 using Blocks.Genesis.Entities.Data;
 using Blocks.Genesis.Entities.Iam;
 using FluentAssertions;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
@@ -10,19 +10,19 @@ using Moq;
 using XUnitTest.TestDoubles;
 using XUnitTest.TestSupport;
 
-namespace XUnitTest.IamTests.DelegatedAdministration
+namespace XUnitTest.IamTests.AccessGrant
 {
     /// <summary>
-    /// The reads behind delegated administration: the roles a data-access policy names (R11) and the
+    /// The reads behind access grant: the roles a data-access policy names (R11) and the
     /// holders of a role (R12).
     /// </summary>
-    public class DelegatedAdministrationRepositoryTests
+    public class AccessGrantRepositoryTests
     {
         private readonly Mock<IResourceRepository> _resources = new();
         private readonly Mock<IUserRepository> _users = new();
         private readonly Mock<IIdentityAccessManagementRepository> _iam = new();
 
-        private DelegatedAdministrationRepository Sut() => new(_resources.Object, _users.Object, _iam.Object, new PassThroughIamDataAccess());
+        private AccessGrantRepository Sut() => new(_resources.Object, _users.Object, _iam.Object, new PassThroughIamDataAccess());
 
         private static PolicyRule AuthRoles(object value) => new()
         {

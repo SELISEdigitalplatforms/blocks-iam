@@ -3,7 +3,7 @@ using Authentication.DomainService.Utilities;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.RequestModel;
@@ -184,7 +184,7 @@ namespace Api.Controllers
         }
 
         /// <summary>
-        /// What the caller may administer in its token organization (delegated administration):
+        /// What the caller may administer in its token organization (access grant):
         /// whether it is the system user, the mode, the roles it holds and manages, the roles it may
         /// assign, and the permissions it holds. Read from the database, never from the token.
         /// </summary>
@@ -193,12 +193,12 @@ namespace Api.Controllers
         /// uses it already lists roles. The service is taken per action so the controller's
         /// constructor does not grow.
         /// </remarks>
-        [HttpGet("delegation-scope")]
+        [HttpGet("grant-scope")]
         [ProtectedEndPoint("blocks-iam::iam::roles")]
-        public async Task<DelegationScopeResponse> GetDelegationScope([FromServices] IDelegatedAdministrationService delegatedAdministration)
+        public async Task<GrantScopeResponse> GetGrantScope([FromServices] IAccessGrantService accessGrant)
         {
-            ArgumentNullException.ThrowIfNull(delegatedAdministration);
-            return await delegatedAdministration.GetDelegationScopeAsync().ConfigureAwait(false);
+            ArgumentNullException.ThrowIfNull(accessGrant);
+            return await accessGrant.GetGrantScopeAsync().ConfigureAwait(false);
         }
 
         [HttpGet("resource-groups")]
@@ -299,7 +299,7 @@ namespace Api.Controllers
         public async Task<IActionResult> PreviewBulkRoleChange(BulkRoleChangeRequest command)
         {
             var result = await _userManagementMutationService.PreviewBulkRoleChangeAsync(command);
-            if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+            if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
             {
                 return GrantNotAllowed(result);
             }
@@ -316,7 +316,7 @@ namespace Api.Controllers
         public async Task<IActionResult> SubmitBulkRoleChange(BulkRoleChangeRequest command)
         {
             var result = await _userManagementMutationService.SubmitBulkRoleChangeAsync(command);
-            if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+            if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
             {
                 return GrantNotAllowed(result);
             }
@@ -432,7 +432,7 @@ namespace Api.Controllers
         public async Task<ActionResult<BaseMutationResponse>> CreateOrganization([FromBody] CreateOrganizationRequest request)
         {
             var result = await _resourceMutationService.CreateOrganizationAsync(request);
-            if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+            if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
             {
                 return GrantNotAllowed(result);
             }
@@ -476,7 +476,7 @@ namespace Api.Controllers
         public async Task<ActionResult<BaseResponse>> SaveOrganizationConfig([FromBody] SaveOrganizationConfigRequest request)
         {
             var result = await _resourceMutationService.SaveOrganizationConfigAsync(request);
-            if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+            if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
             {
                 return GrantNotAllowed(result);
             }
@@ -533,7 +533,7 @@ namespace Api.Controllers
         public async Task<ActionResult<SaveSignUpSettingResponse>> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
         {
             var result = await _accountService.SaveSignUpSettingAsync(request);
-            if (DelegatedAdministrationErrors.IsGrantNotAllowed(result.Errors))
+            if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
             {
                 return GrantNotAllowed(result);
             }
@@ -580,7 +580,7 @@ namespace Api.Controllers
         #endregion
 
         /// <summary>
-        /// The answer every mutation endpoint gives: 200 on success, 403 for a delegated-administration
+        /// The answer every mutation endpoint gives: 200 on success, 403 for a access grant
         /// refusal (<c>Access_Grant_Not_Allowed</c>), 400 for any other failure.
         /// </summary>
         private IActionResult MutationResult(object result, bool isSuccess, IDictionary<string, string>? errors)
@@ -590,7 +590,7 @@ namespace Api.Controllers
                 return Ok(result);
             }
 
-            if (DelegatedAdministrationErrors.IsGrantNotAllowed(errors))
+            if (AccessGrantErrors.IsGrantNotAllowed(errors))
             {
                 return GrantNotAllowed(result);
             }

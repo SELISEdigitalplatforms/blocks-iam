@@ -3,7 +3,7 @@ using Authentication.DomainService.Authentication;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.RequestModel;
 using Iam.DomainService.Users;
@@ -16,10 +16,10 @@ using Moq;
 namespace XUnitTest.ApiTests
 {
     /// <summary>
-    /// A delegated-administration refusal reaches the caller as 403 with <c>Access_Grant_Not_Allowed</c>
+    /// A access grant refusal reaches the caller as 403 with <c>Access_Grant_Not_Allowed</c>
     /// on every IAM endpoint, and any other failure keeps its 400.
     /// </summary>
-    public class IamControllerDelegationTests
+    public class IamControllerAccessGrantTests
     {
         private readonly Mock<IAccountService> _accountService = new();
         private readonly Mock<IUserManagementQueryService> _userQuery = new();
@@ -30,7 +30,7 @@ namespace XUnitTest.ApiTests
         private readonly Mock<IOrganizationNameResolver> _organizationNameResolver = new();
 
         private static BaseMutationResponse Refused() =>
-            new() { IsSuccess = false, Errors = DelegatedAdministrationErrors.Create() };
+            new() { IsSuccess = false, Errors = AccessGrantErrors.Create() };
 
         private IamController CreateController() =>
             new(_accountService.Object, _resourceMutation.Object, _resourceQuery.Object, _userQuery.Object,
@@ -52,7 +52,7 @@ namespace XUnitTest.ApiTests
             _resourceMutation.Setup(s => s.UpdateRoleAsync(It.IsAny<UpdateRoleRequest>())).ReturnsAsync(Refused());
             _resourceMutation.Setup(s => s.ArchiveRoleAsync(It.IsAny<string>(), It.IsAny<bool>())).ReturnsAsync(Refused());
             _resourceMutation.Setup(s => s.SetRolesAsync(It.IsAny<SetRolesRequest>()))
-                .ReturnsAsync(new SetRolesResponse { Errors = DelegatedAdministrationErrors.Create() });
+                .ReturnsAsync(new SetRolesResponse { Errors = AccessGrantErrors.Create() });
             _userMutation.Setup(s => s.CreateUserAsync(It.IsAny<CreateUserRequest>())).ReturnsAsync(Refused());
             _userMutation.Setup(s => s.UpdateUserAsync(It.IsAny<UpdateUserRequest>())).ReturnsAsync(Refused());
             _userMutation.Setup(s => s.DeactivateUserAsync(It.IsAny<DeactivateUserRequest>())).ReturnsAsync(Refused());
@@ -82,9 +82,9 @@ namespace XUnitTest.ApiTests
         public async Task BulkRoleChangeRefusalIs403OnPreviewAndSubmit()
         {
             _userMutation.Setup(s => s.PreviewBulkRoleChangeAsync(It.IsAny<BulkRoleChangeRequest>()))
-                .ReturnsAsync(new BulkRoleChangePreviewResponse { Errors = DelegatedAdministrationErrors.Create() });
+                .ReturnsAsync(new BulkRoleChangePreviewResponse { Errors = AccessGrantErrors.Create() });
             _userMutation.Setup(s => s.SubmitBulkRoleChangeAsync(It.IsAny<BulkRoleChangeRequest>()))
-                .ReturnsAsync(new BulkRoleChangeSubmitResponse { Errors = DelegatedAdministrationErrors.Create() });
+                .ReturnsAsync(new BulkRoleChangeSubmitResponse { Errors = AccessGrantErrors.Create() });
             var controller = CreateController();
 
             Forbidden(await controller.PreviewBulkRoleChange(new BulkRoleChangeRequest()));
@@ -96,9 +96,9 @@ namespace XUnitTest.ApiTests
         {
             _resourceMutation.Setup(s => s.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string>())).ReturnsAsync(Refused());
             _resourceMutation.Setup(s => s.SaveOrganizationConfigAsync(It.IsAny<SaveOrganizationConfigRequest>()))
-                .ReturnsAsync(new BaseResponse { Errors = DelegatedAdministrationErrors.Create() });
+                .ReturnsAsync(new BaseResponse { Errors = AccessGrantErrors.Create() });
             _accountService.Setup(s => s.SaveSignUpSettingAsync(It.IsAny<SaveSignUpSettingRequest>()))
-                .ReturnsAsync(new SaveSignUpSettingResponse { Errors = DelegatedAdministrationErrors.Create() });
+                .ReturnsAsync(new SaveSignUpSettingResponse { Errors = AccessGrantErrors.Create() });
             var controller = CreateController();
 
             (await controller.CreateOrganization(new CreateOrganizationRequest { Name = "Acme" })).Result
@@ -121,13 +121,13 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
-        public async Task DelegationScopeComesFromTheService()
+        public async Task GrantScopeComesFromTheService()
         {
-            var service = new Mock<IDelegatedAdministrationService>();
-            var response = new DelegationScopeResponse { IsSystemUser = false, HeldRoles = ["manager"] };
-            service.Setup(s => s.GetDelegationScopeAsync()).ReturnsAsync(response);
+            var service = new Mock<IAccessGrantService>();
+            var response = new GrantScopeResponse { IsSystemUser = false, HeldRoles = ["manager"] };
+            service.Setup(s => s.GetGrantScopeAsync()).ReturnsAsync(response);
 
-            var result = await CreateController().GetDelegationScope(service.Object);
+            var result = await CreateController().GetGrantScope(service.Object);
 
             result.Should().BeSameAs(response);
         }

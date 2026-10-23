@@ -2,7 +2,7 @@ using Iam.DomainService.Notifications;
 ﻿using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Accounts;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
@@ -48,7 +48,7 @@ namespace Iam.DomainService.Users
         private readonly IConfiguration? _configuration;
         private readonly IUserSessionTerminator? _userSessionTerminator;
         private readonly IBuiltInNotificationSender? _notificationSender;
-        private readonly IDelegatedAdministrationService? _delegatedAdministration;
+        private readonly IAccessGrantService? _accessGrant;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -68,8 +68,8 @@ namespace Iam.DomainService.Users
             IUserSessionTerminator? userSessionTerminator = null,
             IBuiltInNotificationSender? notificationSender = null,
             // Trailing and optional like the dependencies above; DI always supplies it. Without it
-            // no delegated-administration rule runs.
-            IDelegatedAdministrationService? delegatedAdministration = null
+            // no access grant rule runs.
+            IAccessGrantService? accessGrant = null
         )
         {
             _logger = logger;
@@ -89,7 +89,7 @@ namespace Iam.DomainService.Users
             _configuration = configuration;
             _userSessionTerminator = userSessionTerminator;
             _notificationSender = notificationSender;
-            _delegatedAdministration = delegatedAdministration;
+            _accessGrant = accessGrant;
         }
 
         public async Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command)
@@ -125,7 +125,7 @@ namespace Iam.DomainService.Users
                 return permissionCountFailure;
             }
 
-            var grantScope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
+            var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
             if (!await AuthorizeCreateUserAsync(grantScope, command).ConfigureAwait(false))
             {
                 return GrantNotAllowed();
@@ -452,9 +452,9 @@ namespace Iam.DomainService.Users
                 : user.Permissions.GetValueOrDefault(organizationId, []);
         }
 
-        /// <summary>The delegated-administration refusal; the controller answers it with 403.</summary>
+        /// <summary>The access grant refusal; the controller answers it with 403.</summary>
         private static BaseMutationResponse GrantNotAllowed() =>
-            new() { IsSuccess = false, Errors = DelegatedAdministrationErrors.Create() };
+            new() { IsSuccess = false, Errors = AccessGrantErrors.Create() };
 
         /// <summary>
         /// True when writing these lists through <see cref="GrantOrganization"/> would take at least
@@ -462,13 +462,13 @@ namespace Iam.DomainService.Users
         /// what is stored, so it removes nothing.
         /// </summary>
         private static bool RemovesAccess(User user, string organizationId, List<string>? roles, List<string>? permissions) =>
-            DelegatedAdministrationRules.Delta(DelegatedAdministrationRules.GrantsIn(user.Roles, organizationId), roles).Removed.Count > 0
-            || DelegatedAdministrationRules.Delta(DelegatedAdministrationRules.GrantsIn(user.Permissions, organizationId), permissions).Removed.Count > 0;
+            AccessGrantRules.Delta(AccessGrantRules.GrantsIn(user.Roles, organizationId), roles).Removed.Count > 0
+            || AccessGrantRules.Delta(AccessGrantRules.GrantsIn(user.Permissions, organizationId), permissions).Removed.Count > 0;
 
         /// <summary>True when the user holds at least one role or permission in the organization.</summary>
         private static bool HoldsAccessIn(User user, string organizationId) =>
-            DelegatedAdministrationRules.GrantsIn(user.Roles, organizationId).Any()
-            || DelegatedAdministrationRules.GrantsIn(user.Permissions, organizationId).Any();
+            AccessGrantRules.GrantsIn(user.Roles, organizationId).Any()
+            || AccessGrantRules.GrantsIn(user.Permissions, organizationId).Any();
 
         /// <summary>
         /// R4 with R3 for a list replace of the user's access in the scope's organization, plus the
@@ -481,17 +481,17 @@ namespace Iam.DomainService.Users
                 return true;
             }
 
-            var (addedRoles, _) = DelegatedAdministrationRules.Delta(
-                DelegatedAdministrationRules.GrantsIn(user.Roles, scope.OrganizationId), roles);
-            await _delegatedAdministration.WarnOnPolicyPowerIfWiredAsync(scope, addedRoles).ConfigureAwait(false);
-            return _delegatedAdministration.AuthorizeScopeIfWired(scope, s =>
-                DelegatedAdministrationRules.CheckAccessChange(s, user, roles, permissions));
+            var (addedRoles, _) = AccessGrantRules.Delta(
+                AccessGrantRules.GrantsIn(user.Roles, scope.OrganizationId), roles);
+            await _accessGrant.WarnOnPolicyPowerIfWiredAsync(scope, addedRoles).ConfigureAwait(false);
+            return _accessGrant.AuthorizeScopeIfWired(scope, s =>
+                AccessGrantRules.CheckAccessChange(s, user, roles, permissions));
         }
 
         /// <summary>R12 for one user, when the write took at least one role or permission away.</summary>
         private Task EndSessionsIfAccessRemovedAsync(GrantScope? scope, string userId, bool removedAccess, string reason) =>
             removedAccess
-                ? _delegatedAdministration.EndSessionsAfterRemovalIfWiredAsync(scope, [userId], reason)
+                ? _accessGrant.EndSessionsAfterRemovalIfWiredAsync(scope, [userId], reason)
                 : Task.CompletedTask;
 
         /// <summary>The bag exactly as it would be stored, so R10 compares what will actually land.</summary>
@@ -499,7 +499,7 @@ namespace Iam.DomainService.Users
             attributes is null ? null : AttributeNormalizer.Normalize(attributes, AttributePolicy.Internal);
 
         /// <summary>
-        /// The delegated-administration gate for users/create. A new account is a plain grant: R1 on
+        /// The access grant gate for users/create. A new account is a plain grant: R1 on
         /// its roles, R2 on its permissions, R10 on its access attributes. An email that already has
         /// an account is not created but has its access in the organization replaced, so it is
         /// checked like users/access: R4 on the delta and R3 on the account as stored.
@@ -517,9 +517,9 @@ namespace Iam.DomainService.Users
                 return await AuthorizeAccessChangeAsync(scope, existing, command.Roles, command.Permissions).ConfigureAwait(false);
             }
 
-            return _delegatedAdministration.AuthorizeScopeIfWired(scope, s =>
-                    DelegatedAdministrationRules.CheckAccessAttributes(s, NewUserTarget, null, NormalizeAttributes(command.Attributes)))
-                && await _delegatedAdministration.AuthorizeGrantIfWiredAsync(scope, command.Roles, command.Permissions).ConfigureAwait(false);
+            return _accessGrant.AuthorizeScopeIfWired(scope, s =>
+                    AccessGrantRules.CheckAccessAttributes(s, NewUserTarget, null, NormalizeAttributes(command.Attributes)))
+                && await _accessGrant.AuthorizeGrantIfWiredAsync(scope, command.Roles, command.Permissions).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -699,9 +699,9 @@ namespace Iam.DomainService.Users
             }
 
             // R3 on the user, and R10 on any access attribute the new bag would change.
-            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope =>
-                    DelegatedAdministrationRules.CheckManageUser(scope, user)
-                    ?? DelegatedAdministrationRules.CheckAccessAttributes(scope, user.ItemId, user.Attributes, NormalizeAttributes(command.Attributes))).ConfigureAwait(false))
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope =>
+                    AccessGrantRules.CheckManageUser(scope, user)
+                    ?? AccessGrantRules.CheckAccessAttributes(scope, user.ItemId, user.Attributes, NormalizeAttributes(command.Attributes))).ConfigureAwait(false))
             {
                 return GrantNotAllowed();
             }
@@ -802,8 +802,8 @@ namespace Iam.DomainService.Users
 
             // R10: the caller's own access attributes are power over data, so it may only give up
             // values here, never add ones it does not already hold.
-            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope =>
-                    DelegatedAdministrationRules.CheckAccessAttributes(scope, user.ItemId, user.Attributes, NormalizeAttributes(command.Attributes))).ConfigureAwait(false))
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope =>
+                    AccessGrantRules.CheckAccessAttributes(scope, user.ItemId, user.Attributes, NormalizeAttributes(command.Attributes))).ConfigureAwait(false))
             {
                 return GrantNotAllowed();
             }
@@ -901,7 +901,7 @@ namespace Iam.DomainService.Users
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "user_not_found", $"No user found with id {request.UserId}" } } };
             }
 
-            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope => DelegatedAdministrationRules.CheckManageUser(scope, user)).ConfigureAwait(false))
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckManageUser(scope, user)).ConfigureAwait(false))
             {
                 return GrantNotAllowed();
             }
@@ -1027,7 +1027,7 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            if (!await _delegatedAdministration.AuthorizeCurrentCallerIfWiredAsync(scope => DelegatedAdministrationRules.CheckManageUser(scope, user)).ConfigureAwait(false))
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckManageUser(scope, user)).ConfigureAwait(false))
             {
                 return GrantNotAllowed();
             }
@@ -1394,7 +1394,7 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            var grantScope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
+            var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
             if (!await AuthorizeAccessChangeAsync(grantScope, user, command.Roles, command.Permissions).ConfigureAwait(false))
             {
                 return GrantNotAllowed();
@@ -1530,9 +1530,9 @@ namespace Iam.DomainService.Users
 
             // R3: revoking takes away every role and permission the user holds here, so each must
             // be one the caller could grant. A non-member holds nothing here, so it passes.
-            var grantScope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
-            if (!_delegatedAdministration.AuthorizeScopeIfWired(grantScope, scope =>
-                    DelegatedAdministrationRules.CheckManageUser(scope, user, requireMembership: false)))
+            var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (!_accessGrant.AuthorizeScopeIfWired(grantScope, scope =>
+                    AccessGrantRules.CheckManageUser(scope, user, requireMembership: false)))
             {
                 return GrantNotAllowed();
             }
@@ -2053,7 +2053,7 @@ namespace Iam.DomainService.Users
             var batchId = $"b_{Guid.NewGuid():N}"[..10];
             var tenantId = BlocksContext.GetContext()?.TenantId;
             var requestedBy = BlocksContext.GetContext()?.UserId;
-            var submitter = _delegatedAdministration?.CurrentCaller();
+            var submitter = _accessGrant?.CurrentCaller();
             var parts = (userIds.Count + BulkRoleChunkSize - 1) / BulkRoleChunkSize;
 
             try
@@ -2130,8 +2130,8 @@ namespace Iam.DomainService.Users
             // The submitter's power is re-read now, not trusted from submit time: roles and
             // permissions can change while the batch waits in the queue.
             var grantScope = await GetBulkSubmitterScopeAsync(command).ConfigureAwait(false);
-            var deltaAllowed = _delegatedAdministration.AuthorizeScopeIfWired(grantScope, scope =>
-                DelegatedAdministrationRules.CheckRoleDelta(scope, command.AddRoles, command.RemoveRoles));
+            var deltaAllowed = _accessGrant.AuthorizeScopeIfWired(grantScope, scope =>
+                AccessGrantRules.CheckRoleDelta(scope, command.AddRoles, command.RemoveRoles));
 
             foreach (var userId in command.UserIds)
             {
@@ -2153,7 +2153,7 @@ namespace Iam.DomainService.Users
                 }
             }
 
-            await _delegatedAdministration.EndSessionsAfterRemovalIfWiredAsync(grantScope, removedFrom, "bulk_role_change").ConfigureAwait(false);
+            await _accessGrant.EndSessionsAfterRemovalIfWiredAsync(grantScope, removedFrom, "bulk_role_change").ConfigureAwait(false);
 
             _logger.LogInformation("Bulk role change apply end -- batch {BatchId}", command.BatchId);
 
@@ -2174,16 +2174,16 @@ namespace Iam.DomainService.Users
         /// </summary>
         private async Task<GrantScope?> GetBulkSubmitterScopeAsync(BulkUserRoleChangeEvent command)
         {
-            if (_delegatedAdministration is null)
+            if (_accessGrant is null)
             {
                 return null;
             }
 
-            var submitter = new DelegationCaller(
+            var submitter = new GrantCaller(
                 command.RequestedBy ?? string.Empty,
                 command.OrganizationId,
                 command.RequestedBySystemCaller != false);
-            return await _delegatedAdministration.GetScopeAsync(submitter).ConfigureAwait(false);
+            return await _accessGrant.GetScopeAsync(submitter).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -2211,13 +2211,13 @@ namespace Iam.DomainService.Users
 
                 // R3 per user, against the submitter's power: a user who holds more than the
                 // submitter is left alone, as the single-user endpoint would leave them.
-                if (!deltaAllowed || !_delegatedAdministration.AuthorizeScopeIfWired(grantScope, scope =>
-                        DelegatedAdministrationRules.CheckManageUser(scope, user, requireMembership: false)))
+                if (!deltaAllowed || !_accessGrant.AuthorizeScopeIfWired(grantScope, scope =>
+                        AccessGrantRules.CheckManageUser(scope, user, requireMembership: false)))
                 {
                     return BulkUserOutcome.Failed;
                 }
 
-                var removesRole = DelegatedAdministrationRules.GrantsIn(user.Roles, command.OrganizationId)
+                var removesRole = AccessGrantRules.GrantsIn(user.Roles, command.OrganizationId)
                     .Any(role => command.RemoveRoles.Contains(role, StringComparer.Ordinal));
 
                 if (!ApplyRoleDelta(user, command.OrganizationId, command.AddRoles, command.RemoveRoles))
@@ -2396,12 +2396,12 @@ namespace Iam.DomainService.Users
 
             // R1 on every role the batch adds or removes, with the R11 warning for the added ones.
             // Each user is checked again (R3) by the worker that applies the change.
-            var grantScope = await _delegatedAdministration.GetScopeIfWiredAsync().ConfigureAwait(false);
-            await _delegatedAdministration.WarnOnPolicyPowerIfWiredAsync(grantScope, addRoles).ConfigureAwait(false);
-            if (!_delegatedAdministration.AuthorizeScopeIfWired(grantScope, scope =>
-                    DelegatedAdministrationRules.CheckRoleDelta(scope, addRoles, removeRoles)))
+            var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
+            await _accessGrant.WarnOnPolicyPowerIfWiredAsync(grantScope, addRoles).ConfigureAwait(false);
+            if (!_accessGrant.AuthorizeScopeIfWired(grantScope, scope =>
+                    AccessGrantRules.CheckRoleDelta(scope, addRoles, removeRoles)))
             {
-                return (DelegatedAdministrationErrors.Create(), null);
+                return (AccessGrantErrors.Create(), null);
             }
 
             var target = command.Target;

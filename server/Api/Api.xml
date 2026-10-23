@@ -192,7 +192,7 @@
         </member>
         <member name="M:Api.Controllers.AuthenticationController.GrantNotAllowed(Blocks.Genesis.BaseResponse)">
             <summary>
-            A delegated-administration refusal (R8): 403 with the generic error, in the response shape
+            A access grant refusal (R8): 403 with the generic error, in the response shape
             the endpoint always returns.
             </summary>
         </member>
@@ -262,9 +262,9 @@
             change before deciding to ask someone else to make it.
             </remarks>
         </member>
-        <member name="M:Api.Controllers.IamController.GetDelegationScope(Iam.DomainService.DelegatedAdministration.IDelegatedAdministrationService)">
+        <member name="M:Api.Controllers.IamController.GetGrantScope(Iam.DomainService.AccessGrant.IAccessGrantService)">
             <summary>
-            What the caller may administer in its token organization (delegated administration):
+            What the caller may administer in its token organization (access grant):
             whether it is the system user, the mode, the roles it holds and manages, the roles it may
             assign, and the permissions it holds. Read from the database, never from the token.
             </summary>
@@ -384,7 +384,7 @@
         </member>
         <member name="M:Api.Controllers.IamController.MutationResult(System.Object,System.Boolean,System.Collections.Generic.IDictionary{System.String,System.String})">
             <summary>
-            The answer every mutation endpoint gives: 200 on success, 403 for a delegated-administration
+            The answer every mutation endpoint gives: 200 on success, 403 for a access grant
             refusal (<c>Access_Grant_Not_Allowed</c>), 400 for any other failure.
             </summary>
         </member>
@@ -522,7 +522,7 @@
         </member>
         <member name="M:Api.Controllers.SecurityController.MayRevokeForAsync(System.String)">
             <summary>
-            Revoking another user's session is managing that user (delegated administration, R3);
+            Revoking another user's session is managing that user (access grant, R3);
             revoking one's own is self-service and always allowed.
             </summary>
         </member>

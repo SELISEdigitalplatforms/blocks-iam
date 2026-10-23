@@ -34,12 +34,12 @@ namespace Iam.DomainService.Dtos
 
         /// <summary>
         /// The submitter's organization, so the worker can re-check every user against the
-        /// submitter's power (delegated administration, R3) after the request is gone.
+        /// submitter's power (access grant, R3) after the request is gone.
         /// </summary>
         public string? RequestedByOrganizationId { get; set; }
 
         /// <summary>
-        /// True when the submitter was the system user, to whom no delegated-administration rule
+        /// True when the submitter was the system user, to whom no access grant rule
         /// applies. Null on messages queued before this field existed: those apply as before.
         /// </summary>
         public bool? RequestedBySystemCaller { get; set; }

@@ -1,35 +1,35 @@
 using Iam.DomainService.Resources.ResponseModel;
 
-namespace Iam.DomainService.DelegatedAdministration
+namespace Iam.DomainService.AccessGrant
 {
     /// <summary>
-    /// Delegated administration -- "grant only what you hold" -- in one place: who the system user
+    /// access grant -- "grant only what you hold" -- in one place: who the system user
     /// is, the caller's <see cref="GrantScope"/>, what a refusal does, the
     /// hidden-power warning (R11) and ending sessions after a removal (R12). The rules themselves
-    /// are <see cref="DelegatedAdministrationRules"/>.
+    /// are <see cref="AccessGrantRules"/>.
     /// </summary>
-    public interface IDelegatedAdministrationService
+    public interface IAccessGrantService
     {
         /// <summary>The current caller from <c>BlocksContext</c>; never null.</summary>
-        DelegationCaller CurrentCaller();
+        GrantCaller CurrentCaller();
 
         /// <summary>The current caller's power in its token organization. No reads for the system user.</summary>
         Task<GrantScope> GetScopeAsync();
 
         /// <summary>A given caller's power -- the bulk consumer, which runs after the request is gone.</summary>
-        Task<GrantScope> GetScopeAsync(DelegationCaller caller);
+        Task<GrantScope> GetScopeAsync(GrantCaller caller);
 
         /// <summary>
         /// Applies a check's result. Passes, and the system user, return true silently.
         /// A denial is logged and returns false.
         /// </summary>
-        bool Authorize(GrantScope scope, DelegationDenial? denial);
+        bool Authorize(GrantScope scope, GrantDenial? denial);
 
         /// <summary>R6 for the current caller, then refuses a denial. Needs no reads: only who the caller is matters.</summary>
         bool AuthorizeSystemOnly(string target);
 
         /// <summary>Loads the current caller's scope, runs <paramref name="check"/>, and applies the mode.</summary>
-        Task<bool> AuthorizeCurrentCallerAsync(Func<GrantScope, DelegationDenial?> check);
+        Task<bool> AuthorizeCurrentCallerAsync(Func<GrantScope, GrantDenial?> check);
 
         /// <summary>
         /// R3 for a path that acts on another user by id alone (session revoke). A user that does
@@ -44,7 +44,7 @@ namespace Iam.DomainService.DelegatedAdministration
         Task<bool> AuthorizeGrantAsync(GrantScope scope, IEnumerable<string>? roles, IEnumerable<string>? permissions, string? rule = null);
 
         /// <summary>
-        /// R11, warn only: logs <c>DelegatedAdministration.RoleCarriesPolicyPower</c> for each role
+        /// R11, warn only: logs <c>AccessGrant.RoleCarriesPolicyPower</c> for each role
         /// a data-access policy names that the caller neither holds nor manages. Never throws.
         /// </summary>
         Task WarnOnPolicyPowerAsync(GrantScope scope, IEnumerable<string>? roles);
@@ -67,7 +67,7 @@ namespace Iam.DomainService.DelegatedAdministration
         /// </summary>
         Task<GetAssignableRolesResponse> GetAssignableRolesAsync();
 
-        /// <summary><c>GET iam/delegation-scope</c> for the token organization.</summary>
-        Task<DelegationScopeResponse> GetDelegationScopeAsync();
+        /// <summary><c>GET iam/grant-scope</c> for the token organization.</summary>
+        Task<GrantScopeResponse> GetGrantScopeAsync();
     }
 }

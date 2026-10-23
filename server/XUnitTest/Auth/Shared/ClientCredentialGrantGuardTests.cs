@@ -11,22 +11,22 @@ namespace XUnitTest.Auth.Shared
     /// R8: a client credential carries only what the caller could assign, and changing, rotating or
     /// deleting one is managing whatever it carries. The caller "caller" holds "manager".
     /// </summary>
-    public sealed class ClientCredentialDelegationGuardTests : IDisposable
+    public sealed class ClientCredentialGrantGuardTests : IDisposable
     {
-        private const string Org = DelegationTestKit.Org;
+        private const string Org = AccessGrantTestKit.Org;
 
-        private readonly DelegationTestKit _kit = new DelegationTestKit().WithStandardTree();
+        private readonly AccessGrantTestKit _kit = new AccessGrantTestKit().WithStandardTree();
         private readonly Mock<IAuthenticationRepository> _credentials = new();
 
-        public ClientCredentialDelegationGuardTests()
+        public ClientCredentialGrantGuardTests()
         {
             _kit.WithUser("caller", ["manager"]);
-            DelegationTestKit.SignIn("caller");
+            AccessGrantTestKit.SignIn("caller");
         }
 
-        public void Dispose() => DelegationTestKit.SignOut();
+        public void Dispose() => AccessGrantTestKit.SignOut();
 
-        private ClientCredentialDelegationGuard Guard() => new(_credentials.Object, _kit.Service());
+        private ClientCredentialGrantGuard Guard() => new(_credentials.Object, _kit.Service());
 
         private void Stored(string id, string org, List<string> roles, List<string>? permissions = null) =>
             _credentials.Setup(c => c.GetClientCredentialByIdAsync(id))
@@ -71,7 +71,7 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task SystemUserIsNeverChecked()
         {
-            DelegationTestKit.SignIn("caller", "default");
+            AccessGrantTestKit.SignIn("caller", "default");
             Stored("cc-1", "default", ["owner"]);
 
             (await Guard().MaySaveAsync(new SaveClientCredentialRequest { ItemId = "cc-1", Name = "svc", Roles = ["anything"] })).Should().BeTrue();

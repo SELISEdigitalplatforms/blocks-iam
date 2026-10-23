@@ -2,7 +2,7 @@
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 using Blocks.Genesis.Entities.Iam;
@@ -15,17 +15,17 @@ namespace Iam.DomainService.Resources
 
         private readonly ILogger<ResourceQueryService> _logger;
         private readonly IResourceRepository _resourceRepository;
-        private readonly IDelegatedAdministrationService _delegation;
+        private readonly IAccessGrantService _accessGrant;
 
         public ResourceQueryService(
             ILogger<ResourceQueryService> logger,
             IResourceRepository resourceRepository,
-            IDelegatedAdministrationService delegation
+            IAccessGrantService accessGrant
         )
         {
             _logger = logger;
             _resourceRepository = resourceRepository;
-            _delegation = delegation;
+            _accessGrant = accessGrant;
         }
 
         public async Task<GetPermissionResponse> GetPermissionAsync(string id)
@@ -151,7 +151,7 @@ namespace Iam.DomainService.Resources
 
         public Task<GetAssignableRolesResponse> GetAssignableRolesAsync()
         {
-            return _delegation.GetAssignableRolesAsync();
+            return _accessGrant.GetAssignableRolesAsync();
         }
 
         public async Task<RoleArchiveImpactResponse> GetRoleArchiveImpactAsync(string id)

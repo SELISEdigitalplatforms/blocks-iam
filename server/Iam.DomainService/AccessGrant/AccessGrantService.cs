@@ -6,23 +6,23 @@ using Iam.DomainService.SignupLinks;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 
-namespace Iam.DomainService.DelegatedAdministration
+namespace Iam.DomainService.AccessGrant
 {
-    /// <inheritdoc cref="IDelegatedAdministrationService"/>
-    public sealed partial class DelegatedAdministrationService : IDelegatedAdministrationService
+    /// <inheritdoc cref="IAccessGrantService"/>
+    public sealed partial class AccessGrantService : IAccessGrantService
     {
-        private readonly IDelegatedAdministrationRepository _repository;
+        private readonly IAccessGrantRepository _repository;
         private readonly ITenants _tenants;
         private readonly IIdentityAccessManagementService _identityAccessManagementService;
-        private readonly ILogger<DelegatedAdministrationService> _logger;
+        private readonly ILogger<AccessGrantService> _logger;
         private readonly IGrantAuthorizationService _systemGrantAuthorization;
         private readonly IUserSessionTerminator? _userSessionTerminator;
 
-        public DelegatedAdministrationService(
-            IDelegatedAdministrationRepository repository,
+        public AccessGrantService(
+            IAccessGrantRepository repository,
             ITenants tenants,
             IIdentityAccessManagementService identityAccessManagementService,
-            ILogger<DelegatedAdministrationService> logger,
+            ILogger<AccessGrantService> logger,
             IGrantAuthorizationService systemGrantAuthorization,
             // Optional: registered by RegisterAllServices (Api and Worker) but not by the iam-only
             // registration. Without it R12 falls back to the logout-all queue.
@@ -36,7 +36,7 @@ namespace Iam.DomainService.DelegatedAdministration
             _userSessionTerminator = userSessionTerminator;
         }
 
-        public DelegationCaller CurrentCaller()
+        public GrantCaller CurrentCaller()
         {
             var context = BlocksContext.GetContext();
             var organizationId = string.IsNullOrWhiteSpace(context?.OrganizationId)
@@ -53,18 +53,18 @@ namespace Iam.DomainService.DelegatedAdministration
                 || context.Impersonated
                 || IsRootTenant(context.TenantId);
 
-            return new DelegationCaller(context?.UserId ?? string.Empty, organizationId, isSystem);
+            return new GrantCaller(context?.UserId ?? string.Empty, organizationId, isSystem);
         }
 
         public Task<GrantScope> GetScopeAsync() => GetScopeAsync(CurrentCaller());
 
-        public Task<GrantScope> GetScopeAsync(DelegationCaller caller)
+        public Task<GrantScope> GetScopeAsync(GrantCaller caller)
         {
             ArgumentNullException.ThrowIfNull(caller);
             return caller.IsSystem ? Task.FromResult(GrantScope.WithoutPower(caller)) : BuildScopeAsync(caller);
         }
 
-        public bool Authorize(GrantScope scope, DelegationDenial? denial)
+        public bool Authorize(GrantScope scope, GrantDenial? denial)
         {
             ArgumentNullException.ThrowIfNull(scope);
             if (denial is null || scope.IsSystem)
@@ -79,10 +79,10 @@ namespace Iam.DomainService.DelegatedAdministration
         public bool AuthorizeSystemOnly(string target)
         {
             var scope = GrantScope.WithoutPower(CurrentCaller());
-            return Authorize(scope, DelegatedAdministrationRules.CheckSystemOnly(scope, target));
+            return Authorize(scope, AccessGrantRules.CheckSystemOnly(scope, target));
         }
 
-        public async Task<bool> AuthorizeCurrentCallerAsync(Func<GrantScope, DelegationDenial?> check)
+        public async Task<bool> AuthorizeCurrentCallerAsync(Func<GrantScope, GrantDenial?> check)
         {
             ArgumentNullException.ThrowIfNull(check);
             var scope = await GetScopeAsync().ConfigureAwait(false);
@@ -98,7 +98,7 @@ namespace Iam.DomainService.DelegatedAdministration
             }
 
             var user = await _repository.GetUserAsync(userId).ConfigureAwait(false);
-            return user is null || Authorize(scope, DelegatedAdministrationRules.CheckManageUser(scope, user));
+            return user is null || Authorize(scope, AccessGrantRules.CheckManageUser(scope, user));
         }
 
         public async Task<bool> AuthorizeGrantAsync(GrantScope scope, IEnumerable<string>? roles, IEnumerable<string>? permissions, string? rule = null)
@@ -111,7 +111,7 @@ namespace Iam.DomainService.DelegatedAdministration
 
             var roleList = roles?.ToList() ?? [];
             await WarnOnPolicyPowerAsync(scope, roleList).ConfigureAwait(false);
-            return Authorize(scope, DelegatedAdministrationRules.CheckGrant(scope, roleList, permissions, rule));
+            return Authorize(scope, AccessGrantRules.CheckGrant(scope, roleList, permissions, rule));
         }
 
         public async Task WarnOnPolicyPowerAsync(GrantScope scope, IEnumerable<string>? roles)
@@ -175,12 +175,12 @@ namespace Iam.DomainService.DelegatedAdministration
             return await BuildAssignableRolesAsync(scope).ConfigureAwait(false);
         }
 
-        public async Task<DelegationScopeResponse> GetDelegationScopeAsync()
+        public async Task<GrantScopeResponse> GetGrantScopeAsync()
         {
             var scope = await GetScopeAsync().ConfigureAwait(false);
             var assignable = await BuildAssignableRolesAsync(scope).ConfigureAwait(false);
 
-            return new DelegationScopeResponse
+            return new GrantScopeResponse
             {
                 IsSystemUser = scope.IsSystem,
                 HeldRoles = Sorted(scope.HeldRoles),
@@ -207,7 +207,7 @@ namespace Iam.DomainService.DelegatedAdministration
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var response = new GetAssignableRolesResponse();
-            foreach (var role in roles.Where(r => DelegatedAdministrationRules.CheckAssignRole(scope, r.Slug) is null))
+            foreach (var role in roles.Where(r => AccessGrantRules.CheckAssignRole(scope, r.Slug) is null))
             {
                 // The split the picker has always shown: a role outside every tree is standalone.
                 var isStandalone = !role.CanCreateOwn
@@ -229,7 +229,7 @@ namespace Iam.DomainService.DelegatedAdministration
             return response;
         }
 
-        private async Task<GrantScope> BuildScopeAsync(DelegationCaller caller)
+        private async Task<GrantScope> BuildScopeAsync(GrantCaller caller)
         {
             var callerUser = await _repository.GetUserAsync(caller.UserId).ConfigureAwait(false);
             var roles = await _repository.GetRolesAsync(caller.OrganizationId).ConfigureAwait(false);
@@ -276,23 +276,23 @@ namespace Iam.DomainService.DelegatedAdministration
             values.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal).ToList();
 
         [LoggerMessage(EventId = 9102, Level = LogLevel.Warning,
-            Message = "DelegatedAdministration denied {Rule} {CallerId} {OrgId} {Target} {Reason}")]
+            Message = "AccessGrant denied {Rule} {CallerId} {OrgId} {Target} {Reason}")]
         private static partial void LogDenied(ILogger logger, string rule, string callerId, string orgId, string target, string reason);
 
         [LoggerMessage(EventId = 9103, Level = LogLevel.Warning,
-            Message = "DelegatedAdministration.RoleCarriesPolicyPower {Role} {CallerId} {OrgId}: a data-access policy names this role and the caller neither holds it nor a role above it")]
+            Message = "AccessGrant.RoleCarriesPolicyPower {Role} {CallerId} {OrgId}: a data-access policy names this role and the caller neither holds it nor a role above it")]
         private static partial void LogRoleCarriesPolicyPower(ILogger logger, string role, string callerId, string orgId);
 
         [LoggerMessage(EventId = 9104, Level = LogLevel.Warning,
-            Message = "DelegatedAdministration could not read data-access policies for organization {OrgId}; the policy-power warning was skipped")]
+            Message = "AccessGrant could not read data-access policies for organization {OrgId}; the policy-power warning was skipped")]
         private static partial void LogPolicyReadFailed(ILogger logger, Exception exception, string orgId);
 
         [LoggerMessage(EventId = 9106, Level = LogLevel.Error,
-            Message = "DelegatedAdministration: ending sessions inline failed for user {UserId}; queueing logout-all")]
+            Message = "AccessGrant: ending sessions inline failed for user {UserId}; queueing logout-all")]
         private static partial void LogEndSessionsInlineFailed(ILogger logger, Exception exception, string userId);
 
         [LoggerMessage(EventId = 9107, Level = LogLevel.Error,
-            Message = "DelegatedAdministration: queueing logout-all failed for user {UserId}")]
+            Message = "AccessGrant: queueing logout-all failed for user {UserId}")]
         private static partial void LogEndSessionsQueueFailed(ILogger logger, Exception exception, string userId);
     }
 }

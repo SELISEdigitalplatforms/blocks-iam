@@ -1,31 +1,31 @@
 using Blocks.Genesis;
 using FluentAssertions;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Utilities;
 using Moq;
 using XUnitTest.TestSupport;
 
-namespace XUnitTest.IamTests.DelegatedAdministration
+namespace XUnitTest.IamTests.AccessGrant
 {
     /// <summary>
     /// The service around the rules: who the system user is, power read from the database, what
     /// a would-deny does, the policy-power warning (R11), ending sessions after
-    /// a removal (R12), the assignable-roles picker and the delegation-scope read.
+    /// a removal (R12), the assignable-roles picker and the grant-scope read.
     /// </summary>
-    public sealed class DelegatedAdministrationServiceTests : IDisposable
+    public sealed class AccessGrantServiceTests : IDisposable
     {
-        private const string Org = DelegationTestKit.Org;
+        private const string Org = AccessGrantTestKit.Org;
 
-        private readonly DelegationTestKit _kit = new DelegationTestKit().WithStandardTree();
+        private readonly AccessGrantTestKit _kit = new AccessGrantTestKit().WithStandardTree();
 
-        public DelegatedAdministrationServiceTests()
+        public AccessGrantServiceTests()
         {
             _kit.WithUser("caller", ["manager"]);
-            DelegationTestKit.SignIn("caller");
+            AccessGrantTestKit.SignIn("caller");
         }
 
-        public void Dispose() => DelegationTestKit.SignOut();
+        public void Dispose() => AccessGrantTestKit.SignOut();
 
         // ---------- the system user ----------
 
@@ -38,7 +38,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         [InlineData(Org, true, false, false)]
         public void SystemUserIsDefaultOrganizationNoUserOrImpersonated(string? org, bool authenticated, bool impersonated, bool isSystem)
         {
-            DelegationTestKit.SignIn("caller", org, impersonated, authenticated);
+            AccessGrantTestKit.SignIn("caller", org, impersonated, authenticated);
 
             _kit.Service().CurrentCaller().IsSystem.Should().Be(isSystem);
         }
@@ -57,9 +57,9 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         [Fact]
         public void RootTenantCallIsTheSystemUser()
         {
-            _kit.Tenants.Setup(t => t.GetTenantByID(DelegationTestKit.Tenant)).Returns(new Tenant
+            _kit.Tenants.Setup(t => t.GetTenantByID(AccessGrantTestKit.Tenant)).Returns(new Tenant
             {
-                TenantId = DelegationTestKit.Tenant,
+                TenantId = AccessGrantTestKit.Tenant,
                 IsRootTenant = true,
                 DbConnectionString = string.Empty,
                 JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = string.Empty, IssueDate = DateTime.UtcNow }
@@ -71,7 +71,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         [Fact]
         public async Task SystemUserScopeMakesNoReads()
         {
-            DelegationTestKit.SignIn("caller", "default");
+            AccessGrantTestKit.SignIn("caller", "default");
 
             var scope = await _kit.Service().GetScopeAsync();
 
@@ -86,9 +86,9 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         public async Task ScopeIsReadFromTheDatabaseAndIgnoresTokenRoles()
         {
             BlocksContext.SetContext(BlocksContext.Create(
-                tenantId: DelegationTestKit.Tenant, roles: ["admin", "owner"], userId: "caller", isAuthenticated: true,
+                tenantId: AccessGrantTestKit.Tenant, roles: ["admin", "owner"], userId: "caller", isAuthenticated: true,
                 requestUri: "https://test", organizationId: Org, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
-                permissions: ["billing"], userName: "t", phoneNumber: null, displayName: "T", oauthToken: null, originalTenantId: DelegationTestKit.Tenant));
+                permissions: ["billing"], userName: "t", phoneNumber: null, displayName: "T", oauthToken: null, originalTenantId: AccessGrantTestKit.Tenant));
 
             var scope = await _kit.Service().GetScopeAsync();
 
@@ -104,8 +104,8 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             var service = _kit.Service();
             var scope = await service.GetScopeAsync();
 
-            service.Authorize(scope, DelegatedAdministrationRules.CheckAssignRole(scope, "owner")).Should().BeFalse();
-            _kit.Logged($"DelegatedAdministration denied R1-AssignRole caller {Org} owner role_carries_permission_not_held").Should().BeTrue();
+            service.Authorize(scope, AccessGrantRules.CheckAssignRole(scope, "owner")).Should().BeFalse();
+            _kit.Logged($"AccessGrant denied R1-AssignRole caller {Org} owner role_carries_permission_not_held").Should().BeTrue();
         }
 
         [Fact]
@@ -113,7 +113,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         {
             var service = _kit.Service();
 
-            (await service.AuthorizeCurrentCallerAsync(scope => DelegatedAdministrationRules.CheckAssignRole(scope, "viewer"))).Should().BeTrue();
+            (await service.AuthorizeCurrentCallerAsync(scope => AccessGrantRules.CheckAssignRole(scope, "viewer"))).Should().BeTrue();
             _kit.Logger.Messages.Should().BeEmpty();
         }
 
@@ -125,7 +125,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             service.AuthorizeSystemOnly("organizations/config").Should().BeFalse();
             _kit.Repository.Verify(r => r.GetUserAsync(It.IsAny<string>()), Times.Never);
 
-            DelegationTestKit.SignIn("caller", "default");
+            AccessGrantTestKit.SignIn("caller", "default");
             service.AuthorizeSystemOnly("organizations/config").Should().BeTrue();
         }
 
@@ -155,8 +155,8 @@ namespace XUnitTest.IamTests.DelegatedAdministration
 
             (await service.AuthorizeGrantAsync(scope, ["auditor", "viewer"], [])).Should().BeTrue();
 
-            _kit.Logged("DelegatedAdministration.RoleCarriesPolicyPower auditor").Should().BeTrue();
-            _kit.Logged("DelegatedAdministration.RoleCarriesPolicyPower viewer").Should().BeFalse("viewer is below the caller's manager role");
+            _kit.Logged("AccessGrant.RoleCarriesPolicyPower auditor").Should().BeTrue();
+            _kit.Logged("AccessGrant.RoleCarriesPolicyPower viewer").Should().BeFalse("viewer is below the caller's manager role");
         }
 
         [Fact]
@@ -201,7 +201,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         [Fact]
         public async Task SystemUserRemovalsEndNoSessions()
         {
-            DelegationTestKit.SignIn("caller", "default");
+            AccessGrantTestKit.SignIn("caller", "default");
             var service = _kit.Service();
             var scope = await service.GetScopeAsync();
 
@@ -211,7 +211,7 @@ namespace XUnitTest.IamTests.DelegatedAdministration
             _kit.Terminator.Verify(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
-        // ---------- GET roles/assignable and GET iam/delegation-scope ----------
+        // ---------- GET roles/assignable and GET iam/grant-scope ----------
 
         [Fact]
         public async Task AssignableRolesAreTheOnesThatPassR1()
@@ -223,9 +223,9 @@ namespace XUnitTest.IamTests.DelegatedAdministration
         }
 
         [Fact]
-        public async Task DelegationScopeDescribesTheCaller()
+        public async Task GrantScopeDescribesTheCaller()
         {
-            var result = await _kit.Service().GetDelegationScopeAsync();
+            var result = await _kit.Service().GetGrantScopeAsync();
 
             result.IsSystemUser.Should().BeFalse();
             result.HeldRoles.Should().Equal("manager");

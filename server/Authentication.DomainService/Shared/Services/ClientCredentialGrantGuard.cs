@@ -1,15 +1,15 @@
 using Authentication.DomainService.Shared.RequestModel;
 using Blocks.Genesis.Entities.Iam;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 
 namespace Authentication.DomainService.Services
 {
     /// <summary>
-    /// Delegated administration for client credentials (R8). A credential is a standing grant -- a
+    /// access grant for client credentials (R8). A credential is a standing grant -- a
     /// service holding its secret acts with its roles and permissions -- so it may carry only what
     /// the caller could assign to a user, and changing one is managing whoever holds it.
     /// </summary>
-    public interface IClientCredentialDelegationGuard
+    public interface IClientCredentialGrantGuard
     {
         /// <summary>
         /// Create: R1 on every role and R2 on every permission requested. Update: the same, plus
@@ -21,29 +21,29 @@ namespace Authentication.DomainService.Services
         Task<bool> MayChangeAsync(string? itemId);
     }
 
-    /// <inheritdoc cref="IClientCredentialDelegationGuard"/>
+    /// <inheritdoc cref="IClientCredentialGrantGuard"/>
     /// <remarks>
     /// A credential that does not exist, or lives in another organization, passes here: the domain
     /// service answers it as not found, and this guard must not answer differently and so reveal it.
     /// </remarks>
-    public sealed class ClientCredentialDelegationGuard : IClientCredentialDelegationGuard
+    public sealed class ClientCredentialGrantGuard : IClientCredentialGrantGuard
     {
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly IDelegatedAdministrationService _delegatedAdministration;
+        private readonly IAccessGrantService _accessGrant;
 
-        public ClientCredentialDelegationGuard(
+        public ClientCredentialGrantGuard(
             IAuthenticationRepository authenticationRepository,
-            IDelegatedAdministrationService delegatedAdministration)
+            IAccessGrantService accessGrant)
         {
             _authenticationRepository = authenticationRepository;
-            _delegatedAdministration = delegatedAdministration;
+            _accessGrant = accessGrant;
         }
 
         public async Task<bool> MaySaveAsync(SaveClientCredentialRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            var scope = await _delegatedAdministration.GetScopeAsync().ConfigureAwait(false);
+            var scope = await _accessGrant.GetScopeAsync().ConfigureAwait(false);
             if (scope.IsSystem)
             {
                 return true;
@@ -55,8 +55,8 @@ namespace Authentication.DomainService.Services
                 return false;
             }
 
-            return await _delegatedAdministration
-                .AuthorizeGrantAsync(scope, request.Roles, request.Permissions, DelegatedAdministrationRules.ClientCredential)
+            return await _accessGrant
+                .AuthorizeGrantAsync(scope, request.Roles, request.Permissions, AccessGrantRules.ClientCredential)
                 .ConfigureAwait(false);
         }
 
@@ -67,7 +67,7 @@ namespace Authentication.DomainService.Services
                 return true;
             }
 
-            var scope = await _delegatedAdministration.GetScopeAsync().ConfigureAwait(false);
+            var scope = await _accessGrant.GetScopeAsync().ConfigureAwait(false);
             return scope.IsSystem || await MayChangeStoredAsync(scope, itemId).ConfigureAwait(false);
         }
 
@@ -79,9 +79,9 @@ namespace Authentication.DomainService.Services
                 return true;
             }
 
-            return _delegatedAdministration.Authorize(
+            return _accessGrant.Authorize(
                 scope,
-                DelegatedAdministrationRules.CheckGrant(scope, existing.Roles, existing.Permissions, DelegatedAdministrationRules.ClientCredential));
+                AccessGrantRules.CheckGrant(scope, existing.Roles, existing.Permissions, AccessGrantRules.ClientCredential));
         }
     }
 }

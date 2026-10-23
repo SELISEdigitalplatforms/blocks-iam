@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Blocks.Genesis;
 using FluentValidation;
-using Iam.DomainService.DelegatedAdministration;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
 using Iam.DomainService.Utilities;
@@ -22,7 +22,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
     private readonly ISignupLinkConfigurationRepository _configurationRepository;
     private readonly IOidcClientRegistrationLookup _oidcLookup;
     private readonly IGrantAuthorizationService _grantAuthorization;
-    private readonly IDelegatedAdministrationService _delegation;
+    private readonly IAccessGrantService _accessGrant;
     private readonly IUserRepository _userRepository;
     private readonly IConfiguration _configuration;
     private readonly IValidator<GenerateSignupLinkRequest> _generateValidator;
@@ -39,7 +39,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         _configurationRepository = repositories.Configurations;
         _oidcLookup = repositories.Oidc;
         _grantAuthorization = repositories.GrantAuthorization;
-        _delegation = repositories.Delegation;
+        _accessGrant = repositories.AccessGrantService;
         _userRepository = repositories.Users;
         _configuration = validators.Configuration;
         _generateValidator = validators.GenerateValidator;
@@ -283,16 +283,16 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
     /// What the link may hand out. A non-system caller gets R9: exactly what R1/R2 would let it
     /// assign directly, refused with the generic error (the reason stays in the server log). The
     /// system user -- every caller of a single-organization tenant -- keeps the check it always
-    /// had, so delegated administration never loosens it.
+    /// had, so access grant never loosens it.
     /// </summary>
     private async Task<GenerateSignupLinkResult?> CheckGrantAsync(List<string> roles, List<string> permissions)
     {
-        var grantScope = await _delegation.GetScopeAsync().ConfigureAwait(false);
+        var grantScope = await _accessGrant.GetScopeAsync().ConfigureAwait(false);
         if (!grantScope.IsSystem)
         {
-            return await _delegation.AuthorizeGrantAsync(grantScope, roles, permissions, DelegatedAdministrationRules.SignupLink).ConfigureAwait(false)
+            return await _accessGrant.AuthorizeGrantAsync(grantScope, roles, permissions, AccessGrantRules.SignupLink).ConfigureAwait(false)
                 ? null
-                : GenerateSignupLinkResult.Fail(403, DelegatedAdministrationErrors.Create());
+                : GenerateSignupLinkResult.Fail(403, AccessGrantErrors.Create());
         }
 
         var deniedRole = await _grantAuthorization.FindUngrantableRoleAsync(roles).ConfigureAwait(false);
