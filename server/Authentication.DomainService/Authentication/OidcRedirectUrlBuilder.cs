@@ -167,6 +167,28 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
+        /// <summary>
+        /// Client id and secret of a token request: the form values, each falling back to HTTP Basic
+        /// (RFC 6749 2.3.1) when the form leaves it blank.
+        /// </summary>
+        public static (string ClientId, string ClientSecret) ReadClientCredentials(HttpRequest request)
+        {
+            var clientId = request.Form["client_id"].ToString();
+            var clientSecret = request.Form["client_secret"].ToString();
+
+            TryReadBasicClientAuthentication(request, out var basicClientId, out var basicClientSecret);
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                clientId = basicClientId;
+            }
+            if (string.IsNullOrWhiteSpace(clientSecret))
+            {
+                clientSecret = basicClientSecret;
+            }
+
+            return (clientId, clientSecret);
+        }
+
         public static void TryReadBasicClientAuthentication(HttpRequest request, out string clientId, out string clientSecret)
         {
             clientId = string.Empty;

@@ -59,7 +59,7 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<IActionResult> RotateAsync(HttpRequest request)
         {
-            var clientId = request.Form["client_id"].ToString();
+            var (clientId, clientSecret) = OidcRedirectUrlBuilder.ReadClientCredentials(request);
             if (string.IsNullOrEmpty(clientId))
             {
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Missing client_id" });
@@ -69,6 +69,14 @@ namespace Authentication.DomainService.Authentication
             if (client is null)
             {
                 return new BadRequestObjectResult(new { error = "invalid_client", error_description = "client not found" });
+            }
+
+            // A confidential client proves it is the client on refresh too (RFC 6749 6), with the same rule
+            // as the code exchange; a public client has no secret to send.
+            if (OidcClientValidator.RequiresClientAuthentication(client) && !OidcClientValidator.SecretsMatch(clientSecret, client.ClientSecret))
+            {
+                _logger.LogWarning("Client authentication failed for refresh, client {ClientId}", client.ClientId);
+                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client authentication failed" });
             }
 
             var refreshToken = await ResolveRefreshTokenFromRequestAsync(client, request);

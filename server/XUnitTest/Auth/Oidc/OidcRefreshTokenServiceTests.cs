@@ -765,5 +765,92 @@ namespace XUnitTest.Auth.Oidc
             unauth.Value.Should().BeEquivalentTo(new { error = "invalid_client", error_description = "Client configuration not found" });
             minted.Should().BeEmpty();
         }
+            // ---------- a confidential client authenticates on refresh, as on the code exchange ----------
+
+        private const string ConfidentialSecret = "s3cret-value";
+
+        private void SetupConfidentialLineage()
+        {
+            SetupValidRefreshToken(
+                new RefreshTokenCache { UserId = "u1", ClientId = "conf", TenantId = "tenant-1", OrganizationId = "default", RefreshToken = "rt-1" },
+                new User { ItemId = "u1" });
+            _authRepo.Setup(r => r.GetOidcClientRegistrationAsync("conf"))
+                .ReturnsAsync(new OidcClientRegistration
+                {
+                    ClientId = "conf",
+                    ClientType = "confidential",
+                    TokenEndpointAuthMethod = "client_secret_post",
+                    ClientSecret = ConfidentialSecret,
+                    UseTokensCookie = false
+                });
+        }
+
+        public static TheoryData<string?> MissingOrWrongSecrets => new() { null, "", "wrong-secret", ConfidentialSecret + "x" };
+
+        [Theory]
+        [MemberData(nameof(MissingOrWrongSecrets))]
+        public async Task Rotate_ConfidentialClient_WithoutTheRightSecret_IsRefusedBeforeTheTokenIsRead(string? secret)
+        {
+            SetupConfidentialLineage();
+            var minted = CaptureMintedRequests();
+            var form = FormWithToken("conf");
+            if (secret != null)
+            {
+                form["client_secret"] = secret;
+            }
+
+            var result = await Create().RotateAsync(MakeRequest(form));
+
+            var unauth = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
+            unauth.Value.Should().BeEquivalentTo(new { error = "invalid_client", error_description = "Client authentication failed" });
+            minted.Should().BeEmpty();
+            _sessionResolver.Verify(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Rotate_ConfidentialClient_WithItsSecretInTheForm_Rotates()
+        {
+            SetupConfidentialLineage();
+            var minted = CaptureMintedRequests();
+            var form = FormWithToken("conf");
+            form["client_secret"] = ConfidentialSecret;
+
+            var result = await Create().RotateAsync(MakeRequest(form));
+
+            result.Should().BeOfType<OkObjectResult>();
+            minted.Should().ContainSingle().Which.ClientId.Should().Be("conf");
+        }
+
+        [Fact]
+        public async Task Rotate_ConfidentialClient_WithHttpBasic_Rotates()
+        {
+            SetupConfidentialLineage();
+            var minted = CaptureMintedRequests();
+            var request = MakeRequest(new() { ["refresh_token"] = "rt-1" });
+            request.Headers.Authorization = "Basic " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("conf:" + ConfidentialSecret));
+
+            var result = await Create().RotateAsync(request);
+
+            result.Should().BeOfType<OkObjectResult>();
+            minted.Should().ContainSingle();
+        }
+
+        [Fact]
+        public async Task Rotate_ConfidentialClient_RightSecret_ButAnotherClientsToken_ReturnsInvalidGrant()
+        {
+            SetupConfidentialLineage();
+            _sessionResolver.Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync(new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "tenant-1", RefreshToken = "rt-1" });
+            SetupClient("c1");
+            var minted = CaptureMintedRequests();
+            var form = FormWithToken("conf");
+            form["client_secret"] = ConfidentialSecret;
+
+            var result = await Create().RotateAsync(MakeRequest(form));
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            bad.Value.Should().BeEquivalentTo(new { error = "invalid_grant", error_description = "Refresh token was not issued to this client" });
+            minted.Should().BeEmpty();
+        }
     }
 }

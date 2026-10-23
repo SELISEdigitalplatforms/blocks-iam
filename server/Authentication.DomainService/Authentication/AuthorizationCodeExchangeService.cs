@@ -74,19 +74,8 @@ namespace Authentication.DomainService.Authentication
         {
             var code = request.Form["code"].ToString();
             var codeVerifier = request.Form["code_verifier"].ToString();
-            var clientId = request.Form["client_id"].ToString();
             var redirectUri = request.Form["redirect_uri"].ToString();
-            var clientSecret = request.Form["client_secret"].ToString();
-
-            OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out var basicClientId, out var basicClientSecret);
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                clientId = basicClientId;
-            }
-            if (string.IsNullOrWhiteSpace(clientSecret))
-            {
-                clientSecret = basicClientSecret;
-            }
+            var (clientId, clientSecret) = OidcRedirectUrlBuilder.ReadClientCredentials(request);
 
             // Tenant ID resolution: form > query > header (X-Blocks-Key)
             var tenantId = !string.IsNullOrWhiteSpace(request.Form["tenant_id"].ToString())
