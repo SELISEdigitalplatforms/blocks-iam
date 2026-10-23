@@ -82,7 +82,8 @@ namespace Iam.DomainService.Services
             {
                 Projection = project
             });
-            return await cursor.FirstOrDefaultAsync();
+            // Only GET iam/me and iam/users/{id} read this: View column (property) rules clear what the caller may not see.
+            return scope.ForViewAs(await cursor.FirstOrDefaultAsync());
         }
 
         public async Task<bool> CheckPasswordBlackListedAsync(string password)
@@ -270,24 +271,24 @@ namespace Iam.DomainService.Services
         private Task<bool> PullSignUpDefaultAsync(UpdateDefinition<TenantConfiguration> update) =>
             _tenantConfigurationStore.UpdateAsync(update);
 
-        public Task SaveOrganizationConfigAsync(IamTenantConfiguration config) =>
+        public Task SaveOrganizationConfigAsync(IamTenantConfiguration tenantConfiguration) =>
             _tenantConfigurationStore.UpdateAsync(
                 Builders<IamTenantConfiguration>.Update
-                    .SetOnInsert(c => c.ItemId, config.ItemId)
-                    .SetOnInsert(c => c.CreatedBy, config.CreatedBy)
-                    .SetOnInsert(c => c.CreatedDate, config.CreatedDate)
-                    .Set(c => c.AllowOrgCreationFromCloud, config.AllowOrgCreationFromCloud)
-                    .Set(c => c.AllowOrgCreationFromConstruct, config.AllowOrgCreationFromConstruct)
-                    .Set(c => c.AllowOrgCreationFromSignup, config.AllowOrgCreationFromSignup)
-                    .Set(c => c.AllowOrgCreationFromPortal, config.AllowOrgCreationFromPortal)
-                    .Set(c => c.IsMultiOrgEnabled, config.IsMultiOrgEnabled)
-                    .Set(c => c.IsOrgNameUniquenessEnabled, config.IsOrgNameUniquenessEnabled)
-                    .Set(c => c.IsSignupAutoJoinEnabled, config.IsSignupAutoJoinEnabled)
-                    .Set(c => c.SignupAutoJoinOrganizationId, config.SignupAutoJoinOrganizationId)
-                    .Set(c => c.ConsentForMultiOrgEnable, config.ConsentForMultiOrgEnable)
-                    .Set(c => c.LastUpdatedBy, config.LastUpdatedBy)
-                    .Set(c => c.DefaultPermissionsForNewUserOnSignUp, config.DefaultPermissionsForNewUserOnSignUp)
-                    .Set(c => c.LastUpdatedDate, config.LastUpdatedDate),
+                    .SetOnInsert(c => c.ItemId, tenantConfiguration.ItemId)
+                    .SetOnInsert(c => c.CreatedBy, tenantConfiguration.CreatedBy)
+                    .SetOnInsert(c => c.CreatedDate, tenantConfiguration.CreatedDate)
+                    .Set(c => c.AllowOrgCreationFromCloud, tenantConfiguration.AllowOrgCreationFromCloud)
+                    .Set(c => c.AllowOrgCreationFromConstruct, tenantConfiguration.AllowOrgCreationFromConstruct)
+                    .Set(c => c.AllowOrgCreationFromSignup, tenantConfiguration.AllowOrgCreationFromSignup)
+                    .Set(c => c.AllowOrgCreationFromPortal, tenantConfiguration.AllowOrgCreationFromPortal)
+                    .Set(c => c.IsMultiOrgEnabled, tenantConfiguration.IsMultiOrgEnabled)
+                    .Set(c => c.IsOrgNameUniquenessEnabled, tenantConfiguration.IsOrgNameUniquenessEnabled)
+                    .Set(c => c.IsSignupAutoJoinEnabled, tenantConfiguration.IsSignupAutoJoinEnabled)
+                    .Set(c => c.SignupAutoJoinOrganizationId, tenantConfiguration.SignupAutoJoinOrganizationId)
+                    .Set(c => c.ConsentForMultiOrgEnable, tenantConfiguration.ConsentForMultiOrgEnable)
+                    .Set(c => c.LastUpdatedBy, tenantConfiguration.LastUpdatedBy)
+                    .Set(c => c.DefaultPermissionsForNewUserOnSignUp, tenantConfiguration.DefaultPermissionsForNewUserOnSignUp)
+                    .Set(c => c.LastUpdatedDate, tenantConfiguration.LastUpdatedDate),
                 upsertLegacy: true);
 
         private static void NormalizeUserIdentity(User user)

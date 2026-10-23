@@ -10,12 +10,18 @@ namespace Iam.DomainService.Resources
         Task<Permission> GetPermissionByResourceAsync(string resource, string? organizationId = "default");
         Task<List<Permission>> GetPermissionsByResourcesAsync(List<string> resources, string? organizationId = "default");
         Task<Permission> GetPermissionByIdAsync(string id);
-        Task<(IQueryable<Permission>, long)> GetPermissionsAsync(GetPermissionsRequest query, string? orgainzationId = null);
+        /// <summary>As the caller may see it: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<Permission> GetPermissionByIdForViewAsync(string id);
+        Task<(IQueryable<Permission>, long)> GetPermissionsAsync(GetPermissionsRequest query, string? organizationId = null);
         Task<bool> InsertPermissionAsync(Permission permission);
         Task<bool> UpdatePermissionAsync(Permission permission);
         Task<Role> GetRoleByIdAsync(string id);
-        Task<(IQueryable<Role>, long)> GetRolesAsync(GetRolesRequest query, string? orgainzationId = null);
-        Task<Role> GetRoleBySlugAsync(string slug, string? orgainzationId = null);
+        /// <summary>As the caller may see it: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<Role> GetRoleByIdForViewAsync(string id);
+        Task<(IQueryable<Role>, long)> GetRolesAsync(GetRolesRequest query, string? organizationId = null);
+        /// <summary>As the caller may see them: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<(IQueryable<Role>, long)> GetRolesForViewAsync(GetRolesRequest query, string? organizationId = null);
+        Task<Role> GetRoleBySlugAsync(string slug, string? organizationId = null);
         
         /// <summary>
         /// Get role by slug and organization. Enforces org-scoped lookup.
@@ -29,11 +35,13 @@ namespace Iam.DomainService.Resources
         
         Task<bool> InsertRoleAsync(Role role);
         Task<bool> UpdateRoleAsync(Role role);
-        Task<bool> UpdateRolePermissionByIdsAsync(string slug, List<string> permissions, string? orgainzationId = null);
-        Task<bool> RemoveRolePermissionByIdsAsync(string slug, List<string> permissions, string? orgainzationId = null);
-        Task<bool> UpdateRolesCountAsync(string slug, string? orgainzationId = null);
-        Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync(string? orgainzationId = null);
+        Task<bool> UpdateRolePermissionByIdsAsync(string slug, List<string> permissions, string? organizationId = null);
+        Task<bool> RemoveRolePermissionByIdsAsync(string slug, List<string> permissions, string? organizationId = null);
+        Task<bool> UpdateRolesCountAsync(string slug, string? organizationId = null);
+        Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync(string? organizationId = null);
         Task<Organization> GetOrganizationById(string id);
+        /// <summary>As the caller may see it: properties a View column rule hides are cleared. Never save it back.</summary>
+        Task<Organization> GetOrganizationByIdForView(string id);
         Task<Organization> GetOrganizationByNameAsync(string name);
         Task<List<string>> GetOrganizationIdsByUserIdAsync(string userId);
         Task<List<Organization>> GetOrganizationsByIdsAsync(List<string> organizationIds);
@@ -41,7 +49,7 @@ namespace Iam.DomainService.Resources
         Task DeleteOrganizationAsync(string organizationId);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
         Task SaveOrganizationConfig(IamTenantConfiguration tenantConfiguration);
-        Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync(string? orgainzationId = null);
+        Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync(string? organizationId = null);
         Task<IamTenantConfiguration> GetTenantConfigurationAsync();
         Task<List<Role>> GetRolesBySlugAndOrgAsync(List<string> slugs, string organizationId);
         Task<bool> InsertRolesAsync(List<Role> roles);
@@ -87,7 +95,7 @@ namespace Iam.DomainService.Resources
         Task<List<Permission>> GetPermissionsByGroupsAsync(List<string> groups, string organizationId, int pageNumber = 1, int pageSize = 10);
         Task<List<Permission>> GetPermissionsByIdsAsync(List<string> ids);
         Task<bool> InsertPermissionsAsync(List<Permission> permissions);
-        Task<List<Permission>> GetFeResourceFeaturesAsync(List<string> roleSlugs, List<string> permissionKeys, string? search = null, bool? isBuiltIn = null, string? orgainzationId = null);
+        Task<List<Permission>> GetFeResourceFeaturesAsync(List<string> roleSlugs, List<string> permissionKeys, string? search = null, bool? isBuiltIn = null, string? organizationId = null);
         Task<List<Permission>> GetPermissionsByResourceAsync(string resource);
         Task<List<Role>> GetRolesBySlugAsync(string slug);
 

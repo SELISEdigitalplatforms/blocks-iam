@@ -56,19 +56,7 @@ namespace Authentication.DomainService.Authentication
             var clientId = request.Form["client_id"].ToString();
             var clientSecret = request.Form["client_secret"].ToString();
 
-            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
-            {
-                OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out var basicClientId, out var basicSecret);
-                if (string.IsNullOrWhiteSpace(clientId))
-                {
-                    clientId = basicClientId;
-                }
-
-                if (string.IsNullOrWhiteSpace(clientSecret))
-                {
-                    clientSecret = basicSecret;
-                }
-            }
+            (clientId, clientSecret) = ResolveClientCredentials(request, clientId, clientSecret);
 
             if (string.IsNullOrWhiteSpace(deviceCode) || string.IsNullOrWhiteSpace(clientId))
             {
@@ -88,23 +76,10 @@ namespace Authentication.DomainService.Authentication
                 return DeviceEndpointErrors.InvalidGrant("client_id does not match device_code");
             }
 
-            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(entity.ClientId);
-            if (!OidcClientValidator.IsGrantAllowed(client, GrantTypes.DeviceCode))
+            var preconditionError = await ValidateClientAndTenantAsync(entity, clientSecret, request);
+            if (preconditionError != null)
             {
-                return DeviceEndpointErrors.InvalidClient("client is not authorized for the device_code grant");
-            }
-
-            if (OidcClientValidator.RequiresClientAuthentication(client) && !OidcClientValidator.SecretsMatch(clientSecret, client!.ClientSecret))
-            {
-                return DeviceEndpointErrors.InvalidClient("invalid client authentication");
-            }
-
-            var cookieTenantId = ResolveTenantIdFromRequest(request);
-            if (!string.IsNullOrWhiteSpace(cookieTenantId)
-                && !string.Equals(cookieTenantId, entity.TenantId, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("Device code tenant mismatch: presented={Presented} actual={Actual}", cookieTenantId, entity.TenantId);
-                return DeviceEndpointErrors.InvalidGrant("tenant mismatch");
+                return preconditionError;
             }
 
             switch (entity.Status)
@@ -127,6 +102,49 @@ namespace Authentication.DomainService.Authentication
                 default:
                     return DeviceEndpointErrors.InvalidGrant("unsupported device_code status");
             }
+        }
+
+        private static (string ClientId, string ClientSecret) ResolveClientCredentials(HttpRequest request, string clientId, string clientSecret)
+        {
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+            {
+                OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out var basicClientId, out var basicSecret);
+                if (string.IsNullOrWhiteSpace(clientId))
+                {
+                    clientId = basicClientId;
+                }
+
+                if (string.IsNullOrWhiteSpace(clientSecret))
+                {
+                    clientSecret = basicSecret;
+                }
+            }
+
+            return (clientId, clientSecret);
+        }
+
+        private async Task<IActionResult?> ValidateClientAndTenantAsync(DeviceAuthorizationRequestModel entity, string clientSecret, HttpRequest request)
+        {
+            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(entity.ClientId);
+            if (!OidcClientValidator.IsGrantAllowed(client, GrantTypes.DeviceCode))
+            {
+                return DeviceEndpointErrors.InvalidClient("client is not authorized for the device_code grant");
+            }
+
+            if (OidcClientValidator.RequiresClientAuthentication(client) && !OidcClientValidator.SecretsMatch(clientSecret, client!.ClientSecret))
+            {
+                return DeviceEndpointErrors.InvalidClient("invalid client authentication");
+            }
+
+            var cookieTenantId = ResolveTenantIdFromRequest(request);
+            if (!string.IsNullOrWhiteSpace(cookieTenantId)
+                && !string.Equals(cookieTenantId, entity.TenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Device code tenant mismatch: presented={Presented} actual={Actual}", cookieTenantId, entity.TenantId);
+                return DeviceEndpointErrors.InvalidGrant("tenant mismatch");
+            }
+
+            return null;
         }
 
         private async Task<IActionResult> HandlePendingAsync(DeviceAuthorizationRequestModel entity, CancellationToken ct)
@@ -176,7 +194,9 @@ namespace Authentication.DomainService.Authentication
             }
 
             var user = await _userRepository.GetUserByIdAsync(entity.UserId);
-            if (user == null)
+            // A user deactivated or suspended between approval and polling gets no tokens. Same
+            // answer as an unknown user, so the device learns nothing about the account state.
+            if (user == null || BlockedUserRefreshGuard.IsBlocked(user))
             {
                 return DeviceEndpointErrors.AccessDenied("user not found");
             }

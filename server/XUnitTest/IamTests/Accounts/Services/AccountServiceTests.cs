@@ -36,7 +36,6 @@ namespace XUnitTest.IamTests.Accounts.Services
         private readonly Mock<IUserManagementMutationService> _userMutationMock = new();
         private readonly Mock<IResourceMutationService> _resourceMutationMock = new();
         private readonly Mock<ICaptchaService> _captchaServiceMock = new();
-        private readonly Mock<IDbContextProvider> _dbContextProviderMock = new();
         private readonly Mock<IUserActivityDispatcher> _userActivityDispatcherMock = new();
         private readonly Mock<IOrganizationNameResolver> _organizationNameResolverMock = new();
         // The real placement resolver over a mocked repository, so these tests cover the decision table end to end.
@@ -112,7 +111,6 @@ namespace XUnitTest.IamTests.Accounts.Services
                 _resourceMutationMock.Object,
                 _captchaServiceMock.Object,
                 _captchaConfigurationServiceMock.Object,
-                _dbContextProviderMock.Object,
                 _userActivityDispatcherMock.Object,
                 new SignupOrganizationResolver(_resourceRepositoryMock.Object),
                 http,
@@ -1279,6 +1277,65 @@ namespace XUnitTest.IamTests.Accounts.Services
             _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
 
+        private AccountService CreateServiceWithAccessGrant(Iam.DomainService.AccessGrant.IAccessGrantService accessGrant) =>
+            new(_loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
+                _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,
+                _userMutationMock.Object, _resourceMutationMock.Object, _captchaServiceMock.Object, _captchaConfigurationServiceMock.Object,
+                _userActivityDispatcherMock.Object, new SignupOrganizationResolver(_resourceRepositoryMock.Object),
+                accessGrant: accessGrant);
+
+        private XUnitTest.TestSupport.AccessGrantTestKit ResendKit()
+        {
+            var kit = new XUnitTest.TestSupport.AccessGrantTestKit().WithStandardTree();
+            kit.WithUser("caller", ["manager"]);
+            foreach (var user in new[] { kit.WithUser("boss", ["owner"]), kit.WithUser("junior", ["viewer"]), kit.FindUser("caller")! })
+            {
+                _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
+            }
+
+            _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration());
+            _repositoryMock.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
+            _iamServiceMock.Setup(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
+            XUnitTest.TestSupport.AccessGrantTestKit.SignIn("caller");
+            return kit;
+        }
+
+        [Fact]
+        public async Task ResendActivationToAUserAboveTheCallerIsRefused()
+        {
+            var kit = ResendKit();
+
+            var refused = await CreateServiceWithAccessGrant(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "boss" });
+            var allowed = await CreateServiceWithAccessGrant(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "junior" });
+
+            refused.Errors.Should().ContainKey(Iam.DomainService.AccessGrant.AccessGrantErrors.GrantNotAllowed);
+            allowed.IsSuccess.Should().BeTrue();
+            _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.Is<User>(u => u.ItemId == "boss"), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ResendActivationToYourselfIsNeverChecked()
+        {
+            var kit = ResendKit();
+
+            var result = await CreateServiceWithAccessGrant(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "caller" });
+
+            result.IsSuccess.Should().BeTrue();
+            kit.Repository.Verify(r => r.GetRolesAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ResendActivationRefusalIsLogged()
+        {
+            var kit = ResendKit();
+
+            var result = await CreateServiceWithAccessGrant(kit.Service()).ResendActivationAsync(new ResendActivationRequest { UserId = "boss" });
+
+            result.Errors.Should().ContainKey(Iam.DomainService.AccessGrant.AccessGrantErrors.GrantNotAllowed);
+            kit.Logged("AccessGrant denied R3-ManageUser caller").Should().BeTrue();
+        }
+
         [Fact]
         public async Task SendReActivation_DefaultsMailPurpose_ToAccountActivation()
         {
@@ -1550,6 +1607,25 @@ namespace XUnitTest.IamTests.Accounts.Services
 
             result.IsSuccess.Should().BeTrue();
             result.ItemId.Should().Be(TestDataBuilder.CreateTenantConfiguration().ItemId);
+        }
+
+        [Fact]
+        public async Task SaveSignUpSettingBelongsToTheSystemUser()
+        {
+            var accessGrant = new Mock<Iam.DomainService.AccessGrant.IAccessGrantService>();
+            accessGrant.Setup(d => d.AuthorizeSystemOnly("signup-settings")).Returns(false);
+            var service = new AccountService(
+                _loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
+                _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,
+                _userMutationMock.Object, _resourceMutationMock.Object, _captchaServiceMock.Object, _captchaConfigurationServiceMock.Object,
+                _userActivityDispatcherMock.Object, new SignupOrganizationResolver(_resourceRepositoryMock.Object),
+                accessGrant: accessGrant.Object);
+
+            var result = await service.SaveSignUpSettingAsync(new SaveSignUpSettingRequest { DefaultRolesForNewUserOnSignUp = ["admin"] });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey(Iam.DomainService.AccessGrant.AccessGrantErrors.GrantNotAllowed);
+            _repositoryMock.Verify(r => r.SaveSignUpSettingAsync(It.IsAny<IamTenantConfiguration>()), Times.Never);
         }
 
         [Fact]
@@ -2406,7 +2482,7 @@ namespace XUnitTest.IamTests.Accounts.Services
                 _loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
                 _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,
                 realMutation, _resourceMutationMock.Object, _captchaServiceMock.Object, _captchaConfigurationServiceMock.Object,
-                _dbContextProviderMock.Object, _userActivityDispatcherMock.Object,
+                _userActivityDispatcherMock.Object,
                 new SignupOrganizationResolver(_resourceRepositoryMock.Object));
 
             var result = await service.SignupAccountAsync(new SignupUserRequest { Email = "a@x.io" });

@@ -37,38 +37,15 @@ namespace Authentication.DomainService.OAuth.Services
         {
             _logger.LogInformation("Social Authentication start");
 
-            if (string.IsNullOrWhiteSpace(request.Code))
+            var (stateError, stateInfo) = await LoadStateInfoAsync(request);
+            if (stateError != null)
             {
-                _logger.LogError("Code is required");
-                return new TokenResponse { Error = "code_require", ErrorDescription = "code_require", StatusCode = 400 };
+                return stateError;
             }
 
-            if (string.IsNullOrWhiteSpace(request.State))
-            {
-                return new TokenResponse { Error = "state_require", ErrorDescription = "state_require", StatusCode = 400 };
-            }
-
-            var stateCacheData = await _cacheClient.GetStringValueAsync(request.State);
-
-            if (string.IsNullOrWhiteSpace(stateCacheData))
-            {
-                _logger.LogError("State data not found");
-                return new TokenResponse { Error = "state_data_not_found", ErrorDescription = "state_data_not_found", StatusCode = 400 };
-            }
-
-            var stateInfo = JsonSerializer.Deserialize<StateInfo>(stateCacheData);
-            if (stateInfo == null)
-            {
-                _logger.LogError("State data is invalid");
-                return new TokenResponse { Error = "state_data_invalid", ErrorDescription = "state_data_invalid", StatusCode = 400 };
-            }
-
-            stateInfo.Code = request.Code;
-            stateInfo.FlowType = SocialFlowType.Normal;
-
-            var socialCallbackResult = await _socialLogInServiceProvider.HandleSocialLoginCallback(stateInfo);
+            var socialCallbackResult = await _socialLogInServiceProvider.HandleSocialLoginCallback(stateInfo!);
             var externalUser = socialCallbackResult.ExternalUserData;
-            await _cacheClient.RemoveKeyAsync(request.State);
+            await _cacheClient.RemoveKeyAsync(request.State!);
 
             NormalizeExternalUserEmail(externalUser);
             externalUser.Email = NormalizeEmail(externalUser.Email);
@@ -83,7 +60,7 @@ namespace Authentication.DomainService.OAuth.Services
                 return new TokenResponse { Error = "External provider did not provide any user id.", ErrorDescription = "External provider did not provide any user id", StatusCode = 401 };
             }
 
-            var resolution = await ResolveUserAsync(stateInfo, externalUser);
+            var resolution = await ResolveUserAsync(stateInfo!, externalUser);
             if (resolution.Error != null)
             {
                 return resolution.Error;
@@ -102,6 +79,56 @@ namespace Authentication.DomainService.OAuth.Services
                 return CreateUserNotFoundError(externalUser.Email ?? "");
             }
 
+            var userStateError = CheckUserCanSignIn(user);
+            if (userStateError != null)
+            {
+                return userStateError;
+            }
+
+            request.OrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
+            var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
+
+            await PersistLastUsedOrganizationAsync(user, request.OrganizationId, tokenResponse);
+
+            return tokenResponse;
+        }
+
+        private async Task<(TokenResponse? Error, StateInfo? State)> LoadStateInfoAsync(TokenRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Code))
+            {
+                _logger.LogError("Code is required");
+                return (new TokenResponse { Error = "code_require", ErrorDescription = "code_require", StatusCode = 400 }, null);
+            }
+
+            if (string.IsNullOrWhiteSpace(request.State))
+            {
+                return (new TokenResponse { Error = "state_require", ErrorDescription = "state_require", StatusCode = 400 }, null);
+            }
+
+            var stateCacheData = await _cacheClient.GetStringValueAsync(request.State);
+
+            if (string.IsNullOrWhiteSpace(stateCacheData))
+            {
+                _logger.LogError("State data not found");
+                return (new TokenResponse { Error = "state_data_not_found", ErrorDescription = "state_data_not_found", StatusCode = 400 }, null);
+            }
+
+            var stateInfo = JsonSerializer.Deserialize<StateInfo>(stateCacheData);
+            if (stateInfo == null)
+            {
+                _logger.LogError("State data is invalid");
+                return (new TokenResponse { Error = "state_data_invalid", ErrorDescription = "state_data_invalid", StatusCode = 400 }, null);
+            }
+
+            stateInfo.Code = request.Code;
+            stateInfo.FlowType = SocialFlowType.Normal;
+
+            return (null, stateInfo);
+        }
+
+        private static TokenResponse? CheckUserCanSignIn(User user)
+        {
             if (!user.Active || !user.IsVerified)
             {
                 return new TokenResponse { Error = "There is a user with external user id but is not active.", ErrorDescription = "There is a user with external user id but is not active", StatusCode = 401 };
@@ -117,24 +144,24 @@ namespace Authentication.DomainService.OAuth.Services
                 };
             }
 
-            request.OrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
-            var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
+            return null;
+        }
 
+        private async Task PersistLastUsedOrganizationAsync(User user, string? organizationId, TokenResponse tokenResponse)
+        {
             if (string.IsNullOrWhiteSpace(tokenResponse.Error)
-                && !string.IsNullOrWhiteSpace(request.OrganizationId)
-                && !string.Equals(user.LastUsedOrganizationId, request.OrganizationId, StringComparison.OrdinalIgnoreCase))
+                && !string.IsNullOrWhiteSpace(organizationId)
+                && !string.Equals(user.LastUsedOrganizationId, organizationId, StringComparison.OrdinalIgnoreCase))
             {
                 await _oAuthRepository.UpdatePartialAsync<User>(
                     user.ItemId,
                     new Dictionary<string, object>
                     {
-                        { nameof(User.LastUsedOrganizationId), request.OrganizationId },
+                        { nameof(User.LastUsedOrganizationId), organizationId },
                         { nameof(User.LastUpdatedDate), DateTime.UtcNow },
                         { nameof(User.LastUpdatedBy), user.ItemId }
                     });
             }
-
-            return tokenResponse;
         }
 
         protected virtual void NormalizeExternalUserEmail(IExternalUserData externalUser)

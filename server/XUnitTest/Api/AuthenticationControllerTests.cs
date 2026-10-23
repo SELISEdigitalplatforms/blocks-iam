@@ -9,6 +9,7 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.AccessGrant;
 using Authentication.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -33,6 +34,15 @@ namespace XUnitTest.ApiTests
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
         private readonly Mock<IAuthenticationDomainService> _domainService = new();
         private readonly Mock<ISignupLinkRedemptionOrchestrator> _signupLinkRedemption = new();
+        private readonly Mock<IClientCredentialGrantGuard> _clientCredentialGuard = CreateAllowingGuard();
+
+        private static Mock<IClientCredentialGrantGuard> CreateAllowingGuard()
+        {
+            var guard = new Mock<IClientCredentialGrantGuard>();
+            guard.Setup(g => g.MaySaveAsync(It.IsAny<SaveClientCredentialRequest>())).ReturnsAsync(true);
+            guard.Setup(g => g.MayChangeAsync(It.IsAny<string?>())).ReturnsAsync(true);
+            return guard;
+        }
 
         public AuthenticationControllerTests()
         {
@@ -63,9 +73,9 @@ namespace XUnitTest.ApiTests
                 _accountService.Object,
                 _flowService.Object,
                 _configService.Object,
-                _authRepo.Object,
                 _domainService.Object,
-                _signupLinkRedemption.Object);
+                _signupLinkRedemption.Object,
+                _clientCredentialGuard.Object);
             controller.ControllerContext = new ControllerContext
             {
                 HttpContext = new DefaultHttpContext()
@@ -272,6 +282,17 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().ResendActivation(new ResendActivationRequest());
 
             result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task ResendActivationRefusedByAccessGrantIs403()
+        {
+            _accountService.Setup(s => s.ResendActivationAsync(It.IsAny<ResendActivationRequest>()))
+                .ReturnsAsync(new BaseAccountResponse { Errors = AccessGrantErrors.Create() });
+
+            var result = await CreateController().ResendActivation(new ResendActivationRequest { UserId = "boss" });
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         }
 
         [Fact]
@@ -793,7 +814,7 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().SaveClientCredential(new SaveClientCredentialRequest());
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
         }
 
         [Fact]
@@ -804,7 +825,7 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().RotateClientCredentialSecret("cc-1");
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
         }
 
         [Fact]
@@ -816,8 +837,37 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().DeleteClientCredential("cc-1");
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
             _domainService.Verify(d => d.DeleteClientCredentialAsync(It.Is<DeleteClientCredentialRequest>(r => r.ItemId == "cc-1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task SaveClientCredentialRefusedByAccessGrantIs403AndNeverReachesTheDomainService()
+        {
+            _clientCredentialGuard.Setup(g => g.MaySaveAsync(It.IsAny<SaveClientCredentialRequest>())).ReturnsAsync(false);
+
+            var result = await CreateController().SaveClientCredential(new SaveClientCredentialRequest { Name = "svc", Roles = ["admin"] });
+
+            var forbidden = result.Result.Should().BeOfType<ObjectResult>().Subject;
+            forbidden.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            forbidden.Value.Should().BeOfType<SaveClientCredentialResponse>()
+                .Which.Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
+            _domainService.Verify(d => d.SaveClientCredentialAsync(It.IsAny<SaveClientCredentialRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RotateAndDeleteClientCredentialRefusedByAccessGrantAre403()
+        {
+            _clientCredentialGuard.Setup(g => g.MayChangeAsync("cc-1")).ReturnsAsync(false);
+            var controller = CreateController();
+
+            var rotate = await controller.RotateClientCredentialSecret("cc-1");
+            var delete = await controller.DeleteClientCredential("cc-1");
+
+            rotate.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            delete.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            _domainService.Verify(d => d.RotateClientCredentialSecretAsync(It.IsAny<string>()), Times.Never);
+            _domainService.Verify(d => d.DeleteClientCredentialAsync(It.IsAny<DeleteClientCredentialRequest>()), Times.Never);
         }
 
         [Fact]

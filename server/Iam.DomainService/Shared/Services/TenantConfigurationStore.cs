@@ -50,7 +50,7 @@ namespace Iam.DomainService.Services
                 ct);
 
         /// <summary>Reads the configuration of another tenant's database (cross-database read).</summary>
-        public Task<IamTenantConfiguration?> ReadAsync(IMongoDatabase database, CancellationToken ct = default) =>
+        public static Task<IamTenantConfiguration?> ReadAsync(IMongoDatabase database, CancellationToken ct = default) =>
             ReadAsync(
                 database.GetCollection<BsonDocument>(IdentityConfigurationCollection),
                 database.GetCollection<IamTenantConfiguration>(LegacyCollection),

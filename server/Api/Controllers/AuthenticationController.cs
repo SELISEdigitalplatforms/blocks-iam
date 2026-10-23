@@ -9,6 +9,7 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.AccessGrant;
 using Authentication.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -34,26 +35,27 @@ public class AuthenticationController : ControllerBase
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
     private readonly IAuthenticationConfigurationService _configurationService;
-    private readonly IAuthenticationRepository _authenticationRepository;
     private readonly IAuthenticationDomainService _authenticationDomainService;
     private readonly ISignupLinkRedemptionOrchestrator _signupLinkRedemption;
+    private readonly IClientCredentialGrantGuard _clientCredentialGrant;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
         IAccountService accountService,
         IAuthenticationFlowService authenticationFlowService,
-        IAuthenticationConfigurationService configurationService, IAuthenticationRepository authenticationRepository,
+        IAuthenticationConfigurationService configurationService,
         IAuthenticationDomainService authenticationDomainService,
-        ISignupLinkRedemptionOrchestrator signupLinkRedemption
+        ISignupLinkRedemptionOrchestrator signupLinkRedemption,
+        IClientCredentialGrantGuard clientCredentialGrant
     )
     {
         _authenticationService = authenticationService;
         _accountService = accountService;
         _authenticationFlowService = authenticationFlowService;
         _configurationService= configurationService;
-        _authenticationRepository = authenticationRepository;
         _authenticationDomainService = authenticationDomainService;
         _signupLinkRedemption = signupLinkRedemption;
+        _clientCredentialGrant = clientCredentialGrant;
     }
 
     /// <summary>
@@ -210,6 +212,11 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> ResendActivation([FromBody] ResendActivationRequest command)
     {
         var result = await _accountService.ResendActivationAsync(command);
+        if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        }
+
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -562,26 +569,52 @@ public class AuthenticationController : ControllerBase
 
     [HttpPost("client-credentials")]
     [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
-    public async Task<SaveClientCredentialResponse> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
+    public async Task<ActionResult<SaveClientCredentialResponse>> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
     {
+        if (!await _clientCredentialGrant.MaySaveAsync(request).ConfigureAwait(false))
+        {
+            return GrantNotAllowed(new SaveClientCredentialResponse());
+        }
+
         return await _authenticationDomainService.SaveClientCredentialAsync(request);
     }
 
     [HttpPost("client-credentials/{id}/rotate-secret")]
     [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
-    public async Task<RotateClientCredentialSecretResponse> RotateClientCredentialSecret([FromRoute] string id)
+    public async Task<ActionResult<RotateClientCredentialSecretResponse>> RotateClientCredentialSecret([FromRoute] string id)
     {
+        if (!await _clientCredentialGrant.MayChangeAsync(id).ConfigureAwait(false))
+        {
+            return GrantNotAllowed(new RotateClientCredentialSecretResponse());
+        }
+
         return await _authenticationDomainService.RotateClientCredentialSecretAsync(id);
     }
 
     [HttpDelete("client-credentials/{id}")]
     [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
-    public async Task<BaseResponse> DeleteClientCredential([FromRoute] string id)
+    public async Task<ActionResult<BaseResponse>> DeleteClientCredential([FromRoute] string id)
     {
+        if (!await _clientCredentialGrant.MayChangeAsync(id).ConfigureAwait(false))
+        {
+            return GrantNotAllowed(new BaseResponse());
+        }
+
         return await _authenticationDomainService.DeleteClientCredentialAsync(new DeleteClientCredentialRequest
         {
             ItemId = id
         });
+    }
+
+    /// <summary>
+    /// A access grant refusal (R8): 403 with the generic error, in the response shape
+    /// the endpoint always returns.
+    /// </summary>
+    private ObjectResult GrantNotAllowed(BaseResponse response)
+    {
+        response.IsSuccess = false;
+        response.Errors = AccessGrantErrors.Create();
+        return StatusCode(StatusCodes.Status403Forbidden, response);
     }
 
     [HttpGet("client-credentials")]

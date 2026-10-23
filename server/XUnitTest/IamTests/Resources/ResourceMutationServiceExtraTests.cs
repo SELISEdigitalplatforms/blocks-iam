@@ -333,6 +333,7 @@ namespace XUnitTest.IamTests.Resources
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationById("org-1")).ReturnsAsync(new Organization { ItemId = "org-1", Name = "Acme" });
+            _repo.Setup(r => r.GetOrganizationByIdForView("org-1")).ReturnsAsync(new Organization { ItemId = "org-1", Name = "Acme" });
 
             var result = await Create().GetOrganizationAsync("org-1");
 

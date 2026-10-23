@@ -26,6 +26,22 @@ public static class IamDataAccessExtensions
         return scope.Granted ? await scope.Apply(collection).FirstOrDefaultAsync() : default;
     }
 
+    /// <summary>As <see cref="FindListAsync{T}"/>, for results that go back to the API caller: View column (property) rules clear what they may not see. Never save these back.</summary>
+    public static async Task<List<T>> FindListForViewAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
+        FilterDefinition<T> filter, string callSite, string? tenantId = null)
+    {
+        var scope = await access.ReadAsync(schema, filter, callSite, tenantId);
+        return scope.Granted ? scope.ForView(await scope.Apply(collection).ToListAsync()) : [];
+    }
+
+    /// <summary>As <see cref="FindFirstAsync{T}"/>, for a result that goes back to the API caller: View column (property) rules clear what they may not see. Never save it back.</summary>
+    public static async Task<T?> FindFirstForViewAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
+        FilterDefinition<T> filter, string callSite, string? tenantId = null)
+    {
+        var scope = await access.ReadAsync(schema, filter, callSite, tenantId);
+        return scope.Granted ? scope.ForView(await scope.Apply(collection).FirstOrDefaultAsync()) : default;
+    }
+
     public static async Task<long> CountAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
         FilterDefinition<T> filter, string callSite, string? tenantId = null)
     {
@@ -38,22 +54,22 @@ public static class IamDataAccessExtensions
         await access.CountAsync(collection, schema, filter, callSite, tenantId) > 0;
 
     public static async Task<ReplaceOneResult?> ReplaceOneAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
-        FilterDefinition<T> filter, T replacement, string callSite, ReplaceOptions? options = null, string? tenantId = null)
+        FilterDefinition<T> filter, T replacement, string callSite, ReplaceOptions? options = null)
     {
-        var edit = await access.EditFilterAsync(schema, filter, callSite, tenantId);
+        var edit = await access.EditFilterAsync(schema, filter, callSite);
         if (edit is null) return null;
         replacement = options?.IsUpsert == true
-            ? await access.PrepareUpsertAsync(schema, replacement, collection, filter, callSite, tenantId)
-            : await access.PrepareWriteAsync(schema, replacement, isInsert: false, callSite, tenantId);
+            ? await access.PrepareUpsertAsync(schema, replacement, collection, filter, callSite)
+            : await access.PrepareWriteAsync(schema, replacement, isInsert: false, callSite);
         return await collection.ReplaceOneAsync(options?.IsUpsert == true ? filter : edit, replacement, options ?? new ReplaceOptions());
     }
 
     public static async Task<UpdateResult?> UpdateOneAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
-        FilterDefinition<T> filter, UpdateDefinition<T> update, string callSite, UpdateOptions? options = null, string? tenantId = null)
+        FilterDefinition<T> filter, UpdateDefinition<T> update, string callSite, UpdateOptions? options = null)
     {
-        var edit = await access.EditFilterAsync(schema, filter, callSite, tenantId);
+        var edit = await access.EditFilterAsync(schema, filter, callSite);
         if (edit is null) return null;
-        await access.CheckUpdateAsync(schema, update, callSite, tenantId);
+        await access.CheckUpdateAsync(schema, update, callSite);
         return await collection.UpdateOneAsync(options?.IsUpsert == true ? filter : edit, update, options);
     }
 
@@ -67,11 +83,11 @@ public static class IamDataAccessExtensions
     }
 
     public static async Task<T?> FindOneAndUpdateAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
-        FilterDefinition<T> filter, UpdateDefinition<T> update, string callSite, FindOneAndUpdateOptions<T>? options = null, string? tenantId = null)
+        FilterDefinition<T> filter, UpdateDefinition<T> update, string callSite, FindOneAndUpdateOptions<T>? options = null)
     {
-        var edit = await access.EditFilterAsync(schema, filter, callSite, tenantId);
+        var edit = await access.EditFilterAsync(schema, filter, callSite);
         if (edit is null) return default;
-        await access.CheckUpdateAsync(schema, update, callSite, tenantId);
+        await access.CheckUpdateAsync(schema, update, callSite);
         return await collection.FindOneAndUpdateAsync(edit, update, options);
     }
 

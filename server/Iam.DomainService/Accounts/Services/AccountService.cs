@@ -4,6 +4,7 @@
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentValidation;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -64,12 +65,12 @@ namespace Iam.DomainService.Accounts
         private readonly IResourceMutationService _resourceMutationService;
         private readonly ICaptchaService _captchaService;
         private readonly ICaptchaConfigurationService _captchaConfigurationService;
-        private readonly IDbContextProvider _dbContextProvider;
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
         private readonly IUserSessionTerminator? _userSessionTerminator;
         private readonly IFailedLoginTracker? _failedLoginTracker;
+        private readonly IAccessGrantService? _accessGrant;
         private readonly IValidator<SignupOrganizationInfo>? _signupOrganizationValidator;
         private readonly IOrganizationNameResolver? _organizationNameResolver;
         private readonly IConfiguration? _configuration;
@@ -88,7 +89,6 @@ namespace Iam.DomainService.Accounts
             IResourceMutationService resourceMutationService,
             ICaptchaService captchaService,
             ICaptchaConfigurationService captchaConfigurationService,
-            IDbContextProvider dbContextProvider,
             IUserActivityDispatcher userActivityDispatcher,
             // Required, unlike the optional trailing dependencies: without it a sign-up cannot be placed.
             ISignupOrganizationResolver signupOrganizationResolver,
@@ -100,7 +100,8 @@ namespace Iam.DomainService.Accounts
             IOrganizationNameResolver? organizationNameResolver = null,
             IConfiguration? configuration = null,
             IUserSessionTerminator? userSessionTerminator = null,
-            IFailedLoginTracker? failedLoginTracker = null)
+            IFailedLoginTracker? failedLoginTracker = null,
+            IAccessGrantService? accessGrant = null)
         {
             _logger = logger;
             _repository = repository;
@@ -114,7 +115,6 @@ namespace Iam.DomainService.Accounts
             _resourceMutationService = resourceMutationService;
             _captchaService = captchaService;
             _captchaConfigurationService = captchaConfigurationService;
-            _dbContextProvider = dbContextProvider;
             _userActivityDispatcher = userActivityDispatcher;
             _signupOrganizationResolver = signupOrganizationResolver;
             _httpContextAccessor = httpContextAccessor;
@@ -124,6 +124,7 @@ namespace Iam.DomainService.Accounts
             _configuration = configuration;
             _userSessionTerminator = userSessionTerminator;
             _failedLoginTracker = failedLoginTracker;
+            _accessGrant = accessGrant;
         }
 
         public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
@@ -202,6 +203,15 @@ namespace Iam.DomainService.Accounts
                 return existingHandlingResult;
             }
 
+            return await CreateSignupUserWithPlacementAsync(signupUserRequest, tenantConfiguration, normalizedEmail, placement);
+        }
+
+        private async Task<BaseAccountResponse> CreateSignupUserWithPlacementAsync(
+            SignupUserRequest signupUserRequest,
+            IamTenantConfiguration tenantConfiguration,
+            string normalizedEmail,
+            SignupOrganizationDecision placement)
+        {
             // Generate user id first so org creation can receive creator id in the same signup flow.
             var signupUserId = Guid.NewGuid().ToString();
 
@@ -1306,6 +1316,13 @@ namespace Iam.DomainService.Accounts
                 return new BaseAccountResponse();
             }
 
+            // Sending another user an activation link is managing that user (access
+            // grant, R3). Asking for one's own is self-service.
+            if (!await MayResendActivationToAsync(user).ConfigureAwait(false))
+            {
+                return new BaseAccountResponse { Errors = AccessGrantErrors.Create() };
+            }
+
             var result = await SendReActivationAsync(user);
 
             return new BaseAccountResponse
@@ -1313,6 +1330,11 @@ namespace Iam.DomainService.Accounts
                 IsSuccess = result,
             };
         }
+
+        private Task<bool> MayResendActivationToAsync(User user) =>
+            string.Equals(user.ItemId, BlocksContext.GetContext()?.UserId, StringComparison.Ordinal)
+                ? Task.FromResult(true)
+                : _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckManageUser(scope, user));
 
         public async Task<bool> SendReActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {
@@ -1476,6 +1498,13 @@ namespace Iam.DomainService.Accounts
 
         public async Task<SaveSignUpSettingResponse> SaveSignUpSettingAsync(SaveSignUpSettingRequest request)
         {
+            // R6: signup settings are tenant-wide -- they hand roles to every future signup -- so
+            // they belong to the system user.
+            if (!_accessGrant.AuthorizeSystemOnlyIfWired("signup-settings"))
+            {
+                return new SaveSignUpSettingResponse { IsSuccess = false, Errors = AccessGrantErrors.Create() };
+            }
+
             var settings = await _repository.GetTenantConfigurationAsync();
 
             if (settings == null)

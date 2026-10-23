@@ -74,6 +74,24 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
+        public async Task Revoke_RefreshTokenProducedBySwitchOrg_IsAuthorizedForItsLineageClient()
+        {
+            // blocks-iam#624 H14: the successor switch-org writes keeps the lineage client, so that client
+            // may revoke it. Before the fix it was stored client-less and every client was refused.
+            var (switched, _) = await XUnitTest.Auth.Shared.RefreshTokenLineageTests.RotateOnceAsync(
+                XUnitTest.Auth.Shared.RefreshTokenLineageTests.HostedPredecessor(),
+                new Authentication.DomainService.OAuth.RequestModel.TokenRequest { GrantType = "switch_organization", OrganizationId = "org-b" });
+            _refreshRepo.Setup(r => r.GetByTokenIdAsync(switched.TokenId)).ReturnsAsync(switched);
+            _refreshRepo.Setup(r => r.RevokeByTokenIdAsync(switched.TokenId, "user_revoked")).ReturnsAsync(true);
+            _refreshRepo.Setup(r => r.RevokeAllByTokenIdsAsync(It.IsAny<IEnumerable<string>>(), "revoked")).ReturnsAsync(1);
+
+            var result = await Create().RevokeTokenAsync(switched.TokenId, "refresh_token", "client-1");
+
+            result.Success.Should().BeTrue();
+            _refreshRepo.Verify(r => r.RevokeByTokenIdAsync(switched.TokenId, "user_revoked"), Times.Once);
+        }
+
+        [Fact]
         public async Task Revoke_RefreshToken_WrongClient_ReturnsInvalidClient()
         {
             var rt = new RefreshTokenModel { TokenId = "rt-1", ClientId = "other-client", IsRevoked = false };

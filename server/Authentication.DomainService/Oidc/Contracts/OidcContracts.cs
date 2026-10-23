@@ -33,6 +33,16 @@ public sealed class OidcClaims
     public bool IsLinkAuthentication { get; set; }
     public List<string> RestrictedRoles { get; set; } = [];
     public List<string> RestrictedPermissions { get; set; } = [];
+
+    /// <summary>
+    /// Not a token claim: the address of the browser that signed in (the authorize request). The
+    /// refresh-token record uses it instead of the address of whoever redeems the code, which for a
+    /// confidential client is a server.
+    /// </summary>
+    public string? SignInIpAddress { get; set; }
+
+    /// <summary>Not a token claim: the user agent of the browser that signed in. See <see cref="SignInIpAddress"/>.</summary>
+    public string? SignInUserAgent { get; set; }
 }
 
 public sealed class AuthorizationCodeModel
@@ -53,6 +63,7 @@ public sealed class AuthorizationCodeModel
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? CreatedByIpAddress { get; set; }
+    public string? CreatedByUserAgent { get; set; }
     public string? IdpSessionId { get; set; }
     public bool IsRevoked { get; set; }
     public DateTime? RevokedAt { get; set; }

@@ -388,6 +388,24 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
+        public async Task AuthorizeAsync_IssuedCode_RecordsTheSigningInBrowsersAddressAndUserAgent()
+        {
+            const string chromeOnWindows = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "" }));
+
+            var ctx = Ctx("idp_session_id=SID");
+            ctx.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("203.0.113.10");
+            ctx.Request.Headers.UserAgent = chromeOnWindows;
+            await Authorize(ctx: ctx);
+
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m =>
+                m.CreatedByIpAddress == "203.0.113.10" && m.CreatedByUserAgent == chromeOnWindows)), Times.Once);
+        }
+
+        [Fact]
         public async Task AuthorizeAsync_PromptLogin_IgnoresLiveSessionCookie_AndRedirectsToLogin()
         {
             ClientExists();

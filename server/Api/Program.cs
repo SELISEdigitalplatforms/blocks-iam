@@ -225,13 +225,15 @@ static string ResolveRequiredServiceName(IConfiguration configuration)
 
 namespace Blocks.Api
 {
-    // Builds the forwarded-header trust configuration from ForwardedHeaders:KnownNetworks.
-    // Only X-Forwarded-For is processed (scheme and host are left unchanged), only the last
-    // entry is used, and only connections from the configured CIDR networks are trusted.
+    // Builds the forwarded-header trust configuration from ForwardedHeaders:KnownNetworks and
+    // ForwardedHeaders:ForwardLimit. Only X-Forwarded-For is processed (scheme and host are left
+    // unchanged), and only connections from the configured CIDR networks are trusted.
     // (Plain comments: XML docs here would change the tracked, generated Api.xml.)
     public static class ForwardedHeadersSetup
     {
         public const string KnownNetworksKey = "ForwardedHeaders:KnownNetworks";
+        public const string ForwardLimitKey = "ForwardedHeaders:ForwardLimit";
+        public const int MaxForwardLimit = 10;
 
         // Returns null when no network is configured: the middleware must then not be registered,
         // because with empty KnownProxies/KnownIPNetworks it would trust every source.
@@ -257,7 +259,7 @@ namespace Blocks.Api
             var options = new ForwardedHeadersOptions
             {
                 ForwardedHeaders = ForwardedHeaders.XForwardedFor,
-                ForwardLimit = 1,
+                ForwardLimit = ReadForwardLimit(configuration),
             };
             options.KnownProxies.Clear();
             options.KnownIPNetworks.Clear();
@@ -274,6 +276,30 @@ namespace Blocks.Api
             }
 
             return options;
+        }
+
+        // How many X-Forwarded-For entries the middleware may walk back through, right to left.
+        // 1 (the default) takes only the entry the gateway appended. A request that crossed more
+        // trusted hops (a bridge proxy re-sending to the public API URL adds the gateway, the cluster's
+        // outbound address and possibly a CDN edge) needs one entry per hop to reach the client. The
+        // walk stops at the first address outside KnownNetworks, so entries a client wrote itself to
+        // the left of its own address are never used.
+        private static int ReadForwardLimit(IConfiguration configuration)
+        {
+            var raw = configuration[ForwardLimitKey];
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return 1;
+            }
+
+            if (!int.TryParse(raw.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var limit)
+                || limit < 1 || limit > MaxForwardLimit)
+            {
+                throw new InvalidOperationException(
+                    $"{ForwardLimitKey} '{raw}' must be a whole number from 1 to {MaxForwardLimit}.");
+            }
+
+            return limit;
         }
 
         public static void Apply(IApplicationBuilder app, ForwardedHeadersOptions? options)

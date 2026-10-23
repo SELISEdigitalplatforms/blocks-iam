@@ -312,16 +312,16 @@ namespace Authentication.DomainService.Oidc.Services
 
             await _refreshTokenRepo.ReassignSessionAsync(fromSessionId, toSessionId);
 
-            foreach (var token in activeTokens)
+            foreach (var tokenId in activeTokens.Select(token => token.TokenId))
             {
-                if (string.IsNullOrWhiteSpace(token.TokenId))
+                if (string.IsNullOrWhiteSpace(tokenId))
                 {
                     continue;
                 }
 
                 try
                 {
-                    var cached = await _cacheClient.GetStringValueAsync(token.TokenId);
+                    var cached = await _cacheClient.GetStringValueAsync(tokenId);
                     if (string.IsNullOrWhiteSpace(cached))
                     {
                         continue;
@@ -341,15 +341,15 @@ namespace Authentication.DomainService.Oidc.Services
                     var ttlSeconds = RemainingCacheTtlSeconds(entry, DateTime.UtcNow);
                     if (ttlSeconds <= 0)
                     {
-                        await _cacheClient.RemoveKeyAsync(token.TokenId);
+                        await _cacheClient.RemoveKeyAsync(tokenId);
                         continue;
                     }
 
-                    await _cacheClient.AddStringValueAsync(token.TokenId, JsonSerializer.Serialize(entry), ttlSeconds);
+                    await _cacheClient.AddStringValueAsync(tokenId, JsonSerializer.Serialize(entry), ttlSeconds);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Could not re-point cached refresh token {TokenId} from session {From} to {To}", token.TokenId, fromSessionId, toSessionId);
+                    _logger.LogWarning(ex, "Could not re-point cached refresh token {TokenId} from session {From} to {To}", tokenId, fromSessionId, toSessionId);
                 }
             }
         }

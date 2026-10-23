@@ -32,7 +32,6 @@ namespace Authentication.DomainService.Authentication
         private const string ActiveImpersonationStatus = "active";
 
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
         private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly IAuthenticationService _authenticationService;
@@ -42,7 +41,6 @@ namespace Authentication.DomainService.Authentication
 
         public OidcRefreshTokenService(
             IAuthenticationRepository authenticationRepository,
-            ICacheClient cacheClient,
             ITenants tenants,
             RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             IAuthenticationService authenticationService,
@@ -51,7 +49,6 @@ namespace Authentication.DomainService.Authentication
             ILogger<OidcRefreshTokenService> logger)
         {
             _authenticationRepository = authenticationRepository;
-            _cacheClient = cacheClient;
             _tenants = tenants;
             _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _authenticationService = authenticationService;
@@ -238,6 +235,18 @@ namespace Authentication.DomainService.Authentication
                 {
                     StatusCode = StatusCodes.Status423Locked
                 }, null, null, null);
+            }
+
+            // A deactivated or suspended account must not mint new tokens from a refresh token it
+            // obtained while still active. The lineage is revoked so the client stops retrying it.
+            if (BlockedUserRefreshGuard.IsBlocked(user))
+            {
+                _logger.LogWarning(
+                    "Refresh refused for a blocked account. reason=user_inactive userId={UserId} tenantId={TenantId}",
+                    tokenCache.UserId,
+                    tokenCache.TenantId);
+                await BlockedUserRefreshGuard.RevokeLineageAsync(_refreshTokenRepository, tokenCache, _logger);
+                return (InvalidGrant(BlockedUserRefreshGuard.ErrorDescription), null, null, null);
             }
 
             return (null, configuration, tokenCache, user);

@@ -51,6 +51,13 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? IdpSessionId { get; set; }
 
         /// <summary>
+        /// The user agent of the browser that signed in, when the token is minted on a request from
+        /// someone else (a server redeeming an authorization code). Used for the refresh token's device
+        /// instead of the redeeming request's User-Agent.
+        /// </summary>
+        public string? SignInUserAgent { get; set; }
+
+        /// <summary>
         /// RFC 8693 parameters, set only for <see cref="OAuth.GrantTypes.TokenExchange"/>.
         /// </summary>
         public TokenExchangeRequest? TokenExchange { get; set; }

@@ -1,7 +1,9 @@
+using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Security.Models;
 using Authentication.DomainService.Security.Repositories;
 using Authentication.DomainService.Security.Services;
+using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
@@ -21,6 +23,11 @@ namespace XUnitTest.Auth.Security
         private readonly Mock<IRefreshTokenRepository> _refresh = new();
         private readonly Mock<ICacheClient> _cache = new();
         private readonly Mock<IUserActivityDispatcher> _activity = new();
+        private readonly Mock<IIdpSessionRepository> _idpSessions = new();
+        private readonly Mock<IAuthenticationRepository> _authRepo = new();
+
+        // The project lifetime in these tests (15 min) is below the per-client maximum, which then wins.
+        private static readonly long MarkSeconds = (OidcClientTokenLifetimes.MaxAccessTokenMinutes + 5) * 60L;
 
         public SessionRevocationServiceTests()
         {
@@ -32,6 +39,8 @@ namespace XUnitTest.Auth.Security
                 userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
                 originalTenantId: "tenant-1", impersonationSessionId: null, applicationDomain: "test"));
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync())
+                .ReturnsAsync(new IdentityConfiguration { AccessTokenValidForNumberMinutes = 15 });
         }
 
         public void Dispose()
@@ -42,7 +51,7 @@ namespace XUnitTest.Auth.Security
 
         private SessionRevocationService Create() =>
             new(NullLogger<SessionRevocationService>.Instance, _security.Object, _refresh.Object,
-                _cache.Object, _activity.Object);
+                _idpSessions.Object, _authRepo.Object, _cache.Object, _activity.Object);
 
         private static UserSessionDto ActiveSession(string sessionId = "sess-1") => new()
         {
@@ -88,7 +97,7 @@ namespace XUnitTest.Auth.Security
         }
 
         [Fact]
-        public async Task RevokeSession_AlreadyInactive_ReturnsAlreadyRevoked()
+        public async Task RevokeSession_AlreadyInactive_ReturnsAlreadyRevoked_StillEndsTheIdpSession()
         {
             var session = ActiveSession();
             session.Status = SessionStatus.Revoked;
@@ -99,6 +108,114 @@ namespace XUnitTest.Auth.Security
 
             result.AlreadyRevoked.Should().BeTrue();
             result.RevokedAt.Should().NotBeNull();
+            _refresh.Verify(r => r.RevokeAllBySessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            // Expired tokens do not end the IdP session, which would otherwise sign that browser back in silently.
+            _idpSessions.Verify(r => r.RevokeAsync("sess-1"), Times.Once);
+            _cache.Verify(c => c.AddStringValueAsync("revoked_session:sess-1", "1", MarkSeconds), Times.Once);
+        }
+
+        [Fact]
+        public async Task RevokeSession_NoClientIds_EmbeddedLogin_IsRevoked()
+        {
+            // Password-grant (embedded) logins carry no OIDC client id; they used to be reported as
+            // already revoked while staying signed in.
+            var session = ActiveSession();
+            session.ClientIds = new List<string>();
+            _security.Setup(s => s.GetUserSessionAsync(Actor, "sess-1", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(session);
+            _refresh.Setup(r => r.GetActiveTokensBySessionIdAsync("sess-1"))
+                .ReturnsAsync(new List<RefreshTokenModel> { new() { TokenId = "rt-1" } });
+            _refresh.Setup(r => r.RevokeAllBySessionIdAsync("sess-1", "user_revoked")).ReturnsAsync(1);
+
+            var result = await Create().RevokeSessionAsync("sess-1", Actor, "current", null, CancellationToken.None);
+
+            result.AlreadyRevoked.Should().BeFalse();
+            result.RevokedRefreshTokens.Should().Be(1);
+            result.ClientId.Should().BeNull();
+            _cache.Verify(c => c.RemoveKeyAsync("rt-1"), Times.Once);
+            _idpSessions.Verify(r => r.RevokeAsync("sess-1"), Times.Once);
+        }
+
+        [Fact]
+        public async Task RevokeSession_ReadsLiveTokensBeforeRevoking_SoTheirCachedCopiesAreRemoved()
+        {
+            // A refresh accepts a cached token without checking the store, so the cached copies of the
+            // tokens that were live must go; once revoked they no longer match the active filter.
+            _security.Setup(s => s.GetUserSessionAsync(Actor, "sess-1", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ActiveSession());
+            var revoked = false;
+            _refresh.Setup(r => r.GetActiveTokensBySessionIdAsync("sess-1"))
+                .ReturnsAsync(() => revoked
+                    ? new List<RefreshTokenModel>()
+                    : new List<RefreshTokenModel> { new() { TokenId = "rt-1" }, new() { TokenId = "rt-2" } });
+            _refresh.Setup(r => r.RevokeAllBySessionIdAsync("sess-1", "user_revoked"))
+                .Callback(() => revoked = true)
+                .ReturnsAsync(2);
+
+            await Create().RevokeSessionAsync("sess-1", Actor, "current", null, CancellationToken.None);
+
+            _cache.Verify(c => c.RemoveKeyAsync("rt-1"), Times.Once);
+            _cache.Verify(c => c.RemoveKeyAsync("rt-2"), Times.Once);
+        }
+
+        [Fact]
+        public async Task RevokeSession_EndsTheIdpSession_AndMarksTheSessionRevoked()
+        {
+            _security.Setup(s => s.GetUserSessionAsync(Actor, "sess-1", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ActiveSession());
+            _refresh.Setup(r => r.GetActiveTokensBySessionIdAsync("sess-1")).ReturnsAsync(new List<RefreshTokenModel>());
+
+            var result = await Create().RevokeSessionAsync("sess-1", Actor, "current", null, CancellationToken.None);
+
+            result.Warnings.Should().BeEmpty();
+            _idpSessions.Verify(r => r.RevokeAsync("sess-1"), Times.Once);
+            _cache.Verify(c => c.AddStringValueAsync(SessionRevocationService.RevokedSessionKeyPrefix + "sess-1", "1", MarkSeconds), Times.Once);
+        }
+
+        [Fact]
+        public async Task RevokeSession_MarkOutlivesALongerProjectAccessTokenLifetime()
+        {
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync())
+                .ReturnsAsync(new IdentityConfiguration { AccessTokenValidForNumberMinutes = 3000 });
+            _security.Setup(s => s.GetUserSessionAsync(Actor, "sess-1", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ActiveSession());
+            _refresh.Setup(r => r.GetActiveTokensBySessionIdAsync("sess-1")).ReturnsAsync(new List<RefreshTokenModel>());
+
+            await Create().RevokeSessionAsync("sess-1", Actor, "current", null, CancellationToken.None);
+
+            _cache.Verify(c => c.AddStringValueAsync("revoked_session:sess-1", "1", 3005 * 60L), Times.Once);
+        }
+
+        [Fact]
+        public async Task RevokeSession_ConfigurationUnreadable_UsesThePerClientMaximum()
+        {
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ThrowsAsync(new Exception("db down"));
+            _security.Setup(s => s.GetUserSessionAsync(Actor, "sess-1", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ActiveSession());
+            _refresh.Setup(r => r.GetActiveTokensBySessionIdAsync("sess-1")).ReturnsAsync(new List<RefreshTokenModel>());
+
+            var result = await Create().RevokeSessionAsync("sess-1", Actor, "current", null, CancellationToken.None);
+
+            result.Warnings.Should().BeEmpty();
+            _cache.Verify(c => c.AddStringValueAsync("revoked_session:sess-1", "1", MarkSeconds), Times.Once);
+        }
+
+        [Fact]
+        public async Task RevokeSession_IdpSessionAndMarkFailures_AreWarnings_SignOutStillSucceeds()
+        {
+            _security.Setup(s => s.GetUserSessionAsync(Actor, "sess-1", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ActiveSession());
+            _refresh.Setup(r => r.GetActiveTokensBySessionIdAsync("sess-1")).ReturnsAsync(new List<RefreshTokenModel>());
+            _refresh.Setup(r => r.RevokeAllBySessionIdAsync("sess-1", "user_revoked")).ReturnsAsync(1);
+            _idpSessions.Setup(r => r.RevokeAsync("sess-1")).ThrowsAsync(new Exception("db down"));
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()))
+                .ThrowsAsync(new Exception("cache down"));
+
+            var result = await Create().RevokeSessionAsync("sess-1", Actor, "current", null, CancellationToken.None);
+
+            result.AlreadyRevoked.Should().BeFalse();
+            result.RevokedRefreshTokens.Should().Be(1);
+            result.Warnings.Should().Contain(new[] { "idp_session_revoke_failed", "revoked_session_mark_failed" });
         }
 
         [Fact]

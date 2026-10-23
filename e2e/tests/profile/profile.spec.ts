@@ -544,7 +544,18 @@ test.describe("profile", () => {
       const saveButton = page.getByRole("button", { name: /save changes/i });
       if (await saveButton.isEnabled().catch(() => false)) {
         passwordMayHaveChanged = true;
+        // The toast follows the change-password response, which has taken up to ~26s on the
+        // shared dev backend (blocks-iam#624 r1: 200 isSuccess after 26.1s, so the toast missed
+        // a 15s window). Wait for that response first, then give the toast its usual window.
+        const changed = page.waitForResponse(
+          (res) =>
+            res.request().method() === "POST" &&
+            new URL(res.url()).pathname.endsWith("/api/auth/change-password"),
+          { timeout: 60_000 },
+        );
         await saveButton.click();
+        const response = await changed;
+        expect(response.status(), "change-password response status").toBe(200);
         await expect(page.getByText("Password updated").first()).toBeVisible({
           timeout: 15000,
         });

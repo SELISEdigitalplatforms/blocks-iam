@@ -159,11 +159,11 @@ export default function SSOCallbackPage() {
             errors: data?.error_description || "Social sign in failed. Please try again.",
           });
         }
-        window.location.href = data?.redirect_uri || deviceReturnUrl;
+        globalThis.location.href = data?.redirect_uri || deviceReturnUrl;
       })
       .catch(() => {
         showErrorToast({ errors: "Social sign in failed. Please try again." });
-        window.location.href = deviceReturnUrl;
+        globalThis.location.href = deviceReturnUrl;
       });
   }, [code, state, error, errorDescription, tenantId, setAuthenticated]);
 

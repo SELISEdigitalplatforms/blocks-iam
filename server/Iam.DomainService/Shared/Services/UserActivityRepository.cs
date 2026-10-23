@@ -29,6 +29,7 @@ namespace Iam.DomainService.Services
         {
             var collection = GetCollection<UserActivity>();
             await _dataAccess.EnsureInsertAllowedAsync(IamSchemas.UserActivity, "UserActivityRepository.InsertAsync");
+            await _dataAccess.PrepareWriteAsync(IamSchemas.UserActivity, activity, isInsert: true, "UserActivityRepository.InsertAsync");
             try
             {
                 await collection.InsertOneAsync(activity, cancellationToken: ct);
@@ -53,7 +54,7 @@ namespace Iam.DomainService.Services
             var scope = await _dataAccess.ReadAsync(IamSchemas.UserActivity, filter, "UserActivityRepository.GetAsync", useProjection: false);
             if (!scope.Granted) return [];
             var cursor = await collection.FindAsync(scope.Filter, options, ct);
-            return await cursor.ToListAsync(ct);
+            return scope.ForView(await cursor.ToListAsync(ct));
         }
 
         public async Task<long> CountAsync(string userId, GetActivitiesRequest req, CancellationToken ct)
@@ -63,6 +64,33 @@ namespace Iam.DomainService.Services
             var scope = await _dataAccess.ReadAsync(IamSchemas.UserActivity, filter, "UserActivityRepository.CountAsync", useProjection: false);
             if (!scope.Granted) return 0;
             return await collection.CountDocumentsAsync(scope.Filter, cancellationToken: ct);
+        }
+
+        public async Task<LoginHistory?> GetLoginHistoryAsync(string userId, string loginEvent, string? ipAddress, string? userAgent, CancellationToken ct)
+        {
+            var b = Builders<UserActivity>.Filter;
+            var earlier = b.Eq(x => x.UserId, userId)
+                & b.Eq(x => x.Event, loginEvent)
+                & b.Eq(x => x.Outcome, "success");
+
+            var anyScope = await _dataAccess.ReadAsync(IamSchemas.UserActivity, earlier, "UserActivityRepository.GetLoginHistoryAsync", useProjection: false);
+            if (!anyScope.Granted) return null;
+
+            var collection = GetCollection<UserActivity>();
+            var hasEarlier = await collection.CountDocumentsAsync(anyScope.Filter, new CountOptions { Limit = 1 }, ct) > 0;
+            if (!hasEarlier)
+            {
+                return new LoginHistory(false, false);
+            }
+
+            var sameDevice = earlier
+                & b.Eq(x => x.Context!.IpAddress, ipAddress)
+                & b.Eq(x => x.Context!.UserAgent, userAgent);
+            var deviceScope = await _dataAccess.ReadAsync(IamSchemas.UserActivity, sameDevice, "UserActivityRepository.GetLoginHistoryAsync", useProjection: false);
+            if (!deviceScope.Granted) return null;
+
+            var seen = await collection.CountDocumentsAsync(deviceScope.Filter, new CountOptions { Limit = 1 }, ct) > 0;
+            return new LoginHistory(true, seen);
         }
 
         public async Task<long> CountSignupLinkRejectionsAsync(

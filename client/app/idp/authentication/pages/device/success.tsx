@@ -8,6 +8,13 @@ import { DEVICE_CONSENT_PANEL } from "./panel-config";
 
 type Outcome = "approved" | "denied" | "expired" | "neutral";
 
+const HEADINGS: Record<Outcome, string> = {
+  approved: "Device Flow Complete",
+  denied: "Authorization Declined",
+  expired: "Session Expired",
+  neutral: "Device Flow Complete",
+};
+
 function resolveOutcome(raw: string | null): Outcome {
   if (raw === "approved") return "approved";
   if (raw === "denied") return "denied";
@@ -19,7 +26,7 @@ function resolveOutcome(raw: string | null): Outcome {
    actually see the context. The decision already happened on the previous screen,
    so this jumps straight to the final panel/card state instead of replaying the
    multi-second "simulated request" cascade — nothing here is still in flight. */
-function DeviceSuccessBody({ outcome }: { outcome: Outcome }) {
+function DeviceSuccessBody({ outcome }: Readonly<{ outcome: Outcome }>) {
   const animCtx = useOidcAuthAnimation();
   const startedRef = useRef(false);
 
@@ -27,11 +34,11 @@ function DeviceSuccessBody({ outcome }: { outcome: Outcome }) {
     if (startedRef.current) return;
     startedRef.current = true;
     if (outcome === "denied") {
-      void animCtx?.failAnimation("Authorization declined", { instant: true });
+      animCtx?.failAnimation("Authorization declined", { instant: true });
     } else if (outcome === "expired") {
-      void animCtx?.failAnimation("Device code expired", { instant: true });
+      animCtx?.failAnimation("Device code expired", { instant: true });
     } else {
-      void animCtx?.succeedAnimation({ instant: true });
+      animCtx?.succeedAnimation({ instant: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -108,13 +115,7 @@ export function DeviceSuccessPage() {
       logoUrlLight={template.branding.logoUrlLight}
       logoUrlDark={template.branding.logoUrlDark}
       brandName={template.branding.brandName}
-      heading={
-        outcome === "denied"
-          ? "Authorization Declined"
-          : outcome === "expired"
-          ? "Session Expired"
-          : "Device Flow Complete"
-      }
+      heading={HEADINGS[outcome]}
       headingDimFirst={3}
       showCorners={false}
       successTitle={copy.successTitle}

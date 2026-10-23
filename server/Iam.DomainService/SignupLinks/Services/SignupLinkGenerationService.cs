@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Blocks.Genesis;
 using FluentValidation;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
 using Iam.DomainService.Utilities;
@@ -21,6 +22,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
     private readonly ISignupLinkConfigurationRepository _configurationRepository;
     private readonly IOidcClientRegistrationLookup _oidcLookup;
     private readonly IGrantAuthorizationService _grantAuthorization;
+    private readonly IAccessGrantService _accessGrant;
     private readonly IUserRepository _userRepository;
     private readonly IConfiguration _configuration;
     private readonly IValidator<GenerateSignupLinkRequest> _generateValidator;
@@ -37,6 +39,7 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         _configurationRepository = repositories.Configurations;
         _oidcLookup = repositories.Oidc;
         _grantAuthorization = repositories.GrantAuthorization;
+        _accessGrant = repositories.AccessGrantService;
         _userRepository = repositories.Users;
         _configuration = validators.Configuration;
         _generateValidator = validators.GenerateValidator;
@@ -92,16 +95,10 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         var roles = UsePayloadOrDefault(request.Roles, config.DefaultRoles);
         var permissions = UsePayloadOrDefault(request.Permissions, config.DefaultPermissions);
 
-        var deniedRole = await _grantAuthorization.FindUngrantableRoleAsync(roles);
-        if (deniedRole != null)
+        var grantFailure = await CheckGrantAsync(roles, permissions).ConfigureAwait(false);
+        if (grantFailure != null)
         {
-            return GenerateSignupLinkResult.Fail(403, "Roles", $"You cannot grant the role: {deniedRole}");
-        }
-
-        var deniedPermission = _grantAuthorization.FindUngrantablePermission(permissions);
-        if (deniedPermission != null)
-        {
-            return GenerateSignupLinkResult.Fail(403, "Permissions", $"You cannot grant the permission: {deniedPermission}");
+            return grantFailure;
         }
 
         var forwardedTo = !string.IsNullOrWhiteSpace(request.ForwardedTo)
@@ -280,6 +277,34 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             IsSuccess = true,
             RevokedCount = count
         };
+    }
+
+    /// <summary>
+    /// What the link may hand out. A non-system caller gets R9: exactly what R1/R2 would let it
+    /// assign directly, refused with the generic error (the reason stays in the server log). The
+    /// system user -- every caller of a single-organization tenant -- keeps the check it always
+    /// had, so access grant never loosens it.
+    /// </summary>
+    private async Task<GenerateSignupLinkResult?> CheckGrantAsync(List<string> roles, List<string> permissions)
+    {
+        var grantScope = await _accessGrant.GetScopeAsync().ConfigureAwait(false);
+        if (!grantScope.IsSystem)
+        {
+            return await _accessGrant.AuthorizeGrantAsync(grantScope, roles, permissions, AccessGrantRules.SignupLink).ConfigureAwait(false)
+                ? null
+                : GenerateSignupLinkResult.Fail(403, AccessGrantErrors.Create());
+        }
+
+        var deniedRole = await _grantAuthorization.FindUngrantableRoleAsync(roles).ConfigureAwait(false);
+        if (deniedRole != null)
+        {
+            return GenerateSignupLinkResult.Fail(403, "Roles", $"You cannot grant the role: {deniedRole}");
+        }
+
+        var deniedPermission = _grantAuthorization.FindUngrantablePermission(permissions);
+        return deniedPermission != null
+            ? GenerateSignupLinkResult.Fail(403, "Permissions", $"You cannot grant the permission: {deniedPermission}")
+            : null;
     }
 
     /// <summary>

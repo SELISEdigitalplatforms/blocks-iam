@@ -143,7 +143,13 @@ namespace Iam.DomainService.Users
             return await collection.Find(scope.Filter, options).FirstOrDefaultAsync();
         }
 
-        public async Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter>
+        public Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter> =>
+            QueryUsersAsync<T, R>(query, scope, forView: false);
+
+        public Task<(IQueryable<T>?, long)> GetUsersForViewAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter> =>
+            QueryUsersAsync<T, R>(query, scope, forView: true);
+
+        private async Task<(IQueryable<T>?, long)> QueryUsersAsync<T, R>(R query, UserListScope scope, bool forView) where R : BaseGetsRequest<GetUsersFilter>
         {
             var collection = _identityAccessManagementRepository.GetCollection<User>();
 
@@ -168,6 +174,7 @@ namespace Iam.DomainService.Users
 
             var cursor = await collection.FindAsync(filter, options);
             var data = await cursor.ToListAsync();
+            if (forView) data = scoped.ForViewAs(data);
 
             return (data.AsQueryable(), totalCount);
         }
@@ -197,6 +204,20 @@ namespace Iam.DomainService.Users
                 return filters.Any() ? builder.And(filters) : builder.Empty;
             }
 
+            AddTextFilters(builder, filters, filter);
+            AddStatusFilters(builder, filters, filter);
+            AddDateAndIdFilters(builder, filters, filter);
+
+            if (scope.Kind == UserListScopeKind.Organizations && filter.Roles is not null && filter.Roles.Count > 0)
+            {
+                filters.Add(BuildRoleFilter(builder, scope.OrganizationIds, filter.Roles));
+            }
+
+            return filters.Any() ? builder.And(filters) : builder.Empty;
+        }
+
+        private static void AddTextFilters(FilterDefinitionBuilder<User> builder, List<FilterDefinition<User>> filters, GetUsersFilter filter)
+        {
             if (!string.IsNullOrWhiteSpace(filter.Name))
             {
                 // searchTerm stays unescaped: the Contains below is a literal
@@ -224,7 +245,10 @@ namespace Iam.DomainService.Users
                 var emailTerm = NormalizeEmail(filter.Email);
                 filters.Add(builder.Regex(u => u.Email, new BsonRegularExpression(Regex.Escape(emailTerm), "i")));
             }
+        }
 
+        private static void AddStatusFilters(FilterDefinitionBuilder<User> builder, List<FilterDefinition<User>> filters, GetUsersFilter filter)
+        {
             if (filter.Status?.Active == true)
                 filters.Add(builder.Eq(u => u.Active, true));
 
@@ -240,7 +264,10 @@ namespace Iam.DomainService.Users
 
             if (filter.Mfa?.Disabled == true)
                 filters.Add(builder.Eq(u => u.MfaEnabled, false));
+        }
 
+        private static void AddDateAndIdFilters(FilterDefinitionBuilder<User> builder, List<FilterDefinition<User>> filters, GetUsersFilter filter)
+        {
             if (filter.JoinedOn.HasValue)
                 filters.Add(builder.Gte(u => u.CreatedDate, filter.JoinedOn.Value.Date));
 
@@ -249,13 +276,6 @@ namespace Iam.DomainService.Users
 
             if (filter.UserIds is not null && filter.UserIds.Count > 0)
                 filters.Add(builder.In(u => u.ItemId, filter.UserIds));
-
-            if (scope.Kind == UserListScopeKind.Organizations && filter.Roles is not null && filter.Roles.Count > 0)
-            {
-                filters.Add(BuildRoleFilter(builder, scope.OrganizationIds, filter.Roles));
-            }
-
-            return filters.Any() ? builder.And(filters) : builder.Empty;
         }
 
         private static FilterDefinition<User> BuildRoleFilter(

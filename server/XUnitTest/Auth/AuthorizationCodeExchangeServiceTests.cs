@@ -108,6 +108,31 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task Exchange_PassesTheBrowserThatSignedIn_ToTheRefreshToken()
+        {
+            // A confidential client redeems the code from its server; the refresh token must record the
+            // browser the code was issued to, as stored on the code.
+            const string chromeOnWindows = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/155.0.0.0";
+            SetupValidExchange();
+            MintRealAccessToken();
+            var code = ValidAuthCode();
+            code.CreatedByIpAddress = "203.0.113.10";
+            code.CreatedByUserAgent = chromeOnWindows;
+            _authCodeRepo.Setup(r => r.GetByCodeAsync("auth-code")).ReturnsAsync(code);
+            OidcClaims? passed = null;
+            _tokenService.Setup(t => t.GenerateRefreshTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>()))
+                .Callback<OidcClaims, string, bool, string?>((claims, _, _, _) => passed = claims)
+                .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-1", AbsoluteExpiry = DateTime.UtcNow.AddDays(30) });
+
+            var result = await Create().ExchangeAsync(BuildContext().Request);
+
+            result.Should().BeOfType<OkObjectResult>();
+            passed.Should().NotBeNull();
+            passed!.SignInIpAddress.Should().Be("203.0.113.10");
+            passed.SignInUserAgent.Should().Be(chromeOnWindows);
+        }
+
+        [Fact]
         public async Task Exchange_ReadAndConsume_UseTheSameModel_SoOneStorePerRequest()
         {
             SetupValidExchange();

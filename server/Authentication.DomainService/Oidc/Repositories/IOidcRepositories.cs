@@ -145,8 +145,8 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<bool> SetApprovalTokenHashAsync(string id, string approvalTokenHash, CancellationToken ct = default);
         Task<bool> UpdatePollAsync(string id, DateTime lastPollAt, int pollsObserved, CancellationToken ct = default);
         Task<int> BumpPollIntervalAsync(string id, int currentInterval, CancellationToken ct = default);
-        Task<bool> TryRecordPollAsync(string id, DateTime previousLastPollAt, DateTime newLastPollAt, int pollsObserved, CancellationToken ct = default);
         Task<int> BumpPollIntervalAsync(string id, int currentInterval, int incrementSeconds, CancellationToken ct = default);
+        Task<bool> TryRecordPollAsync(string id, DateTime previousLastPollAt, DateTime newLastPollAt, int pollsObserved, CancellationToken ct = default);
         Task<IReadOnlyList<string>> GetExpiredIdsAsync(DateTime olderThanUtc, int limit, CancellationToken ct = default);
         Task<IReadOnlyList<string>> GetExpiredIdsAsync(string tenantId, DateTime olderThanUtc, int limit, CancellationToken ct = default);
         Task EnsureIndexesAsync(CancellationToken ct = default);

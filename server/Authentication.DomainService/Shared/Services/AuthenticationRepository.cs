@@ -415,6 +415,14 @@ namespace Authentication.DomainService.Services
             return await _dataAccess.FindListAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProvidersAsync");
         }
 
+
+        public async Task<List<IdentityProvider>> GetIdentityProvidersForViewAsync()
+        {
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Where(_ => true);
+            return await _dataAccess.FindListForViewAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProvidersForViewAsync");
+        }
+
         public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider)
         {
             var collection = GetCollection<IdentityProvider>();
@@ -452,6 +460,14 @@ namespace Authentication.DomainService.Services
             var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, id);
             return await _dataAccess.FindFirstAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProviderByIdAsync");
+        }
+
+
+        public async Task<IdentityProvider?> GetIdentityProviderByIdForViewAsync(string id)
+        {
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, id);
+            return await _dataAccess.FindFirstForViewAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProviderByIdForViewAsync");
         }
 
         public async Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider)
@@ -578,6 +594,14 @@ namespace Authentication.DomainService.Services
             return (await _dataAccess.FindFirstAsync(collection, IamSchemas.IdentityConfiguration, filter, "AuthenticationRepository.GetAuthenticationConfigurationAsync"))!;
         }
 
+
+        public async Task<IdentityConfiguration> GetAuthenticationConfigurationForViewAsync()
+        {
+            var collection = GetCollection<IdentityConfiguration>();
+            var filter = Builders<IdentityConfiguration>.Filter.Where(_ => true);
+            return (await _dataAccess.FindFirstForViewAsync(collection, IamSchemas.IdentityConfiguration, filter, "AuthenticationRepository.GetAuthenticationConfigurationForViewAsync"))!;
+        }
+
         public async Task UpdateAuthenticationConfigurationAsync(IdentityConfiguration authenticationConfiguration)
         {
             var collection = GetCollection<IdentityConfiguration>();
@@ -631,7 +655,7 @@ namespace Authentication.DomainService.Services
         {
             var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var filter = Builders<OidcClientRegistration>.Filter.Eq(it => it.ItemId, itemId);
-            return (await _dataAccess.FindFirstAsync(collection, IamSchemas.OidcClientRegistration, filter, "AuthenticationRepository.GetOIDCCredentialByIdAsync"))!;
+            return (await _dataAccess.FindFirstForViewAsync(collection, IamSchemas.OidcClientRegistration, filter, "AuthenticationRepository.GetOIDCCredentialByIdAsync"))!;
         }
 
         public async Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantAsync()
@@ -639,6 +663,14 @@ namespace Authentication.DomainService.Services
             var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var filter = Builders<OidcClientRegistration>.Filter.Empty;
             return await _dataAccess.FindListAsync(collection, IamSchemas.OidcClientRegistration, filter, "AuthenticationRepository.GetOIDCCredentialsByTenantAsync");
+        }
+
+
+        public async Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantForViewAsync()
+        {
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
+            var filter = Builders<OidcClientRegistration>.Filter.Empty;
+            return await _dataAccess.FindListForViewAsync(collection, IamSchemas.OidcClientRegistration, filter, "AuthenticationRepository.GetOIDCCredentialsByTenantForViewAsync");
         }
 
         public async Task DeleteOidcClientAsync(DeleteOIDCClientRequest request)
@@ -693,7 +725,7 @@ namespace Authentication.DomainService.Services
             var filter = organizationId == null
                 ? Builders<ClientCredential>.Filter.Where(_ => true)
                 : Builders<ClientCredential>.Filter.Eq(it => it.OrganizationId, organizationId);
-            return await _dataAccess.FindListAsync(collection, IamSchemas.ClientCredential, filter, "AuthenticationRepository.GetClientCredentialsAsync");
+            return await _dataAccess.FindListForViewAsync(collection, IamSchemas.ClientCredential, filter, "AuthenticationRepository.GetClientCredentialsAsync");
         }
 
         // Impersonation session methods

@@ -39,8 +39,8 @@ namespace Iam.DomainService.Users
         // instead. A brand-new account's activation mail is governed by SendMail.
         public bool NotifyUser { get; set; } = true;
 
-        // Only consulted when a brand-new account is created. False suppresses the activation mail;
-        // the account is still created and can be sent one later through resend-activation.
+        // Only consulted when a brand-new account is created. False suppresses the activation mail.
+        // The account is still created and can be sent one later through resend-activation.
         public bool SendMail { get; set; } = true;
     }
 

@@ -30,6 +30,60 @@ const readErrorMessage = (source: unknown, fallback: string): string => {
   return (source as string) || fallback;
 };
 
+type AutoActivationViewProps = Readonly<{
+  error: string | null;
+  waitingForCaptcha: boolean;
+  captchaProps: React.ComponentProps<typeof Captcha>;
+  captchaText: React.ReactNode;
+  progressText: React.ReactNode;
+  activatingLabel: React.ReactNode;
+  backToLoginLabel: React.ReactNode;
+}>;
+
+const pickAutoStatusText = (
+  error: string | null,
+  waitingForCaptcha: boolean,
+  captchaText: React.ReactNode,
+  progressText: React.ReactNode,
+): React.ReactNode => {
+  if (error) return error;
+  return waitingForCaptcha ? captchaText : progressText;
+};
+
+const AutoActivationView = ({
+  error,
+  waitingForCaptcha,
+  captchaProps,
+  captchaText,
+  progressText,
+  activatingLabel,
+  backToLoginLabel,
+}: AutoActivationViewProps) => (
+  <div className="flex flex-col gap-5">
+    <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
+      {pickAutoStatusText(error, waitingForCaptcha, captchaText, progressText)}
+    </p>
+
+    {waitingForCaptcha && !error && <Captcha {...captchaProps} />}
+
+    {!waitingForCaptcha && !error && (
+      <output
+        className="flex items-center justify-center gap-2 py-2 text-sm"
+        style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}
+      >
+        <Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} />
+        <span>{activatingLabel}</span>
+      </output>
+    )}
+
+    {error && (
+      <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
+        {backToLoginLabel}
+      </LoginReturnLink>
+    )}
+  </div>
+);
+
 type ActivationFormProps = {
   code: string;
   tenantId?: string;
@@ -284,40 +338,16 @@ export const ActivationForm = ({
   // Nothing is asked for when the password step is off, so there is no form to render: either the
   // captcha is waiting for its one gesture, or the activation is already on its way.
   if (!collectPassword) {
-    const waitingForCaptcha = captchaEnabled && !captchaCode;
-
     return (
-      <div className="flex flex-col gap-5">
-        <p
-          className="text-sm"
-          style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}
-        >
-          {autoActivationError
-            ? autoActivationError
-            : waitingForCaptcha
-              ? activationCopy.autoConfirmCaptchaText
-              : activationCopy.autoConfirmProgressText}
-        </p>
-
-        {waitingForCaptcha && !autoActivationError && <Captcha {...captcha} />}
-
-        {!waitingForCaptcha && !autoActivationError && (
-          <div
-            className="flex items-center justify-center gap-2 py-2 text-sm"
-            style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}
-            role="status"
-          >
-            <Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} />
-            <span>{activationCopy.autoActivatingLabel}</span>
-          </div>
-        )}
-
-        {autoActivationError && (
-          <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
-            {activationCopy.backToLoginButton}
-          </LoginReturnLink>
-        )}
-      </div>
+      <AutoActivationView
+        error={autoActivationError}
+        waitingForCaptcha={captchaEnabled && !captchaCode}
+        captchaProps={captcha}
+        captchaText={activationCopy.autoConfirmCaptchaText}
+        progressText={activationCopy.autoConfirmProgressText}
+        activatingLabel={activationCopy.autoActivatingLabel}
+        backToLoginLabel={activationCopy.backToLoginButton}
+      />
     );
   }
 

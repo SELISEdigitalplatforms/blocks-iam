@@ -40,11 +40,11 @@ namespace XUnitTest.Auth.Shared
         private AuthenticationDomainService Create() => new(
             _message.Object,
             _repository.Object,
-            _oidcClientValidator.Object,
-            _templateValidator.Object,
-            _saveIdpValidator.Object,
-            _updateIdpValidator.Object,
-            _tenants.Object,
+            new AuthenticationRequestValidators(
+                _oidcClientValidator.Object,
+                _templateValidator.Object,
+                _saveIdpValidator.Object,
+                _updateIdpValidator.Object),
             _httpClientFactory.Object);
 
         [Fact]

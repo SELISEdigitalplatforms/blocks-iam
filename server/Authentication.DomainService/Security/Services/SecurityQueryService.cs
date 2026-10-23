@@ -1,6 +1,8 @@
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Security.Models;
 using Authentication.DomainService.Security.Repositories;
+using Blocks.Genesis;
+using Iam.DomainService.Utilities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -196,6 +198,9 @@ namespace Authentication.DomainService.Security.Services
                 .ToList();
         }
 
+        // The caller's own session: the sid claim of this request's access token (IAM writes the IdP
+        // session id there), else the session of the refresh token in the cookie IAM sets for the
+        // calling app, "rt_{host}" (the Origin host, then the request host).
         public async Task<string?> ResolveCurrentSessionIdAsync(string userId, CancellationToken ct)
         {
             try
@@ -206,24 +211,56 @@ namespace Authentication.DomainService.Security.Services
                     return null;
                 }
 
-                var cookieKey = $"tetorefreshtoken_{http.Request.Host.Host}";
-                var refreshToken = http.Request.Cookies[cookieKey];
-                if (string.IsNullOrEmpty(refreshToken))
+                var sessionId = BlocksContext.GetContext()?.SessionId;
+                if (!string.IsNullOrWhiteSpace(sessionId))
                 {
-                    refreshToken = http.Request.Headers[cookieKey];
+                    return sessionId;
                 }
+
+                var refreshToken = ReadRefreshTokenCookie(http.Request);
                 if (string.IsNullOrEmpty(refreshToken))
                 {
                     return null;
                 }
 
-                var active = await _refreshTokenRepository.GetByTokenIdAsync(refreshToken!);
+                var active = await _refreshTokenRepository.GetByTokenIdAsync(refreshToken);
                 return active?.SessionId;
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to resolve current session id from request.");
                 return null;
+            }
+        }
+
+        private static string? ReadRefreshTokenCookie(HttpRequest request)
+        {
+            foreach (var host in CandidateCookieHosts(request))
+            {
+                var key = $"{IdpConstants.RefreshTokenCookieName}_{host}";
+                var value = request.Cookies[key];
+                if (string.IsNullOrEmpty(value))
+                {
+                    value = request.Headers[key];
+                }
+                if (!string.IsNullOrEmpty(value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<string> CandidateCookieHosts(HttpRequest request)
+        {
+            if (Uri.TryCreate(request.Headers.Origin.ToString(), UriKind.Absolute, out var origin))
+            {
+                yield return origin.Host;
+            }
+            if (!string.IsNullOrWhiteSpace(request.Host.Host))
+            {
+                yield return request.Host.Host;
             }
         }
     }

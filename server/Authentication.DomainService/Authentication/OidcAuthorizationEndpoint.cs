@@ -26,6 +26,8 @@ namespace Authentication.DomainService.Authentication
     /// </summary>
     public sealed class OidcAuthorizationEndpoint
     {
+        private const string ErrorInvalidRequest = "invalid_request";
+
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IIdpSessionRepository _sessionRepo;
         private readonly IIdpSessionService _sessionService;
@@ -93,15 +95,18 @@ namespace Authentication.DomainService.Authentication
                 }
 
                 return new RedirectResult(OidcRedirectUrlBuilder.BuildLoginErrorUrl(
-                    client_id,
-                    response_type,
-                    redirect_uri,
-                    scope,
-                    state,
-                    nonce,
-                    code_challenge,
-                    code_challenge_method,
-                    tenant_id,
+                    new OidcLoginUrlRequest
+                    {
+                        ClientId = client_id,
+                        ResponseType = response_type,
+                        RedirectUri = redirect_uri,
+                        Scope = scope,
+                        State = state,
+                        Nonce = nonce,
+                        CodeChallenge = code_challenge,
+                        CodeChallengeMethod = code_challenge_method,
+                        TenantId = tenant_id
+                    },
                     error,
                     errorDescription));
             }
@@ -142,7 +147,7 @@ namespace Authentication.DomainService.Authentication
                     // client (RFC 6749 §4.1.2.1 / CWE-601). An unvalidated URI here is exactly
                     // how an attacker-controlled Location is produced. Same-origin login error
                     // page (or 400 for API callers) instead.
-                    return BuildBrowserError("invalid_request", string.Join("; ", validationResult.Errors));
+                    return BuildBrowserError(ErrorInvalidRequest, string.Join("; ", validationResult.Errors));
                 }
 
                 // Reject unregistered redirect_uri before the login hop or any later client
@@ -153,7 +158,7 @@ namespace Authentication.DomainService.Authentication
                     && !earlyClient.RedirectUris.Contains(redirect_uri))
                 {
                     _logger.LogWarning("Invalid redirect_uri rejected for OIDC client registration check");
-                    return BuildBrowserError("invalid_request", "Invalid redirect_uri");
+                    return BuildBrowserError(ErrorInvalidRequest, "Invalid redirect_uri");
                 }
 
                 // RequirePkce is stored per client (on by default) and was never read, so a login could
@@ -164,7 +169,7 @@ namespace Authentication.DomainService.Authentication
                     && string.IsNullOrWhiteSpace(code_challenge))
                 {
                     _logger.LogWarning("Authorize without PKCE refused for client {ClientId}", client_id);
-                    return BuildBrowserError("invalid_request", "PKCE code_challenge is required");
+                    return BuildBrowserError(ErrorInvalidRequest, "PKCE code_challenge is required");
                 }
 
                 scope = EnsureOfflineAccess(scope);
@@ -294,7 +299,7 @@ namespace Authentication.DomainService.Authentication
                 if (!client.RedirectUris.Contains(redirect_uri))
                 {
                     _logger.LogWarning("Invalid redirect_uri rejected for OIDC client registration check");
-                    return BuildBrowserError("invalid_request", "Invalid redirect_uri");
+                    return BuildBrowserError(ErrorInvalidRequest, "Invalid redirect_uri");
                 }
 
                 var cacheKey = $"idp_flow:{state}";
@@ -377,6 +382,7 @@ namespace Authentication.DomainService.Authentication
                     ExpiresAt = DateTime.UtcNow.AddMinutes(10),
                     CreatedAt = DateTime.UtcNow,
                     CreatedByIpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request),
+                    CreatedByUserAgent = request.Headers.UserAgent.ToString(),
                     IdpSessionId = idpSessionId,
                     IsLinkAuthentication = matchedLinkSession != null,
                     RestrictedRoles = matchedLinkSession?.Roles?.ToList() ?? [],

@@ -413,13 +413,14 @@ test.describe("Signup form", () => {
   // /api/iam/organizations/config, and /api/auth/signup is mocked per step: nothing here
   // creates an account or touches tenant configuration.
   // ---------------------------------------------------------------------------------
-  test("Signup — auto-join organization: join-or-create choice, payloads, unavailable target", async ({
+  test("Signup — auto-join organization: create-organization opt-in, payloads, unavailable target", async ({
     page,
   }) => {
-    const LEGEND = "How would you like to start?";
-    const JOIN = "Join this project's organization";
-    const CREATE = "Create my own organization";
-    const UNAVAILABLE = "This project's organization isn't available right now.";
+    const CREATE = "Create a new organization";
+    const NAME_REQUIRED = "One more step: name your organization to finish signing up.";
+    const UNAVAILABLE = "Sign-up isn't available right now. Please contact your administrator.";
+    // The page never tells the user about the organization they join by default.
+    const PROJECT_ORGANIZATION = /this project's organization|join this/i;
 
     const autoJoinOrgConfig = (allowOrgCreationFromSignup: boolean) => ({
       allowOrgCreationFromSignup,
@@ -461,58 +462,59 @@ test.describe("Signup form", () => {
     const ok = { status: 200, body: { isSuccess: true, errors: null } };
     const unavailable = {
       status: 400,
-      body: { isSuccess: false, errors: { signup_organization_unavailable: UNAVAILABLE } },
+      body: { isSuccess: false, errors: { signup_organization_unavailable: "server sentence" } },
     };
 
     const nameField = page.locator("#signup-organization-name");
-    const joinRadio = page.getByRole("radio", { name: JOIN });
-    const createRadio = page.getByRole("radio", { name: CREATE });
+    const createBox = page.getByRole("checkbox", { name: CREATE });
     const submit = page.getByRole("button", { name: /create account/i });
 
     await test.step("[Positive] H15: auto-join on, creation off renders no organization UI", async () => {
       await reload(autoJoinOrgConfig(false));
-      await expect(page.getByRole("radio")).toHaveCount(0);
+      await expect(createBox).toHaveCount(0);
       await expect(nameField).toHaveCount(0);
     });
 
-    await test.step("[Positive] H12: auto-join and creation on show the choice with Join preselected and no name field", async () => {
+    await test.step("[Positive] H12: auto-join and creation on show an unticked create-organization box and no name field", async () => {
       await reload(autoJoinOrgConfig(true));
-      await expect(page.getByRole("group", { name: LEGEND })).toBeVisible();
-      await expect(joinRadio).toBeChecked();
-      await expect(createRadio).not.toBeChecked();
+      await expect(createBox).toBeVisible();
+      await expect(createBox).not.toBeChecked();
+      await expect(page.getByRole("radio")).toHaveCount(0);
+      await expect(page.getByText(PROJECT_ORGANIZATION)).toHaveCount(0);
       await expect(nameField).toHaveCount(0);
     });
 
-    await test.step("[Positive] H13: Create reveals the required name field; Join hides it and drops its value", async () => {
+    await test.step("[Positive] H13: ticking reveals the required name field; unticking hides it and drops its value", async () => {
       await fillIdentity("jane@example.test");
-      await createRadio.check();
+      await createBox.check();
       await expect(nameField).toBeVisible();
       // Required: submit stays disabled until a name is typed.
       await expect(submit).toBeDisabled();
       await nameField.fill("Acme");
       await expect(submit).toBeEnabled();
 
-      await joinRadio.check();
+      await createBox.uncheck();
       await expect(nameField).toHaveCount(0);
       await expect(submit).toBeEnabled();
 
-      await createRadio.check();
+      await createBox.check();
       await expect(nameField).toHaveValue("");
       await expect(nameField).toHaveAttribute("aria-invalid", "false");
     });
 
-    await test.step("[A11y] S4: arrow keys move between the radios", async () => {
+    await test.step("[A11y] S4: Space toggles the create-organization box from the keyboard", async () => {
       await reload(autoJoinOrgConfig(true));
-      await joinRadio.focus();
-      await page.keyboard.press("ArrowDown");
-      await expect(createRadio).toBeChecked();
+      await createBox.focus();
+      await page.keyboard.press("Space");
+      await expect(createBox).toBeChecked();
       await expect(nameField).toBeVisible();
-      await page.keyboard.press("ArrowUp");
-      await expect(joinRadio).toBeChecked();
+      await createBox.focus();
+      await page.keyboard.press("Space");
+      await expect(createBox).not.toBeChecked();
       await expect(nameField).toHaveCount(0);
     });
 
-    await test.step("[Positive] H14: Join submits without a creation flag or name", async () => {
+    await test.step("[Positive] H14: an unticked box submits without a creation flag or name", async () => {
       await reload(autoJoinOrgConfig(true));
       const bodies = await mockSignup([ok]);
       await fillIdentity("join@example.test");
@@ -526,11 +528,11 @@ test.describe("Signup form", () => {
       await page.unroute("**/api/auth/signup").catch(() => {});
     });
 
-    await test.step("[Positive] H14: Create submits the creation flag with the name", async () => {
+    await test.step("[Positive] H14: a ticked box submits the creation flag with the name", async () => {
       await reload(autoJoinOrgConfig(true));
       const bodies = await mockSignup([ok]);
       await fillIdentity("create@example.test");
-      await createRadio.check();
+      await createBox.check();
       await nameField.fill("AJ Org 2");
       await submit.click();
 
@@ -541,14 +543,15 @@ test.describe("Signup form", () => {
       await page.unroute("**/api/auth/signup").catch(() => {});
     });
 
-    await test.step("[Negative] C7: unavailable organization is announced, switches to Create and focuses the name; a named resubmit succeeds", async () => {
+    await test.step("[Negative] C7: unavailable organization ticks the box, asks for a name and focuses it; a named resubmit succeeds", async () => {
       await reload(autoJoinOrgConfig(true));
       const bodies = await mockSignup([unavailable, ok]);
       await fillIdentity("aj-3@example.test");
       await submit.click();
 
-      await expect(page.getByRole("alert")).toContainText(UNAVAILABLE, { timeout: 15_000 });
-      await expect(createRadio).toBeChecked();
+      await expect(page.getByRole("alert")).toContainText(NAME_REQUIRED, { timeout: 15_000 });
+      await expect(page.getByText(PROJECT_ORGANIZATION)).toHaveCount(0);
+      await expect(createBox).toBeChecked();
       await expect(nameField).toBeFocused();
       await expect(page).toHaveURL(/\/oidc\/signup/);
 
@@ -563,14 +566,15 @@ test.describe("Signup form", () => {
       await page.unroute("**/api/auth/signup").catch(() => {});
     });
 
-    await test.step("[Negative] S5: with creation off the unavailable message shows and no organization UI appears", async () => {
+    await test.step("[Negative] S5: with creation off the unavailable message names no organization and no organization UI appears", async () => {
       await reload(autoJoinOrgConfig(false));
       await mockSignup([unavailable]);
       await fillIdentity("aj-4@example.test");
       await submit.click();
 
       await expect(page.getByRole("alert")).toContainText(UNAVAILABLE, { timeout: 15_000 });
-      await expect(page.getByRole("radio")).toHaveCount(0);
+      await expect(page.getByText(PROJECT_ORGANIZATION)).toHaveCount(0);
+      await expect(createBox).toHaveCount(0);
       await expect(nameField).toHaveCount(0);
       await page.unroute("**/api/auth/signup").catch(() => {});
     });
@@ -583,7 +587,7 @@ test.describe("Signup form", () => {
         isSignupAutoJoinEnabled: false,
       });
       await expect(nameField).toBeVisible();
-      await expect(page.getByRole("radio")).toHaveCount(0);
+      await expect(createBox).toHaveCount(0);
     });
 
     await test.step("[Positive] C12: multi-org off ignores a stored auto-join flag", async () => {
@@ -593,7 +597,7 @@ test.describe("Signup form", () => {
         isOrgNameUnique: false,
         isSignupAutoJoinEnabled: true,
       });
-      await expect(page.getByRole("radio")).toHaveCount(0);
+      await expect(createBox).toHaveCount(0);
       await expect(nameField).toHaveCount(0);
     });
   });

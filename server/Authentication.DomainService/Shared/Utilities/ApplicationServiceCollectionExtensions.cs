@@ -19,6 +19,7 @@ using FluentValidation;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Activity.Services;
 using Iam.DomainService.Configurations;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
@@ -55,6 +56,7 @@ namespace Authentication.DomainService.Utilities
             #region Authentication
             serviceCollection.AddHttpClient(OidcDiscoveryClient.HttpClientName);
             serviceCollection.AddSingleton<OidcDiscoveryClient>();
+            serviceCollection.AddSingleton<AuthenticationRequestValidators>();
             serviceCollection.AddSingleton<IAuthenticationDomainService, AuthenticationDomainService>();
             serviceCollection.AddSingleton<IAuthenticationRepository, AuthenticationRepository>();
             // Satisfies Iam.DomainService's account-action email builders, which need the
@@ -177,6 +179,10 @@ namespace Authentication.DomainService.Utilities
             #endregion
 
             #region IAM
+            // Built-in notifications to the Notifier (blocks-logic). Best effort; both hosts use it.
+            serviceCollection.AddHttpClient();
+            serviceCollection.AddSingleton<Iam.DomainService.Notifications.IBuiltInNotificationSender, Iam.DomainService.Notifications.BuiltInNotificationSender>();
+
             serviceCollection.AddSingleton<IUserManagementMutationService, UserManagementMutationService>();
             serviceCollection.AddSingleton<IUserRepository, UserRepository>();
 
@@ -213,6 +219,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
             serviceCollection.AddSingleton<ISignupLinkSummaryService, SignupLinkSummaryService>();
             serviceCollection.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
+            serviceCollection.AddAccessGrant();
+            serviceCollection.AddSingleton<IClientCredentialGrantGuard, ClientCredentialGrantGuard>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
 
             serviceCollection.AddSingleton<IUserActivityRepository, UserActivityRepository>();
@@ -269,6 +277,7 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
             serviceCollection.AddSingleton<IRefreshSessionResolver, RefreshSessionResolver>();
+            serviceCollection.AddSingleton<IOidcClientTokenLifetimeService, OidcClientTokenLifetimeService>();
             serviceCollection.AddSingleton<IImpersonationFlowHelper, ImpersonationFlowHelper>();
 
             // Drivers

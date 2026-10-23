@@ -1,4 +1,5 @@
 using FluentValidation;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Configuration;
@@ -14,6 +15,7 @@ public sealed class SignupLinkGenerationRepositories
     public ISignupLinkConfigurationRepository Configurations { get; }
     public IOidcClientRegistrationLookup Oidc { get; }
     public IGrantAuthorizationService GrantAuthorization { get; }
+    public IAccessGrantService AccessGrantService { get; }
     public IUserRepository Users { get; }
 
     public SignupLinkGenerationRepositories(
@@ -21,12 +23,14 @@ public sealed class SignupLinkGenerationRepositories
         ISignupLinkConfigurationRepository configurations,
         IOidcClientRegistrationLookup oidc,
         IGrantAuthorizationService grantAuthorization,
+        IAccessGrantService accessGrant,
         IUserRepository users)
     {
         Links = links;
         Configurations = configurations;
         Oidc = oidc;
         GrantAuthorization = grantAuthorization;
+        AccessGrantService = accessGrant;
         Users = users;
     }
 }

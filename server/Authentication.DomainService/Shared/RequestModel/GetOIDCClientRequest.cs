@@ -27,5 +27,8 @@ namespace Authentication.DomainService.RequestModel
     public class GetOIDCClientResponse : BaseResponse
     {
         public OidcClientRegistration? oIDCClientCredential { get; set; }
+
+        /// <summary>The client's own token lifetimes; null when it uses the project values.</summary>
+        public OidcClientTokenLifetimes? TokenLifetimes { get; set; }
     }
 }

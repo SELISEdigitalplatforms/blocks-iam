@@ -19,12 +19,19 @@ internal static class ForwardedHeadersTestPipeline
     public const string GatewayNetwork = "10.10.73.0/24";
     public const string GatewayAddress = "10.10.73.4";
 
-    public static IConfiguration Config(params string[] knownNetworks)
+    public static IConfiguration Config(params string[] knownNetworks) => ConfigWithForwardLimit(null, knownNetworks);
+
+    public static IConfiguration ConfigWithForwardLimit(string? forwardLimit, params string[] knownNetworks)
     {
         var values = new Dictionary<string, string?>();
         for (var i = 0; i < knownNetworks.Length; i++)
         {
             values[$"ForwardedHeaders:KnownNetworks:{i}"] = knownNetworks[i];
+        }
+
+        if (forwardLimit is not null)
+        {
+            values["ForwardedHeaders:ForwardLimit"] = forwardLimit;
         }
 
         return new ConfigurationBuilder().AddInMemoryCollection(values).Build();
