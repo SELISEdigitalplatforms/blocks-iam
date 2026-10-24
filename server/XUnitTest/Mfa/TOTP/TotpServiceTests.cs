@@ -389,7 +389,7 @@ namespace XUnitTest.Mfa.TOTP
                 .ReturnsAsync(new CompleteUploadResponse
                 {
                     IsSuccess = true,
-                    VerificationStatus = Storage.DomainService.Enums.FileVerificationStatus.Verified,
+                    VerificationStatus = Blocks.Genesis.Entities.Data.FileVerificationStatus.Verified,
                 });
             storage.Setup(s => s.GetUrlForDownloadFileAsync(It.IsAny<GetFileRequest>()))
                 .ReturnsAsync(new FileResponse { IsSuccess = true, Url = "https://img.test/qr.png" });
@@ -417,7 +417,7 @@ namespace XUnitTest.Mfa.TOTP
                 .ReturnsAsync(new CompleteUploadResponse
                 {
                     IsSuccess = true,
-                    VerificationStatus = Storage.DomainService.Enums.FileVerificationStatus.Rejected,
+                    VerificationStatus = Blocks.Genesis.Entities.Data.FileVerificationStatus.Rejected,
                     RejectionReason = "real_file_type_mismatch",
                 });
 
