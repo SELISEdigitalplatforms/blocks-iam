@@ -51,6 +51,7 @@ namespace Authentication.DomainService.Utilities
             // Genesis data access resolver (row filter gate). One registration for Api and Worker; pre-login
             // flows have no authenticated user, so IamDataAccess.ShouldSkipResolver passes them through.
             serviceCollection.AddBlocksDataAccess();
+            serviceCollection.AddSingleton<IAccessPrincipalAccessor, BlocksContextPrincipalAccessor>();
             serviceCollection.AddSingleton<IIamDataAccess, IamDataAccess>();
 
             #region Authentication
