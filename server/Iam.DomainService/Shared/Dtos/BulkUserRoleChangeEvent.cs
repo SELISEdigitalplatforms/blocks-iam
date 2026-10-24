@@ -44,6 +44,13 @@ namespace Iam.DomainService.Dtos
         /// </summary>
         public bool? RequestedBySystemCaller { get; set; }
 
+        /// <summary>
+        /// The client credential that submitted the batch, when the caller was a client (no user).
+        /// Taken from the authenticated context at submit, never from the request body. Null for a
+        /// user submitter and on messages queued before this field existed: those apply as before.
+        /// </summary>
+        public string? RequestedByClientId { get; set; }
+
         /// <summary>1-based number of this chunk in the batch (0 when unknown).</summary>
         public int Part { get; set; }
 
