@@ -332,7 +332,8 @@ namespace Iam.DomainService.Users
         {
             var collection = _identityAccessManagementRepository.GetCollection<ProjectPeople>();
             var filter = Builders<ProjectPeople>.Filter.Eq(x => x.UserId, userId);
-            return (await collection.FindAsync(filter)).FirstOrDefault().TenantId;
+            // No row (a user invited before project people were kept, or a removed one) is not an error.
+            return (await collection.FindAsync(filter)).FirstOrDefault()?.TenantId ?? string.Empty;
         }
 
         private static List<string> GetOrgSpecficRoles(User user)

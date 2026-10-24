@@ -473,28 +473,9 @@ namespace Authentication.DomainService.Authentication
 
         private async Task ResetAuthFailureCountersAsync(User user)
         {
-            if (user.FailedLoginCount <= 0
-                && !user.LastFailedLoginUtc.HasValue
-                && user.FailedMfaCount <= 0
-                && !user.LastFailedMfaUtc.HasValue
-                && !user.LockoutUntilUtc.HasValue)
-            {
-                return;
-            }
-
-            await _authenticationRepository.UpdatePartialAsync<User>(
-                user.ItemId,
-                new Dictionary<string, object>
-                {
-                    { nameof(User.FailedLoginCount), 0 },
-                    { nameof(User.LastFailedLoginUtc), null! },
-                    { nameof(User.FailedMfaCount), 0 },
-                    { nameof(User.LastFailedMfaUtc), null! },
-                    { nameof(User.LockoutUntilUtc), null! },
-                    { nameof(User.LockoutCount), 0 },
-                    { nameof(User.LastUpdatedDate), DateTime.UtcNow },
-                    { nameof(User.LastUpdatedBy), user.ItemId }
-                });
+            // Atomic and conditional: never clears an active lock, and never forgives a wrong password counted
+            // after this sign-in read the user.
+            await _authenticationRepository.ResetFailureCountersAfterSuccessAsync(user, DateTime.UtcNow).ConfigureAwait(false);
         }
 
         internal sealed class OidcMfaLoginContext

@@ -23,6 +23,13 @@ namespace Iam.DomainService.Services
         Task<bool> InsertUserKeyMapAsync(UserKeyMap userKeyMap);
         Task<bool> UpdateUserKeyMapActivationAsync(string userId);
         Task<List<UserKeyMap>> GetActiveUserKeyMapAsync(string userId);
+
+        /// <summary>
+        /// Marks one unused, unexpired code of the user as used, in one conditional write. True only for
+        /// the single call that made the change, so a used, expired or unknown code - or a second request
+        /// racing the first - gets false.
+        /// </summary>
+        Task<bool> TryConsumeUserKeyMapAsync(string key, string userId, DateTime nowUtc);
         Task<bool> UpdateUserAsync(User user);
 
         /// <summary>

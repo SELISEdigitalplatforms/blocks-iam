@@ -2078,6 +2078,7 @@ namespace Iam.DomainService.Users
                                 RequestedBy = requestedBy,
                                 RequestedByOrganizationId = submitter?.OrganizationId,
                                 RequestedBySystemCaller = submitter?.IsSystem,
+                                RequestedByClientId = submitter is { IsClient: true } ? submitter.ClientId : null,
                                 Part = offset / BulkRoleChunkSize + 1,
                                 Parts = parts
                             }
@@ -2172,6 +2173,8 @@ namespace Iam.DomainService.Users
         /// <summary>
         /// The submitter as the batch recorded it. A message queued before the submitter was
         /// recorded reads as the system user, so it applies exactly as it did when it was queued.
+        /// A client submitter (no user) is rebuilt on the client path: its credential is re-read,
+        /// and an inactive, missing or other-organization client holds nothing.
         /// </summary>
         private async Task<GrantScope?> GetBulkSubmitterScopeAsync(BulkUserRoleChangeEvent command)
         {
@@ -2180,10 +2183,15 @@ namespace Iam.DomainService.Users
                 return null;
             }
 
+            var isSystem = command.RequestedBySystemCaller != false;
+            var clientId = !isSystem && string.IsNullOrWhiteSpace(command.RequestedBy)
+                ? command.RequestedByClientId ?? string.Empty
+                : string.Empty;
             var submitter = new GrantCaller(
                 command.RequestedBy ?? string.Empty,
                 command.OrganizationId,
-                command.RequestedBySystemCaller != false);
+                isSystem,
+                clientId);
             return await _accessGrant.GetScopeAsync(submitter).ConfigureAwait(false);
         }
 

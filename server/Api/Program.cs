@@ -5,6 +5,7 @@ using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
+using System.Text.Json.Serialization.Metadata;
 using SeliseBlocks.ConfigurationDriver;
 
 
@@ -43,6 +44,12 @@ services.AddHealthChecks();
 
 // A system schema's validation rules refusing a save: 400 with the failed properties.
 services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options => options.Filters.Add<DataValidationExceptionFilter>());
+
+// No response ever carries a client secret or private key of the client/IdP entities.
+services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(options =>
+    options.JsonSerializerOptions.TypeInfoResolver =
+        (options.JsonSerializerOptions.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver())
+            .WithAddedModifier(SecretFieldsJsonModifier.Apply));
 
 ApplicationConfigurations.ConfigureApi(
     services,

@@ -34,7 +34,7 @@ namespace XUnitTest.Auth.Shared
 
             refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()))
                 .ReturnsAsync("new-token");
-            refreshRepo.Setup(r => r.RevokeByTokenIdAsync("old-token", "superseded_by_rotation"))
+            refreshRepo.Setup(r => r.TryClaimForRotationAsync("old-token", It.IsAny<string>(), "superseded_by_rotation"))
                 .ReturnsAsync(true);
 
             idpSessionService.Setup(s => s.ResolveOrCreateAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
@@ -105,7 +105,7 @@ namespace XUnitTest.Auth.Shared
                 impersoanted: false);
 
             result.RefreshToken.Should().NotBeNullOrEmpty();
-            refreshRepo.Verify(r => r.RevokeByTokenIdAsync("old-token", "superseded_by_rotation", It.IsAny<string>()), Times.Once);
+            refreshRepo.Verify(r => r.TryClaimForRotationAsync("old-token", result.RefreshToken, "superseded_by_rotation"), Times.Once);
             refreshRepo.Verify(r => r.DeleteAsync(It.IsAny<string>()), Times.Never);
             cache.Verify(c => c.RemoveKeyAsync("old-token"), Times.Once);
         }
@@ -195,7 +195,7 @@ namespace XUnitTest.Auth.Shared
 
             refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()))
                 .ReturnsAsync("new-token");
-            refreshRepo.Setup(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>()))
+            refreshRepo.Setup(r => r.TryClaimForRotationAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(true);
 
             idpSessionService.Setup(s => s.ResolveOrCreateAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))

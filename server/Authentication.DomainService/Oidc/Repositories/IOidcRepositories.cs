@@ -49,6 +49,12 @@ namespace Authentication.DomainService.Oidc.Repositories
         /// successor inside the rotation grace period.
         /// </summary>
         Task<bool> RevokeByTokenIdAsync(string tokenId, string reason, string? supersededByTokenId = null);
+
+        /// <summary>Atomically revokes an unrevoked token for rotation; true only for the one caller that changed it.</summary>
+        Task<bool> TryClaimForRotationAsync(string tokenId, string successorTokenId, string reason);
+
+        /// <summary>Undoes a won claim whose successor could not be stored (matches only that successor).</summary>
+        Task<bool> ReleaseRotationClaimAsync(string tokenId, string successorTokenId);
         Task<int> RevokeAllByTokenIdsAsync(IEnumerable<string> tokenIds, string reason);
         Task<int> RevokeAllBySessionIdAsync(string sessionId, string reason);
 

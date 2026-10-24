@@ -83,6 +83,12 @@ namespace Authentication.DomainService.Authentication
                 return validation;
             }
 
+            var clientBindingError = CheckLineageClient(tokenCache!, clientId);
+            if (clientBindingError != null)
+            {
+                return clientBindingError;
+            }
+
             // A resolved token id that differs from the presented one is a grace-window replay: the
             // successor is returned as-is, without consuming another rotation.
             var graceReplayTokenId = string.Equals(tokenCache!.RefreshToken, refreshToken, StringComparison.Ordinal)
@@ -355,6 +361,26 @@ namespace Authentication.DomainService.Authentication
             }
 
             return (null, session);
+        }
+
+        /// <summary>
+        /// A refresh token is redeemable only by the client it was issued to (RFC 6749 6). The lineage
+        /// client is already known to be set and registered here; a client-less lineage was refused
+        /// earlier with invalid_client, as before.
+        /// </summary>
+        private IActionResult? CheckLineageClient(RefreshTokenCache tokenCache, string requestClientId)
+        {
+            if (string.Equals(tokenCache.ClientId, requestClientId, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            _logger.LogWarning(
+                "Refresh refused: the requesting client is not the client the token was issued to. reason=client_mismatch refreshTokenSessionId={RefreshTokenSessionId} lineageClientId={LineageClientId}",
+                tokenCache.RefreshTokenSessionId,
+                tokenCache.ClientId);
+
+            return InvalidGrant("Refresh token was not issued to this client");
         }
 
         private static BadRequestObjectResult InvalidGrant(string description) =>

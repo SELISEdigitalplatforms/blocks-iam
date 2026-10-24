@@ -150,9 +150,12 @@ namespace XUnitTest.Auth
 
                 var wrongChecks = Checked(results);
                 var tokens = Tokens(results);
-                // A correct password gives its slot back, so never more than the threshold of WRONG checks.
-                wrongChecks.Should().BeLessThanOrEqualTo(Threshold, "round {0}", round);
+                // A correct password gives its slot back, so never more than the threshold of WRONG checks
+                // while no one signs in. A real sign-in resets the counter (by design, see
+                // Sequential_Escalation_..._ThenSuccessResets), so wrong checks still in the burst get one
+                // fresh threshold after it: at most one threshold before the sign-in and one after.
                 tokens.Should().BeLessThanOrEqualTo(1);
+                wrongChecks.Should().BeLessThanOrEqualTo(tokens == 0 ? Threshold : 2 * Threshold, "round {0}", round);
                 (wrongChecks + tokens + Locked(results)).Should().Be(40);
 
                 // Whatever the burst did: once the account is locked, the correct password gets no token.
@@ -281,6 +284,68 @@ namespace XUnitTest.Auth
         }
 
         // ---------- unchanged sequential behaviour ----------
+
+        [RealMongoFact]
+        public async Task ResetAfterSuccess_Unchanged_ClearsAllCounters()
+        {
+            await SeedAsync(u =>
+            {
+                u.FailedLoginCount = 2;
+                u.LastFailedLoginUtc = DateTime.UtcNow.AddSeconds(-5);
+                u.FailedMfaCount = 1;
+                u.LockoutCount = 1;
+                u.LockoutUntilUtc = DateTime.UtcNow.AddMinutes(-1);
+            });
+            var snapshot = await DbUserAsync();
+
+            (await _repo.ResetFailureCountersAfterSuccessAsync(snapshot, DateTime.UtcNow)).Should().BeTrue();
+
+            var db = await DbUserAsync();
+            db.FailedLoginCount.Should().Be(0);
+            db.FailedMfaCount.Should().Be(0);
+            db.LockoutCount.Should().Be(0);
+            db.LastFailedLoginUtc.Should().BeNull();
+            db.LockoutUntilUtc.Should().BeNull();
+        }
+
+        [RealMongoFact]
+        public async Task ResetAfterSuccess_WrongPasswordCountedAfterTheRead_ClearsNothing()
+        {
+            await SeedAsync(u => { u.FailedLoginCount = 2; u.LastFailedLoginUtc = DateTime.UtcNow; });
+            var snapshot = await DbUserAsync();
+            await SetAsync(Builders<User>.Update.Inc(u => u.FailedLoginCount, 1));
+
+            (await _repo.ResetFailureCountersAfterSuccessAsync(snapshot, DateTime.UtcNow)).Should().BeFalse();
+
+            (await DbUserAsync()).FailedLoginCount.Should().Be(3);
+        }
+
+        [RealMongoFact]
+        public async Task ResetAfterSuccess_AccountLockedSinceTheRead_KeepsTheLock()
+        {
+            await SeedAsync(u => { u.FailedLoginCount = Threshold - 1; u.LastFailedLoginUtc = DateTime.UtcNow; });
+            var snapshot = await DbUserAsync();
+            var until = DateTime.UtcNow.AddMinutes(BaseMinutes);
+            await SetAsync(Builders<User>.Update.Set(u => u.LockoutUntilUtc, until));
+
+            (await _repo.ResetFailureCountersAfterSuccessAsync(snapshot, DateTime.UtcNow)).Should().BeFalse();
+
+            var db = await DbUserAsync();
+            db.LockoutUntilUtc.Should().BeCloseTo(until, TimeSpan.FromSeconds(1));
+            db.FailedLoginCount.Should().Be(Threshold - 1);
+        }
+
+        [RealMongoFact]
+        public async Task ResetAfterSuccess_CleanSnapshot_WritesNothing()
+        {
+            await SeedAsync();
+            var snapshot = await DbUserAsync();
+            await SetAsync(Builders<User>.Update.Set(u => u.FailedLoginCount, 1));
+
+            (await _repo.ResetFailureCountersAfterSuccessAsync(snapshot, DateTime.UtcNow)).Should().BeFalse();
+
+            (await DbUserAsync()).FailedLoginCount.Should().Be(1);
+        }
 
         [RealMongoFact]
         public async Task Sequential_FourWrongThenRight_SignsIn_AndResetsCounters()

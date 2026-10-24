@@ -42,6 +42,14 @@ namespace Authentication.DomainService.Services
         /// locked user when this call applied the lock, otherwise null.
         /// </summary>
         Task<User?> LockAccountIfLoginThresholdReachedAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
+
+        /// <summary>
+        /// Clears the failure counters after a successful sign-in, in one atomic write. <paramref name="snapshot"/> is
+        /// the user as read when the sign-in started. Failures already in that read are forgiven; nothing is cleared
+        /// when the account is locked now or a wrong password was counted after that read, so a sign-in never lifts
+        /// a lock and never hands back the guesses of an attack running at the same time. Returns true when cleared.
+        /// </summary>
+        Task<bool> ResetFailureCountersAfterSuccessAsync(User snapshot, DateTime nowUtc);
         Task<User?> IncrementFailedMfaAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
         Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "");
         Task<List<IdentityProvider>> GetIdentityProvidersAsync();

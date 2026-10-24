@@ -73,7 +73,7 @@ namespace Authentication.DomainService.Oidc.Repositories
                         {
                             await _refreshTokenRepo.RevokeByTokenIdAsync(refreshToken.TokenId, "user_revoked");
                             await SyncSessionStatusForRefreshTokensAsync(new[] { refreshToken.TokenId });
-                            _logger.LogInformation("Refresh token revoked for token id: {TokenId}", token);
+                            _logger.LogInformation("Refresh token revoked: {TokenFingerprint}", Fingerprint(token));
                         }
 
                         return new TokenRevocationResult { Success = true };
@@ -312,6 +312,14 @@ namespace Authentication.DomainService.Oidc.Repositories
             }
 
             return token.Audiences.Any(aud => string.Equals(aud, clientId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string Fingerprint(string token)
+        {
+            const int visibleLength = 8;
+            return string.IsNullOrEmpty(token) || token.Length <= visibleLength
+                ? token
+                : string.Concat(token.AsSpan(0, visibleLength), "...");
         }
 
         // Helper methods

@@ -6,10 +6,26 @@ namespace Iam.DomainService.AccessGrant
     /// <param name="UserId">The caller's user id; empty for a call with no user (workers, system).</param>
     /// <param name="OrganizationId">The caller's effective organization; blank reads as <c>default</c>.</param>
     /// <param name="IsSystem">
-    /// True for the system user: effective organization <c>default</c>, no user, or a root-tenant /
-    /// impersonated platform call. No rule applies to it.
+    /// True for the system user: effective organization <c>default</c>, no user and no client, or a
+    /// root-tenant / impersonated platform call. No rule applies to it.
     /// </param>
-    public sealed record GrantCaller(string UserId, string OrganizationId, bool IsSystem);
+    /// <param name="ClientId">
+    /// The client credential behind a client-credentials token with no user; empty for a user or
+    /// the system user.
+    /// </param>
+    public sealed record GrantCaller(string UserId, string OrganizationId, bool IsSystem, string ClientId = "")
+    {
+        private const string ClientCallerPrefix = "client:";
+
+        /// <summary>True when the caller is a client credential, not a user.</summary>
+        public bool IsClient => !string.IsNullOrWhiteSpace(ClientId);
+
+        /// <summary>
+        /// The id logs and the self rule (R3) see: the user id, or <c>client:&lt;id&gt;</c> for a
+        /// client, which never equals a user id.
+        /// </summary>
+        public string CallerId => IsClient ? ClientCallerPrefix + ClientId : UserId;
+    }
 
     /// <summary>Why a rule would refuse. Server log only; the caller only ever sees the generic error.</summary>
     /// <param name="Rule">The rule that refused (R1-R12).</param>
@@ -55,7 +71,7 @@ namespace Iam.DomainService.AccessGrant
 
         public bool IsSystem => Caller.IsSystem;
 
-        public string CallerId => Caller.UserId;
+        public string CallerId => Caller.CallerId;
 
         public string OrganizationId => Caller.OrganizationId;
 
@@ -80,7 +96,7 @@ namespace Iam.DomainService.AccessGrant
                 new(StringComparer.Ordinal), new(StringComparer.Ordinal));
 
         /// <summary>
-        /// Computes the caller's power in <see cref="GrantCaller.OrganizationId"/>.
+        /// Computes a user caller's power in <see cref="GrantCaller.OrganizationId"/>.
         /// </summary>
         /// <param name="caller">The caller; must not be the system user.</param>
         /// <param name="callerUser">The caller's user document, or null when it no longer exists (holds nothing).</param>
@@ -93,10 +109,64 @@ namespace Iam.DomainService.AccessGrant
             IEnumerable<Permission> permissions)
         {
             ArgumentNullException.ThrowIfNull(caller);
-            ArgumentNullException.ThrowIfNull(roles);
-            ArgumentNullException.ThrowIfNull(permissions);
 
             var organizationId = caller.OrganizationId;
+            var callerAccess = AccessAttributes.Read(callerUser?.Attributes)
+                .TryGetValue(organizationId, out var ownValues)
+                    ? ownValues
+                    : new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+            return BuildCore(
+                caller,
+                AccessGrantRules.GrantsIn(callerUser?.Roles, organizationId),
+                AccessGrantRules.GrantsIn(callerUser?.Permissions, organizationId),
+                callerAccess,
+                roles,
+                permissions);
+        }
+
+        /// <summary>
+        /// Computes a client caller's power in <see cref="GrantCaller.OrganizationId"/>: the client's
+        /// own roles and permissions. A client that is missing, inactive or of another organization
+        /// holds nothing. A client has no access attributes.
+        /// </summary>
+        /// <param name="caller">The caller; must not be the system user.</param>
+        /// <param name="client">The caller's client credential, or null when it no longer exists.</param>
+        /// <param name="roles">Non-archived roles of the organization.</param>
+        /// <param name="permissions">Non-archived permissions of the organization.</param>
+        public static GrantScope BuildForClient(
+            GrantCaller caller,
+            ClientCredential? client,
+            IEnumerable<Role> roles,
+            IEnumerable<Permission> permissions)
+        {
+            ArgumentNullException.ThrowIfNull(caller);
+
+            var usable = client is { IsActive: true }
+                && string.Equals(client.ItemId, caller.ClientId, StringComparison.Ordinal)
+                && string.Equals(client.OrganizationId, caller.OrganizationId, StringComparison.Ordinal)
+                    ? client
+                    : null;
+
+            return BuildCore(
+                caller,
+                AccessGrantRules.Clean(usable?.Roles),
+                AccessGrantRules.Clean(usable?.Permissions),
+                new Dictionary<string, HashSet<string>>(StringComparer.Ordinal),
+                roles,
+                permissions);
+        }
+
+        private static GrantScope BuildCore(
+            GrantCaller caller,
+            IEnumerable<string> grantedRoles,
+            IEnumerable<string> directPermissions,
+            Dictionary<string, HashSet<string>> callerAccess,
+            IEnumerable<Role> roles,
+            IEnumerable<Permission> permissions)
+        {
+            ArgumentNullException.ThrowIfNull(roles);
+            ArgumentNullException.ThrowIfNull(permissions);
 
             var roleMap = new Dictionary<string, Role>(StringComparer.OrdinalIgnoreCase);
             foreach (var role in roles.Where(r => r is not null && !r.IsArchived && !string.IsNullOrWhiteSpace(r.Slug)))
@@ -106,9 +176,7 @@ namespace Iam.DomainService.AccessGrant
 
             var (rolePermissions, resourcesById) = IndexPermissions(permissions);
 
-            var held = new HashSet<string>(
-                AccessGrantRules.GrantsIn(callerUser?.Roles, organizationId).Where(roleMap.ContainsKey),
-                StringComparer.OrdinalIgnoreCase);
+            var held = new HashSet<string>(grantedRoles.Where(roleMap.ContainsKey), StringComparer.OrdinalIgnoreCase);
 
             var managed = new HashSet<string>(
                 roleMap.Values
@@ -119,12 +187,7 @@ namespace Iam.DomainService.AccessGrant
             var heldPermissions = new HashSet<string>(
                 held.Concat(managed).SelectMany(slug => rolePermissions.GetValueOrDefault(slug) ?? []),
                 StringComparer.OrdinalIgnoreCase);
-            heldPermissions.UnionWith(AccessGrantRules.GrantsIn(callerUser?.Permissions, organizationId));
-
-            var callerAccess = AccessAttributes.Read(callerUser?.Attributes)
-                .TryGetValue(organizationId, out var ownValues)
-                    ? ownValues
-                    : new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            heldPermissions.UnionWith(directPermissions);
 
             return new GrantScope(caller, roleMap, rolePermissions, resourcesById, callerAccess)
             {

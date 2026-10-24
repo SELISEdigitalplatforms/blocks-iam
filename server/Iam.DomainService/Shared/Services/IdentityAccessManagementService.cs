@@ -11,6 +11,8 @@ namespace Iam.DomainService.Services
 {
     public class IdentityAccessManagementService : IIdentityAccessManagementService
     {
+        private const string DefaultMailLanguage = "en-US";
+
         private readonly ILogger<IdentityAccessManagementService> _logger;
         private readonly ITenants _tenants;
         private readonly IMessageClient _messageClient;
@@ -91,6 +93,15 @@ namespace Iam.DomainService.Services
         {
             _logger.LogInformation("Sending Activation for {Id} by email: {MPurpose}", user.ItemId, emailPurpose);
 
+            // The mail service drops a mail with no recipient without telling anyone, so it is
+            // never queued and the caller hears that nothing was sent.
+            var to = NormalizeEmail(user.Email);
+            if (to.Length == 0)
+            {
+                _logger.LogWarning("Activation for {Id} not queued: the account has no email address", user.ItemId);
+                return false;
+            }
+
             // A resend reuses the purpose stored on the user, which predates the template rename.
             if (emailPurpose == IdpConstants.LegacyProjectInvitationMailPurpose)
             {
@@ -104,9 +115,10 @@ namespace Iam.DomainService.Services
                 Cc = Array.Empty<string>(),
                 Bcc = Array.Empty<string>(),
                 BodyDataContext = bodyContext,
-                Language = user.Language ?? "en-US",
+                // A blank language is rejected by the mail service, so it falls back like null does.
+                Language = string.IsNullOrWhiteSpace(user.Language) ? DefaultMailLanguage : user.Language,
                 Purpose = emailPurpose,
-                To = new string[] { NormalizeEmail(user.Email) }
+                To = new string[] { to }
             };
 
             await SendToQueueAsync(IdpConstants.MailQueue, sendMailCommand);
@@ -120,7 +132,10 @@ namespace Iam.DomainService.Services
             if (mailPurpose == IdpConstants.ProjectInvitationMailPurpose)
             {
                 var projectId = await _userRepository.GetProjectIdFromProjectPeopleAsync(user.ItemId);
-                var projectName = _tenants.GetTenantByID(projectId)?.Name;
+                // The template needs the key; an unknown project still sends the link.
+                var projectName = string.IsNullOrWhiteSpace(projectId)
+                    ? string.Empty
+                    : _tenants.GetTenantByID(projectId)?.Name ?? string.Empty;
 
                 return new Dictionary<string, string>
                 {
@@ -150,7 +165,7 @@ namespace Iam.DomainService.Services
                     { "CreatedUser.LastName" , user.LastName},
                     { "CreatedUser.Email" , user.Email},
                 },
-                Language = user.Language ?? "en-US",
+                Language = user.Language ?? DefaultMailLanguage,
                 Purpose = string.IsNullOrWhiteSpace(mailPurpose) ? "AccountActivated" : mailPurpose,
                 To = new string[] { NormalizeEmail(user.Email) }
             };

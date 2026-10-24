@@ -83,6 +83,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
             _repositoryMock.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
             _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration());
+            _repositoryMock.Setup(r => r.TryConsumeUserKeyMapAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(true);
 
             // By default, signup test path consults the captcha configuration collection.
             // Returning an empty (disabled) collection disables captcha checks.
@@ -690,6 +692,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             user.TokenVersion = 1;
             user.SecurityStamp = "old-stamp";
             user.FailedLoginCount = 3;
+            user.LockoutCount = 2;
+            user.LastLockoutUtc = DateTime.UtcNow.AddHours(-1);
             _cacheClientMock.Setup(c => c.GetStringValueAsync("code-1")).ReturnsAsync(user.ItemId);
             _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Activation, user.ItemId))).ReturnsAsync("code-1");
             _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
@@ -709,7 +713,9 @@ namespace XUnitTest.IamTests.Accounts.Services
                 u.TokenVersion == 2 &&
                 u.SecurityStamp != "old-stamp" &&
                 u.FailedLoginCount == 0 &&
-                u.LockoutUntilUtc == null)),
+                u.LockoutUntilUtc == null &&
+                u.LockoutCount == 0 &&
+                u.LastLockoutUtc == null)),
                 Times.Once);
         }
 
@@ -995,6 +1001,38 @@ namespace XUnitTest.IamTests.Accounts.Services
                 Times.Once);
         }
 
+        [Fact]
+        public async Task Reset_CodeAlreadySpentInTheStore_ReturnsFalse_AndChangesNothing()
+        {
+            var user = SetupValidReset();
+            _repositoryMock.Setup(r => r.TryConsumeUserKeyMapAsync("x", user.ItemId, It.IsAny<DateTime>())).ReturnsAsync(false);
+
+            var result = await CreateService(sessionTerminator: _sessionTerminatorMock.Object)
+                .ResetAccountPasswordAsync(new ResetPasswordRequest { Code = "x", Password = "NewP@ssw0rd" });
+
+            result.IsSuccess.Should().BeFalse();
+            _repositoryMock.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+            _sessionTerminatorMock.Verify(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _userActivityDispatcherMock.Verify(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Reset_SpendsTheCodeBeforeThePasswordIsWritten()
+        {
+            var user = SetupValidReset();
+            var order = new List<string>();
+            _repositoryMock.Setup(r => r.TryConsumeUserKeyMapAsync("x", user.ItemId, It.IsAny<DateTime>()))
+                .Callback(() => order.Add("consume"))
+                .ReturnsAsync(true);
+            _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>()))
+                .Callback(() => order.Add("update"))
+                .ReturnsAsync(true);
+
+            await CreateService().ResetAccountPasswordAsync(new ResetPasswordRequest { Code = "x", Password = "NewP@ssw0rd" });
+
+            order.Should().Equal("consume", "update");
+        }
+
         private User SetupValidReset()
         {
             var user = TestDataBuilder.CreateUser();
@@ -1258,6 +1296,38 @@ namespace XUnitTest.IamTests.Accounts.Services
             var result = await service.ResendActivationAsync(new ResendActivationRequest { UserId = "u-x" });
 
             result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("UserId").WhoseValue.Should().Be("User_Not_Found");
+        }
+
+        [Fact]
+        public async Task Resend_MailNotQueued_ReturnsErrorAndKeepsNoKeyMap()
+        {
+            var service = CreateService();
+            var user = TestDataBuilder.CreateUser(active: false, isVerified: false);
+            _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
+            _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration());
+            _iamServiceMock.Setup(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(false);
+
+            var result = await service.ResendActivationAsync(new ResendActivationRequest { UserId = user.ItemId });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("ActivationMail");
+            _repositoryMock.Verify(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SendReActivation_NoEmail_ReturnsFalseWithoutSending()
+        {
+            var service = CreateService();
+            var user = TestDataBuilder.CreateUser(active: false, isVerified: false);
+            user.Email = string.Empty;
+
+            var result = await service.SendReActivationAsync(user);
+
+            result.Should().BeFalse();
+            _repositoryMock.Verify(r => r.GetIamConfigurationAsync(), Times.Never);
+            _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

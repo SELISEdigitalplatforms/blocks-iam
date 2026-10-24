@@ -381,5 +381,125 @@ namespace XUnitTest.IamTests.Users
 
             _kit.FindUser("boss")!.Roles[Org].Should().Contain("auditor");
         }
+
+        // ---------- users/roles/bulk by a client credential ----------
+
+        private const string Client = "svc";
+
+        private static BulkUserRoleChangeEvent ClientChunk(List<string> add, params string[] userIds)
+        {
+            var chunk = Chunk(false, add, [], userIds);
+            chunk.RequestedBy = null;
+            chunk.RequestedByClientId = Client;
+            return chunk;
+        }
+
+        [Fact]
+        public async Task BulkSubmitByAClientCarriesTheClientFromTheContext()
+        {
+            _kit.WithClient(Client, ["manager"]);
+            AccessGrantTestKit.SignInClient(Client);
+            BulkMatches(_kit.WithUser("member", ["viewer"]));
+
+            await Create().SubmitBulkRoleChangeAsync(new BulkRoleChangeRequest { OrganizationId = Org, AddRoles = ["auditor"], Target = new BulkRoleTarget { UserIds = ["member"] } });
+
+            _bulk.Should().ContainSingle();
+            _bulk[0].RequestedBy.Should().BeNullOrEmpty();
+            _bulk[0].RequestedByClientId.Should().Be(Client);
+            _bulk[0].RequestedBySystemCaller.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task BulkSubmitByAUserCarriesNoClient()
+        {
+            BulkMatches(_kit.WithUser("member", ["viewer"]));
+
+            await Create().SubmitBulkRoleChangeAsync(new BulkRoleChangeRequest { OrganizationId = Org, AddRoles = ["auditor"], Target = new BulkRoleTarget { UserIds = ["member"] } });
+
+            _bulk.Should().ContainSingle();
+            _bulk[0].RequestedByClientId.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task BulkConsumerAppliesAClientChangeWithinItsGrants()
+        {
+            BlocksContext.SetContext(null);
+            _kit.WithClient(Client, ["manager"]);
+            _kit.WithUser("member", ["viewer"]);
+            _kit.WithUser("boss", ["owner"]);
+
+            await Create().ApplyBulkRoleChangeAsync(ClientChunk(["auditor"], "member", "boss"));
+
+            _kit.FindUser("member")!.Roles[Org].Should().Contain("auditor");
+            _kit.FindUser("boss")!.Roles[Org].Should().NotContain("auditor", "boss holds more than the client");
+        }
+
+        [Fact]
+        public async Task BulkConsumerRefusesAClientChangeBeyondItsGrants()
+        {
+            BlocksContext.SetContext(null);
+            _kit.WithClient(Client, ["manager"]);
+            _kit.WithUser("member", ["viewer"]);
+
+            await Create().ApplyBulkRoleChangeAsync(ClientChunk(["owner"], "member"));
+
+            _kit.FindUser("member")!.Roles[Org].Should().Equal("viewer");
+            _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData(false, Org)]
+        [InlineData(true, "org-other")]
+        public async Task BulkConsumerRefusesAnInactiveOrOtherOrganizationClient(bool isActive, string clientOrg)
+        {
+            BlocksContext.SetContext(null);
+            _kit.WithClient(Client, ["manager"], organizationId: clientOrg, isActive: isActive);
+            _kit.WithUser("member", ["viewer"]);
+
+            await Create().ApplyBulkRoleChangeAsync(ClientChunk(["auditor"], "member"));
+
+            _kit.FindUser("member")!.Roles[Org].Should().Equal("viewer");
+            _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task BulkConsumerRefusesAMissingClient()
+        {
+            BlocksContext.SetContext(null);
+            _kit.WithUser("member", ["viewer"]);
+
+            await Create().ApplyBulkRoleChangeAsync(ClientChunk(["auditor"], "member"));
+
+            _kit.FindUser("member")!.Roles[Org].Should().Equal("viewer");
+        }
+
+        [Fact]
+        public async Task BulkMessagesWithNoUserAndNoClientAreRefusedAsBefore()
+        {
+            BlocksContext.SetContext(null);
+            _kit.WithClient(Client, ["manager"]);
+            _kit.WithUser("member", ["viewer"]);
+            var chunk = Chunk(false, ["auditor"], [], "member");
+            chunk.RequestedBy = null;
+
+            await Create().ApplyBulkRoleChangeAsync(chunk);
+
+            _kit.FindUser("member")!.Roles[Org].Should().Equal("viewer");
+        }
+
+        [Fact]
+        public async Task BulkConsumerIgnoresAClientIdWhenAUserSubmitted()
+        {
+            BlocksContext.SetContext(null);
+            _kit.WithClient(Client, ["admin", "owner"]);
+            _kit.WithUser("member", ["viewer"]);
+            _kit.WithUser("boss", ["owner"]);
+            var chunk = Chunk(false, ["auditor"], [], "boss");
+            chunk.RequestedByClientId = Client;
+
+            await Create().ApplyBulkRoleChangeAsync(chunk);
+
+            _kit.FindUser("boss")!.Roles[Org].Should().NotContain("auditor", "the user submitter's power applies, not the client's");
+        }
     }
 }

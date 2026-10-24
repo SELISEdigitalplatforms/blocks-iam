@@ -194,6 +194,49 @@ namespace XUnitTest.IamTests
         }
 
         [Fact]
+        public async Task SendActivationToEmail_NoEmail_QueuesNothingAndReturnsFalse()
+        {
+            var user = new User { ItemId = "u9", Email = "  ", UserName = "u9" };
+
+            var result = await Create().SendActivationToEmailAsync(user, "https://activate", "AccountActivation");
+
+            result.Should().BeFalse();
+            _messageClient.Verify(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<SendMail>>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SendActivationToEmail_BlankLanguage_FallsBackToEnUs()
+        {
+            ConsumerMessage<SendMail>? captured = null;
+            _messageClient.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<SendMail>>()))
+                .Callback<ConsumerMessage<SendMail>>(c => captured = c)
+                .Returns(Task.CompletedTask);
+
+            var user = new User { ItemId = "u8", Email = "lang@x.com", UserName = "u8", Language = "" };
+            await Create().SendActivationToEmailAsync(user, "https://activate", "AccountActivation");
+
+            captured!.Payload.Language.Should().Be("en-US");
+        }
+
+        [Fact]
+        public async Task SendActivationToEmail_ProjectInvitation_NoProjectRow_SendsEmptyProjectName()
+        {
+            _userRepository.Setup(r => r.GetProjectIdFromProjectPeopleAsync("u7")).ReturnsAsync(string.Empty);
+
+            ConsumerMessage<SendMail>? captured = null;
+            _messageClient.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<SendMail>>()))
+                .Callback<ConsumerMessage<SendMail>>(c => captured = c)
+                .Returns(Task.CompletedTask);
+
+            var user = new User { ItemId = "u7", Email = "p@x.com", UserName = "u7", FirstName = "P" };
+            var result = await Create().SendActivationToEmailAsync(user, "https://l", IdpConstants.ProjectInvitationMailPurpose);
+
+            result.Should().BeTrue();
+            captured!.Payload.BodyDataContext["ProjectName"].Should().BeEmpty();
+            _tenants.Verify(t => t.GetTenantByID(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
         public async Task SendActivationToEmail_ProjectInvitation_UsesEmailWhenFirstNameMissing()
         {
             _userRepository.Setup(r => r.GetProjectIdFromProjectPeopleAsync("u3")).ReturnsAsync("project-1");

@@ -92,7 +92,7 @@ public class PasswordCredentialVerifierTests
     }
 
     [Fact]
-    public async Task ResetFailureCounters_ClearsLoginMfaAndLockoutState()
+    public async Task ResetFailureCounters_UsesTheAtomicConditionalReset_WithTheReadSnapshot()
     {
         var user = UserWith("Correct#1", failed: 2);
         user.FailedMfaCount = 3;
@@ -100,11 +100,8 @@ public class PasswordCredentialVerifierTests
 
         await Sut().ResetFailureCountersAsync(user);
 
-        _repo.Verify(r => r.UpdatePartialAsync<User>("u1", It.Is<Dictionary<string, object>>(d =>
-            (int)d[nameof(User.FailedLoginCount)] == 0
-            && (int)d[nameof(User.FailedMfaCount)] == 0
-            && (int)d[nameof(User.LockoutCount)] == 0
-            && d.ContainsKey(nameof(User.LockoutUntilUtc))), ""), Times.Once);
+        _repo.Verify(r => r.ResetFailureCountersAfterSuccessAsync(user, It.IsAny<DateTime>()), Times.Once);
+        _repo.Verify(r => r.UpdatePartialAsync<User>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]

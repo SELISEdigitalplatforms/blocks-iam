@@ -370,14 +370,15 @@ namespace XUnitTest.Auth
             user.FailedMfaCount = 1; // forces ResetAuthFailureCountersAsync to persist
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(user);
             _mfaIssuer.Setup(m => m.IsRequiredAsync(It.IsAny<User>())).ReturnsAsync(false);
-            _repo.Setup(r => r.UpdatePartialAsync<User>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()))
-                .Returns(Task.CompletedTask);
+            _repo.Setup(r => r.ResetFailureCountersAfterSuccessAsync(It.IsAny<User>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(true);
 
             // scope without "openid" makes the authorize endpoint validation fail deterministically
             var result = await Create().ExecuteAsync(PasswordRequest(scope: "profile email"), Req(), Res());
 
             result.Should().BeOfType<BadRequestObjectResult>();
-            _repo.Verify(r => r.UpdatePartialAsync<User>("user-1", It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()), Times.Once);
+            _repo.Verify(r => r.ResetFailureCountersAfterSuccessAsync(It.Is<User>(u => u.ItemId == "user-1"), It.IsAny<DateTime>()), Times.Once);
+            _repo.Verify(r => r.UpdatePartialAsync<User>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()), Times.Never);
             _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e => e.Outcome == "success")), Times.AtLeastOnce);
         }
 

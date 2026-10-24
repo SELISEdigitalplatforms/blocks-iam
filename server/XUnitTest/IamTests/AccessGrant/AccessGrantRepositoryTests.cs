@@ -79,6 +79,21 @@ namespace XUnitTest.IamTests.AccessGrant
         }
 
         [Fact]
+        public async Task ClientCredentialIsReadByIdWithoutItsSecret()
+        {
+            var clients = MongoMock.Collection(new[] { new ClientCredential { ItemId = "svc-1", OrganizationId = "org-1", IsActive = true } });
+            _iam.Setup(i => i.GetCollection<ClientCredential>()).Returns(clients.Object);
+
+            (await Sut().GetClientCredentialAsync("svc-1"))!.ItemId.Should().Be("svc-1");
+            (await Sut().GetClientCredentialAsync(" ")).Should().BeNull();
+
+            clients.Verify(c => c.FindAsync(
+                It.IsAny<FilterDefinition<ClientCredential>>(),
+                It.Is<FindOptions<ClientCredential, ClientCredential>>(o => o.Projection != null),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
         public async Task RolesAndPermissionsComeFromTheOrganizationReads()
         {
             _resources.Setup(r => r.GetRolesByOrgAsync("org-1")).ReturnsAsync([new Role { Slug = "a" }]);

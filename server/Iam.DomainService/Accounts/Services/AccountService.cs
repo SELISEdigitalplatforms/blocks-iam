@@ -970,6 +970,9 @@ namespace Iam.DomainService.Accounts
             user.FailedLoginCount = 0;
             user.LastFailedLoginUtc = null;
             user.LockoutUntilUtc = null;
+            // Same as an admin unlock: a new password starts the lockout backoff from the first step.
+            user.LockoutCount = 0;
+            user.LastLockoutUtc = null;
         }
 
         public async Task<BaseAccountResponse> RecoverAccountAsync(RecoveryUserRequest recoveryRequest)
@@ -1062,8 +1065,9 @@ namespace Iam.DomainService.Accounts
             await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Reset, key, user.ItemId, config.RecoverAccountUrlLifetimeInMinutes * 60);
 
             emailPurpose = string.IsNullOrWhiteSpace(emailPurpose) ? AccountMailPurposes.RecoverAccount : emailPurpose;
-            var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose);
 
+            // Stored before the mail goes out: a reset spends this row, so it must exist by the time the
+            // link can be clicked.
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
                 ItemId = Guid.NewGuid().ToString(),
@@ -1074,6 +1078,8 @@ namespace Iam.DomainService.Accounts
                 Value = recoverAccountUrl,
                 MailPurpose = emailPurpose
             });
+
+            var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose);
 
             _logger.LogInformation("Send Activation for {UserId} is {Send}", user.ItemId, result ? "sent" : "not sent");
             return true;
@@ -1131,6 +1137,14 @@ namespace Iam.DomainService.Accounts
             if (user == null)
             {
                 _logger.LogError("User not found for user id: {AccId}", userId);
+                return false;
+            }
+
+            // Spend the code before the password changes, in one conditional write: of two requests
+            // carrying the same code, only one gets past this line. A code that is lost here stays spent.
+            if (!await _repository.TryConsumeUserKeyMapAsync(resetPasswordRequest.Code, userId, DateTime.UtcNow))
+            {
+                _logger.LogWarning("Password reset refused for user {UserId}: the code is already used or expired", userId);
                 return false;
             }
 
@@ -1313,7 +1327,10 @@ namespace Iam.DomainService.Accounts
             if (user == null)
             {
                 _logger.LogError("User not found for user id: {RuserId}", resendActivationRequest.UserId);
-                return new BaseAccountResponse();
+                return new BaseAccountResponse
+                {
+                    Errors = new Dictionary<string, string> { { nameof(ResendActivationRequest.UserId), "User_Not_Found" } }
+                };
             }
 
             // Sending another user an activation link is managing that user (access
@@ -1323,12 +1340,17 @@ namespace Iam.DomainService.Accounts
                 return new BaseAccountResponse { Errors = AccessGrantErrors.Create() };
             }
 
-            var result = await SendReActivationAsync(user);
-
-            return new BaseAccountResponse
+            // The mail is only queued here; the caller must not hear "sent" when nothing could be
+            // queued (no address, or no activation link could be built).
+            if (!await SendReActivationAsync(user))
             {
-                IsSuccess = result,
-            };
+                return new BaseAccountResponse
+                {
+                    Errors = new Dictionary<string, string> { { "ActivationMail", "ActivationMail_Not_Sent" } }
+                };
+            }
+
+            return new BaseAccountResponse { IsSuccess = true };
         }
 
         private Task<bool> MayResendActivationToAsync(User user) =>
@@ -1338,6 +1360,12 @@ namespace Iam.DomainService.Accounts
 
         public async Task<bool> SendReActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {
+            if (string.IsNullOrWhiteSpace(user.Email))
+            {
+                _logger.LogWarning("Activation not sent for user {UserId}: the account has no email address", user.ItemId);
+                return false;
+            }
+
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
             var bc = BlocksContext.GetContext();
@@ -1360,6 +1388,11 @@ namespace Iam.DomainService.Accounts
 
             var emailPurpose = string.IsNullOrWhiteSpace(user.MailPurpose) ? AccountMailPurposes.AccountActivation : user.MailPurpose;
             var result = await _identityAccessManagementService.SendActivationToEmailAsync(user, accountActivationUri, emailPurpose);
+            if (!result)
+            {
+                _logger.LogWarning("Send ReActivation for {UsId} is not sent", user.ItemId);
+                return false;
+            }
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
@@ -1372,8 +1405,8 @@ namespace Iam.DomainService.Accounts
                 MailPurpose = emailPurpose
             });
 
-            _logger.LogInformation("Send ReActivation for {UsId} is {Send}", user.ItemId, result ? "sent" : "not sent");
-            return result;
+            _logger.LogInformation("Send ReActivation for {UsId} is sent", user.ItemId);
+            return true;
         }
 
         public async Task<BaseAccountResponse> ActivateAndLinkSocialIdentityAsync(ActivateAndLinkSocialIdentityRequest request)

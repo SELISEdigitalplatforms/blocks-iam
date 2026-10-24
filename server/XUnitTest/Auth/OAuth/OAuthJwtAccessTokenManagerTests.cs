@@ -55,6 +55,7 @@ namespace XUnitTest.Auth.OAuth
             _idpSession.Setup(s => s.ResolveOrCreateAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync("session-1");
             _refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>())).ReturnsAsync("id");
+            _refreshRepo.Setup(r => r.TryClaimForRotationAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
             _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
             _userRepository.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(new User { ItemId = "u1" });
         }
@@ -373,7 +374,7 @@ namespace XUnitTest.Auth.OAuth
             token.Should().NotBeNullOrWhiteSpace();
             _cache.Verify(c => c.GetStringValueAsync("old-token"), Times.Once);
             _cache.Verify(c => c.RemoveKeyAsync("old-token"), Times.Once);
-            _refreshRepo.Verify(r => r.RevokeByTokenIdAsync("old-token", "superseded_by_rotation", It.IsAny<string>()), Times.Once);
+            _refreshRepo.Verify(r => r.TryClaimForRotationAsync("old-token", It.IsAny<string>(), "superseded_by_rotation"), Times.Once);
         }
 
         // ---------- blocks-iam#624 C10: the rotation leg makes no extra store call ----------
@@ -413,7 +414,7 @@ namespace XUnitTest.Auth.OAuth
                 ["cache.RemoveKeyAsync"] = Count(_cache, nameof(ICacheClient.RemoveKeyAsync)),
                 ["repo.GetByTokenIdAsync"] = Count(_refreshRepo, nameof(IRefreshTokenRepository.GetByTokenIdAsync)),
                 ["repo.CreateAsync"] = Count(_refreshRepo, nameof(IRefreshTokenRepository.CreateAsync)),
-                ["repo.RevokeByTokenIdAsync"] = Count(_refreshRepo, nameof(IRefreshTokenRepository.RevokeByTokenIdAsync)),
+                ["repo.TryClaimForRotationAsync"] = Count(_refreshRepo, nameof(IRefreshTokenRepository.TryClaimForRotationAsync)),
                 ["repo.RevokeSupersededLoginLineagesAsync"] = Count(_refreshRepo, nameof(IRefreshTokenRepository.RevokeSupersededLoginLineagesAsync)),
             };
         }
@@ -475,7 +476,7 @@ namespace XUnitTest.Auth.OAuth
                 ["cache.RemoveKeyAsync"] = 1,
                 ["repo.GetByTokenIdAsync"] = predecessorCached ? 0 : 1,
                 ["repo.CreateAsync"] = 1,
-                ["repo.RevokeByTokenIdAsync"] = 1,
+                ["repo.TryClaimForRotationAsync"] = 1,
                 ["repo.RevokeSupersededLoginLineagesAsync"] = 0,
             });
         }
