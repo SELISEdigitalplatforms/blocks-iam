@@ -6,6 +6,8 @@ namespace Authentication.DomainService.Shared.RequestModel
         public string? ProviderType { get; set; }
         public string? Protocol { get; set; }
         public string? ClientId { get; set; }
+        /// <summary>New secret from the external provider. Empty or null keeps the stored one.</summary>
+        public string? ClientSecret { get; set; }
         public string? DisplayName { get; set; }
         public bool? IsActive { get; set; }
         public string? Issuer { get; set; }

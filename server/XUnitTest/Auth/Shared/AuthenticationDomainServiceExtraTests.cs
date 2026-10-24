@@ -130,6 +130,51 @@ namespace XUnitTest.Auth.Shared
             Create().GetRequestOriginHostName(new DefaultHttpContext()).Should().BeEmpty();
         }
 
+        // ---------- SaveOIDCClientAsync returns the secret once ----------
+
+        [Fact]
+        public async Task SaveOIDCClient_Create_ReturnsGeneratedSecretOnce()
+        {
+            OidcClientRegistration? saved = null;
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(c => saved = c)
+                .Returns(Task.CompletedTask);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                RedirectUris = new() { "https://app/cb" },
+                AllowedScopes = new() { "openid" },
+                ClientType = "confidential",
+                ClientDisplayName = "App"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            result.ClientSecret.Should().NotBeNullOrWhiteSpace();
+            result.ClientSecret.Should().Be(saved!.ClientSecret);
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_Update_DoesNotReturnSecret()
+        {
+            var existing = new OidcClientRegistration { ItemId = "c1", ClientId = "c1", ClientSecret = "stored" };
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                ItemId = "c1",
+                RedirectUris = new() { "https://app/cb" },
+                AllowedScopes = new() { "openid" },
+                ClientType = "confidential",
+                ClientDisplayName = "App"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            result.ClientSecret.Should().BeNull();
+            existing.ClientSecret.Should().Be("stored");
+        }
+
         // ---------- SaveOIDCClientAsync provider sync transitions ----------
 
         [Fact]

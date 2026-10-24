@@ -492,7 +492,7 @@ public class AuthenticationController : ControllerBase
     /// <summary>
     /// Get identity provider by ID
     /// Retrieves specific provider configuration
-    /// Does NOT return sensitive credentials (client_secret)
+    /// Does NOT return sensitive credentials (client_secret, private key)
     /// </summary>
     [HttpGet("identity-providers/{id}")]
     [ProtectedEndPoint("blocks-iam::auth::identity-providers")]

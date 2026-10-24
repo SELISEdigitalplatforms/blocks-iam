@@ -258,7 +258,14 @@ namespace Authentication.DomainService.Services
                 await NotifyClientCredentialChangedAsync(OidcClientKind, "created", credential.ClientId, credential.CreatedBy, null);
             }
 
-            return new SaveOIDCClientResponse { IsSuccess = true, ItemId = credential.ItemId };
+            // The secret goes back once, on create only. Lists and gets never return it; a lost
+            // secret is replaced with rotate-secret.
+            return new SaveOIDCClientResponse
+            {
+                IsSuccess = true,
+                ItemId = credential.ItemId,
+                ClientSecret = isNewClient ? credential.ClientSecret : null
+            };
         }
 
         private const string OidcClientKind = "oidc-client";
@@ -489,6 +496,7 @@ namespace Authentication.DomainService.Services
             var tokenLifetimes = client != null && _clientTokenLifetimes != null
                 ? await _clientTokenLifetimes.GetAsync(ResolveTokenLifetimesKey(client))
                 : null;
+            HideSecret(client);
             return new GetOIDCClientResponse
             {
                 oIDCClientCredential = client,
@@ -500,6 +508,7 @@ namespace Authentication.DomainService.Services
         public async Task<GetOIDCClientsResponse> GetOidcClientsAsync()
         {
             var clients = await _authenticationRepository.GetOIDCCredentialsByTenantForViewAsync();
+            clients?.ForEach(HideSecret);
 
             return new GetOIDCClientsResponse
             {
@@ -801,16 +810,18 @@ namespace Authentication.DomainService.Services
 
         public async Task<List<ClientCredential>> GetClientCredentialsAsync(GetAllClientCredentialsRequest request)
         {
-            // The listed documents carry ClientSecret, so an unscoped list would hand one
-            // organization's administrator the secrets of every other organization in the tenant.
+            // Scoped so one organization's administrator cannot see another organization's credentials.
+            // The secret itself is never listed: it is returned once on create and on rotate-secret.
             var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
 
-            return scope.Kind switch
+            var credentials = scope.Kind switch
             {
                 OrganizationAccessScopeKind.AllOrganizations => await _authenticationRepository.GetClientCredentialsAsync(null),
                 OrganizationAccessScopeKind.Organization => await _authenticationRepository.GetClientCredentialsAsync(scope.OrganizationId),
                 _ => []
             };
+            credentials.ForEach(HideSecret);
+            return credentials;
         }
 
         public async Task<BaseResponse> CreateIdentityProviderAsync(SaveIdentityProviderRequest request)
@@ -889,12 +900,41 @@ namespace Authentication.DomainService.Services
 
         public async Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id)
         {
-            return await _authenticationRepository.GetIdentityProviderByIdForViewAsync(id);
+            var provider = await _authenticationRepository.GetIdentityProviderByIdForViewAsync(id);
+            HideSecret(provider);
+            return provider;
         }
 
         public async Task<List<IdentityProvider>> GetAllIdentityProvidersAsync()
         {
-            return await _authenticationRepository.GetIdentityProvidersForViewAsync();
+            var providers = await _authenticationRepository.GetIdentityProvidersForViewAsync();
+            providers.ForEach(HideSecret);
+            return providers;
+        }
+
+        private async Task<bool> IsMirrorOfLocalOidcClientAsync(IdentityProvider provider)
+        {
+            if (!string.Equals(provider.ProviderType, IdpConstants.BlocksOidcProviderType, StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(provider.ClientId))
+                return false;
+            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(provider.ClientId);
+            return client?.RegisterAsIdentityProvider == true;
+        }
+
+        // Read results that go back to the API caller never carry a secret. These objects come
+        // from a fresh "ForView" read and are never saved back, so clearing them changes nothing stored.
+        private static void HideSecret(OidcClientRegistration? client)
+        {
+            if (client != null) client.ClientSecret = null;
+        }
+
+        private static void HideSecret(ClientCredential credential) => credential.ClientSecret = null;
+
+        private static void HideSecret(IdentityProvider? provider)
+        {
+            if (provider == null) return;
+            provider.ClientSecret = string.Empty;
+            provider.PrivateKey = null;
         }
 
         public async Task<BaseResponse> UpdateIdentityProviderAsync(string id, UpdateIdentityProviderRequest request)
@@ -927,6 +967,11 @@ namespace Authentication.DomainService.Services
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "immutable_field", "Protocol is immutable and must match the existing value." } } };
             if (request.ClientId != null && !string.Equals(request.ClientId, existing.ClientId, StringComparison.Ordinal))
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "immutable_field", "ClientId is immutable and must match the existing value." } } };
+
+            // A provider made by "register as identity provider" mirrors its OIDC client's secret;
+            // that secret changes only by rotating the OIDC client, or the next client save would undo it.
+            if (!string.IsNullOrWhiteSpace(request.ClientSecret) && await IsMirrorOfLocalOidcClientAsync(existing))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "immutable_field", "This provider uses its OIDC client's secret. Rotate the secret on the OIDC client instead." } } };
 
             // Discovery re-validation when WellKnownUrl changes.
             if (request.WellKnownUrl != null && !string.Equals(request.WellKnownUrl, existing.WellKnownUrl, StringComparison.OrdinalIgnoreCase))
@@ -965,7 +1010,8 @@ namespace Authentication.DomainService.Services
             if (request.Icon != null) existing.Icon = request.Icon;
             if (request.TeamId != null) existing.TeamId = request.TeamId;
             if (request.KeyId != null) existing.KeyId = request.KeyId;
-            if (request.PrivateKey != null) existing.PrivateKey = request.PrivateKey;
+            if (!string.IsNullOrWhiteSpace(request.PrivateKey)) existing.PrivateKey = request.PrivateKey;
+            if (!string.IsNullOrWhiteSpace(request.ClientSecret)) existing.ClientSecret = request.ClientSecret;
             if (request.AppleAudience != null) existing.AppleAudience = request.AppleAudience;
 
             var blocksContext = BlocksContext.GetContext();
