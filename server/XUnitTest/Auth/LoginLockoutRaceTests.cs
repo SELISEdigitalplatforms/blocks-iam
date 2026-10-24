@@ -150,9 +150,12 @@ namespace XUnitTest.Auth
 
                 var wrongChecks = Checked(results);
                 var tokens = Tokens(results);
-                // A correct password gives its slot back, so never more than the threshold of WRONG checks.
-                wrongChecks.Should().BeLessThanOrEqualTo(Threshold, "round {0}", round);
+                // A correct password gives its slot back, so never more than the threshold of WRONG checks
+                // while no one signs in. A real sign-in resets the counter (by design, see
+                // Sequential_Escalation_..._ThenSuccessResets), so wrong checks still in the burst get one
+                // fresh threshold after it: at most one threshold before the sign-in and one after.
                 tokens.Should().BeLessThanOrEqualTo(1);
+                wrongChecks.Should().BeLessThanOrEqualTo(tokens == 0 ? Threshold : 2 * Threshold, "round {0}", round);
                 (wrongChecks + tokens + Locked(results)).Should().Be(40);
 
                 // Whatever the burst did: once the account is locked, the correct password gets no token.
