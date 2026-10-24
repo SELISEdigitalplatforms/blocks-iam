@@ -301,6 +301,48 @@ namespace Authentication.DomainService.Services
                 new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After });
         }
 
+        public async Task<bool> ResetFailureCountersAfterSuccessAsync(User snapshot, DateTime nowUtc)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+
+            if (snapshot.FailedLoginCount <= 0
+                && !snapshot.LastFailedLoginUtc.HasValue
+                && snapshot.FailedMfaCount <= 0
+                && !snapshot.LastFailedMfaUtc.HasValue
+                && !snapshot.LockoutUntilUtc.HasValue)
+            {
+                return false;
+            }
+
+            // The success already gave its own slot back, so a higher count means a wrong password was counted
+            // after the snapshot. Never clears an active lock.
+            var f = Builders<User>.Filter;
+            var filter = f.And(
+                f.Eq(x => x.ItemId, snapshot.ItemId),
+                NotLockedFilter(nowUtc),
+                f.Or(
+                    f.Lte(x => x.FailedLoginCount, Math.Max(0, snapshot.FailedLoginCount)),
+                    f.Exists(x => x.FailedLoginCount, false)));
+
+            var update = Builders<User>.Update
+                .Set(x => x.FailedLoginCount, 0)
+                .Set(x => x.LastFailedLoginUtc, null)
+                .Set(x => x.FailedMfaCount, 0)
+                .Set(x => x.LastFailedMfaUtc, null)
+                .Set(x => x.LockoutUntilUtc, null)
+                .Set(x => x.LockoutCount, 0)
+                .Set(x => x.LastUpdatedDate, nowUtc)
+                .Set(x => x.LastUpdatedBy, snapshot.ItemId);
+
+            var reset = await _dataAccess.FindOneAndUpdateAsync(
+                GetCollection<User>(),
+                IamSchemas.User,
+                filter,
+                update,
+                "AuthenticationRepository.ResetFailureCountersAfterSuccessAsync");
+            return reset != null;
+        }
+
         private static FilterDefinition<User> NotLockedFilter(DateTime nowUtc) =>
             Builders<User>.Filter.Or(
                 Builders<User>.Filter.Eq(x => x.LockoutUntilUtc, null),
