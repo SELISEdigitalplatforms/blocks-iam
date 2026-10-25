@@ -167,7 +167,8 @@ namespace XUnitTest.TestSupport
         /// <summary>
         /// The usual tree: admin > manager > viewer, plus standalone "auditor" and "owner".
         /// admin carries read/write/delete, manager read/write, viewer read, auditor read,
-        /// owner read/write/delete/billing.
+        /// owner read/write/delete/billing. admin and manager also carry the two manage permissions,
+        /// so an admin holder is a top user and a manager holder a descendant.
         /// </summary>
         public AccessGrantTestKit WithStandardTree(string organizationId = Org)
         {
@@ -179,7 +180,9 @@ namespace XUnitTest.TestSupport
             WithPermission("read", organizationId, "admin", "manager", "viewer", "auditor", "owner")
                 .WithPermission("write", organizationId, "admin", "manager", "owner")
                 .WithPermission("delete", organizationId, "admin", "owner")
-                .WithPermission("billing", organizationId, "owner");
+                .WithPermission("billing", organizationId, "owner")
+                .WithPermission(AccessGrantRules.MutateRolesPermission, organizationId, "admin", "manager")
+                .WithPermission(AccessGrantRules.MutateUsersPermission, organizationId, "admin", "manager");
             return this;
         }
 

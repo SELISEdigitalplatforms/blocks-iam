@@ -33,10 +33,10 @@ namespace XUnitTest.IamTests.AccessGrant
         [InlineData("default", true, false, true)]
         [InlineData("", true, false, true)]
         [InlineData(null, true, false, true)]
-        [InlineData(Org, true, true, true)]   // impersonated platform call
-        [InlineData(Org, false, false, true)] // no signed-in user
+        [InlineData(Org, true, true, false)]  // impersonated: acts in its token's organization like anybody
+        [InlineData(Org, false, false, true)] // no signed-in user: a platform call
         [InlineData(Org, true, false, false)]
-        public void SystemUserIsDefaultOrganizationNoUserOrImpersonated(string? org, bool authenticated, bool impersonated, bool isSystem)
+        public void SystemUserIsTheDefaultOrganizationOrAPlatformCall(string? org, bool authenticated, bool impersonated, bool isSystem)
         {
             AccessGrantTestKit.SignIn("caller", org, impersonated, authenticated);
 
@@ -55,7 +55,7 @@ namespace XUnitTest.IamTests.AccessGrant
         }
 
         [Fact]
-        public void RootTenantCallIsTheSystemUser()
+        public void RootTenantCallInAnotherOrganizationIsNotTheSystemUser()
         {
             _kit.Tenants.Setup(t => t.GetTenantByID(AccessGrantTestKit.Tenant)).Returns(new Tenant
             {
@@ -65,7 +65,7 @@ namespace XUnitTest.IamTests.AccessGrant
                 JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = string.Empty, IssueDate = DateTime.UtcNow }
             });
 
-            _kit.Service().CurrentCaller().IsSystem.Should().BeTrue();
+            _kit.Service().CurrentCaller().IsSystem.Should().BeFalse();
         }
 
         // ---------- the OS console caller ----------
@@ -157,7 +157,7 @@ namespace XUnitTest.IamTests.AccessGrant
             var scope = await service.GetScopeAsync();
 
             service.Authorize(scope, AccessGrantRules.CheckAssignRole(scope, "owner")).Should().BeFalse();
-            _kit.Logged($"AccessGrant denied R1-AssignRole caller {Org} owner role_carries_permission_not_held").Should().BeTrue();
+            _kit.Logged($"AccessGrant denied R1-AssignRole caller {Org} owner role_not_below_caller").Should().BeTrue();
         }
 
         [Fact]
@@ -202,19 +202,21 @@ namespace XUnitTest.IamTests.AccessGrant
         {
             _kit.PolicyRoles.Add("auditor");
             _kit.PolicyRoles.Add("viewer");
+            _kit.WithUser("caller", ["admin"]);
             var service = _kit.Service();
             var scope = await service.GetScopeAsync();
 
             (await service.AuthorizeGrantAsync(scope, ["auditor", "viewer"], [])).Should().BeTrue();
 
             _kit.Logged("AccessGrant.RoleCarriesPolicyPower auditor").Should().BeTrue();
-            _kit.Logged("AccessGrant.RoleCarriesPolicyPower viewer").Should().BeFalse("viewer is below the caller's manager role");
+            _kit.Logged("AccessGrant.RoleCarriesPolicyPower viewer").Should().BeFalse("viewer is below the caller's admin role");
         }
 
         [Fact]
         public async Task PolicyStoreFailureNeverFailsTheGrant()
         {
             _kit.Repository.Setup(r => r.GetPolicyRoleSlugsAsync()).ThrowsAsync(new InvalidOperationException("down"));
+            _kit.WithUser("caller", ["admin"]);
             var service = _kit.Service();
             var scope = await service.GetScopeAsync();
 
@@ -271,7 +273,18 @@ namespace XUnitTest.IamTests.AccessGrant
             var result = await _kit.Service().GetAssignableRolesAsync();
 
             result.Hierarchy.Select(r => r.Slug).Concat(result.Standalone.Select(r => r.Slug))
-                .Should().BeEquivalentTo("viewer", "auditor");
+                .Should().BeEquivalentTo("viewer");
+        }
+
+        [Fact]
+        public async Task ATopUserMayAssignEveryLiveRole()
+        {
+            _kit.WithUser("caller", ["admin"]);
+
+            var result = await _kit.Service().GetAssignableRolesAsync();
+
+            result.Hierarchy.Select(r => r.Slug).Concat(result.Standalone.Select(r => r.Slug))
+                .Should().BeEquivalentTo("admin", "manager", "viewer", "auditor", "owner");
         }
 
         [Fact]
@@ -280,10 +293,24 @@ namespace XUnitTest.IamTests.AccessGrant
             var result = await _kit.Service().GetGrantScopeAsync();
 
             result.IsSystemUser.Should().BeFalse();
+            result.IsTopUser.Should().BeFalse();
             result.HeldRoles.Should().Equal("manager");
             result.ManagedRoles.Should().Equal("viewer");
-            result.AssignableRoles.Should().Equal("auditor", "viewer");
-            result.HeldPermissions.Should().Equal("read", "write");
+            result.AssignableRoles.Should().Equal("viewer");
+            result.HeldPermissions.Should().Equal(
+                AccessGrantRules.MutateRolesPermission, AccessGrantRules.MutateUsersPermission, "read", "write");
+            result.OwnPermissions.Should().Equal(result.HeldPermissions);
+        }
+
+        [Fact]
+        public async Task GrantScopeMarksATopUser()
+        {
+            _kit.WithUser("caller", ["admin"]);
+
+            var result = await _kit.Service().GetGrantScopeAsync();
+
+            result.IsTopUser.Should().BeTrue();
+            result.IsSystemUser.Should().BeFalse();
         }
     }
 }

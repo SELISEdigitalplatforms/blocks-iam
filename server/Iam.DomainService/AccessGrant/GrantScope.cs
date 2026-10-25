@@ -6,8 +6,8 @@ namespace Iam.DomainService.AccessGrant
     /// <param name="UserId">The caller's user id; empty for a call with no user (workers, system).</param>
     /// <param name="OrganizationId">The caller's effective organization; blank reads as <c>default</c>.</param>
     /// <param name="IsSystem">
-    /// True for the system user: effective organization <c>default</c>, no user and no client, or a
-    /// root-tenant / impersonated platform call. No rule applies to it.
+    /// True for the system user: a signed-in caller whose effective organization is <c>default</c>,
+    /// or a platform call with no user and no client (workers, signup, SSO). No rule applies to it.
     /// </param>
     /// <param name="ClientId">
     /// The client credential behind a client-credentials token with no user; empty for a user or
@@ -65,6 +65,7 @@ namespace Iam.DomainService.AccessGrant
             HeldRoles = Empty;
             ManagedRoles = Empty;
             HeldPermissions = Empty;
+            OwnPermissions = Empty;
         }
 
         public GrantCaller Caller { get; }
@@ -83,6 +84,16 @@ namespace Iam.DomainService.AccessGrant
 
         /// <summary>Permissions of every held and managed role, plus the caller's direct permissions in O.</summary>
         public IReadOnlySet<string> HeldPermissions { get; private init; }
+
+        /// <summary>Permissions of the held roles only, plus the caller's direct permissions in O: the cap on what a descendant may put on a role.</summary>
+        public IReadOnlySet<string> OwnPermissions { get; private init; }
+
+        /// <summary>
+        /// True for a top user: its power to manage roles or users comes from a standalone held role
+        /// (no Managed by) or from a direct permission. A top user acts as the organization's owner.
+        /// A non-system caller that is not a top user is a descendant and acts only below its roles.
+        /// </summary>
+        public bool IsTop { get; private init; }
 
         /// <summary>Every non-archived role in O, by slug.</summary>
         public IEnumerable<Role> Roles => _roles.Values;
@@ -184,16 +195,28 @@ namespace Iam.DomainService.AccessGrant
                     .Select(r => r.Slug),
                 StringComparer.OrdinalIgnoreCase);
 
+            var direct = directPermissions.ToList();
             var heldPermissions = new HashSet<string>(
                 held.Concat(managed).SelectMany(slug => rolePermissions.GetValueOrDefault(slug) ?? []),
                 StringComparer.OrdinalIgnoreCase);
-            heldPermissions.UnionWith(directPermissions);
+            heldPermissions.UnionWith(direct);
+
+            var ownPermissions = new HashSet<string>(
+                held.SelectMany(slug => rolePermissions.GetValueOrDefault(slug) ?? []),
+                StringComparer.OrdinalIgnoreCase);
+            ownPermissions.UnionWith(direct);
+
+            var isTop = direct.Any(AccessGrantRules.IsManagePermission)
+                || held.Any(slug => IsStandalone(roleMap[slug])
+                    && (rolePermissions.GetValueOrDefault(slug) ?? []).Any(AccessGrantRules.IsManagePermission));
 
             return new GrantScope(caller, roleMap, rolePermissions, resourcesById, callerAccess)
             {
                 HeldRoles = held,
                 ManagedRoles = managed,
-                HeldPermissions = heldPermissions
+                HeldPermissions = heldPermissions,
+                OwnPermissions = ownPermissions,
+                IsTop = isTop
             };
         }
 
@@ -240,6 +263,16 @@ namespace Iam.DomainService.AccessGrant
         /// <summary>The caller's own access-attribute values for <paramref name="name"/> in O.</summary>
         public IReadOnlySet<string> CallerAccessValues(string name) =>
             _callerAccessAttributes.TryGetValue(name, out var values) ? values : Empty;
+
+        /// <summary>True when the role has no Managed by: no parent and no ancestors.</summary>
+        public static bool IsStandalone(Role role)
+        {
+            ArgumentNullException.ThrowIfNull(role);
+            return string.IsNullOrWhiteSpace(role.ParentRoleSlug) && (role.AncestorRoleSlugs ?? []).Count == 0;
+        }
+
+        /// <summary>True when the role grants the power to manage roles or users in O.</summary>
+        public bool CarriesManagePower(string slug) => PermissionsOf(slug).Any(AccessGrantRules.IsManagePermission);
 
         /// <summary>True when <paramref name="slug"/> is held by the caller or is below a held role.</summary>
         public bool HoldsOrManages(string slug) => HeldRoles.Contains(slug) || ManagedRoles.Contains(slug);

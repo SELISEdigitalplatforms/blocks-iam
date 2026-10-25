@@ -807,8 +807,8 @@ namespace Iam.DomainService.Resources
                 return Failure(ArchivedKey, "Role_Already_Archived");
             }
 
-            // R5: archiving takes the role, and every permission it carries, away from its holders,
-            // so the caller must be able to grant all of it -- and may not archive a role it holds.
+            // R5: archiving takes the role away from its holders, so only a role the caller may edit:
+            // not one it holds, and for a descendant only one below it.
             var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
             if (!_accessGrant.AuthorizeScopeIfWired(grantScope, scope => AccessGrantRules.CheckEditRole(scope, role)))
             {
@@ -1111,8 +1111,8 @@ namespace Iam.DomainService.Resources
                 };
             }
 
-            // R5: no edits to a role the caller holds; the role must be one it could assign, and a
-            // new parent one it holds or manages.
+            // R5: no edits to a role the caller holds; a descendant edits only a role below it and
+            // keeps a moved role below it.
             var allowed = await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope =>
                 AccessGrantRules.CheckEditRole(scope, role, normalizedParentRoleSlug, parentChanged)).ConfigureAwait(false);
             return allowed ? null : GrantNotAllowed();
@@ -1225,13 +1225,12 @@ namespace Iam.DomainService.Resources
             }
 
 
-            // R5: every permission added to or taken from the role must be one the caller holds,
-            // and the role itself one it could assign but does not hold.
+            // R5: never a copy from default or a role the caller holds; a descendant only a role
+            // below it, and every permission it adds must be on its own roles.
             if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckEditRole(
                     scope,
                     isExist,
-                    changedPermissions: command.AddPermissions
-                        .Concat(command.RemovePermissions)
+                    addedPermissions: command.AddPermissions
                         .Select(scope.ResourceOfPermissionId)
                         .OfType<string>())).ConfigureAwait(false))
             {

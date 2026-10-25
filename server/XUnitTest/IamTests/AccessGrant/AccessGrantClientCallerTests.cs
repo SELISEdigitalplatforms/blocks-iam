@@ -75,7 +75,7 @@ namespace XUnitTest.IamTests.AccessGrant
         }
 
         [Fact]
-        public void ImpersonatedCallWithAClientIdStaysTheSystemUser()
+        public void ImpersonatedCallWithAClientIdActsAsTheClient()
         {
             BlocksContext.SetContext(BlocksContext.Create(
                 tenantId: AccessGrantTestKit.Tenant, roles: null, userId: null, isAuthenticated: true,
@@ -83,7 +83,9 @@ namespace XUnitTest.IamTests.AccessGrant
                 email: null, permissions: null, userName: null, phoneNumber: null, displayName: null,
                 oauthToken: null, originalTenantId: AccessGrantTestKit.Tenant, impersonated: true, clientId: ClientId));
 
-            _kit.Service().CurrentCaller().IsSystem.Should().BeTrue();
+            var caller = _kit.Service().CurrentCaller();
+            caller.IsSystem.Should().BeFalse();
+            caller.IsClient.Should().BeTrue();
         }
 
         // ---------- power comes from the client record ----------
@@ -96,7 +98,9 @@ namespace XUnitTest.IamTests.AccessGrant
             scope.IsSystem.Should().BeFalse();
             scope.HeldRoles.Should().BeEquivalentTo("manager");
             scope.ManagedRoles.Should().BeEquivalentTo("viewer");
-            scope.HeldPermissions.Should().BeEquivalentTo("read", "write", "mutate-users");
+            scope.HeldPermissions.Should().BeEquivalentTo(
+                "read", "write", "mutate-users", AccessGrantRules.MutateRolesPermission, AccessGrantRules.MutateUsersPermission);
+            scope.IsTop.Should().BeFalse("the client's manage power comes from manager, which has a parent");
             _kit.Repository.Verify(r => r.GetUserAsync(It.IsAny<string>()), Times.Never);
         }
 
@@ -114,14 +118,26 @@ namespace XUnitTest.IamTests.AccessGrant
         }
 
         [Fact]
-        public async Task ClientGrantsOnlyPermissionsItHolds()
+        public async Task ADescendantClientGivesRolesButNoDirectPermissions()
         {
             var service = _kit.Service();
             var scope = await service.GetScopeAsync();
 
-            (await service.AuthorizeGrantAsync(scope, ["viewer"], ["write", "mutate-users"])).Should().BeTrue();
-            (await service.AuthorizeGrantAsync(scope, [], ["billing"])).Should().BeFalse();
-            _kit.Logged($"AccessGrant denied R2-GrantPermission client:{ClientId} {Org} billing").Should().BeTrue();
+            (await service.AuthorizeGrantAsync(scope, ["viewer"], [])).Should().BeTrue();
+            (await service.AuthorizeGrantAsync(scope, [], ["write"])).Should().BeFalse();
+            _kit.Logged($"AccessGrant denied R2-GrantPermission client:{ClientId} {Org} write descendant_cannot_grant_direct_permission")
+                .Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task AClientWithAStandaloneManageRoleIsATopUser()
+        {
+            _kit.WithClient(ClientId, ["admin"]);
+            var service = _kit.Service();
+            var scope = await service.GetScopeAsync();
+
+            scope.IsTop.Should().BeTrue();
+            (await service.AuthorizeGrantAsync(scope, ["owner"], ["billing"])).Should().BeTrue();
         }
 
         [Fact]

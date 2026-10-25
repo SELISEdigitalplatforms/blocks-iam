@@ -40,6 +40,8 @@ namespace XUnitTest.IamTests.Users
 
         public UserManagementAccessGrantTests()
         {
+            // "contractor" sits below manager next to viewer: a second role the caller may give.
+            _kit.WithRole("contractor", "manager").WithPermission("read", Org, "contractor");
             _kit.WithUser("caller", ["manager"], attributes: Access("eu"));
             AccessGrantTestKit.SignIn("caller");
 
@@ -96,9 +98,40 @@ namespace XUnitTest.IamTests.Users
             {
                 Email = "new@example.com",
                 OrganizationId = Org,
-                Roles = ["viewer", "auditor"],
-                Permissions = ["write"],
+                Roles = ["viewer", "contractor"],
                 Attributes = Access("eu")
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _created.Should().ContainSingle();
+        }
+
+        [Fact]
+        public async Task DescendantCreatingAUserWithADirectPermissionIsRefused()
+        {
+            var result = await Create().CreateUserAsync(new CreateUserRequest
+            {
+                Email = "new@example.com",
+                OrganizationId = Org,
+                Roles = ["viewer"],
+                Permissions = ["read"]
+            });
+
+            result.Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
+            _created.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task TopUserCreatesAUserWithAnyRoleAndPermission()
+        {
+            _kit.WithUser("caller", ["admin"], attributes: Access("eu"));
+
+            var result = await Create().CreateUserAsync(new CreateUserRequest
+            {
+                Email = "new@example.com",
+                OrganizationId = Org,
+                Roles = ["owner"],
+                Permissions = ["billing"]
             });
 
             result.IsSuccess.Should().BeTrue();
@@ -133,7 +166,7 @@ namespace XUnitTest.IamTests.Users
         [Fact]
         public async Task CreateUserForAnExistingEmailThatRemovesARoleEndsTheirSessions()
         {
-            _kit.WithUser("member", ["viewer", "auditor"]);
+            _kit.WithUser("member", ["viewer", "contractor"]);
 
             var result = await Create().CreateUserAsync(new CreateUserRequest { Email = "member@example.com", OrganizationId = Org, Roles = ["viewer"] });
 
@@ -198,7 +231,7 @@ namespace XUnitTest.IamTests.Users
         {
             _kit.WithUser("member", ["viewer"]);
 
-            var allowed = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest { UserId = "member", OrganizationId = Org, Roles = ["viewer", "auditor"] });
+            var allowed = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest { UserId = "member", OrganizationId = Org, Roles = ["viewer", "contractor"] });
             var refused = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest { UserId = "member", OrganizationId = Org, Roles = ["owner"] });
 
             allowed.IsSuccess.Should().BeTrue();
@@ -208,9 +241,9 @@ namespace XUnitTest.IamTests.Users
         [Fact]
         public async Task AccessChangeThatRemovesARoleEndsTheUsersSessions()
         {
-            _kit.WithUser("member", ["viewer", "auditor"]);
+            _kit.WithUser("member", ["viewer", "contractor"]);
 
-            await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest { UserId = "member", OrganizationId = Org, Roles = ["auditor"] });
+            await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest { UserId = "member", OrganizationId = Org, Roles = ["contractor"] });
 
             _kit.Terminator.Verify(t => t.EndAllSessionsAsync("member", "access_replaced"), Times.Once);
         }
@@ -220,7 +253,7 @@ namespace XUnitTest.IamTests.Users
         {
             _kit.WithUser("member", ["viewer"]);
 
-            await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest { UserId = "member", OrganizationId = Org, Roles = ["viewer", "auditor"] });
+            await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest { UserId = "member", OrganizationId = Org, Roles = ["viewer", "contractor"] });
 
             _kit.Terminator.Verify(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
@@ -310,7 +343,7 @@ namespace XUnitTest.IamTests.Users
         {
             BulkMatches(_kit.WithUser("member", ["viewer"]));
 
-            await Create().SubmitBulkRoleChangeAsync(new BulkRoleChangeRequest { OrganizationId = Org, AddRoles = ["auditor"], Target = new BulkRoleTarget { UserIds = ["member"] } });
+            await Create().SubmitBulkRoleChangeAsync(new BulkRoleChangeRequest { OrganizationId = Org, AddRoles = ["contractor"], Target = new BulkRoleTarget { UserIds = ["member"] } });
 
             _bulk.Should().ContainSingle();
             _bulk[0].RequestedBy.Should().Be("caller");
@@ -339,10 +372,10 @@ namespace XUnitTest.IamTests.Users
             _kit.WithUser("member", ["viewer"]);
             _kit.WithUser("boss", ["owner"]);
 
-            await Create().ApplyBulkRoleChangeAsync(Chunk(false, ["auditor"], [], "member", "boss"));
+            await Create().ApplyBulkRoleChangeAsync(Chunk(false, ["contractor"], [], "member", "boss"));
 
-            _kit.FindUser("member")!.Roles[Org].Should().Contain("auditor");
-            _kit.FindUser("boss")!.Roles[Org].Should().NotContain("auditor", "boss holds more than the submitter");
+            _kit.FindUser("member")!.Roles[Org].Should().Contain("contractor");
+            _kit.FindUser("boss")!.Roles[Org].Should().NotContain("contractor", "boss holds more than the submitter");
         }
 
         [Fact]
@@ -352,7 +385,7 @@ namespace XUnitTest.IamTests.Users
             _kit.WithUser("member", ["viewer"]);
             _kit.WithUser("caller", ["auditor"]); // the submitter lost "manager" while the batch waited
 
-            await Create().ApplyBulkRoleChangeAsync(Chunk(false, ["viewer"], ["auditor"], "member"));
+            await Create().ApplyBulkRoleChangeAsync(Chunk(false, ["viewer"], ["contractor"], "member"));
 
             _kit.FindUser("member")!.Roles[Org].Should().Equal("viewer");
             _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
@@ -362,8 +395,8 @@ namespace XUnitTest.IamTests.Users
         public async Task BulkConsumerEndsSessionsOfUsersWhoLostARole()
         {
             BlocksContext.SetContext(null);
-            _kit.WithUser("member", ["viewer", "auditor"]);
-            _kit.WithUser("other", ["auditor"]);
+            _kit.WithUser("member", ["viewer", "contractor"]);
+            _kit.WithUser("other", ["contractor"]);
 
             await Create().ApplyBulkRoleChangeAsync(Chunk(false, [], ["viewer"], "member", "other"));
 
@@ -377,9 +410,9 @@ namespace XUnitTest.IamTests.Users
             BlocksContext.SetContext(null);
             _kit.WithUser("boss", ["owner"]);
 
-            await Create().ApplyBulkRoleChangeAsync(Chunk(null, ["auditor"], [], "boss"));
+            await Create().ApplyBulkRoleChangeAsync(Chunk(null, ["contractor"], [], "boss"));
 
-            _kit.FindUser("boss")!.Roles[Org].Should().Contain("auditor");
+            _kit.FindUser("boss")!.Roles[Org].Should().Contain("contractor");
         }
 
         // ---------- users/roles/bulk by a client credential ----------
@@ -401,7 +434,7 @@ namespace XUnitTest.IamTests.Users
             AccessGrantTestKit.SignInClient(Client);
             BulkMatches(_kit.WithUser("member", ["viewer"]));
 
-            await Create().SubmitBulkRoleChangeAsync(new BulkRoleChangeRequest { OrganizationId = Org, AddRoles = ["auditor"], Target = new BulkRoleTarget { UserIds = ["member"] } });
+            await Create().SubmitBulkRoleChangeAsync(new BulkRoleChangeRequest { OrganizationId = Org, AddRoles = ["contractor"], Target = new BulkRoleTarget { UserIds = ["member"] } });
 
             _bulk.Should().ContainSingle();
             _bulk[0].RequestedBy.Should().BeNullOrEmpty();
@@ -414,7 +447,7 @@ namespace XUnitTest.IamTests.Users
         {
             BulkMatches(_kit.WithUser("member", ["viewer"]));
 
-            await Create().SubmitBulkRoleChangeAsync(new BulkRoleChangeRequest { OrganizationId = Org, AddRoles = ["auditor"], Target = new BulkRoleTarget { UserIds = ["member"] } });
+            await Create().SubmitBulkRoleChangeAsync(new BulkRoleChangeRequest { OrganizationId = Org, AddRoles = ["contractor"], Target = new BulkRoleTarget { UserIds = ["member"] } });
 
             _bulk.Should().ContainSingle();
             _bulk[0].RequestedByClientId.Should().BeNull();
@@ -428,10 +461,10 @@ namespace XUnitTest.IamTests.Users
             _kit.WithUser("member", ["viewer"]);
             _kit.WithUser("boss", ["owner"]);
 
-            await Create().ApplyBulkRoleChangeAsync(ClientChunk(["auditor"], "member", "boss"));
+            await Create().ApplyBulkRoleChangeAsync(ClientChunk(["contractor"], "member", "boss"));
 
-            _kit.FindUser("member")!.Roles[Org].Should().Contain("auditor");
-            _kit.FindUser("boss")!.Roles[Org].Should().NotContain("auditor", "boss holds more than the client");
+            _kit.FindUser("member")!.Roles[Org].Should().Contain("contractor");
+            _kit.FindUser("boss")!.Roles[Org].Should().NotContain("contractor", "boss holds more than the client");
         }
 
         [Fact]
@@ -456,7 +489,7 @@ namespace XUnitTest.IamTests.Users
             _kit.WithClient(Client, ["manager"], organizationId: clientOrg, isActive: isActive);
             _kit.WithUser("member", ["viewer"]);
 
-            await Create().ApplyBulkRoleChangeAsync(ClientChunk(["auditor"], "member"));
+            await Create().ApplyBulkRoleChangeAsync(ClientChunk(["contractor"], "member"));
 
             _kit.FindUser("member")!.Roles[Org].Should().Equal("viewer");
             _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
@@ -468,7 +501,7 @@ namespace XUnitTest.IamTests.Users
             BlocksContext.SetContext(null);
             _kit.WithUser("member", ["viewer"]);
 
-            await Create().ApplyBulkRoleChangeAsync(ClientChunk(["auditor"], "member"));
+            await Create().ApplyBulkRoleChangeAsync(ClientChunk(["contractor"], "member"));
 
             _kit.FindUser("member")!.Roles[Org].Should().Equal("viewer");
         }
@@ -479,7 +512,7 @@ namespace XUnitTest.IamTests.Users
             BlocksContext.SetContext(null);
             _kit.WithClient(Client, ["manager"]);
             _kit.WithUser("member", ["viewer"]);
-            var chunk = Chunk(false, ["auditor"], [], "member");
+            var chunk = Chunk(false, ["contractor"], [], "member");
             chunk.RequestedBy = null;
 
             await Create().ApplyBulkRoleChangeAsync(chunk);
@@ -494,12 +527,12 @@ namespace XUnitTest.IamTests.Users
             _kit.WithClient(Client, ["admin", "owner"]);
             _kit.WithUser("member", ["viewer"]);
             _kit.WithUser("boss", ["owner"]);
-            var chunk = Chunk(false, ["auditor"], [], "boss");
+            var chunk = Chunk(false, ["contractor"], [], "boss");
             chunk.RequestedByClientId = Client;
 
             await Create().ApplyBulkRoleChangeAsync(chunk);
 
-            _kit.FindUser("boss")!.Roles[Org].Should().NotContain("auditor", "the user submitter's power applies, not the client's");
+            _kit.FindUser("boss")!.Roles[Org].Should().NotContain("contractor", "the user submitter's power applies, not the client's");
         }
     }
 }

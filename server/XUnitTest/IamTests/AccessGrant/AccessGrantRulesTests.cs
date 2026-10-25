@@ -8,6 +8,8 @@ namespace XUnitTest.IamTests.AccessGrant
     /// <summary>
     /// R1-R10 as pure functions of a grant scope, over the standard tree:
     /// admin &gt; manager &gt; viewer, standalone auditor (read) and owner (read/write/delete/billing).
+    /// admin and manager carry the manage permissions: an admin holder is a top user, a manager
+    /// holder a descendant.
     /// </summary>
     public class AccessGrantRulesTests
     {
@@ -25,6 +27,8 @@ namespace XUnitTest.IamTests.AccessGrant
         private static GrantScope SystemScope() =>
             GrantScope.WithoutPower(new GrantCaller("root-admin", "default", true));
 
+        private Role RoleOf(string slug) => _kit.RolesOf().Single(r => r.Slug == slug);
+
         // ---------- GrantScope ----------
 
         [Fact]
@@ -34,7 +38,42 @@ namespace XUnitTest.IamTests.AccessGrant
 
             scope.HeldRoles.Should().BeEquivalentTo("manager", "auditor");
             scope.ManagedRoles.Should().BeEquivalentTo("viewer");
-            scope.HeldPermissions.Should().BeEquivalentTo("read", "write", "direct.export");
+            scope.HeldPermissions.Should().BeEquivalentTo(
+                "read", "write", "direct.export", AccessGrantRules.MutateRolesPermission, AccessGrantRules.MutateUsersPermission);
+            scope.OwnPermissions.Should().BeEquivalentTo(scope.HeldPermissions);
+        }
+
+        [Fact]
+        public void OwnPermissionsLeaveOutWhatOnlyARoleBelowCarries()
+        {
+            _kit.WithPermission("export", Org, "viewer");
+
+            var scope = ScopeOf("c", roles: ["manager"]);
+
+            scope.HeldPermissions.Should().Contain("export");
+            scope.OwnPermissions.Should().NotContain("export");
+        }
+
+        [Theory]
+        [InlineData("admin", true)]    // standalone and carries the manage permissions
+        [InlineData("manager", false)] // carries them, but has a parent: a descendant
+        [InlineData("owner", false)]   // standalone, but no manage permission
+        [InlineData("auditor", false)]
+        public void TopUserGetsManagePowerFromAStandaloneRole(string role, bool isTop)
+        {
+            ScopeOf("c", roles: [role]).IsTop.Should().Be(isTop);
+        }
+
+        [Fact]
+        public void ADirectManagePermissionMakesATopUser()
+        {
+            ScopeOf("c", roles: ["viewer"], permissions: [AccessGrantRules.MutateUsersPermission]).IsTop.Should().BeTrue();
+        }
+
+        [Fact]
+        public void ABaseRoleNextToAChildManageRoleIsStillADescendant()
+        {
+            ScopeOf("c", roles: ["auditor", "manager"]).IsTop.Should().BeFalse();
         }
 
         [Fact]
@@ -58,104 +97,124 @@ namespace XUnitTest.IamTests.AccessGrant
 
             scope.HeldRoles.Should().BeEmpty();
             scope.HeldPermissions.Should().BeEmpty();
+            scope.IsTop.Should().BeFalse();
         }
 
         // ---------- R1 assign role ----------
 
         [Theory]
-        [InlineData("viewer", true)]   // below a held role, carries only read
-        [InlineData("auditor", true)]  // top-level, carries only read
-        [InlineData("manager", false)] // held, but a child role needs a role above it
-        [InlineData("admin", false)]   // top-level, carries delete
-        [InlineData("owner", false)]   // top-level, carries billing
+        [InlineData("viewer", true)]
+        [InlineData("manager", true)]
+        [InlineData("admin", true)]
+        [InlineData("owner", true)]
+        [InlineData("auditor", true)]
         [InlineData("ghost", false)]   // unknown in the organization
-        public void AssignRoleFollowsTreeAndPermissions(string slug, bool allowed)
+        public void TopUserMayGiveEveryLiveRole(string slug, bool allowed)
         {
-            var scope = ScopeOf("c", roles: ["manager", "auditor"]);
+            var scope = ScopeOf("c", roles: ["admin"]);
+
+            (AccessGrantRules.CheckAssignRole(scope, slug) is null).Should().Be(allowed);
+        }
+
+        [Theory]
+        [InlineData("viewer", true)]   // below the held role
+        [InlineData("manager", false)] // its own role: a peer, not below
+        [InlineData("admin", false)]   // above
+        [InlineData("auditor", false)] // standalone
+        [InlineData("owner", false)]
+        public void DescendantMayGiveOnlyRolesBelowIt(string slug, bool allowed)
+        {
+            var scope = ScopeOf("c", roles: ["manager"]);
 
             (AccessGrantRules.CheckAssignRole(scope, slug) is null).Should().Be(allowed);
         }
 
         [Fact]
-        public void ChildRoleNeedsARoleAboveItEvenWhenItsPermissionsAreHeld()
+        public void DescendantMayGiveARoleBelowItThatCarriesMoreThanItHolds()
         {
+            // The tree decides: whoever built it put this feature role under the caller.
+            _kit.WithRole("doctor", "manager").WithPermission("medical", Org, "doctor");
             var scope = ScopeOf("c", roles: ["manager"]);
 
-            AccessGrantRules.CheckAssignRole(scope, "manager")!.Reason.Should().Be("managed_role_outside_caller_tree");
-            AccessGrantRules.CheckAssignRole(scope, "viewer").Should().BeNull();
+            AccessGrantRules.CheckAssignRole(scope, "doctor").Should().BeNull();
         }
 
         [Fact]
-        public void PeersMayGiveTheirOwnTopLevelRole()
+        public void ACopyFromDefaultMayBeGivenByATopUser()
         {
-            var scope = ScopeOf("c", roles: ["owner"]);
+            _kit.RolesOf().Add(new Role { Slug = "member", Name = "member", OrganizationId = Org, CreatedFromDefault = true });
 
-            AccessGrantRules.CheckAssignRole(scope, "owner").Should().BeNull();
-            AccessGrantRules.CheckAssignRole(scope, "admin").Should().BeNull("owner holds read/write/delete");
-        }
-
-        [Fact]
-        public void SeveralRolesAreAUnion()
-        {
-            var scope = ScopeOf("c", roles: ["auditor"], permissions: ["write", "delete"]);
-
-            AccessGrantRules.CheckAssignRole(scope, "admin").Should().BeNull();
-            AccessGrantRules.CheckAssignRole(scope, "owner").Should().NotBeNull("billing is not held");
-        }
-
-        [Fact]
-        public void WithoutAnyTreeEveryRoleIsJudgedOnItsPermissions()
-        {
-            var kit = new AccessGrantTestKit().WithRole("a").WithRole("b").WithPermission("x", Org, "a").WithPermission("y", Org, "b");
-            var user = kit.WithUser("c", ["a"]);
-            var scope = GrantScope.Build(new GrantCaller("c", Org, false), user, kit.RolesOf(), kit.PermissionsOf());
-
-            AccessGrantRules.CheckAssignRole(scope, "a").Should().BeNull();
-            AccessGrantRules.CheckAssignRole(scope, "b").Should().NotBeNull();
+            AccessGrantRules.CheckAssignRole(ScopeOf("c", roles: ["admin"]), "member").Should().BeNull();
+            AccessGrantRules.CheckAssignRole(ScopeOf("d", roles: ["manager"]), "member")!.Reason.Should().Be("role_not_below_caller");
         }
 
         // ---------- R2 grant permission ----------
 
         [Fact]
-        public void GrantPermissionNeedsItHeld()
+        public void OnlyATopUserGivesDirectPermissions()
         {
-            var scope = ScopeOf("c", roles: ["admin"]);
+            AccessGrantRules.CheckGrantPermission(ScopeOf("c", roles: ["admin"]), "billing").Should().BeNull();
+            AccessGrantRules.CheckGrantPermission(ScopeOf("d", roles: ["manager"]), "read")!
+                .Reason.Should().Be("descendant_cannot_grant_direct_permission");
+            AccessGrantRules.CheckGrantPermission(ScopeOf("c", roles: ["admin"]), " ")!.Reason.Should().Be("permission_empty");
+        }
 
-            AccessGrantRules.CheckGrantPermission(scope, "delete").Should().BeNull();
-            AccessGrantRules.CheckGrantPermission(scope, "billing")!.Rule.Should().Be(AccessGrantRules.GrantPermission);
+        [Fact]
+        public void ADescendantPutsOnARoleOnlyWhatItsOwnRolesCarry()
+        {
+            var descendant = ScopeOf("d", roles: ["manager"]);
+
+            AccessGrantRules.CheckRolePermission(descendant, "write").Should().BeNull();
+            AccessGrantRules.CheckRolePermission(descendant, "delete")!.Reason.Should().Be("permission_not_on_own_role");
+            AccessGrantRules.CheckRolePermission(ScopeOf("c", roles: ["admin"]), "billing").Should().BeNull();
         }
 
         [Fact]
         public void CheckGrantReturnsTheFirstDenialAndSkipsBlanks()
         {
-            var scope = ScopeOf("c", roles: ["admin"]);
-
-            AccessGrantRules.CheckGrant(scope, ["viewer", " "], ["read", ""]).Should().BeNull();
-            AccessGrantRules.CheckGrant(scope, ["owner"], ["read"], AccessGrantRules.SignupLink)!
+            AccessGrantRules.CheckGrant(ScopeOf("c", roles: ["admin"]), ["viewer", " "], ["read", ""]).Should().BeNull();
+            AccessGrantRules.CheckGrant(ScopeOf("d", roles: ["manager"]), ["viewer"], ["read"], AccessGrantRules.SignupLink)!
                 .Rule.Should().Be(AccessGrantRules.SignupLink);
+            AccessGrantRules.CheckGrant(ScopeOf("d", roles: ["manager"]), ["viewer", " "], [""]).Should().BeNull();
         }
 
         // ---------- R3 manage user ----------
 
         [Fact]
-        public void ManageUserRefusesSelfNonMembersAndUsersAboveTheCaller()
+        public void TopUserManagesEveryMemberButNotItself()
         {
             var scope = ScopeOf("c", roles: ["admin"]);
 
             AccessGrantRules.CheckManageUser(scope, _kit.FindUser("c")!)!.Reason.Should().Be("cannot_manage_self");
             AccessGrantRules.CheckManageUser(scope, _kit.WithUser("outsider", ["viewer"], organizationId: "org-other"))!
                 .Reason.Should().Be("user_not_member_of_organization");
-            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("boss", ["owner"]))!
-                .Reason.Should().Be("user_holds_role_above_caller");
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("boss", ["owner"], ["billing"])).Should().BeNull();
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("peer", ["admin"])).Should().BeNull();
+        }
+
+        [Fact]
+        public void DescendantManagesOnlyUsersBelowIt()
+        {
+            var scope = ScopeOf("d", roles: ["manager", "auditor"]);
+
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("below", ["viewer"])).Should().BeNull();
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("base", ["viewer", "auditor"]))
+                .Should().BeNull("a base role the caller holds too gives no power to manage");
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("peer", ["manager"]))!
+                .Reason.Should().Be("holds_role_not_below_caller");
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("boss", ["admin"]))!
+                .Reason.Should().Be("holds_role_not_below_caller");
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("side", ["owner"]))!
+                .Reason.Should().Be("holds_role_not_below_caller");
             AccessGrantRules.CheckManageUser(scope, _kit.WithUser("direct", ["viewer"], ["billing"]))!
-                .Reason.Should().Be("user_holds_permission_above_caller");
-            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("peer", ["auditor"])).Should().BeNull();
+                .Reason.Should().Be("holds_permission_above_caller");
+            AccessGrantRules.CheckManageUser(scope, _kit.WithUser("direct-own", ["viewer"], ["read"])).Should().BeNull();
         }
 
         [Fact]
         public void ManageUserIgnoresUnknownRoleSlugsOfTheTarget()
         {
-            var scope = ScopeOf("c", roles: ["admin"]);
+            var scope = ScopeOf("d", roles: ["manager"]);
 
             AccessGrantRules.CheckManageUser(scope, _kit.WithUser("u", ["viewer", "ghost"])).Should().BeNull();
         }
@@ -163,7 +222,7 @@ namespace XUnitTest.IamTests.AccessGrant
         [Fact]
         public void ManageUserWithoutMembershipRequirementPassesANonMember()
         {
-            var scope = ScopeOf("c", roles: ["admin"]);
+            var scope = ScopeOf("d", roles: ["manager"]);
             var outsider = _kit.WithUser("outsider", ["owner"], organizationId: "org-other");
 
             AccessGrantRules.CheckManageUser(scope, outsider, requireMembership: false).Should().BeNull();
@@ -174,22 +233,23 @@ namespace XUnitTest.IamTests.AccessGrant
         [Fact]
         public void AccessChangeChecksOnlyTheDelta()
         {
-            var scope = ScopeOf("c", roles: ["manager"]);
+            var scope = ScopeOf("d", roles: ["manager"]);
             var user = _kit.WithUser("u", ["viewer"], ["read"]);
 
-            AccessGrantRules.CheckAccessChange(scope, user, ["viewer", "auditor"], ["read", "write"]).Should().BeNull();
-            AccessGrantRules.CheckAccessChange(scope, user, ["auditor"], null).Should().BeNull("removing viewer is within the caller's tree");
+            AccessGrantRules.CheckAccessChange(scope, user, ["viewer"], ["read"]).Should().BeNull("nothing changes");
+            AccessGrantRules.CheckAccessChange(scope, user, null, null).Should().BeNull();
         }
 
         [Fact]
         public void AccessChangeRefusesAddingOrRemovingWhatTheCallerCannotGive()
         {
-            var scope = ScopeOf("c", roles: ["manager"]);
+            var scope = ScopeOf("d", roles: ["manager"]);
             var user = _kit.WithUser("u", ["viewer"], ["read"]);
 
             AccessGrantRules.CheckAccessChange(scope, user, ["viewer", "owner"], null).Should().NotBeNull();
-            AccessGrantRules.CheckAccessChange(scope, user, null, ["read", "billing"]).Should().NotBeNull();
-            AccessGrantRules.CheckAccessChange(scope, user, ["viewer"], null).Should().BeNull();
+            AccessGrantRules.CheckAccessChange(scope, user, null, ["read", "write"])!
+                .Reason.Should().Be("descendant_cannot_grant_direct_permission");
+            AccessGrantRules.CheckAccessChange(ScopeOf("c", roles: ["admin"]), user, ["owner"], ["billing"]).Should().BeNull();
         }
 
         [Fact]
@@ -206,7 +266,7 @@ namespace XUnitTest.IamTests.AccessGrant
         [Fact]
         public void RoleDeltaSkipsRemovingARoleTheOrganizationNoLongerKnows()
         {
-            var scope = ScopeOf("c", roles: ["manager"]);
+            var scope = ScopeOf("d", roles: ["manager"]);
 
             AccessGrantRules.CheckRoleDelta(scope, [], ["ghost"]).Should().BeNull();
             AccessGrantRules.CheckRoleDelta(scope, ["ghost"], []).Should().NotBeNull();
@@ -216,47 +276,71 @@ namespace XUnitTest.IamTests.AccessGrant
         // ---------- R5 edit / create role ----------
 
         [Fact]
-        public void EditRoleRefusesOwnRolesAndRolesAboveTheCaller()
+        public void TopUserEditsEveryRoleOfTheOrganizationExceptItsOwnAndCopies()
         {
             var scope = ScopeOf("c", roles: ["admin"]);
-            Role Role(string slug) => _kit.RolesOf().Single(r => r.Slug == slug);
+            _kit.RolesOf().Add(new Role { Slug = "member", Name = "member", OrganizationId = Org, CreatedFromDefault = true });
 
-            AccessGrantRules.CheckEditRole(scope, Role("admin"))!.Reason.Should().Be("cannot_edit_own_role");
-            AccessGrantRules.CheckEditRole(scope, Role("owner")).Should().NotBeNull();
-            AccessGrantRules.CheckEditRole(scope, Role("manager")).Should().BeNull();
+            AccessGrantRules.CheckEditRole(scope, RoleOf("admin"))!.Reason.Should().Be("cannot_edit_own_role");
+            AccessGrantRules.CheckEditRole(scope, RoleOf("member"))!.Reason.Should().Be("default_copy_is_read_only");
+            AccessGrantRules.CheckEditRole(scope, RoleOf("owner")).Should().BeNull();
+            AccessGrantRules.CheckEditRole(scope, RoleOf("manager"), "auditor", parentChanged: true, ["billing"]).Should().BeNull();
+            AccessGrantRules.CheckEditRole(scope, RoleOf("viewer"), null, parentChanged: true).Should().BeNull("a top user may make a role standalone");
         }
 
         [Fact]
-        public void EditRoleNewParentMustBeHeldOrManaged()
+        public void DescendantEditsOnlyRolesBelowIt()
         {
-            var scope = ScopeOf("c", roles: ["admin"]);
-            var viewer = _kit.RolesOf().Single(r => r.Slug == "viewer");
+            var scope = ScopeOf("d", roles: ["manager"]);
 
-            AccessGrantRules.CheckEditRole(scope, viewer, "admin", parentChanged: true).Should().BeNull();
+            AccessGrantRules.CheckEditRole(scope, RoleOf("manager"))!.Reason.Should().Be("cannot_edit_own_role");
+            AccessGrantRules.CheckEditRole(scope, RoleOf("admin"))!.Reason.Should().Be("role_not_below_caller");
+            AccessGrantRules.CheckEditRole(scope, RoleOf("owner"))!.Reason.Should().Be("role_not_below_caller");
+            AccessGrantRules.CheckEditRole(scope, RoleOf("viewer")).Should().BeNull();
+        }
+
+        [Fact]
+        public void DescendantKeepsAMovedRoleBelowIt()
+        {
+            var scope = ScopeOf("d", roles: ["manager"]);
+            var viewer = RoleOf("viewer");
+
+            AccessGrantRules.CheckEditRole(scope, viewer, "manager", parentChanged: true).Should().BeNull();
             AccessGrantRules.CheckEditRole(scope, viewer, "auditor", parentChanged: true)!
                 .Reason.Should().Be("parent_not_held_or_managed");
-            AccessGrantRules.CheckEditRole(scope, viewer, null, parentChanged: true).Should().BeNull("moving to the top is allowed");
+            AccessGrantRules.CheckEditRole(scope, viewer, null, parentChanged: true)!
+                .Reason.Should().Be("descendant_cannot_move_role_to_top");
         }
 
         [Fact]
-        public void EditRoleEveryChangedPermissionMustBeHeld()
+        public void DescendantAddsOnlyPermissionsItsOwnRolesCarry()
+        {
+            var scope = ScopeOf("d", roles: ["manager"]);
+            var viewer = RoleOf("viewer");
+
+            AccessGrantRules.CheckEditRole(scope, viewer, addedPermissions: ["write"]).Should().BeNull();
+            AccessGrantRules.CheckEditRole(scope, viewer, addedPermissions: ["delete"])!.Reason.Should().Be("permission_not_on_own_role");
+        }
+
+        [Fact]
+        public void TopUserCreatesAStandaloneRoleOrOneUnderAnyLiveRole()
         {
             var scope = ScopeOf("c", roles: ["admin"]);
-            var viewer = _kit.RolesOf().Single(r => r.Slug == "viewer");
 
-            AccessGrantRules.CheckEditRole(scope, viewer, changedPermissions: ["write"]).Should().BeNull();
-            AccessGrantRules.CheckEditRole(scope, viewer, changedPermissions: ["billing"]).Should().NotBeNull();
+            AccessGrantRules.CheckCreateRole(scope, null).Should().BeNull();
+            AccessGrantRules.CheckCreateRole(scope, "owner").Should().BeNull();
+            AccessGrantRules.CheckCreateRole(scope, "ghost")!.Reason.Should().Be("parent_not_found_or_archived");
         }
 
         [Fact]
-        public void CreateRoleParentMustBeHeldOrManaged()
+        public void DescendantCreatesOnlyBelowItsOwnRole()
         {
-            var scope = ScopeOf("c", roles: ["manager"]);
+            var scope = ScopeOf("d", roles: ["manager"]);
 
-            AccessGrantRules.CheckCreateRole(scope, null).Should().BeNull();
+            AccessGrantRules.CheckCreateRole(scope, null)!.Reason.Should().Be("descendant_must_create_below_own_role");
             AccessGrantRules.CheckCreateRole(scope, "manager").Should().BeNull();
             AccessGrantRules.CheckCreateRole(scope, "viewer").Should().BeNull();
-            AccessGrantRules.CheckCreateRole(scope, "admin").Should().NotBeNull();
+            AccessGrantRules.CheckCreateRole(scope, "admin")!.Reason.Should().Be("parent_not_held_or_managed");
         }
 
         [Theory]
