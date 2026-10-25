@@ -68,11 +68,12 @@ namespace XUnitTest.Auth.Security
         {
             var result = await Create().RevokeSessionAsync("", Actor, "current", null, CancellationToken.None);
             result.Reason.Should().Be("user_revoked");
+            result.Warnings.Should().Contain("session_not_found");
             _refresh.Verify(r => r.RevokeAllBySessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
-        public async Task RevokeSession_SessionNotFound_ReturnsWithoutRevoking()
+        public async Task RevokeSession_SessionNotFound_WarnsSessionNotFound_WithoutRevoking()
         {
             _security.Setup(s => s.GetUserSessionAsync(Actor, "sess-1", It.IsAny<CancellationToken>()))
                 .ReturnsAsync((UserSessionDto?)null);
@@ -80,8 +81,10 @@ namespace XUnitTest.Auth.Security
             var result = await Create().RevokeSessionAsync("sess-1", Actor, "current", null, CancellationToken.None);
 
             result.AlreadyRevoked.Should().BeFalse();
-            result.Warnings.Should().BeEmpty();
+            result.Warnings.Should().Equal("session_not_found");
             _refresh.Verify(r => r.RevokeAllBySessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _idpSessions.Verify(r => r.RevokeAsync(It.IsAny<string>()), Times.Never);
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Never);
         }
 
         [Fact]
@@ -236,7 +239,29 @@ namespace XUnitTest.Auth.Security
             result.RevokedAt.Should().NotBeNull();
             _cache.Verify(c => c.RemoveKeyAsync("rt-1"), Times.Once);
             _cache.Verify(c => c.RemoveKeyAsync("rt-2"), Times.Once);
-            _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e => e.SessionId == "sess-1")), Times.Once);
+            _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e =>
+                e.SessionId == "sess-1"
+                && e.UserId == Actor
+                && e.ActorUserId == Actor
+                && e.Metadata!["actionBy"] == Actor)), Times.Once);
+        }
+
+        [Fact]
+        public async Task RevokeSession_OfAnotherUser_RecordsTheCallerAsTheActor()
+        {
+            // The OS console signing someone out: the event belongs to that user's timeline, but the
+            // actor is the console user, not the user whose session ended.
+            _security.Setup(s => s.GetUserSessionAsync("user-2", "sess-9", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ActiveSession("sess-9"));
+            _refresh.Setup(r => r.GetActiveTokensBySessionIdAsync("sess-9")).ReturnsAsync(new List<RefreshTokenModel>());
+            _refresh.Setup(r => r.RevokeAllBySessionIdAsync("sess-9", "user_revoked")).ReturnsAsync(1);
+
+            await Create().RevokeSessionAsync("sess-9", "user-2", "current", null, CancellationToken.None);
+
+            _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e =>
+                e.UserId == "user-2"
+                && e.ActorUserId == Actor
+                && e.Metadata!["actionBy"] == Actor)), Times.Once);
         }
 
         [Fact]
@@ -274,7 +299,38 @@ namespace XUnitTest.Auth.Security
         {
             var result = await Create().RevokeRefreshTokenAsync("", Actor, "current", null, CancellationToken.None);
             result.Reason.Should().Be("user_revoked");
+            result.Warnings.Should().Contain("refresh_token_not_found");
             _refresh.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RevokeRefreshToken_AnotherUsersToken_IsNotFound_AndStaysLive()
+        {
+            // The caller was authorized for their own user; a token id of someone else must not be revoked.
+            _refresh.Setup(r => r.GetByTokenIdAsync("rt-9"))
+                .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-9", UserId = "user-2", SessionId = "sess-9" });
+
+            var result = await Create().RevokeRefreshTokenAsync("rt-9", Actor, "current", null, CancellationToken.None);
+
+            result.Warnings.Should().Equal("refresh_token_not_found");
+            _refresh.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _cache.Verify(c => c.RemoveKeyAsync(It.IsAny<string>()), Times.Never);
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RevokeRefreshToken_OfAnotherUser_RecordsTheCallerAsTheActor()
+        {
+            _refresh.Setup(r => r.GetByTokenIdAsync("rt-9"))
+                .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-9", UserId = "user-2", SessionId = "sess-9" });
+            _refresh.Setup(r => r.RevokeByTokenIdAsync("rt-9", "user_revoked")).ReturnsAsync(true);
+
+            await Create().RevokeRefreshTokenAsync("rt-9", "user-2", "current", null, CancellationToken.None);
+
+            _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e =>
+                e.UserId == "user-2"
+                && e.ActorUserId == Actor
+                && e.Metadata!["actionBy"] == Actor)), Times.Once);
         }
 
         [Fact]
@@ -291,7 +347,7 @@ namespace XUnitTest.Auth.Security
         public async Task RevokeRefreshToken_CurrentSession_AddsWarning()
         {
             _refresh.Setup(r => r.GetByTokenIdAsync("rt-1"))
-                .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-1", SessionId = "sess-current", ClientId = "c1" });
+                .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-1", UserId = Actor, SessionId = "sess-current", ClientId = "c1" });
 
             var result = await Create().RevokeRefreshTokenAsync("rt-1", Actor, "sess-current", null, CancellationToken.None);
 
@@ -304,7 +360,7 @@ namespace XUnitTest.Auth.Security
         public async Task RevokeRefreshToken_HappyPath_RevokesAndRemovesCache()
         {
             _refresh.Setup(r => r.GetByTokenIdAsync("rt-1"))
-                .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-1", SessionId = "sess-2", ClientId = "c1", IpAddress = "10.0.0.9" });
+                .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-1", UserId = Actor, SessionId = "sess-2", ClientId = "c1", IpAddress = "10.0.0.9" });
             _refresh.Setup(r => r.RevokeByTokenIdAsync("rt-1", "user_revoked")).ReturnsAsync(true);
             _cache.Setup(c => c.RemoveKeyAsync("rt-1")).ReturnsAsync(true);
 

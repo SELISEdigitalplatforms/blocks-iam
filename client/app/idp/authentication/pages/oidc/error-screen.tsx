@@ -7,9 +7,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui-kits/card/card";
-import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { AlertCircle } from "lucide-react";
-import { Link } from "react-router";
 import { useSearchParams } from "react-router";
 
 const formatErrorCode = (code: string): string =>
@@ -65,7 +64,7 @@ export const OIDCErrorScreen = () => {
             If this problem persists, please contact your administrator.
           </p>
         </div>
-        <Link to={buildOIDCNavigationUrl("/oidc/login")} className="w-full">
+        <LoginReturnLink preferOidcLogin className="w-full">
           <Button
             variant="outline"
             className="w-full rounded font-medium hover:opacity-90"
@@ -73,7 +72,7 @@ export const OIDCErrorScreen = () => {
           >
             Back to Sign In
           </Button>
-        </Link>
+        </LoginReturnLink>
       </CardContent>
     </Card>
   );

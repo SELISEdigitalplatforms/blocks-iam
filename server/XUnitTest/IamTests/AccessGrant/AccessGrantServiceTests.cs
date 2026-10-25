@@ -68,6 +68,58 @@ namespace XUnitTest.IamTests.AccessGrant
             _kit.Service().CurrentCaller().IsSystem.Should().BeTrue();
         }
 
+        // ---------- the OS console caller ----------
+
+        [Theory]
+        [InlineData(Org)]
+        [InlineData("default")] // a single-organization project's own token is still not the console
+        public void ProjectTokenIsNotTheConsole(string org)
+        {
+            AccessGrantTestKit.SignIn("caller", org);
+
+            _kit.Service().IsConsoleCaller().Should().BeFalse();
+        }
+
+        [Fact]
+        public void ImpersonatedTokenIsTheConsole()
+        {
+            AccessGrantTestKit.SignIn("caller", Org, impersonated: true);
+
+            _kit.Service().IsConsoleCaller().Should().BeTrue();
+        }
+
+        [Fact]
+        public void RootTenantTokenIsTheConsole()
+        {
+            _kit.Tenants.Setup(t => t.GetTenantByID(AccessGrantTestKit.Tenant)).Returns(new Tenant
+            {
+                TenantId = AccessGrantTestKit.Tenant,
+                IsRootTenant = true,
+                DbConnectionString = string.Empty,
+                JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = string.Empty, IssueDate = DateTime.UtcNow }
+            });
+
+            _kit.Service().IsConsoleCaller().Should().BeTrue();
+        }
+
+        [Fact]
+        public void UnauthenticatedOrMissingContextIsNotTheConsole()
+        {
+            AccessGrantTestKit.SignIn("caller", Org, impersonated: true, authenticated: false);
+            _kit.Service().IsConsoleCaller().Should().BeFalse();
+
+            BlocksContext.SetContext(null);
+            _kit.Service().IsConsoleCaller().Should().BeFalse();
+        }
+
+        [Fact]
+        public void ProjectClientCredentialIsNotTheConsole()
+        {
+            AccessGrantTestKit.SignInClient("client-1");
+
+            _kit.Service().IsConsoleCaller().Should().BeFalse();
+        }
+
         [Fact]
         public async Task SystemUserScopeMakesNoReads()
         {

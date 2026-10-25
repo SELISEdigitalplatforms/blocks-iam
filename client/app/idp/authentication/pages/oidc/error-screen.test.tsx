@@ -5,9 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/layouts/oidc-layout", () => ({
   useOIDCContext: () => ({ themeColor: "#123456" }),
 }));
-vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
-  buildOIDCNavigationUrl: (path: string) => path,
-}));
 
 import { OIDCErrorScreen } from "./error-screen";
 
@@ -32,11 +29,27 @@ describe("OIDCErrorScreen", () => {
     expect(screen.getByText("Invalid Request")).toBeInTheDocument();
   });
 
-  it("links back to the sign-in page", () => {
-    renderAt("/oidc/error");
-    expect(screen.getByRole("link", { name: /Back to Sign In/ })).toHaveAttribute(
+  // The link reads the flow off the real URL (window.location), not the router entry.
+  const atUrl = (url: string) => {
+    window.history.replaceState(null, "", url);
+    renderAt(url);
+    return screen.getByRole("link", { name: /Back to Sign In/ });
+  };
+
+  it("links back into the sign-in flow when it still holds a client", () => {
+    const href = atUrl("/oidc/error?clientId=client-1&state=s1").getAttribute("href");
+    expect(href).toMatch(/^\/oidc\/login\?/);
+    expect(href).toContain("clientId=client-1");
+  });
+
+  it("links back to the application when only its redirect_uri is known", () => {
+    expect(atUrl("/oidc/error?redirect_uri=https%3A%2F%2Fapp.example.com%2Fcb")).toHaveAttribute(
       "href",
-      "/oidc/login",
+      "https://app.example.com",
     );
+  });
+
+  it("never links to a bare /oidc/login with no application", () => {
+    expect(atUrl("/oidc/error")).toHaveAttribute("href", "/login");
   });
 });
