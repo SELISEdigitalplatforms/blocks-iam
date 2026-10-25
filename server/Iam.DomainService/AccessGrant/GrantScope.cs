@@ -63,6 +63,7 @@ namespace Iam.DomainService.AccessGrant
             _permissionResourcesById = permissionResourcesById;
             _callerAccessAttributes = callerAccessAttributes;
             HeldRoles = Empty;
+            PowerRoles = Empty;
             ManagedRoles = Empty;
             HeldPermissions = Empty;
             OwnPermissions = Empty;
@@ -79,7 +80,11 @@ namespace Iam.DomainService.AccessGrant
         /// <summary><c>User.Roles[O]</c> minus unknown and archived slugs.</summary>
         public IReadOnlySet<string> HeldRoles { get; private init; }
 
-        /// <summary>Roles in O whose <c>AncestorRoleSlugs</c> contains a held role.</summary>
+        /// <summary>
+        /// Roles in O whose <c>AncestorRoleSlugs</c> contains a held role that gives the power to
+        /// manage. A base role everybody holds (no manage power) makes nothing "below" its holders,
+        /// so a role parked under it is not shared by every peer.
+        /// </summary>
         public IReadOnlySet<string> ManagedRoles { get; private init; }
 
         /// <summary>Permissions of every held and managed role, plus the caller's direct permissions in O.</summary>
@@ -94,6 +99,9 @@ namespace Iam.DomainService.AccessGrant
         /// A non-system caller that is not a top user is a descendant and acts only below its roles.
         /// </summary>
         public bool IsTop { get; private init; }
+
+        /// <summary>The held roles that give the power to manage roles or users.</summary>
+        public IReadOnlySet<string> PowerRoles { get; private init; }
 
         /// <summary>Every non-archived role in O, by slug.</summary>
         public IEnumerable<Role> Roles => _roles.Values;
@@ -189,13 +197,17 @@ namespace Iam.DomainService.AccessGrant
 
             var held = new HashSet<string>(grantedRoles.Where(roleMap.ContainsKey), StringComparer.OrdinalIgnoreCase);
 
+            var direct = directPermissions.ToList();
+            var powerRoles = held
+                .Where(slug => (rolePermissions.GetValueOrDefault(slug) ?? []).Any(AccessGrantRules.IsManagePermission))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             var managed = new HashSet<string>(
                 roleMap.Values
-                    .Where(r => (r.AncestorRoleSlugs ?? []).Any(held.Contains))
+                    .Where(r => (r.AncestorRoleSlugs ?? []).Any(powerRoles.Contains))
                     .Select(r => r.Slug),
                 StringComparer.OrdinalIgnoreCase);
 
-            var direct = directPermissions.ToList();
             var heldPermissions = new HashSet<string>(
                 held.Concat(managed).SelectMany(slug => rolePermissions.GetValueOrDefault(slug) ?? []),
                 StringComparer.OrdinalIgnoreCase);
@@ -207,12 +219,12 @@ namespace Iam.DomainService.AccessGrant
             ownPermissions.UnionWith(direct);
 
             var isTop = direct.Any(AccessGrantRules.IsManagePermission)
-                || held.Any(slug => IsStandalone(roleMap[slug])
-                    && (rolePermissions.GetValueOrDefault(slug) ?? []).Any(AccessGrantRules.IsManagePermission));
+                || powerRoles.Any(slug => IsStandalone(roleMap[slug]));
 
             return new GrantScope(caller, roleMap, rolePermissions, resourcesById, callerAccess)
             {
                 HeldRoles = held,
+                PowerRoles = powerRoles,
                 ManagedRoles = managed,
                 HeldPermissions = heldPermissions,
                 OwnPermissions = ownPermissions,
@@ -273,6 +285,9 @@ namespace Iam.DomainService.AccessGrant
 
         /// <summary>True when the role grants the power to manage roles or users in O.</summary>
         public bool CarriesManagePower(string slug) => PermissionsOf(slug).Any(AccessGrantRules.IsManagePermission);
+
+        /// <summary>True when a descendant may hang a role under <paramref name="slug"/>: one of its power roles or a role below them.</summary>
+        public bool MayParent(string slug) => PowerRoles.Contains(slug) || ManagedRoles.Contains(slug);
 
         /// <summary>True when <paramref name="slug"/> is held by the caller or is below a held role.</summary>
         public bool HoldsOrManages(string slug) => HeldRoles.Contains(slug) || ManagedRoles.Contains(slug);

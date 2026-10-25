@@ -251,7 +251,7 @@ namespace Iam.DomainService.AccessGrant
 
         /// <summary>
         /// R5, create. A top user may create a standalone role or one under any live role in O. A
-        /// descendant must create it below a role it holds or manages, never standalone.
+        /// descendant must create it under one of its power roles or a role below them, never standalone.
         /// </summary>
         public static GrantDenial? CheckCreateRole(GrantScope scope, string? parentSlug)
         {
@@ -271,7 +271,7 @@ namespace Iam.DomainService.AccessGrant
                 return new GrantDenial(EditRole, parentSlug, "parent_not_found_or_archived");
             }
 
-            return scope.IsTop || scope.HoldsOrManages(parentSlug)
+            return scope.IsTop || scope.MayParent(parentSlug)
                 ? null
                 : new GrantDenial(EditRole, parentSlug, "parent_not_held_or_managed");
         }
@@ -323,7 +323,7 @@ namespace Iam.DomainService.AccessGrant
                     .FirstOrDefault(d => d is not null);
         }
 
-        /// <summary>A moved role: a top user may put it anywhere; a descendant must keep it below a role it holds or manages.</summary>
+        /// <summary>A moved role: a top user may put it anywhere; a descendant must keep it under one of its power roles or below them.</summary>
         private static GrantDenial? CheckNewParent(GrantScope scope, Role role, string? newParentSlug)
         {
             if (string.IsNullOrWhiteSpace(newParentSlug))
@@ -331,7 +331,7 @@ namespace Iam.DomainService.AccessGrant
                 return scope.IsTop ? null : new GrantDenial(EditRole, role.Slug, "descendant_cannot_move_role_to_top");
             }
 
-            return scope.IsTop || scope.HoldsOrManages(newParentSlug)
+            return scope.IsTop || scope.MayParent(newParentSlug)
                 ? null
                 : new GrantDenial(EditRole, role.Slug, "parent_not_held_or_managed");
         }

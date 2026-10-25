@@ -77,6 +77,19 @@ namespace XUnitTest.IamTests.AccessGrant
         }
 
         [Fact]
+        public void ARoleBelowABaseRoleIsNotBelowItsHolders()
+        {
+            _kit.WithRole("parked", "auditor").WithPermission("read", Org, "parked");
+            var scope = ScopeOf("d", roles: ["manager", "auditor"]);
+
+            scope.ManagedRoles.Should().BeEquivalentTo("viewer");
+            AccessGrantRules.CheckAssignRole(scope, "parked")!.Reason.Should().Be("role_not_below_caller");
+            AccessGrantRules.CheckCreateRole(scope, "auditor")!.Reason.Should().Be("parent_not_held_or_managed");
+            AccessGrantRules.CheckEditRole(scope, RoleOf("viewer"), "auditor", parentChanged: true)!
+                .Reason.Should().Be("parent_not_held_or_managed");
+        }
+
+        [Fact]
         public void ScopeIgnoresUnknownAndArchivedHeldRoles()
         {
             _kit.RolesOf().Add(new Role { Slug = "retired", Name = "retired", OrganizationId = Org, IsArchived = true });
