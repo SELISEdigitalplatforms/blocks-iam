@@ -455,7 +455,11 @@ namespace Authentication.DomainService.Services
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
         {
             var client = await _authenticationRepository.GetOIDCCredentialByIdAsync(tenantId);
-            var tokenLifetimes = OidcClientTokenLifetimeService.OwnValues(client?.TokenLifetimes);
+            // The view read projects only the schema's fields, and TokenLifetimes is not one of them: read the
+            // client's own values from the full document, as token issue does.
+            var tokenLifetimes = client == null
+                ? null
+                : OidcClientTokenLifetimeService.OwnValues((await _authenticationRepository.GetOidcClientRegistrationAsync(client.ItemId))?.TokenLifetimes);
             HideSecret(client);
             return new GetOIDCClientResponse
             {

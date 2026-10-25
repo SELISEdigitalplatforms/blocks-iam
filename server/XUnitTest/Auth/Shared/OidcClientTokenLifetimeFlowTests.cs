@@ -130,11 +130,18 @@ namespace XUnitTest.Auth.Shared
         {
             _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
                 .ReturnsAsync((string id) => _stored?.ItemId == id ? Copy(_stored) : null!);
+            // Like the real view read: only the schema's fields are projected, so TokenLifetimes never comes back.
             _repo.Setup(r => r.GetOIDCCredentialByIdAsync(It.IsAny<string>()))
-                .ReturnsAsync((string id) => _stored?.ItemId == id ? Copy(_stored) : null!);
+                .ReturnsAsync((string id) => _stored?.ItemId == id ? WithoutLifetimes(Copy(_stored)) : null!);
             _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
                 .Callback<OidcClientRegistration>(c => _stored = Copy(c))
                 .Returns(Task.CompletedTask);
+        }
+
+        private static OidcClientRegistration WithoutLifetimes(OidcClientRegistration client)
+        {
+            client.TokenLifetimes = null;
+            return client;
         }
 
         /// <summary>Round-trips through BSON so a test never shares an instance with the "database".</summary>
