@@ -1,3 +1,4 @@
+using Blocks.Genesis.Entities.Iam;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Utilities;
