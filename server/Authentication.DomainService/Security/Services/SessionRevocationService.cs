@@ -48,7 +48,7 @@ namespace Authentication.DomainService.Security.Services
             _userActivityDispatcher = userActivityDispatcher;
         }
 
-        public async Task<RevokeSessionResponse> RevokeSessionAsync(string sessionId, string actorUserId, string currentSessionId, string? reason, CancellationToken ct)
+        public async Task<RevokeSessionResponse> RevokeSessionAsync(string sessionId, string userId, string currentSessionId, string? reason, CancellationToken ct)
         {
             var response = new RevokeSessionResponse
             {
@@ -58,14 +58,18 @@ namespace Authentication.DomainService.Security.Services
 
             if (string.IsNullOrWhiteSpace(sessionId))
             {
+                response.Warnings.Add("session_not_found");
                 return response;
             }
 
             var tenantId = BlocksContext.GetContext()?.TenantId;
-            var session = await _securityRepository.GetUserSessionAsync(actorUserId, sessionId, ct);
+            var session = await _securityRepository.GetUserSessionAsync(userId, sessionId, ct);
 
+            // Not a session of this user: nothing is revoked, and the caller is told so rather than
+            // answered as if the sign-out happened.
             if (session == null)
             {
+                response.Warnings.Add("session_not_found");
                 return response;
             }
 
@@ -138,9 +142,11 @@ namespace Authentication.DomainService.Security.Services
 
             try
             {
+                var actionBy = ActionBy(userId);
                 await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
-                    UserId = actorUserId,
+                    UserId = userId,
+                    ActorUserId = actionBy,
                     TenantId = tenantId,
                     Category = UserActivityCategory.Auth,
                     Event = SessionAuditEvents.UserRevokedSession,
@@ -153,7 +159,7 @@ namespace Authentication.DomainService.Security.Services
                     {
                         IpAddress = session.PrimaryIpAddress
                     },
-                    Metadata = new Dictionary<string, string> { { "actionBy", actorUserId } }
+                    Metadata = new Dictionary<string, string> { { "actionBy", actionBy } }
                 });
             }
             catch (Exception ex)
@@ -193,6 +199,14 @@ namespace Authentication.DomainService.Security.Services
             }
         }
 
+        // Who did it: the signed-in caller, who is not the session's user when the OS console signs
+        // someone out. Falls back to that user when the call carries no user.
+        private static string ActionBy(string userId)
+        {
+            var caller = BlocksContext.GetContext()?.UserId;
+            return string.IsNullOrWhiteSpace(caller) ? userId : caller;
+        }
+
         // The mark must outlive every access token that can carry this session id: the project's own
         // lifetime or the per-client maximum, whichever is longer.
         private async Task<TimeSpan> RevokedMarkLifetimeAsync()
@@ -211,7 +225,7 @@ namespace Authentication.DomainService.Security.Services
             return TimeSpan.FromMinutes(Math.Max(projectMinutes, OidcClientTokenLifetimes.MaxAccessTokenMinutes) + RevokedMarkMarginMinutes);
         }
 
-        public async Task<RevokeSessionResponse> RevokeRefreshTokenAsync(string tokenId, string actorUserId, string currentSessionId, string? reason, CancellationToken ct)
+        public async Task<RevokeSessionResponse> RevokeRefreshTokenAsync(string tokenId, string userId, string currentSessionId, string? reason, CancellationToken ct)
         {
             var response = new RevokeSessionResponse
             {
@@ -220,11 +234,13 @@ namespace Authentication.DomainService.Security.Services
 
             if (string.IsNullOrWhiteSpace(tokenId))
             {
+                response.Warnings.Add("refresh_token_not_found");
                 return response;
             }
 
+            // Another user's token is answered as not found: the caller was authorized for this user only.
             var active = await _refreshTokenRepository.GetByTokenIdAsync(tokenId);
-            if (active == null)
+            if (active == null || !string.Equals(active.UserId, userId, StringComparison.Ordinal))
             {
                 response.Warnings.Add("refresh_token_not_found");
                 return response;
@@ -258,9 +274,11 @@ namespace Authentication.DomainService.Security.Services
 
             try
             {
+                var actionBy = ActionBy(userId);
                 await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
-                    UserId = actorUserId,
+                    UserId = userId,
+                    ActorUserId = actionBy,
                     TenantId = BlocksContext.GetContext()?.TenantId,
                     Category = UserActivityCategory.Auth,
                     Event = SessionAuditEvents.UserRevokedSession,
@@ -275,7 +293,7 @@ namespace Authentication.DomainService.Security.Services
                     },
                     Metadata = new Dictionary<string, string>
                     {
-                        { "actionBy", actorUserId },
+                        { "actionBy", actionBy },
                         { "scope", "single_token" }
                     }
                 });

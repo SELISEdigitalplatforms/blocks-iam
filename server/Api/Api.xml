@@ -520,10 +520,12 @@
             All routes live under <c>/security</c>.
             </summary>
         </member>
-        <member name="M:Api.Controllers.SecurityController.MayRevokeForAsync(System.String)">
+        <member name="M:Api.Controllers.SecurityController.MayActForAsync(System.String)">
             <summary>
-            Revoking another user's session is managing that user (access grant, R3);
-            revoking one's own is self-service and always allowed.
+            Whose sessions and activity a call may read or revoke. A user may always act on themselves.
+            Acting on another user is managing that user (access grant, R3), and only the Blocks OS console
+            may do it: a project's own token, as an app such as Construct holds, acts on its own user alone.
+            A token with no user, such as a client credential, acts on no one.
             </summary>
         </member>
         <member name="T:Api.Middleware.DataValidationExceptionFilter">

@@ -68,6 +68,13 @@ namespace Iam.DomainService.AccessGrant
                 : new GrantCaller(string.Empty, organizationId, false, context.ClientId);
         }
 
+        public bool IsConsoleCaller()
+        {
+            var context = BlocksContext.GetContext();
+            return context is { IsAuthenticated: true }
+                && (context.Impersonated || IsRootTenant(context.TenantId));
+        }
+
         public Task<GrantScope> GetScopeAsync() => GetScopeAsync(CurrentCaller());
 
         public Task<GrantScope> GetScopeAsync(GrantCaller caller)
