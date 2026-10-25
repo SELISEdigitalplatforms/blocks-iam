@@ -1,6 +1,7 @@
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Blocks.Genesis.Entities.Iam;
 
 
 namespace Authentication.DomainService.Shared.Services

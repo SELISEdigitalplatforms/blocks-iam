@@ -33,6 +33,16 @@ public sealed class OidcClaims
     public bool IsLinkAuthentication { get; set; }
     public List<string> RestrictedRoles { get; set; } = [];
     public List<string> RestrictedPermissions { get; set; } = [];
+
+    /// <summary>
+    /// Not a token claim: the address of the browser that signed in (the authorize request). The
+    /// refresh-token record uses it instead of the address of whoever redeems the code, which for a
+    /// confidential client is a server.
+    /// </summary>
+    public string? SignInIpAddress { get; set; }
+
+    /// <summary>Not a token claim: the user agent of the browser that signed in. See <see cref="SignInIpAddress"/>.</summary>
+    public string? SignInUserAgent { get; set; }
 }
 
 public sealed class AuthorizationCodeModel
@@ -53,6 +63,7 @@ public sealed class AuthorizationCodeModel
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? CreatedByIpAddress { get; set; }
+    public string? CreatedByUserAgent { get; set; }
     public string? IdpSessionId { get; set; }
     public bool IsRevoked { get; set; }
     public DateTime? RevokedAt { get; set; }
@@ -71,105 +82,47 @@ public sealed class AuthorizationCodeModel
 
     /// <summary>Frozen link permissions to intersect at exchange/refresh.</summary>
     public List<string> RestrictedPermissions { get; set; } = [];
+
+    /// <summary>
+    /// The store this code was read from, set by the read and never stored. The consume of the same
+    /// request goes to the same store.
+    /// </summary>
+    [BsonIgnore]
+    [JsonIgnore]
+    public AuthorizationCodeSource Source { get; set; } = AuthorizationCodeSource.Redis;
 }
 
-[BsonIgnoreExtraElements]
-public sealed class RefreshTokenModel
+public enum AuthorizationCodeSource
 {
-    [BsonId]
-    public string TokenId { get; set; } = Guid.NewGuid().ToString("n");
+    Redis,
+    Mongo
+}
+
+/// <summary>Result of the single-use consume of an authorization code.</summary>
+public enum AuthorizationCodeConsumeResult
+{
+    /// <summary>First use: tokens may be minted.</summary>
+    Consumed,
+    /// <summary>Second use of a Redis code: the tokens made from it are revoked.</summary>
+    Reused,
+    /// <summary>Refused without more action (key gone, or a Mongo code used before).</summary>
+    Refused
+}
+
+/// <summary>What a first exchange minted from a code; kept with the code so a reuse can revoke it.</summary>
+public sealed class AuthorizationCodeMint
+{
+    [JsonPropertyName("lineageId")]
+    public string LineageId { get; set; } = string.Empty;
+
+    [JsonPropertyName("jti")]
+    public string Jti { get; set; } = string.Empty;
+
+    [JsonPropertyName("userId")]
     public string UserId { get; set; } = string.Empty;
-    public string? TenantId { get; set; }
-    public string? OrganizationId { get; set; }
-    public string? ClientId { get; set; }
-    public string? Audience { get; set; }
-    public string? Scope { get; set; }
-    public string? SessionId { get; set; }
 
-    /// <summary>Signup-link restricted session marker preserved across refresh.</summary>
-    public bool IsLinkAuthentication { get; set; }
-    public List<string> RestrictedRoles { get; set; } = [];
-    public List<string> RestrictedPermissions { get; set; } = [];
-    public List<string> Amr { get; set; } = [];
-
-    /// <summary>
-    /// Identifies one refresh-token lineage: the sequence of tokens created by a single
-    /// authentication and linked by rotation. Set to the token's own <see cref="TokenId"/> when a new
-    /// lineage is created, and copied unchanged by every rotation. Null on documents written before
-    /// lineage tracking shipped; such a document is read as a lineage of one (see
-    /// <see cref="EffectiveRefreshTokenSessionId"/>).
-    /// </summary>
-    public string? RefreshTokenSessionId { get; set; }
-
-    /// <summary>
-    /// The <see cref="TokenId"/> of the successor minted when this token was rotated away. Written in
-    /// the same update that sets <c>RevokeReason = "superseded_by_rotation"</c>, and used to replay a
-    /// rotation for a request that still carries the predecessor inside the grace window. Null on every
-    /// document written before the grace period shipped, and on every revocation for another reason.
-    /// </summary>
-    public string? SupersededByTokenId { get; set; }
-
-    public string? GrantType { get; set; }
-    public DeviceInformation? DeviceInformation { get; set; }
-    public DateTime IssuedUtc { get; set; }
-    public DateTime SlidingExpiry { get; set; }
-    public DateTime AbsoluteExpiry { get; set; }
-    public bool IsRevoked { get; set; }
-    public string? RevokeReason { get; set; }
-    public DateTime? RevokedAt { get; set; }
-    public string? IpAddress { get; set; }
-    public string? UserAgent { get; set; }
-    public bool Impersonated { get; set; }
-    public string? ImpersonationId { get; set; }
-
-    /// <summary>
-    /// The lineage this token belongs to, treating a pre-lineage document as a lineage of one.
-    /// </summary>
-    public string EffectiveRefreshTokenSessionId =>
-        string.IsNullOrWhiteSpace(RefreshTokenSessionId) ? TokenId : RefreshTokenSessionId!;
-
-    public bool IsExpired()
-    {
-        var now = DateTime.UtcNow;
-        return now >= SlidingExpiry || now >= AbsoluteExpiry;
-    }
-
-    /// <summary>
-    /// A token is active only while the server would actually accept it: unrevoked and past neither
-    /// clock. This deliberately matches <see cref="IsExpired"/> so listings never advertise a session
-    /// the refresh endpoint would reject.
-    /// </summary>
-    public bool IsActive(DateTime now) => !IsRevoked && now < SlidingExpiry && now < AbsoluteExpiry;
-}
-
-[BsonIgnoreExtraElements]
-public sealed class IdpSessionAccount
-{
-    public string UserId { get; set; } = string.Empty;
-    public string TenantId { get; set; } = string.Empty;
-    public string? DisplayName { get; set; }
-    public DateTime LoginAt { get; set; }
-}
-
-[BsonIgnoreExtraElements]
-public sealed class IdpSessionModel
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString("n");
-    public string SessionId { get; set; } = Guid.NewGuid().ToString("n");
-    public string TenantId { get; set; } = string.Empty;
-    public List<IdpSessionAccount> Accounts { get; set; } = [];
-    public string? IpAddress { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime LastActivityAt { get; set; }
-    public DateTime IdleExpiry { get; set; }
-    public DateTime AbsoluteExpiry { get; set; }
-    public DateTime? RevokedAt { get; set; }
-
-    public bool IsExpired()
-    {
-        var now = DateTime.UtcNow;
-        return now >= IdleExpiry || now >= AbsoluteExpiry;
-    }
+    [JsonPropertyName("accessExpiresAt")]
+    public DateTime AccessExpiresAt { get; set; }
 }
 
 public sealed class ConsentGrantModel

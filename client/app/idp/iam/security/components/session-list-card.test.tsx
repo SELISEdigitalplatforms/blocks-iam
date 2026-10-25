@@ -25,7 +25,9 @@ vi.mock("../mappers/session.mapper", () => ({
   toSessionCardViewModel: (raw: Record<string, unknown>) => raw,
 }));
 vi.mock("./session-details-drawer", () => ({
-  SessionDetailsDrawer: () => <div data-testid="details-drawer" />,
+  SessionDetailsDrawer: ({ sessionId }: { readonly sessionId: string | null }) => (
+    <div data-testid="details-drawer" data-session-id={sessionId ?? ""} />
+  ),
 }));
 
 import { SessionListCard } from "./session-list-card";
@@ -84,17 +86,30 @@ describe("SessionListCard", () => {
     const confirmButtons = screen.getAllByRole("button", { name: "Sign out" });
     fireEvent.click(confirmButtons[confirmButtons.length - 1]);
     await waitFor(() => expect(h.revoke).toHaveBeenCalledWith({ sessionId: "s1" }));
-    await waitFor(() => expect(h.showSuccess).toHaveBeenCalled());
+    await waitFor(() => expect(h.showSuccess).toHaveBeenCalledWith({ description: "Device signed out successfully" }));
   });
 
-  it.each([["Enter"], [" "]])("opens a session row when %s is pressed on it", (key) => {
+  it("says the device was already signed out when nothing was live", async () => {
+    h.revoke.mockResolvedValue({ alreadyRevoked: true, revokedRefreshTokens: 0, warnings: [] });
     render(<SessionListCard userId="u1" />);
-    const row = screen.getByText("MacBook").closest('[role="button"]') as HTMLElement;
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument(),
+    );
+    const confirmButtons = screen.getAllByRole("button", { name: "Sign out" });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+    await waitFor(() =>
+      expect(h.showSuccess).toHaveBeenCalledWith({ description: "This device was already signed out" }),
+    );
+  });
 
-    fireEvent.keyDown(row, { key });
+  it("opens a session row when it is activated", () => {
+    render(<SessionListCard userId="u1" />);
+    const drawer = screen.getByTestId("details-drawer");
+    expect(drawer).toHaveAttribute("data-session-id", "");
 
-    // Selecting a session swaps the list for its detail view, so the row is gone.
-    expect(screen.queryByText("MacBook")).not.toBeNull();
-    expect(row.getAttribute("tabindex")).toBe("0");
+    fireEvent.click(screen.getByRole("button", { name: /MacBook/ }));
+
+    expect(drawer).toHaveAttribute("data-session-id", "s1");
   });
 });

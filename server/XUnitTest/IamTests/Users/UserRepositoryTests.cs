@@ -11,6 +11,7 @@ using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Users
 {
@@ -40,7 +41,7 @@ namespace XUnitTest.IamTests.Users
             BlocksContext.IsTestMode = false;
         }
 
-        private UserRepository Sut() => new(_iam.Object);
+        private UserRepository Sut() => new(_iam.Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         private static UserListScope Scope(params string[] organizationIds) =>
             new(UserListScopeKind.Organizations, organizationIds);
@@ -269,6 +270,13 @@ namespace XUnitTest.IamTests.Users
         {
             Register(new[] { new ProjectPeople { ItemId = "pp1", UserId = "u1", TenantId = "tenant-9" } });
             (await Sut().GetProjectIdFromProjectPeopleAsync("u1")).Should().Be("tenant-9");
+        }
+
+        [Fact]
+        public async Task GetProjectIdFromProjectPeopleAsync_NoRow_ReturnsEmpty()
+        {
+            Register(Array.Empty<ProjectPeople>());
+            (await Sut().GetProjectIdFromProjectPeopleAsync("u1")).Should().BeEmpty();
         }
 
         // ---------------------------------------------------------------------

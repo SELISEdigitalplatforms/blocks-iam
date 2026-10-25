@@ -26,6 +26,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -346,7 +347,15 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            var isCookieDeleted = tenant.IsRootTenant? DeleteAllCookies(httpContext.Request) : DeleteCookie(httpContext.Request);
+            if (tenant.IsRootTenant)
+            {
+                DeleteAllCookies(httpContext.Request);
+            }
+            else
+            {
+                DeleteCookie(httpContext.Request);
+            }
+
             var shouldClearIdpSessionCookie = await UpdateIdpSessionForLogoutAsync(httpContext, httpContext.User, isGlobalLogout: false, logoutResult.IdpSessionIds );
 
             if (shouldClearIdpSessionCookie)
@@ -1251,16 +1260,7 @@ namespace Authentication.DomainService.Authentication
             // on the refresh token. That id is authoritative here. The mint only wrote its cookie to
             // the response, so the request cookie is stale or absent; consulting it first created a
             // second live session that logout could never reach.
-            string? sessionId = null;
-            if (!string.IsNullOrWhiteSpace(tokenResponse.RefreshToken))
-            {
-                sessionId = (await ReadRefreshTokenCacheAsync(tokenResponse.RefreshToken))?.SessionId;
-            }
-
-            if (string.IsNullOrWhiteSpace(sessionId))
-            {
-                sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId)];
-            }
+            var sessionId = await ResolveCandidateIdpSessionIdAsync(tokenResponse, httpContext, bc?.TenantId);
 
             if (string.IsNullOrWhiteSpace(sessionId))
             {
@@ -1268,31 +1268,7 @@ namespace Authentication.DomainService.Authentication
             }
             else
             {
-                var existingSession = await _authSession.GetSessionAsync(sessionId);
-                if (existingSession == null || existingSession.RevokedAt.HasValue || existingSession.IsExpired())
-                {
-                    sessionId = await _authSession.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
-                }
-                else
-                {
-                    var accountExists = existingSession.Accounts.Any(a =>
-                        string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
-
-                    if (!accountExists)
-                    {
-                        await _authSession.AddAccountAsync(sessionId, userId, tenantId, userId);
-                    }
-                    else
-                    {
-                        await _authSession.UpdateActivityAsync(sessionId);
-                    }
-
-                    // Rotate session id on successful login transition to reduce fixation risk.
-                    // Rotation re-points the refresh tokens at the new id, so the token issued above
-                    // keeps resolving to the live session.
-                    sessionId = await _authSession.RotateSessionAsync(sessionId, LoginAuditEvents.LoginSuccess) ?? sessionId;
-                }
+                sessionId = await ContinueOrReplaceIdpSessionAsync(sessionId, userId, tenantId, httpContext);
             }
 
             IdpSessionCookie.Append(
@@ -1302,6 +1278,49 @@ namespace Authentication.DomainService.Authentication
                 bc?.TenantId,
                 sessionId,
                 tokenResponse.RefreshExpiresUtc);
+        }
+
+        private async Task<string?> ResolveCandidateIdpSessionIdAsync(TokenResponse tokenResponse, HttpContext httpContext, string? contextTenantId)
+        {
+            string? sessionId = null;
+            if (!string.IsNullOrWhiteSpace(tokenResponse.RefreshToken))
+            {
+                sessionId = (await ReadRefreshTokenCacheAsync(tokenResponse.RefreshToken))?.SessionId;
+            }
+
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(contextTenantId)];
+            }
+
+            return sessionId;
+        }
+
+        private async Task<string> ContinueOrReplaceIdpSessionAsync(string sessionId, string userId, string tenantId, HttpContext httpContext)
+        {
+            var existingSession = await _authSession.GetSessionAsync(sessionId);
+            if (existingSession == null || existingSession.RevokedAt.HasValue || existingSession.IsExpired())
+            {
+                return await _authSession.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+            }
+
+            var accountExists = existingSession.Accounts.Any(a =>
+                string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
+
+            if (!accountExists)
+            {
+                await _authSession.AddAccountAsync(sessionId, userId, tenantId, userId);
+            }
+            else
+            {
+                await _authSession.UpdateActivityAsync(sessionId);
+            }
+
+            // Rotate session id on successful login transition to reduce fixation risk.
+            // Rotation re-points the refresh tokens at the new id, so the token issued above
+            // keeps resolving to the live session.
+            return await _authSession.RotateSessionAsync(sessionId, LoginAuditEvents.LoginSuccess) ?? sessionId;
         }
 
         public async Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId)
@@ -1745,7 +1764,7 @@ namespace Authentication.DomainService.Authentication
         }
 
 
-        private async Task<(IActionResult? Error, string UserId, Iam.DomainService.Entities.User User)> ValidateImpersonationRequestAsync(
+        private async Task<(IActionResult? Error, string UserId, Blocks.Genesis.Entities.Iam.User User)> ValidateImpersonationRequestAsync(
             ImpersonateRequest request,
             Tenant? rootTenant,
             HttpRequest httpRequest)
@@ -1807,7 +1826,7 @@ namespace Authentication.DomainService.Authentication
             string existingSessionId,
             ImpersonateRequest request,
             string userId,
-            Iam.DomainService.Entities.User user,
+            Blocks.Genesis.Entities.Iam.User user,
             Tenant rootTenant,
             RefreshTokenCache? rootRefreshCache,
             IdentityConfiguration authConfiguration,

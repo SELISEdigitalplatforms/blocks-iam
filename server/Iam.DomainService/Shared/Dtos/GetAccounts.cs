@@ -1,6 +1,7 @@
 ﻿using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Serialization;
 using MongoDB.Bson.Serialization.Attributes;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Dtos
 {

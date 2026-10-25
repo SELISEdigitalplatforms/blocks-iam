@@ -7,6 +7,7 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.SignupLinks;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.SignupLinks;
 
@@ -169,6 +170,7 @@ public class SignupLinkConfigurationServiceTests : IDisposable
         var originalRoles = existing.DefaultRoles.ToList();
         var originalUpdated = existing.LastUpdatedDate;
         _repo.Setup(r => r.GetByIdAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
+        _repo.Setup(r => r.GetByIdForViewAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
 
         var result = await Sut().UpdateAsync(existing.ItemId, new UpdateSignupLinkConfigurationRequest
         {
@@ -189,6 +191,7 @@ public class SignupLinkConfigurationServiceTests : IDisposable
     {
         var existing = Stored();
         _repo.Setup(r => r.GetByIdAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
+        _repo.Setup(r => r.GetByIdForViewAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
 
         var archive = await Sut().ArchiveAsync(existing.ItemId);
         archive.IsSuccess.Should().BeTrue();
@@ -254,6 +257,7 @@ public class SignupLinkConfigurationServiceTests : IDisposable
 
         var existing = Stored();
         _repo.Setup(r => r.GetByIdAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
+        _repo.Setup(r => r.GetByIdForViewAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
         var patch = await Sut().UpdateAsync(existing.ItemId, new UpdateSignupLinkConfigurationRequest
         {
             RedirectUri = "https://attacker.example.com/callback"
@@ -289,6 +293,7 @@ public class SignupLinkConfigurationServiceTests : IDisposable
     public async Task C5_OtherTenantId_ReturnsNotFound()
     {
         _repo.Setup(r => r.GetByIdAsync("other-id", TenantId)).ReturnsAsync((SignupLinkConfiguration?)null);
+        _repo.Setup(r => r.GetByIdForViewAsync("other-id", TenantId)).ReturnsAsync((SignupLinkConfiguration?)null);
 
         var (response, notFound) = await Sut().GetByIdAsync("other-id");
         notFound.Should().BeTrue();
@@ -323,6 +328,7 @@ public class SignupLinkConfigurationServiceTests : IDisposable
 
         saved!.RequireExistingUserPassword.Should().BeTrue();
         _repo.Setup(r => r.GetByIdAsync(saved.ItemId, TenantId)).ReturnsAsync(saved);
+        _repo.Setup(r => r.GetByIdForViewAsync(saved.ItemId, TenantId)).ReturnsAsync(saved);
         var (response, _) = await Sut().GetByIdAsync(saved.ItemId);
         response!.RequireExistingUserPassword.Should().BeTrue();
     }
@@ -339,6 +345,7 @@ public class SignupLinkConfigurationServiceTests : IDisposable
 
         saved!.RequireExistingUserPassword.Should().BeFalse();
         _repo.Setup(r => r.GetByIdAsync(saved.ItemId, TenantId)).ReturnsAsync(saved);
+        _repo.Setup(r => r.GetByIdForViewAsync(saved.ItemId, TenantId)).ReturnsAsync(saved);
         var (response, _) = await Sut().GetByIdAsync(saved.ItemId);
         response!.RequireExistingUserPassword.Should().BeFalse();
     }
@@ -349,6 +356,7 @@ public class SignupLinkConfigurationServiceTests : IDisposable
         var existing = Stored();
         existing.RequireExistingUserPassword = false;
         _repo.Setup(r => r.GetByIdAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
+        _repo.Setup(r => r.GetByIdForViewAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
 
         // Omitted: unchanged.
         var rename = await Sut().UpdateAsync(existing.ItemId, new UpdateSignupLinkConfigurationRequest { Name = "Renamed" });

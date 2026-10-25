@@ -8,6 +8,7 @@ using Iam.DomainService.Dtos;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Security
 {
@@ -24,7 +25,7 @@ namespace XUnitTest.Auth.Security
         private SecurityRepository Sut()
         {
             _db.Setup(d => d.GetDatabase()).Returns(_database.Object);
-            return new SecurityRepository(_db.Object);
+            return new SecurityRepository(_db.Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
         }
 
         private Mock<IMongoCollection<RefreshTokenModel>> RegisterRefresh(IEnumerable<RefreshTokenModel>? items = null)

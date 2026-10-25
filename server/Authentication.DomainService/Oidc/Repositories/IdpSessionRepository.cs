@@ -3,8 +3,10 @@ using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Shared;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
+using Iam.DomainService.Services;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -12,13 +14,16 @@ namespace Authentication.DomainService.Oidc.Repositories
     {
         private readonly IDbContextProvider _dbContextProvider;
         private readonly ILogger<IdpSessionRepository> _logger;
+        private readonly IIamDataAccess _dataAccess;
 
         public IdpSessionRepository(
             IDbContextProvider dbContextProvider,
-            ILogger<IdpSessionRepository> logger)
+            ILogger<IdpSessionRepository> logger,
+            IIamDataAccess dataAccess)
         {
             _dbContextProvider = dbContextProvider;
             _logger = logger;
+            _dataAccess = dataAccess;
         }
 
         private IMongoDatabase GetDatabase() =>
@@ -28,7 +33,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         public async Task<string> CreateAsync(IdpSessionModel session)
         {
             var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
-            await collection.InsertOneAsync(session);
+            await _dataAccess.InsertOneAsync(collection, IamSchemas.IdpSessionModel, session, "IdpSessionRepository.CreateAsync");
             _logger.LogInformation("IdP session created: {SessionId}", session.SessionId);
             return session.SessionId;
         }
@@ -37,7 +42,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
             var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
-            return await collection.Find(filter).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.IdpSessionModel, filter, "IdpSessionRepository.GetBySessionIdAsync");
         }
 
         public async Task<bool> AddAccountAsync(string sessionId, IdpSessionAccount account)
@@ -49,8 +54,8 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Push(s => s.Accounts, account)
                 .Set(s => s.LastActivityAt, DateTime.UtcNow)
                 .Set(s => s.IdleExpiry, idleExpiry);
-            var result = await collection.UpdateOneAsync(filter, update);
-            return result.ModifiedCount > 0;
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.IdpSessionModel, filter, update, "IdpSessionRepository.AddAccountAsync");
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<bool> RemoveAccountAsync(string sessionId, string userId, string tenantId)
@@ -62,8 +67,8 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .PullFilter(s => s.Accounts, a => a.UserId == userId && a.TenantId == tenantId)
                 .Set(s => s.LastActivityAt, DateTime.UtcNow)
                 .Set(s => s.IdleExpiry, idleExpiry);
-            var result = await collection.UpdateOneAsync(filter, update);
-            return result.ModifiedCount > 0;
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.IdpSessionModel, filter, update, "IdpSessionRepository.RemoveAccountAsync");
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<bool> UpdateActivityAsync(string sessionId)
@@ -74,8 +79,8 @@ namespace Authentication.DomainService.Oidc.Repositories
             var update = Builders<IdpSessionModel>.Update
                 .Set(s => s.LastActivityAt, DateTime.UtcNow)
                 .Set(s => s.IdleExpiry, idleExpiry);
-            var result = await collection.UpdateOneAsync(filter, update);
-            return result.ModifiedCount > 0;
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.IdpSessionModel, filter, update, "IdpSessionRepository.UpdateActivityAsync");
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<bool> RevokeAsync(string sessionId)
@@ -83,8 +88,8 @@ namespace Authentication.DomainService.Oidc.Repositories
             var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
             var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
             var update = Builders<IdpSessionModel>.Update.Set(s => s.RevokedAt, DateTime.UtcNow);
-            var result = await collection.UpdateOneAsync(filter, update);
-            return result.ModifiedCount > 0;
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.IdpSessionModel, filter, update, "IdpSessionRepository.RevokeAsync");
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<bool> DeleteAsync(string sessionId)
@@ -92,8 +97,8 @@ namespace Authentication.DomainService.Oidc.Repositories
             var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
             var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
             var update = Builders<IdpSessionModel>.Update.Set(s => s.RevokedAt, DateTime.UtcNow);
-            var result = await collection.UpdateOneAsync(filter, update);
-            return result.ModifiedCount > 0;
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.IdpSessionModel, filter, update, "IdpSessionRepository.DeleteAsync");
+            return result?.ModifiedCount > 0;
         }
 
         public async Task<IEnumerable<IdpSessionModel>> GetByUserAsync(string userId, string tenantId)
@@ -104,7 +109,7 @@ namespace Authentication.DomainService.Oidc.Repositories
                     Builders<IdpSessionAccount>.Filter.Eq(a => a.UserId, userId)),
                 Builders<IdpSessionModel>.Filter.Eq(s => s.TenantId, tenantId)
             );
-            return await collection.Find(filter).ToListAsync();
+            return await _dataAccess.FindListAsync(collection, IamSchemas.IdpSessionModel, filter, "IdpSessionRepository.GetByUserAsync");
         }
 
         private static TimeSpan GetIdpSessionIdleTimeout()

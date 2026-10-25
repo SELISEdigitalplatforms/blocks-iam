@@ -102,7 +102,7 @@ namespace Iam.DomainService.Users
                 scope = new UserListScope(UserListScopeKind.Organizations, [IdpConstants.DefaultOrganizationId]);
             }
 
-            var (data, count) = await _userRepository.GetUsersAsync<GetAccounts, GetUsersRequest>(query, scope);
+            var (data, count) = await _userRepository.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(query, scope);
 
             // One instant for the whole response, per the data contract's "server UTC time at
             // response construction" - so every item in a page is judged against the same moment.
@@ -110,7 +110,15 @@ namespace Iam.DomainService.Users
             // attempted when nothing matches, and a test with a throwing clock proves it.
             var asOfUtc = new Lazy<DateTime>(() => _timeProvider.GetUtcNow().UtcDateTime);
 
-            var selectedUsers = data?.Select(user => MapToListAccountFields(user, asOfUtc.Value))
+            // A tenant-wide caller sees every organization's roles, as before. Any other caller is
+            // pinned to its own organization (scope Organizations with exactly that id), so each user's
+            // roles are narrowed to that organization too.
+            var tokenOrganizationId = BlocksContext.GetContext()?.OrganizationId;
+            var rolesOrganizationId = string.Equals(tokenOrganizationId, IdpConstants.DefaultOrganizationId, StringComparison.Ordinal)
+                ? null
+                : tokenOrganizationId;
+
+            var selectedUsers = data?.Select(user => MapToListAccountFields(user, asOfUtc.Value, rolesOrganizationId))
             .Where(user => user.Count > 0).AsQueryable() ?? Enumerable.Empty<Dictionary<string, object>>().AsQueryable();
 
             _logger.LogInformation("User get end");
@@ -145,9 +153,33 @@ namespace Iam.DomainService.Users
             _logger.LogInformation("User get start");
 
             var bc = BlocksContext.GetContext();
+            var callerOrgId = bc?.OrganizationId;
+            var isTenantWideCaller = string.Equals(callerOrgId, IdpConstants.DefaultOrganizationId, StringComparison.Ordinal);
+
+            // The organization a user is read in comes from the caller's token. Only a tenant-wide
+            // ("default") caller may name another organization in the query; every other caller is
+            // read in its own organization. A token that names no organization has no organization
+            // to read in. Either way the answer is the ordinary "not a member of this organization"
+            // response, so it looks the same as any other user outside the caller's organization.
+            if (!isTenantWideCaller
+                && (string.IsNullOrWhiteSpace(callerOrgId)
+                    || (!string.IsNullOrWhiteSpace(organizationId)
+                        && !string.Equals(organizationId, callerOrgId, StringComparison.Ordinal))))
+            {
+                _logger.LogInformation("User get end -- organization outside the caller's scope");
+
+                return new GetUserResponse
+                {
+                    Data = new Dictionary<string, object>()
+                };
+            }
+
+            var contextOrgId = isTenantWideCaller && !string.IsNullOrWhiteSpace(organizationId)
+                ? organizationId
+                : callerOrgId!;
+
             var userId = string.IsNullOrWhiteSpace(id) ? (bc?.UserId ?? string.Empty) : id;
             var user = await _userRepository.GetUserByIdAsync<GetAccounts>(userId);
-            var contextOrgId = string.IsNullOrWhiteSpace(organizationId) ? (bc?.OrganizationId ?? "default") : organizationId;
 
             // Read only when there is a user to map - a missing user must not trigger any lockout
             // computation (C4), and a throwing clock in the tests proves it does not.
@@ -155,9 +187,13 @@ namespace Iam.DomainService.Users
                 ? null
                 : MapToSingleUserFields(user, contextOrgId, _timeProvider.GetUtcNow().UtcDateTime);
 
-            if(contextOrgId == "default")
+            // The all-organization view is for tenant-wide callers only. contextOrgId can only be
+            // "default" for such a caller, but the caller check is kept explicit.
+            if (data != null
+                && isTenantWideCaller
+                && string.Equals(contextOrgId, IdpConstants.DefaultOrganizationId, StringComparison.Ordinal))
             {
-                data.Add("OrganizationsRoles", user.Roles);
+                data.Add("OrganizationsRoles", user!.Roles);
                 data.Add("OrganizationsPermissions", user.Permissions);
             }
 
@@ -169,8 +205,22 @@ namespace Iam.DomainService.Users
             };
         }
 
-        private static Dictionary<string, object> MapToListAccountFields(GetAccounts user, DateTime asOfUtc)
+        private static Dictionary<string, object> MapToListAccountFields(GetAccounts user, DateTime asOfUtc, string? rolesOrganizationId)
         {
+            Dictionary<string, List<string>>? roles;
+            if (rolesOrganizationId is null)
+            {
+                roles = user.Roles;
+            }
+            else if (user.Roles != null && user.Roles.TryGetValue(rolesOrganizationId, out var scopedRoles))
+            {
+                roles = new Dictionary<string, List<string>> { [rolesOrganizationId] = scopedRoles };
+            }
+            else
+            {
+                roles = new Dictionary<string, List<string>>();
+            }
+
             return new Dictionary<string, object>
             {
                 ["itemId"] = user.ItemId,
@@ -186,7 +236,7 @@ namespace Iam.DomainService.Users
                 ["lastLoggedInTime"] = user.LastLoggedInTime,
                 ["loginCount"] = user.LogInCount,
                 ["createdDate"] = user.CreatedDate,
-                ["roles"] = user.Roles,
+                ["roles"] = roles,
                 ["lockoutUntilUtc"] = user.LockoutUntilUtc,
                 ["isLockedOut"] = IsLockedOut(user.LockoutUntilUtc, asOfUtc),
                 ["accountState"] = UserAccountStates.Resolve(user.Active, user.Status, user.IsVerified).ToString()

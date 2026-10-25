@@ -4,9 +4,8 @@ namespace Blocks.CaptchaDriver;
 
 /// <summary>
 /// In-memory captcha verification backed by a cache. Used as the default
-/// <c>bcaptcha</c> provider for trusted callers. The cache key passed in
-/// <see cref="VerifyAsync"/> is fully qualified by the caller; this service
-/// does not assume any prefix.
+/// <c>bcaptcha</c> provider for trusted callers. Verifies only codes
+/// <see cref="CaptchaProcessor"/> issued (cache key prefix <c>captcha:vc:</c>); each is single use.
 /// </summary>
 public sealed class BlocksCaptchaVerificationService : ICaptchaVerificationService
 {
@@ -28,7 +27,16 @@ public sealed class BlocksCaptchaVerificationService : ICaptchaVerificationServi
             throw new ArgumentNullException(nameof(verificationCode));
         }
 
-        var savedHostName = await _cache.GetStringValueAsync(verificationCode);
+        // Only keys this provider issued (CaptchaProcessor: prefix + code) count as a solved
+        // captcha. Any other Redis key, e.g. an oidc_context entry, must never verify.
+        // The issued raw code and the full prefixed key are both accepted.
+        var code = verificationCode.Trim();
+        var cacheKey = code.StartsWith(CaptchaProcessor.VerificationCodeCacheKeyPrefix, StringComparison.Ordinal)
+            ? code
+            : CaptchaProcessor.VerificationCodeCacheKeyPrefix + code;
+        var hasCode = cacheKey.Length > CaptchaProcessor.VerificationCodeCacheKeyPrefix.Length;
+
+        var savedHostName = hasCode ? await _cache.GetStringValueAsync(cacheKey) : null;
         var verified = !string.IsNullOrWhiteSpace(savedHostName);
 
         if (!verified)
@@ -43,7 +51,7 @@ public sealed class BlocksCaptchaVerificationService : ICaptchaVerificationServi
             };
         }
 
-        await _cache.RemoveKeyAsync(verificationCode);
+        await _cache.RemoveKeyAsync(cacheKey);
 
         return new VerificationResult
         {

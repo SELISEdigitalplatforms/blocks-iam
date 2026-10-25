@@ -1,5 +1,7 @@
+using Iam.DomainService.Notifications;
 ﻿using Blocks.Genesis;
 using FluentValidation;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
@@ -12,12 +14,17 @@ using Iam.DomainService.Users;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Resources
 {
     public class ResourceMutationService : IResourceMutationService
     {
         private const string DefaultOrganizationId = "default";
+        private const string ItemIdKey = "ItemId";
+        private const string ArchivedKey = "archived";
+        private const string UpdateAction = "update";
+        private const string DeleteAction = "delete";
 
         /// <summary>
         /// How deep a role's ancestor chain may go before it is treated as non-terminating.
@@ -46,6 +53,9 @@ namespace Iam.DomainService.Resources
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IUserRepository _userRepository;
 
+        private readonly IBuiltInNotificationSender? _notificationSender;
+        private readonly IAccessGrantService? _accessGrant;
+
         public ResourceMutationService(
             ILogger<ResourceMutationService> logger,
             IResourceRepository resourceRepository,
@@ -55,9 +65,15 @@ namespace Iam.DomainService.Resources
             IValidator<CreateRoleRequest> roleValidator,
             ITenantPermissionPropagator tenantPermissionPropagator,
             IUserActivityDispatcher userActivityDispatcher,
-            IUserRepository userRepository
+            IUserRepository userRepository,
+            IBuiltInNotificationSender? notificationSender = null,
+            // Trailing and optional like the sender above, so existing fixtures keep compiling; DI
+            // always supplies it. Without it no access grant rule runs.
+            IAccessGrantService? accessGrant = null
         )
         {
+            _notificationSender = notificationSender;
+            _accessGrant = accessGrant;
             _logger = logger;
             _resourceRepository = resourceRepository;
             _identityAccessManagementService = identityAccessManagementService;
@@ -71,6 +87,11 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> CreatePermissionAsync(CreatePermissionRequest command)
         {
+            if (!_accessGrant.AuthorizeSystemOnlyIfWired("permissions/create"))
+            {
+                return GrantNotAllowed();
+            }
+
             var blocksContext = BlocksContext.GetContext();
             if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
@@ -158,10 +179,42 @@ namespace Iam.DomainService.Resources
 
         }
 
+        /// <summary>
+        /// The new role's name must be free in its organization, and its slug is derived for that organization
+        /// (written back to <paramref name="command"/>). Null when both are fine, otherwise the failure to return.
+        /// </summary>
+        private async Task<BaseMutationResponse?> CheckRoleNameAndSlugAsync(CreateRoleRequest command, string organizationId)
+        {
+            // Name is checked before the slug because it is the thing the administrator typed and
+            // recognises; failing on the derived slug first would report a value they never chose.
+            if (!string.IsNullOrWhiteSpace(command.Name)
+                && await _resourceRepository.HasOwnedRoleWithNameAsync(command.Name, organizationId))
+            {
+                _logger.LogInformation("Role creation end -- Duplicate Name In Organization");
+                return Failure("Name", "Role_Name_Already_Exists_In_Organization");
+            }
+
+            // The stored slug is derived here, never taken from the request verbatim, so a caller
+            // cannot mint a slug attributed to another organization. Runs before validation so the
+            // validator's org-scoped uniqueness check sees the value that will actually be stored.
+            if (string.IsNullOrWhiteSpace(command.Slug))
+            {
+                return null;
+            }
+
+            var (resolvedSlug, slugError) = await ResolveRoleSlugAsync(command.Slug, organizationId);
+            if (slugError != null)
+            {
+                _logger.LogInformation("Role creation end -- Slug Unavailable");
+                return Failure("Slug", slugError);
+            }
+
+            command.Slug = resolvedSlug!;
+            return null;
+        }
+
         public async Task<BaseMutationResponse> CreateRoleAsync(CreateRoleRequest command)
         {
-            var blocksContext = BlocksContext.GetContext();
-
             _logger.LogInformation("Role creation start");
 
             // Replaces a flat refusal for any non-default caller. The organization now comes from
@@ -184,28 +237,10 @@ namespace Iam.DomainService.Resources
                 return Failure("forbidden", "Multi_Org_Required_For_Organization_Role");
             }
 
-            // Name is checked before the slug because it is the thing the administrator typed and
-            // recognises; failing on the derived slug first would report a value they never chose.
-            if (!string.IsNullOrWhiteSpace(command.Name)
-                && await _resourceRepository.HasOwnedRoleWithNameAsync(command.Name, organizationId))
+            var nameOrSlugFailure = await CheckRoleNameAndSlugAsync(command, organizationId);
+            if (nameOrSlugFailure != null)
             {
-                _logger.LogInformation("Role creation end -- Duplicate Name In Organization");
-                return Failure("Name", "Role_Name_Already_Exists_In_Organization");
-            }
-
-            // The stored slug is derived here, never taken from the request verbatim, so a caller
-            // cannot mint a slug attributed to another organization. Runs before validation so the
-            // validator's org-scoped uniqueness check sees the value that will actually be stored.
-            if (!string.IsNullOrWhiteSpace(command.Slug))
-            {
-                var (resolvedSlug, slugError) = await ResolveRoleSlugAsync(command.Slug, organizationId);
-                if (slugError != null)
-                {
-                    _logger.LogInformation("Role creation end -- Slug Unavailable");
-                    return Failure("Slug", slugError);
-                }
-
-                command.Slug = resolvedSlug!;
+                return nameOrSlugFailure;
             }
 
             // Advisory, default-organization callers only, and only when the caller has not already
@@ -232,36 +267,20 @@ namespace Iam.DomainService.Resources
                 };
             }
 
+            // R5: a non-system caller may hang a new role only below a role it holds or manages.
+            // The role starts empty, so its parent is the only power it can carry.
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckCreateRole(scope, command.ParentRoleSlug)).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
             // An archived parent is still resolvable by slug -- deliberately, since the duplicate
             // check during organization provisioning depends on that. Hanging a live role off one
             // would build a hierarchy whose parent is hidden from every roles list.
-            List<string>? ancestorRoleSlugs = null;
-            if (!string.IsNullOrWhiteSpace(command.ParentRoleSlug))
+            var (ancestorRoleSlugs, parentFailure) = await ResolveParentRoleAsync(command);
+            if (parentFailure != null)
             {
-                var parent = await _resourceRepository.GetRoleBySlugAsync(command.ParentRoleSlug.ToLower());
-                if (parent?.IsArchived == true)
-                {
-                    _logger.LogInformation("Role creation end -- Parent Role Archived");
-                    return new BaseMutationResponse
-                    {
-                        Errors = new Dictionary<string, string>
-                        {
-                            { "ParentRoleSlug", "Parent_Role_Is_Archived" }
-                        }
-                    };
-                }
-
-                // Resolved before the insert, so a parent that does not exist in the caller's
-                // organization or a chain that does not terminate is a validation error rather than
-                // a stored role whose hierarchy nobody can walk.
-                var (resolved, ancestorError) = await ResolveAncestorRoleSlugsAsync(command.ParentRoleSlug);
-                if (ancestorError != null)
-                {
-                    _logger.LogInformation("Role creation end -- Parent Chain Unresolvable");
-                    return Failure("ParentRoleSlug", ancestorError);
-                }
-
-                ancestorRoleSlugs = resolved;
+                return parentFailure;
             }
 
             var itemId = await ProcessRoleAsync(command, ancestorRoleSlugs);
@@ -299,6 +318,40 @@ namespace Iam.DomainService.Resources
                 IsSuccess = true,
                 ItemId = itemId
             };
+        }
+
+        private async Task<(List<string>? AncestorRoleSlugs, BaseMutationResponse? Failure)> ResolveParentRoleAsync(CreateRoleRequest command)
+        {
+            List<string>? ancestorRoleSlugs = null;
+            if (!string.IsNullOrWhiteSpace(command.ParentRoleSlug))
+            {
+                var parent = await _resourceRepository.GetRoleBySlugAsync(command.ParentRoleSlug.ToLower());
+                if (parent?.IsArchived == true)
+                {
+                    _logger.LogInformation("Role creation end -- Parent Role Archived");
+                    return (null, new BaseMutationResponse
+                    {
+                        Errors = new Dictionary<string, string>
+                        {
+                            { "ParentRoleSlug", "Parent_Role_Is_Archived" }
+                        }
+                    });
+                }
+
+                // Resolved before the insert, so a parent that does not exist in the caller's
+                // organization or a chain that does not terminate is a validation error rather than
+                // a stored role whose hierarchy nobody can walk.
+                var (resolved, ancestorError) = await ResolveAncestorRoleSlugsAsync(command.ParentRoleSlug);
+                if (ancestorError != null)
+                {
+                    _logger.LogInformation("Role creation end -- Parent Chain Unresolvable");
+                    return (null, Failure("ParentRoleSlug", ancestorError));
+                }
+
+                ancestorRoleSlugs = resolved;
+            }
+
+            return (ancestorRoleSlugs, null);
         }
 
         public async Task<string> ProcessRoleAsync(CreateRoleRequest command, List<string>? ancestorRoleSlugs = null)
@@ -357,6 +410,11 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> UpdatePermissionAsync(string id, UpdatePermissionRequest command)
         {
+            if (!_accessGrant.AuthorizeSystemOnlyIfWired("permissions/update"))
+            {
+                return GrantNotAllowed();
+            }
+
             var blocksContext = BlocksContext.GetContext();
             if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
@@ -380,7 +438,7 @@ namespace Iam.DomainService.Resources
                 {
                     Errors = new Dictionary<string, string>
                     {
-                        { "ItemId", "Permission_Not_Found" }
+                        { ItemIdKey, "Permission_Not_Found" }
                     }
                 };
             }
@@ -413,7 +471,7 @@ namespace Iam.DomainService.Resources
             if (permission.IsArchived)
             {
                 _logger.LogInformation("Permission update end -- Already Archived");
-                return Failure("archived", "Cannot_Update_Archived_Permission");
+                return Failure(ArchivedKey, "Cannot_Update_Archived_Permission");
             }
 
             permission.Name = command.Name;
@@ -465,7 +523,7 @@ namespace Iam.DomainService.Resources
                     {
                         Entity = "permission",
                         ItemId = permission.ItemId,
-                        Action = "update"
+                        Action = UpdateAction
                     }
                 );
             }
@@ -480,6 +538,11 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> ArchivePermissionAsync(string id, bool confirmRevokeFromUsers = false)
         {
+            if (!_accessGrant.AuthorizeSystemOnlyIfWired("permissions/delete"))
+            {
+                return GrantNotAllowed();
+            }
+
             var blocksContext = BlocksContext.GetContext();
             if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
@@ -492,7 +555,7 @@ namespace Iam.DomainService.Resources
             if (permission == null)
             {
                 _logger.LogInformation("Permission archive end -- Not Found");
-                return Failure("ItemId", "Permission_Not_Found");
+                return Failure(ItemIdKey, "Permission_Not_Found");
             }
 
             // GetPermissionByIdAsync matches on ItemId alone, so a default-org caller can reach a
@@ -507,7 +570,7 @@ namespace Iam.DomainService.Resources
             if (permission.IsArchived)
             {
                 _logger.LogInformation("Permission archive end -- Already Archived");
-                return Failure("archived", "Permission_Already_Archived");
+                return Failure(ArchivedKey, "Permission_Already_Archived");
             }
 
             if (permission.IsBuiltIn && !_identityAccessManagementService.IsRoot())
@@ -615,7 +678,7 @@ namespace Iam.DomainService.Resources
                     {
                         Entity = "permission",
                         ItemId = permission.ItemId,
-                        Action = "delete",
+                        Action = DeleteAction,
                         ConfirmRevokeFromUsers = confirmRevokeFromUsers
                     }
                 );
@@ -638,6 +701,75 @@ namespace Iam.DomainService.Resources
             };
         }
 
+        /// <summary>The access grant refusal; the controller answers it with 403.</summary>
+        private static BaseMutationResponse GrantNotAllowed() =>
+            new() { IsSuccess = false, Errors = AccessGrantErrors.Create() };
+
+        /// <summary>
+        /// R7. The roles and permissions <see cref="GrantCreatorMembershipAsync"/> will write: the
+        /// request's member defaults, else the caller's own live roles and direct permissions in the
+        /// organization it is acting in -- the same fallback, minus slugs that grant nothing.
+        /// </summary>
+        private async Task<bool> AuthorizeCreatorGrantAsync(CreateOrganizationRequest request)
+        {
+            var scope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (scope is null || scope.IsSystem)
+            {
+                return true;
+            }
+
+            var roles = request.DefaultRoleForMembers.Count > 0 ? request.DefaultRoleForMembers : scope.HeldRoles.ToList();
+            return await _accessGrant
+                .AuthorizeGrantIfWiredAsync(scope, roles, request.DefaultPermissionsForMembers, AccessGrantRules.CreateOrganization)
+                .ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// True when a record in <paramref name="organizationId"/> is within the token's organization:
+        /// a tenant-wide token (<c>default</c>, or none) reaches every organization, any other only
+        /// its own.
+        /// </summary>
+        private static bool IsInTokenOrganizationScope(string? organizationId)
+        {
+            var tokenOrganizationId = BlocksContext.GetContext()?.OrganizationId;
+            return string.IsNullOrWhiteSpace(tokenOrganizationId)
+                || IsDefaultOrgScope(tokenOrganizationId)
+                || string.Equals(organizationId, tokenOrganizationId, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// After a role moves, every role below it still lists its old ancestors. Each descendant's
+        /// chain is rebuilt as: its own path down to the moved role, the moved role, then the moved
+        /// role's new ancestors -- so "managed by" stays true for the whole subtree.
+        /// </summary>
+        private async Task RecomputeDescendantAncestorsAsync(Role role)
+        {
+            var descendants = (await _resourceRepository.GetRolesByOrgAsync(role.OrganizationId).ConfigureAwait(false) ?? [])
+                .Where(x => x.ItemId != role.ItemId
+                    && (x.AncestorRoleSlugs ?? []).Contains(role.Slug, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            if (descendants.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var descendant in descendants)
+            {
+                var below = descendant.AncestorRoleSlugs
+                    .TakeWhile(x => !string.Equals(x, role.Slug, StringComparison.OrdinalIgnoreCase));
+                descendant.AncestorRoleSlugs = below
+                    .Append(role.Slug)
+                    .Concat(role.AncestorRoleSlugs ?? [])
+                    .ToList();
+            }
+
+            if (!await _resourceRepository.UpdateRolesAsync(descendants).ConfigureAwait(false))
+            {
+                ResourceMutationLog.DescendantAncestorsNotUpdated(_logger, role.Slug, role.OrganizationId, descendants.Count);
+            }
+        }
+
         public async Task<BaseMutationResponse> ArchiveRoleAsync(string id, bool confirmRevokeFromUsers = false)
         {
             var blocksContext = BlocksContext.GetContext();
@@ -649,7 +781,7 @@ namespace Iam.DomainService.Resources
             if (role == null)
             {
                 _logger.LogInformation("Role archive end -- Not Found");
-                return Failure("ItemId", "Role_Not_Found");
+                return Failure(ItemIdKey, "Role_Not_Found");
             }
 
             // Copies are retired by propagating the archive of their master record, never directly.
@@ -672,7 +804,15 @@ namespace Iam.DomainService.Resources
             if (role.IsArchived)
             {
                 _logger.LogInformation("Role archive end -- Already Archived");
-                return Failure("archived", "Role_Already_Archived");
+                return Failure(ArchivedKey, "Role_Already_Archived");
+            }
+
+            // R5: archiving takes the role, and every permission it carries, away from its holders,
+            // so the caller must be able to grant all of it -- and may not archive a role it holds.
+            var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (!_accessGrant.AuthorizeScopeIfWired(grantScope, scope => AccessGrantRules.CheckEditRole(scope, role)))
+            {
+                return GrantNotAllowed();
             }
 
             if (await _resourceRepository.HasChildRolesAsync(role.Slug, role.OrganizationId))
@@ -702,12 +842,21 @@ namespace Iam.DomainService.Resources
                     role.OrganizationId);
             }
 
+            // R12 needs to know whose access the cleanup below removes, and only before it runs.
+            var removedFromUserIds = await _accessGrant.GetRoleHoldersIfWiredAsync(grantScope, role.Slug).ConfigureAwait(false);
+
             // Cleanup precedes the archive deliberately. If the archive write then fails, a slug
             // removed from permissions without the role being archived is the safer half-state and
             // a retry converges. The reverse -- an archived role still referenced -- is not, so an
             // unacknowledged cleanup stops here rather than archiving anyway.
             var permissionsCleaned = await _resourceRepository.RemoveRoleFromAllPermissionsAsync(role.Slug, role.OrganizationId);
             var usersCleaned = await _resourceRepository.RemoveRoleFromAllUsersAsync(role.Slug, role.OrganizationId);
+            if (usersCleaned)
+            {
+                // Right after the removal, not after the archive: the users have lost the role even
+                // if a later step below fails.
+                await _accessGrant.EndSessionsAfterRemovalIfWiredAsync(grantScope, removedFromUserIds, "role_archived").ConfigureAwait(false);
+            }
 
             // The signup defaults are the third reference, and the one that keeps acting after the
             // archive: DefaultRolesForNewUserOnSignUp is copied verbatim onto every account created
@@ -745,6 +894,22 @@ namespace Iam.DomainService.Resources
                 return new BaseMutationResponse();
             }
 
+            await PublishRoleArchivedAsync(role, callerOrganizationId, confirmRevokeFromUsers).ConfigureAwait(false);
+
+            _logger.LogInformation("Role archive end -- Success");
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = role.ItemId
+            };
+        }
+
+        /// <summary>
+        /// Publishes the events of a committed role archive: the resource mutation and, for a
+        /// default-organization archive under multi-org, the propagation to every copy.
+        /// </summary>
+        private async Task PublishRoleArchivedAsync(Role role, string callerOrganizationId, bool confirmRevokeFromUsers)
+        {
             // Both sends happen after the archive has committed, and a retry cannot republish them
             // because it stops at Role_Already_Archived. Letting an exception escape would return
             // 500 for a write that succeeded and still leave the gap, so the failure is reported
@@ -776,7 +941,7 @@ namespace Iam.DomainService.Resources
                         {
                             Entity = "role",
                             ItemId = role.ItemId,
-                            Action = "delete",
+                            Action = DeleteAction,
                             // Carried, not re-derived: the consumer runs later and has no way to
                             // know a human agreed to revoke live assignments.
                             ConfirmRevokeFromUsers = confirmRevokeFromUsers
@@ -793,13 +958,6 @@ namespace Iam.DomainService.Resources
                     role.ItemId,
                     role.OrganizationId);
             }
-
-            _logger.LogInformation("Role archive end -- Success");
-            return new BaseMutationResponse
-            {
-                IsSuccess = true,
-                ItemId = role.ItemId
-            };
         }
 
         public async Task<BaseMutationResponse> UpdateRoleAsync(UpdateRoleRequest command)
@@ -813,20 +971,21 @@ namespace Iam.DomainService.Resources
                 {
                     Errors = new Dictionary<string, string>
                     {
-                        { "ItemId", "Item_Not_Found" }
+                        { ItemIdKey, "Item_Not_Found" }
                     }
                 };
             }
 
-            if (role.CreatedFromDefault && !IsDefaultOrgScope(role.OrganizationId))
+            var normalizedParentRoleSlug = NormalizeParentRoleSlug(command.ParentRoleSlug);
+            var parentChanged = !string.Equals(
+                normalizedParentRoleSlug,
+                NormalizeParentRoleSlug(role.ParentRoleSlug),
+                StringComparison.Ordinal);
+
+            var updateRefusal = await CheckRoleUpdateAllowedAsync(role, normalizedParentRoleSlug, parentChanged).ConfigureAwait(false);
+            if (updateRefusal != null)
             {
-                return new BaseMutationResponse
-                {
-                    Errors = new Dictionary<string, string>
-                        {
-                            { "forbidden", "Can_Not_Change_Default_role" }
-                        }
-                };
+                return updateRefusal;
             }
 
             if (string.IsNullOrWhiteSpace(command.Name))
@@ -863,10 +1022,6 @@ namespace Iam.DomainService.Resources
             }
 
             var blocksContext = BlocksContext.GetContext();
-            var normalizedParentRoleSlug = string.IsNullOrWhiteSpace(command.ParentRoleSlug)
-                ? null
-                : command.ParentRoleSlug.ToLower();
-
 
             role.Name = command.Name;
             role.Description = command.Description;
@@ -875,16 +1030,10 @@ namespace Iam.DomainService.Resources
             role.LastUpdatedBy = blocksContext?.UserId;
             role.CanCreateOwn = command.CanCreateOwn;
 
-            if (!string.IsNullOrWhiteSpace(command.ParentRoleSlug))
+            var parentFailure = await ApplyParentRoleAsync(role, command.ParentRoleSlug).ConfigureAwait(false);
+            if (parentFailure != null)
             {
-                var (ancestorRoleSlugs, ancestorError) = await ResolveAncestorRoleSlugsAsync(command.ParentRoleSlug);
-                if (ancestorError != null)
-                {
-                    _logger.LogInformation("Role update end -- Parent Chain Unresolvable");
-                    return Failure("ParentRoleSlug", ancestorError);
-                }
-
-                role.AncestorRoleSlugs = ancestorRoleSlugs!;
+                return parentFailure;
             }
 
             var result = await _resourceRepository.UpdateRoleAsync(role);
@@ -893,6 +1042,11 @@ namespace Iam.DomainService.Resources
             {
                 _logger.LogInformation("Role update end -- Error");
                 return new BaseMutationResponse();
+            }
+
+            if (parentChanged)
+            {
+                await RecomputeDescendantAncestorsAsync(role).ConfigureAwait(false);
             }
 
             await SendResourceMutationEventAsync(
@@ -912,7 +1066,7 @@ namespace Iam.DomainService.Resources
                     {
                         Entity = "role",
                         ItemId = role.ItemId,
-                        Action = "update"
+                        Action = UpdateAction
                     }
                 );
             }
@@ -923,6 +1077,79 @@ namespace Iam.DomainService.Resources
                 IsSuccess = true,
                 ItemId = role.ItemId
             };
+        }
+
+        private static string? NormalizeParentRoleSlug(string? parentRoleSlug) =>
+            string.IsNullOrWhiteSpace(parentRoleSlug)
+                ? null
+                : parentRoleSlug.ToLower();
+
+        /// <summary>
+        /// The guards a role update runs before anything is validated or written: the role must be
+        /// in the token's organization, must not be a default-organization copy, and must pass R5
+        /// for the caller. Null when the update may go ahead.
+        /// </summary>
+        private async Task<BaseMutationResponse?> CheckRoleUpdateAllowedAsync(Role role, string? normalizedParentRoleSlug, bool parentChanged)
+        {
+            // GetRoleByIdAsync has no organization scope, so an organization-scoped caller could
+            // otherwise edit another organization's role by id. Always on, whatever the
+            // access grant mode; a tenant-wide token is excepted, as it is everywhere.
+            if (!IsInTokenOrganizationScope(role.OrganizationId))
+            {
+                ResourceMutationLog.RoleUpdateOutsideTokenOrganization(_logger, role.ItemId);
+                return Failure("forbidden", "Not_Allowed_To_Update_Role_From_Another_Organization");
+            }
+
+            if (role.CreatedFromDefault && !IsDefaultOrgScope(role.OrganizationId))
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                        {
+                            { "forbidden", "Can_Not_Change_Default_role" }
+                        }
+                };
+            }
+
+            // R5: no edits to a role the caller holds; the role must be one it could assign, and a
+            // new parent one it holds or manages.
+            var allowed = await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope =>
+                AccessGrantRules.CheckEditRole(scope, role, normalizedParentRoleSlug, parentChanged)).ConfigureAwait(false);
+            return allowed ? null : GrantNotAllowed();
+        }
+
+        /// <summary>
+        /// Resolves the role's ancestor chain for its (possibly new) parent and writes it onto the
+        /// role. Null on success, otherwise the failure to return.
+        /// </summary>
+        private async Task<BaseMutationResponse?> ApplyParentRoleAsync(Role role, string? parentRoleSlug)
+        {
+            if (string.IsNullOrWhiteSpace(parentRoleSlug))
+            {
+                // A role moved to the top keeps no ancestors; stale ones would leave it "managed"
+                // by roles that no longer sit above it.
+                role.AncestorRoleSlugs = [];
+                return null;
+            }
+
+            var (ancestorRoleSlugs, ancestorError) = await ResolveAncestorRoleSlugsAsync(parentRoleSlug);
+            if (ancestorError != null)
+            {
+                _logger.LogInformation("Role update end -- Parent Chain Unresolvable");
+                return Failure("ParentRoleSlug", ancestorError);
+            }
+
+            // The walk above stops on a loop already in the data, but not on the one this
+            // request would close: a parent that is the role itself or sits below it walks up
+            // through the role and out again, and would be stored as a cycle.
+            if (AccessGrantRules.CreatesCycle(role.Slug, role.ParentRoleSlug, ancestorRoleSlugs))
+            {
+                ResourceMutationLog.RoleParentWouldCloseCycle(_logger, role.Slug);
+                return Failure(nameof(UpdateRoleRequest.ParentRoleSlug), "Role_Hierarchy_Cycle_Detected");
+            }
+
+            role.AncestorRoleSlugs = ancestorRoleSlugs!;
+            return null;
         }
 
         public async Task SendResourceMutationEventAsync(ResourceMutationEvent resourceMutation)
@@ -992,11 +1219,24 @@ namespace Iam.DomainService.Resources
                 {
                     Errors = new Dictionary<string, string>
                     {
-                        { "archived", "Role_Already_Archived" }
+                        { ArchivedKey, "Role_Already_Archived" }
                     }
                 };
             }
 
+
+            // R5: every permission added to or taken from the role must be one the caller holds,
+            // and the role itself one it could assign but does not hold.
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckEditRole(
+                    scope,
+                    isExist,
+                    changedPermissions: command.AddPermissions
+                        .Concat(command.RemovePermissions)
+                        .Select(scope.ResourceOfPermissionId)
+                        .OfType<string>())).ConfigureAwait(false))
+            {
+                return new SetRolesResponse { Errors = AccessGrantErrors.Create() };
+            }
 
             if (command.AddPermissions.Any())
             {
@@ -1045,19 +1285,19 @@ namespace Iam.DomainService.Resources
                 case ("permission", "insert"):
                     await InsertPermissionForAllOrg(command.ItemId);
                     break;
-                case ("permission", "update"):
+                case ("permission", UpdateAction):
                     await UpdatePermissionForAllOrg(command.ItemId);
                     break;
-                case ("permission", "delete"):
+                case ("permission", DeleteAction):
                     await DeletePermissionForAllOrg(command.ItemId, command.ConfirmRevokeFromUsers);
                     break;
                 case ("role", "insert"):
                     await InsertRoleForAllOrg(command.ItemId);
                     break;
-                case ("role", "update"):
+                case ("role", UpdateAction):
                     await UpdateRoleForAllOrg(command.ItemId);
                     break;
-                case ("role", "delete"):
+                case ("role", DeleteAction):
                     await DeleteRoleForAllOrg(command.ItemId, command.ConfirmRevokeFromUsers);
                     break;
                 default:
@@ -1355,42 +1595,10 @@ namespace Iam.DomainService.Resources
             // protect nothing while skipping the remaining organizations.
             if (confirmRevokeFromUsers)
             {
-                foreach (var organizationId in permissions
-                    .Select(x => x.OrganizationId)
-                    .Where(x => !string.IsNullOrWhiteSpace(x) && x != DefaultOrganizationId)
-                    .Distinct(StringComparer.OrdinalIgnoreCase))
-                {
-                    var usersCleaned = await _resourceRepository.RemovePermissionFromAllUsersAsync(
-                        permission.Resource, organizationId);
-
-                    if (!usersCleaned)
-                    {
-                        _logger.LogWarning(
-                            "Permission archive propagation: the direct user-grant cleanup for '{Resource}' in organization '{OrganizationId}' was not acknowledged. Users there may still hold the archived permission and need manual review.",
-                            permission.Resource,
-                            organizationId);
-                    }
-                }
+                await ScrubDirectUserGrantsAsync(permission, permissions);
             }
 
-            var stale = 0;
-            foreach (var orgPermission in permissions)
-            {
-                if (orgPermission.OrganizationId == DefaultOrganizationId)
-                {
-                    continue;
-                }
-
-                if (orgPermission.IsArchived)
-                {
-                    continue;
-                }
-
-                orgPermission.IsArchived = true;
-                orgPermission.LastUpdatedDate = DateTime.UtcNow;
-                orgPermission.LastUpdatedBy = permission.LastUpdatedBy;
-                stale++;
-            }
+            var stale = ArchiveOrganizationCopies(permissions, permission);
 
             if (stale > 0)
             {
@@ -1422,6 +1630,51 @@ namespace Iam.DomainService.Resources
                 stale);
 
             return true;
+        }
+
+        // Best-effort per organization: see the note at the call site in DeletePermissionForAllOrg.
+        private async Task ScrubDirectUserGrantsAsync(Permission permission, IEnumerable<Permission> permissions)
+        {
+            foreach (var organizationId in permissions
+                .Select(x => x.OrganizationId)
+                .Where(x => !string.IsNullOrWhiteSpace(x) && x != DefaultOrganizationId)
+                .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var usersCleaned = await _resourceRepository.RemovePermissionFromAllUsersAsync(
+                    permission.Resource, organizationId);
+
+                if (!usersCleaned)
+                {
+                    _logger.LogWarning(
+                        "Permission archive propagation: the direct user-grant cleanup for '{Resource}' in organization '{OrganizationId}' was not acknowledged. Users there may still hold the archived permission and need manual review.",
+                        permission.Resource,
+                        organizationId);
+                }
+            }
+        }
+
+        private static int ArchiveOrganizationCopies(IEnumerable<Permission> permissions, Permission permission)
+        {
+            var stale = 0;
+            foreach (var orgPermission in permissions)
+            {
+                if (orgPermission.OrganizationId == DefaultOrganizationId)
+                {
+                    continue;
+                }
+
+                if (orgPermission.IsArchived)
+                {
+                    continue;
+                }
+
+                orgPermission.IsArchived = true;
+                orgPermission.LastUpdatedDate = DateTime.UtcNow;
+                orgPermission.LastUpdatedBy = permission.LastUpdatedBy;
+                stale++;
+            }
+
+            return stale;
         }
 
         /// <summary>
@@ -1493,65 +1746,10 @@ namespace Iam.DomainService.Resources
 
             foreach (var orgRole in orphaned)
             {
-                // A redelivered queue message must not rewrite copies that are already settled.
-                if (orgRole.IsArchived)
+                if (await TryArchiveOrganizationRoleCopyAsync(role, orgRole, confirmRevokeFromUsers))
                 {
-                    continue;
+                    archived.Add(orgRole);
                 }
-
-                // The same rules that hard-block a direct archive apply per organization: retiring
-                // a role platform-wide must not orphan a live assignment in one of them. Checked
-                // before any cleanup, so a skipped copy is left completely untouched rather than
-                // half-cleaned.
-                if (await _resourceRepository.HasChildRolesAsync(orgRole.Slug, orgRole.OrganizationId))
-                {
-                    _logger.LogWarning(
-                        "Role archive propagation skipped '{Slug}' in organization '{OrganizationId}': the copy still has child roles there. Every other organization is unaffected. This message is not replayed and re-archiving the source returns Role_Already_Archived, so retire the children and then archive this copy through a reconciliation pass.",
-                        orgRole.Slug,
-                        orgRole.OrganizationId);
-                    continue;
-                }
-
-                // Consent given in the default organization reaches every copy: leaving one active
-                // because someone there still holds it is exactly the split-brain state this
-                // propagation exists to prevent -- the role would vanish from the administrator's
-                // list and keep working in that organization, with no caller able to archive it
-                // (C2 refuses a CreatedFromDefault copy directly).
-                if (await _resourceRepository.HasUserAssignmentsAsync(orgRole.Slug, orgRole.OrganizationId))
-                {
-                    if (!confirmRevokeFromUsers)
-                    {
-                        _logger.LogWarning(
-                            "Role archive propagation skipped '{Slug}' in organization '{OrganizationId}': the copy is still assigned to an active user there. Every other organization is unaffected. This message is not replayed and re-archiving the source returns Role_Already_Archived, so remove the assignment and then archive this copy through a reconciliation pass.",
-                            orgRole.Slug,
-                            orgRole.OrganizationId);
-                        continue;
-                    }
-
-                    _logger.LogWarning(
-                        "Role archive propagation is removing '{Slug}' from at least one active user in organization '{OrganizationId}', under the consent given with the original archive. Their assignment cannot be restored by un-archiving.",
-                        orgRole.Slug,
-                        orgRole.OrganizationId);
-                }
-
-                var permissionsCleaned = await _resourceRepository.RemoveRoleFromAllPermissionsAsync(orgRole.Slug, orgRole.OrganizationId);
-                var usersCleaned = await _resourceRepository.RemoveRoleFromAllUsersAsync(orgRole.Slug, orgRole.OrganizationId);
-
-                if (!permissionsCleaned || !usersCleaned)
-                {
-                    _logger.LogWarning(
-                        "Role archive propagation skipped '{Slug}' in organization '{OrganizationId}': reference cleanup was not acknowledged (permissions: {PermissionsCleaned}, users: {UsersCleaned}). The copy is left active rather than archived with dangling references.",
-                        orgRole.Slug,
-                        orgRole.OrganizationId,
-                        permissionsCleaned,
-                        usersCleaned);
-                    continue;
-                }
-
-                orgRole.IsArchived = true;
-                orgRole.LastUpdatedDate = DateTime.UtcNow;
-                orgRole.LastUpdatedBy = role.LastUpdatedBy;
-                archived.Add(orgRole);
             }
 
             if (archived.Count == 0)
@@ -1581,6 +1779,70 @@ namespace Iam.DomainService.Resources
             return true;
         }
 
+
+        // Returns true when the copy was changed and must be written; false when it was skipped.
+        private async Task<bool> TryArchiveOrganizationRoleCopyAsync(Role role, Role orgRole, bool confirmRevokeFromUsers)
+        {
+            // A redelivered queue message must not rewrite copies that are already settled.
+            if (orgRole.IsArchived)
+            {
+                return false;
+            }
+
+            // The same rules that hard-block a direct archive apply per organization: retiring
+            // a role platform-wide must not orphan a live assignment in one of them. Checked
+            // before any cleanup, so a skipped copy is left completely untouched rather than
+            // half-cleaned.
+            if (await _resourceRepository.HasChildRolesAsync(orgRole.Slug, orgRole.OrganizationId))
+            {
+                _logger.LogWarning(
+                    "Role archive propagation skipped '{Slug}' in organization '{OrganizationId}': the copy still has child roles there. Every other organization is unaffected. This message is not replayed and re-archiving the source returns Role_Already_Archived, so retire the children and then archive this copy through a reconciliation pass.",
+                    orgRole.Slug,
+                    orgRole.OrganizationId);
+                return false;
+            }
+
+            // Consent given in the default organization reaches every copy: leaving one active
+            // because someone there still holds it is exactly the split-brain state this
+            // propagation exists to prevent -- the role would vanish from the administrator's
+            // list and keep working in that organization, with no caller able to archive it
+            // (C2 refuses a CreatedFromDefault copy directly).
+            if (await _resourceRepository.HasUserAssignmentsAsync(orgRole.Slug, orgRole.OrganizationId))
+            {
+                if (!confirmRevokeFromUsers)
+                {
+                    _logger.LogWarning(
+                        "Role archive propagation skipped '{Slug}' in organization '{OrganizationId}': the copy is still assigned to an active user there. Every other organization is unaffected. This message is not replayed and re-archiving the source returns Role_Already_Archived, so remove the assignment and then archive this copy through a reconciliation pass.",
+                        orgRole.Slug,
+                        orgRole.OrganizationId);
+                    return false;
+                }
+
+                _logger.LogWarning(
+                    "Role archive propagation is removing '{Slug}' from at least one active user in organization '{OrganizationId}', under the consent given with the original archive. Their assignment cannot be restored by un-archiving.",
+                    orgRole.Slug,
+                    orgRole.OrganizationId);
+            }
+
+            var permissionsCleaned = await _resourceRepository.RemoveRoleFromAllPermissionsAsync(orgRole.Slug, orgRole.OrganizationId);
+            var usersCleaned = await _resourceRepository.RemoveRoleFromAllUsersAsync(orgRole.Slug, orgRole.OrganizationId);
+
+            if (!permissionsCleaned || !usersCleaned)
+            {
+                _logger.LogWarning(
+                    "Role archive propagation skipped '{Slug}' in organization '{OrganizationId}': reference cleanup was not acknowledged (permissions: {PermissionsCleaned}, users: {UsersCleaned}). The copy is left active rather than archived with dangling references.",
+                    orgRole.Slug,
+                    orgRole.OrganizationId,
+                    permissionsCleaned,
+                    usersCleaned);
+                return false;
+            }
+
+            orgRole.IsArchived = true;
+            orgRole.LastUpdatedDate = DateTime.UtcNow;
+            orgRole.LastUpdatedBy = role.LastUpdatedBy;
+            return true;
+        }
 
         public async Task SendResourceSetToPermissionMutationEventAsync(ResourceSetToPermissionMutationEvent resourceMutation)
         {
@@ -1707,6 +1969,27 @@ namespace Iam.DomainService.Resources
             _logger.LogInformation(
                 "Tenant permission propagation done. ItemId={ItemId} Action={Action} Attempted={Attempted} Succeeded={Succeeded} Failed={Failed}",
                 context.ItemId, context.Action, summary.TenantsAttempted, summary.TenantsSucceeded, summary.TenantsFailed);
+
+            if (summary.TenantsFailed > 0)
+            {
+                var bc = BlocksContext.GetContext();
+                await _notificationSender.TrySendAsync(new BuiltInNotification(
+                    bc?.TenantId,
+                    BuiltInNotificationNames.PermissionPropagationFailed,
+                    BuiltInNotificationSender.Recipients(bc?.UserId),
+                    BuiltInNotificationSender.Payload(
+                        BuiltInNotificationNames.PermissionPropagationFailed,
+                        "Permission change not copied everywhere",
+                        $"The permission change was not copied to {summary.TenantsFailed} of {summary.TenantsAttempted} tenants.",
+                        isSuccess: false,
+                        fields: new Dictionary<string, object?>
+                        {
+                            ["permissionId"] = context.ItemId,
+                            ["action"] = context.Action.ToString(),
+                            ["tenantsAttempted"] = summary.TenantsAttempted,
+                            ["tenantsFailed"] = summary.TenantsFailed
+                        })));
+            }
         }
 
         public async Task<bool> ProcessPermissionAsync(ResourceSetToPermissionMutationEvent command)
@@ -1760,138 +2043,156 @@ namespace Iam.DomainService.Resources
             }
 
             // Resolve resources only once
-            var addResources = command.AddPermissions.Any()
-                ? (await _resourceRepository.GetPermissionsByIdsAsync(command.AddPermissions))
-                    ?.Select(x => x.Resource)
-                    .Distinct()
-                    .ToList() ?? new List<string>()
-                : new List<string>();
-
-            var removeResources = command.RemovePermissions.Any()
-                ? (await _resourceRepository.GetPermissionsByIdsAsync(command.RemovePermissions))
-                    ?.Select(x => x.Resource)
-                    .Distinct()
-                    .ToList() ?? new List<string>()
-                : new List<string>();
+            var addResources = await ResolveResourcesAsync(command.AddPermissions);
+            var removeResources = await ResolveResourcesAsync(command.RemovePermissions);
 
             foreach (var orgId in orgIds)
             {
-                // SetRoleAsync refuses to modify an archived role in the caller's organization, and
-                // propagation must not do through the back door what the synchronous path forbids.
-                // This matters more since archive propagation shipped: the two ride different
-                // queues (IamOrgQueue vs IamPermissionQueue) with no ordering guarantee, so a
-                // consented assignment and a consented archive issued close together can arrive in
-                // either order.
-                var orgRole = await _resourceRepository.GetRoleBySlugAsync(command.Slug, orgId);
-
-                // CreatedFromDefault is the third condition, and it is the one that was missing.
-                // This lookup matches on slug alone, so an organization that owns a role of its own
-                // carrying the same slug -- a private role created before the create guard existed,
-                // and so still bare-slugged -- was resolved here and had the default organization's
-                // permissions written onto it. The same predicate UpdateRoleForAllOrg and
-                // DeleteRoleForAllOrg already use: propagation touches copies, never originals.
-                if (orgRole == null || orgRole.IsArchived || !orgRole.CreatedFromDefault)
-                {
-                    _logger.LogWarning(
-                        "Role permission propagation skipped '{Slug}' in organization '{OrganizationId}': the copy is missing, archived, or is that organization's own role. Every other organization is unaffected.",
-                        command.Slug,
-                        orgId);
-                    continue;
-                }
-
-                if (addResources.Any())
-                {
-                    var addPermissionIds =
-                        (await _resourceRepository.GetPermissionsByResourcesAsync(addResources, orgId))
-                        ?.Select(x => x.ItemId)
-                        .ToList() ?? new List<string>();
-
-                    if (addPermissionIds.Any())
-                    {
-                        // The result is inspected rather than discarded: an unacknowledged write
-                        // leaves this organization silently out of step with the rest, and the log
-                        // is the only place that becomes visible. One organization failing must
-                        // not abort the others, so this warns and carries on.
-                        var added = await _resourceRepository.UpdateRolePermissionByIdsAsync(
-                            command.Slug,
-                            addPermissionIds,orgId);
-
-                        if (!added)
-                        {
-                            _logger.LogWarning(
-                                "Role permission propagation was not acknowledged when adding permissions to role '{Slug}' in organization '{OrganizationId}'. That organization may still be missing {Resources} and needs manual review; every other organization is unaffected.",
-                                command.Slug,
-                                orgId,
-                                string.Join(", ", addResources));
-                        }
-                    }
-                    else
-                    {
-                        // Drift: this organization never received a copy of the permission, so
-                        // there is no id to bind. Logged rather than failed, because one
-                        // organization missing a document must not veto the rest.
-                        _logger.LogWarning(
-                            "Role permission propagation found no matching permissions to add for role '{Slug}' in organization '{OrganizationId}'. That organization may be missing copies of {Resources}.",
-                            command.Slug,
-                            orgId,
-                            string.Join(", ", addResources));
-                    }
-                }
-
-                if (removeResources.Any())
-                {
-                    var removePermissionIds =
-                        (await _resourceRepository.GetPermissionsByResourcesAsync(removeResources, orgId))
-                        ?.Select(x => x.ItemId)
-                        .ToList() ?? new List<string>();
-
-                    if (removePermissionIds.Any())
-                    {
-                        var removed = await _resourceRepository.RemoveRolePermissionByIdsAsync(
-                            command.Slug,
-                            removePermissionIds,orgId);
-
-                        if (!removed)
-                        {
-                            _logger.LogWarning(
-                                "Role permission propagation was not acknowledged when removing permissions from role '{Slug}' in organization '{OrganizationId}'. That organization may still grant {Resources} and needs manual review; every other organization is unaffected.",
-                                command.Slug,
-                                orgId,
-                                string.Join(", ", removeResources));
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogWarning(
-                            "Role permission propagation found no matching permissions to remove for role '{Slug}' in organization '{OrganizationId}'. That organization may be missing copies of {Resources}.",
-                            command.Slug,
-                            orgId,
-                            string.Join(", ", removeResources));
-                    }
-                }
-
-                // Role.Count is a denormalised cache of "permissions bound to this slug in this
-                // organization", and it is recomputed from the Permissions collection rather than
-                // adjusted by a delta -- so it self-corrects even when one of the writes above was
-                // partially applied or the organization had already drifted.
-                //
-                // ProcessPermissionAsync only ever refreshed the caller's own organization, which
-                // left every propagated-to organization advertising a stale count next to bindings
-                // that had actually changed. Failures are logged and stepped over for the same
-                // reason as the binding writes: a wrong number in one organization must not stop
-                // the remaining organizations from being updated at all.
-                var counted = await _resourceRepository.UpdateRolesCountAsync(command.Slug, orgId);
-
-                if (!counted)
-                {
-                    _logger.LogWarning(
-                        "Role permission propagation could not refresh the permission count for role '{Slug}' in organization '{OrganizationId}'. The bindings there are correct but the displayed count is stale until the next change to this role; every other organization is unaffected.",
-                        command.Slug,
-                        orgId);
-                }
+                await PropagateSetPermissionsToOrganizationAsync(command, orgId, addResources, removeResources);
             }
 
             return true;
+        }
+
+        private async Task<List<string>> ResolveResourcesAsync(List<string> permissionIds)
+        {
+            return permissionIds.Any()
+                ? (await _resourceRepository.GetPermissionsByIdsAsync(permissionIds))
+                    ?.Select(x => x.Resource)
+                    .Distinct()
+                    .ToList() ?? new List<string>()
+                : new List<string>();
+        }
+
+        private async Task PropagateSetPermissionsToOrganizationAsync(
+            ResourceSetToPermissionMutationEvent command,
+            string orgId,
+            List<string> addResources,
+            List<string> removeResources)
+        {
+            // SetRoleAsync refuses to modify an archived role in the caller's organization, and
+            // propagation must not do through the back door what the synchronous path forbids.
+            // This matters more since archive propagation shipped: the two ride different
+            // queues (IamOrgQueue vs IamPermissionQueue) with no ordering guarantee, so a
+            // consented assignment and a consented archive issued close together can arrive in
+            // either order.
+            var orgRole = await _resourceRepository.GetRoleBySlugAsync(command.Slug, orgId);
+
+            // CreatedFromDefault is the third condition, and it is the one that was missing.
+            // This lookup matches on slug alone, so an organization that owns a role of its own
+            // carrying the same slug -- a private role created before the create guard existed,
+            // and so still bare-slugged -- was resolved here and had the default organization's
+            // permissions written onto it. The same predicate UpdateRoleForAllOrg and
+            // DeleteRoleForAllOrg already use: propagation touches copies, never originals.
+            if (orgRole == null || orgRole.IsArchived || !orgRole.CreatedFromDefault)
+            {
+                _logger.LogWarning(
+                    "Role permission propagation skipped '{Slug}' in organization '{OrganizationId}': the copy is missing, archived, or is that organization's own role. Every other organization is unaffected.",
+                    command.Slug,
+                    orgId);
+                return;
+            }
+
+            if (addResources.Any())
+            {
+                await AddResourcesToOrganizationRoleAsync(command, orgId, addResources);
+            }
+
+            if (removeResources.Any())
+            {
+                await RemoveResourcesFromOrganizationRoleAsync(command, orgId, removeResources);
+            }
+
+            // Role.Count is a denormalised cache of "permissions bound to this slug in this
+            // organization", and it is recomputed from the Permissions collection rather than
+            // adjusted by a delta -- so it self-corrects even when one of the writes above was
+            // partially applied or the organization had already drifted.
+            //
+            // ProcessPermissionAsync only ever refreshed the caller's own organization, which
+            // left every propagated-to organization advertising a stale count next to bindings
+            // that had actually changed. Failures are logged and stepped over for the same
+            // reason as the binding writes: a wrong number in one organization must not stop
+            // the remaining organizations from being updated at all.
+            var counted = await _resourceRepository.UpdateRolesCountAsync(command.Slug, orgId);
+
+            if (!counted)
+            {
+                _logger.LogWarning(
+                    "Role permission propagation could not refresh the permission count for role '{Slug}' in organization '{OrganizationId}'. The bindings there are correct but the displayed count is stale until the next change to this role; every other organization is unaffected.",
+                    command.Slug,
+                    orgId);
+            }
+        }
+
+        private async Task AddResourcesToOrganizationRoleAsync(ResourceSetToPermissionMutationEvent command, string orgId, List<string> addResources)
+        {
+            var addPermissionIds =
+                (await _resourceRepository.GetPermissionsByResourcesAsync(addResources, orgId))
+                ?.Select(x => x.ItemId)
+                .ToList() ?? new List<string>();
+
+            if (addPermissionIds.Any())
+            {
+                // The result is inspected rather than discarded: an unacknowledged write
+                // leaves this organization silently out of step with the rest, and the log
+                // is the only place that becomes visible. One organization failing must
+                // not abort the others, so this warns and carries on.
+                var added = await _resourceRepository.UpdateRolePermissionByIdsAsync(
+                    command.Slug,
+                    addPermissionIds,orgId);
+
+                if (!added)
+                {
+                    _logger.LogWarning(
+                        "Role permission propagation was not acknowledged when adding permissions to role '{Slug}' in organization '{OrganizationId}'. That organization may still be missing {Resources} and needs manual review; every other organization is unaffected.",
+                        command.Slug,
+                        orgId,
+                        string.Join(", ", addResources));
+                }
+            }
+            else
+            {
+                // Drift: this organization never received a copy of the permission, so
+                // there is no id to bind. Logged rather than failed, because one
+                // organization missing a document must not veto the rest.
+                _logger.LogWarning(
+                    "Role permission propagation found no matching permissions to add for role '{Slug}' in organization '{OrganizationId}'. That organization may be missing copies of {Resources}.",
+                    command.Slug,
+                    orgId,
+                    string.Join(", ", addResources));
+            }
+        }
+
+        private async Task RemoveResourcesFromOrganizationRoleAsync(ResourceSetToPermissionMutationEvent command, string orgId, List<string> removeResources)
+        {
+            var removePermissionIds =
+                (await _resourceRepository.GetPermissionsByResourcesAsync(removeResources, orgId))
+                ?.Select(x => x.ItemId)
+                .ToList() ?? new List<string>();
+
+            if (removePermissionIds.Any())
+            {
+                var removed = await _resourceRepository.RemoveRolePermissionByIdsAsync(
+                    command.Slug,
+                    removePermissionIds,orgId);
+
+                if (!removed)
+                {
+                    _logger.LogWarning(
+                        "Role permission propagation was not acknowledged when removing permissions from role '{Slug}' in organization '{OrganizationId}'. That organization may still grant {Resources} and needs manual review; every other organization is unaffected.",
+                        command.Slug,
+                        orgId,
+                        string.Join(", ", removeResources));
+                }
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Role permission propagation found no matching permissions to remove for role '{Slug}' in organization '{OrganizationId}'. That organization may be missing copies of {Resources}.",
+                    command.Slug,
+                    orgId,
+                    string.Join(", ", removeResources));
+            }
         }
 
         private Task ProcessTimelineAsync(BlocksContext blocksContext, string itemId, string eventname)
@@ -1899,14 +2200,15 @@ namespace Iam.DomainService.Resources
             return Task.CompletedTask;
         }
 
-        public async Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, string? creatorId = null)
+        public async Task<BaseMutationResponse?> CheckOrganizationCreationAsync(CreateOrganizationRequest request)
         {
-            // Read once and reuse: the AllowOrgCreationFrom* flags below need the object itself.
-            // The guard below is what keeps those dereferences safe -- a tenant with no
-            // configuration document returns here and never reaches them.
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            ArgumentNullException.ThrowIfNull(request);
+            return await CheckOrganizationCreationAsync(request, await _resourceRepository.GetTenantConfigurationAsync());
+        }
 
-            if (!IsMultiOrgEnabled(tenantConfig))
+        private async Task<BaseMutationResponse?> CheckOrganizationCreationAsync(CreateOrganizationRequest request, TenantConfiguration? tenantConfig)
+        {
+            if (!IsMultiOrgEnabled(tenantConfig, nameof(CreateOrganizationAsync)))
             {
                 return new BaseMutationResponse
                 {
@@ -1974,6 +2276,30 @@ namespace Iam.DomainService.Resources
                 }
             }
 
+            return null;
+        }
+
+        public async Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, string? creatorId = null)
+        {
+            // Read once and reuse: the AllowOrgCreationFrom* flags below need the object itself.
+            // The guard below is what keeps those dereferences safe -- a tenant with no
+            // configuration document returns here and never reaches them.
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+
+            var refusal = await CheckOrganizationCreationAsync(request, tenantConfig);
+            if (refusal != null)
+            {
+                return refusal;
+            }
+
+            // R7: the creator is about to be given these roles and permissions in the new
+            // organization, so a non-system caller must be able to grant them where it acts now.
+            var grantsCreatorMembership = request.CreatedFrom == CreatedFrom.ConstructPortal && tenantConfig.AllowOrgCreationFromPortal;
+            if (grantsCreatorMembership && !await AuthorizeCreatorGrantAsync(request).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
             // Create organization
             var blocksContext = BlocksContext.GetContext();
             var contextUserId = blocksContext?.UserId;
@@ -2039,7 +2365,7 @@ namespace Iam.DomainService.Resources
                 return new BaseMutationResponse { IsSuccess = true, ItemId = organization.ItemId };
             }
 
-            if (request.CreatedFrom == CreatedFrom.ConstructPortal && tenantConfig.AllowOrgCreationFromPortal)
+            if (grantsCreatorMembership)
             {
                 await GrantCreatorMembershipAsync(organization.ItemId, createdByUserId, blocksContext, request);
             }
@@ -2203,7 +2529,8 @@ namespace Iam.DomainService.Resources
             _logger.LogInformation("Organization provisioning start for OrganizationId: {OrganizationId}", command.OrganizationId);
             var copyRoleResult = await CopyRoleFromDefault(command.OrganizationId, command.UserId);
             var copyPermissionResult = await CopyPermissionsFromDefault(command.OrganizationId, command.UserId);
-            if (copyRoleResult && copyPermissionResult)
+            var isSuccess = copyRoleResult && copyPermissionResult;
+            if (isSuccess)
             {
                 _logger.LogInformation("Organization provisioning completed successfully for OrganizationId: {OrganizationId}", command.OrganizationId);
             }
@@ -2211,6 +2538,19 @@ namespace Iam.DomainService.Resources
             {
                 _logger.LogError("Organization provisioning encountered errors for OrganizationId: {OrganizationId}", command.OrganizationId);
             }
+
+            await _notificationSender.TrySendAsync(new BuiltInNotification(
+                BlocksContext.GetContext()?.TenantId,
+                BuiltInNotificationNames.OrganizationSetupFinished,
+                BuiltInNotificationSender.Recipients(command.UserId),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.OrganizationSetupFinished,
+                    isSuccess ? "Organization ready" : "Organization setup failed",
+                    isSuccess
+                        ? "Default roles and permissions were set up for the new organization."
+                        : "Default roles or permissions could not be set up for the new organization.",
+                    isSuccess: isSuccess,
+                    fields: new Dictionary<string, object?> { ["organizationId"] = command.OrganizationId })));
         }
 
         private async Task<bool> CopyRoleFromDefault(string organizationId, string userId)
@@ -2536,7 +2876,7 @@ namespace Iam.DomainService.Resources
                 };
             }
 
-            var organization = await _resourceRepository.GetOrganizationById(id);
+            var organization = await _resourceRepository.GetOrganizationByIdForView(id);
             return new GetOrganizationResponse { IsSuccess = true, Organization = organization };
         }
 
@@ -2616,15 +2956,31 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseResponse> SaveOrganizationConfigAsync(SaveOrganizationConfigRequest request)
         {
+            ArgumentNullException.ThrowIfNull(request);
+
+            // R6: tenant configuration belongs to the system user.
+            if (!_accessGrant.AuthorizeSystemOnlyIfWired("organizations/config"))
+            {
+                return new BaseResponse { IsSuccess = false, Errors = AccessGrantErrors.Create() };
+            }
+
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
             if (tenantConfig == null)
             {
-                tenantConfig = new TenantConfiguration
+                tenantConfig = new IamTenantConfiguration
                 {
                     ItemId = Guid.NewGuid().ToString(),
                     CreatedBy = BlocksContext.GetContext()?.UserId,
                     CreatedDate = DateTime.UtcNow
                 };
+            }
+
+            // Validated before anything is applied: a rejected save must change nothing, including the
+            // other fields in the same request.
+            var autoJoinValidationErrors = await ValidateSignupAutoJoinAsync(request, tenantConfig);
+            if (autoJoinValidationErrors != null)
+            {
+                return new BaseResponse { IsSuccess = false, Errors = autoJoinValidationErrors };
             }
 
             tenantConfig.AllowOrgCreationFromCloud = request.AllowOrgCreationFromCloud;
@@ -2639,6 +2995,18 @@ namespace Iam.DomainService.Resources
             if (request.IsOrgNameUniquenessEnabled.HasValue)
             {
                 tenantConfig.IsOrgNameUniquenessEnabled = request.IsOrgNameUniquenessEnabled.Value;
+            }
+
+            // Same convention for the auto-join pair, so a caller that predates them (the blocks-cli save copies a
+            // fixed field list) leaves the setting exactly as it was.
+            if (request.IsSignupAutoJoinEnabled.HasValue)
+            {
+                tenantConfig.IsSignupAutoJoinEnabled = request.IsSignupAutoJoinEnabled.Value;
+            }
+
+            if (request.SignupAutoJoinOrganizationId != null)
+            {
+                tenantConfig.SignupAutoJoinOrganizationId = NormalizeSignupAutoJoinTarget(request.SignupAutoJoinOrganizationId);
             }
 
             tenantConfig.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
@@ -2656,10 +3024,106 @@ namespace Iam.DomainService.Resources
             return new BaseResponse { IsSuccess = true };
         }
 
+        /// <summary>
+        /// Checks the auto-join pair against the state the save would produce. Runs only when the request turns
+        /// auto-join on or names a target, so an unrelated save never fails because an organization was disabled
+        /// after it was chosen; sign-up time stays the authoritative check. Returns null when the save may proceed.
+        /// </summary>
+        private async Task<Dictionary<string, string>?> ValidateSignupAutoJoinAsync(
+            SaveOrganizationConfigRequest request,
+            IamTenantConfiguration storedConfig)
+        {
+            // Same rule as the multi-org apply in SaveOrganizationConfigAsync: switched on with consent by this
+            // very save. That save is where a pair stored while multi-org was off starts to take effect, so it is
+            // validated then even if the request does not mention auto-join.
+            var switchesMultiOrgOn = !storedConfig.IsMultiOrgEnabled
+                && !storedConfig.ConsentForMultiOrgEnable
+                && request.IsMultiOrgEnabled
+                && request.ConsentForMultiOrgEnable;
+            var touchesAutoJoin = request.IsSignupAutoJoinEnabled == true || request.SignupAutoJoinOrganizationId != null;
+            if (!touchesAutoJoin && !switchesMultiOrgOn)
+            {
+                return null;
+            }
+
+            // With multi-org off the pair is stored as sent and has no effect, so there is nothing to validate.
+            if (!storedConfig.IsMultiOrgEnabled && !switchesMultiOrgOn)
+            {
+                return null;
+            }
+
+            var resultingEnabled = request.IsSignupAutoJoinEnabled ?? storedConfig.IsSignupAutoJoinEnabled;
+
+            // Switching multi-org on with auto-join off leaves nothing that would take effect.
+            if (!touchesAutoJoin && !resultingEnabled)
+            {
+                return null;
+            }
+
+            var resultingTarget = request.SignupAutoJoinOrganizationId != null
+                ? NormalizeSignupAutoJoinTarget(request.SignupAutoJoinOrganizationId)
+                : storedConfig.SignupAutoJoinOrganizationId;
+
+            if (string.IsNullOrWhiteSpace(resultingTarget))
+            {
+                return resultingEnabled
+                    ? new Dictionary<string, string>
+                    {
+                        { IdpConstants.SignupAutoJoinOrganizationRequiredError, IdpConstants.SignupAutoJoinOrganizationRequiredMessage }
+                    }
+                    : null;
+            }
+
+            // "default" is a scope sentinel, never a stored organization, so it needs no lookup.
+            if (IsDefaultOrgScope(resultingTarget))
+            {
+                return null;
+            }
+
+            var organization = await _resourceRepository.GetOrganizationById(resultingTarget);
+            if (organization == null || organization.IsDisabled)
+            {
+                return new Dictionary<string, string>
+                {
+                    { IdpConstants.SignupOrganizationUnavailableError, IdpConstants.SignupAutoJoinTargetUnavailableMessage }
+                };
+            }
+
+            return null;
+        }
+
+        private static string? NormalizeSignupAutoJoinTarget(string target) =>
+            string.IsNullOrWhiteSpace(target) ? null : target;
+
+        /// <summary>
+        /// The anonymous read used by the public sign-up page. It exposes whether auto-join is on, but never the
+        /// target organization's id or name.
+        /// </summary>
         public async Task<Dictionary<string, object>> GetOrganizationConfigAsync()
         {
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            return BuildOrganizationConfigResponse(tenantConfig);
+        }
 
+        /// <summary>
+        /// The signed-in read for portals: the anonymous keys plus the auto-join target.
+        /// </summary>
+        public async Task<Dictionary<string, object>> GetAdminOrganizationConfigAsync()
+        {
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            var response = BuildOrganizationConfigResponse(tenantConfig);
+            // The key is always present on this read: the target id, or JSON null when none is stored. The null
+            // is intended, so the nullable warning for this one assignment is suppressed rather than hidden by `!`.
+#pragma warning disable CS8601
+            response["signupAutoJoinOrganizationId"] = tenantConfig?.SignupAutoJoinOrganizationId is { } target
+                ? target
+                : (object?)null;
+#pragma warning restore CS8601
+            return response;
+        }
+
+        private static Dictionary<string, object> BuildOrganizationConfigResponse(IamTenantConfiguration? tenantConfig)
+        {
             return new Dictionary<string, object>
             {
                 { "allowOrgCreationFromCloud", tenantConfig?.AllowOrgCreationFromCloud ?? false },
@@ -2669,6 +3133,7 @@ namespace Iam.DomainService.Resources
                 { "isMultiOrgEnabled", tenantConfig?.IsMultiOrgEnabled ?? false },
                 { "consentForMultiOrgEnable", tenantConfig?.ConsentForMultiOrgEnable ?? false },
                 { "isOrgNameUniquenessEnabled", tenantConfig?.IsOrgNameUniquenessEnabled ?? false },
+                { "isSignupAutoJoinEnabled", tenantConfig?.IsSignupAutoJoinEnabled ?? false },
                 { "itemId", tenantConfig?.ItemId ?? "" }
             };
         }

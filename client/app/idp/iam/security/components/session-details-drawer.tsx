@@ -20,6 +20,7 @@ import { getDeviceIcon } from "@blocks-idp/iam/utils/device-icon";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { useSessionDetails, useRevokeSession } from "../hooks";
 import { toSessionDetailsViewModel } from "../mappers/session.mapper";
+import { revokeResultMessage } from "../utils/revoke-message";
 import type {
   ISessionDetailsViewModel,
   ITimelineEventViewModel,
@@ -73,8 +74,8 @@ export const SessionDetailsDrawer = ({
   const handleRevoke = async () => {
     if (!sessionId) return;
     try {
-      await mutateAsync({ sessionId });
-      showSuccessToast({ description: "Device signed out successfully" });
+      const result = await mutateAsync({ sessionId });
+      showSuccessToast({ description: revokeResultMessage(result) });
       setIsConfirmOpen(false);
       onRevoked?.();
       onOpenChange(false);

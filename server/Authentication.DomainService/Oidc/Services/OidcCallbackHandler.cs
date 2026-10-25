@@ -291,6 +291,14 @@ namespace Authentication.DomainService.Oidc.Services
                         "No account exists for this email, and signing up with SSO is turned off. Contact your administrator to get access.");
                 }
 
+                if (provisioning.Outcome == SsoProvisioningOutcome.OrganizationUnavailable)
+                {
+                    _logger.LogWarning("SSO signup refused for an unknown user from {Provider}: the auto-join organization is unavailable", provider);
+                    return Failure(
+                        IdpConstants.SignupOrganizationUnavailableError,
+                        IdpConstants.SignupOrganizationUnavailableOidcMessage);
+                }
+
                 var ssoUser = provisioning.User;
 
                 if (ssoUser == null || string.IsNullOrWhiteSpace(ssoUser.ItemId))

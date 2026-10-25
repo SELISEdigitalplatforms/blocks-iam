@@ -13,6 +13,7 @@ using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -25,11 +26,19 @@ namespace XUnitTest.Auth.OAuth
         private readonly Mock<IAuthenticationDomainService> _authDomain = new();
         private readonly Mock<IAccountService> _account = new();
         private readonly Mock<IUserActivityDispatcher> _activity = new();
+        private readonly Mock<IUnknownUserLoginGuard> _guard = XUnitTest.TestSupport.UnknownLoginGuardStub.Create();
+
+        public PasswordAuthenticationServiceTests()
+        {
+            _repo.Setup(r => r.TryReserveLoginAttemptAsync("u1", It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "u1", FailedLoginCount = 1 });
+            _repo.Setup(r => r.ReleaseLoginAttemptAsync("u1", It.IsAny<DateTime>())).ReturnsAsync(true);
+        }
 
         private PasswordAuthenticationService Create() =>
             new(NullLogger<PasswordAuthenticationService>.Instance, _tokenManager.Object, _crypto.Object, _repo.Object,
                 new PasswordCredentialVerifier(NullLogger<PasswordCredentialVerifier>.Instance, _tenants.Object,
-                    _repo.Object, _account.Object, _activity.Object, _authDomain.Object));
+                    _repo.Object, _account.Object, _activity.Object, _authDomain.Object), _guard.Object);
 
         private static TokenRequest Request(string user = "jane", string pass = "secret", string? org = null) => new()
         {
@@ -130,7 +139,9 @@ namespace XUnitTest.Auth.OAuth
             var hash = service.HashPassword("correct");
             _repo.Setup(r => r.GetUserByUsernameAsync("jane", It.IsAny<string?>())).ReturnsAsync(ActiveUser(hash));
             var lockedUser = new User { ItemId = "u1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15) };
-            _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+            _repo.Setup(r => r.TryReserveLoginAttemptAsync("u1", It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "u1", FailedLoginCount = 5 });
+            _repo.Setup(r => r.LockAccountIfLoginThresholdReachedAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
                 .ReturnsAsync(lockedUser);
             _account.Setup(a => a.SendAccountLockedNotificationAsync(lockedUser, It.IsAny<DateTime>())).Returns(Task.CompletedTask);
 
@@ -147,8 +158,6 @@ namespace XUnitTest.Auth.OAuth
             var service = Create();
             var hash = service.HashPassword("correct");
             _repo.Setup(r => r.GetUserByUsernameAsync("jane", It.IsAny<string?>())).ReturnsAsync(ActiveUser(hash));
-            _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
-                .ReturnsAsync(new User { ItemId = "u1" }); // no lockout applied
 
             var result = await service.AuthenticateAsync(RequestWithHttp(pass: "wrong"), Config());
 
@@ -163,14 +172,13 @@ namespace XUnitTest.Auth.OAuth
             var service = Create();
             var hash = service.HashPassword("correct");
             _repo.Setup(r => r.GetUserByUsernameAsync("jane", It.IsAny<string?>())).ReturnsAsync(ActiveUser(hash));
-            _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
-                .ReturnsAsync(new User { ItemId = "u1" });
 
             var result = await service.AuthenticateAsync(Request(pass: "wrong"), Config());
 
             result.Error.Should().Be(OAuthError.InValidUseNamePassword);
             result.StatusCode.Should().Be(401);
-            _repo.Verify(r => r.IncrementFailedLoginAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Once);
+            _repo.Verify(r => r.TryReserveLoginAttemptAsync("u1", It.IsAny<int>(), It.IsAny<DateTime>()), Times.Once);
+            _repo.Verify(r => r.ReleaseLoginAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
         }
 
         [Fact]
@@ -180,7 +188,9 @@ namespace XUnitTest.Auth.OAuth
             var hash = service.HashPassword("correct");
             _repo.Setup(r => r.GetUserByUsernameAsync("jane", It.IsAny<string?>())).ReturnsAsync(ActiveUser(hash));
             var lockedUser = new User { ItemId = "u1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15) };
-            _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+            _repo.Setup(r => r.TryReserveLoginAttemptAsync("u1", It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "u1", FailedLoginCount = 5 });
+            _repo.Setup(r => r.LockAccountIfLoginThresholdReachedAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
                 .ReturnsAsync(lockedUser);
             _account.Setup(a => a.SendAccountLockedNotificationAsync(lockedUser, It.IsAny<DateTime>())).Returns(Task.CompletedTask);
 
@@ -239,5 +249,67 @@ namespace XUnitTest.Auth.OAuth
             service.VerifyPassword("secret", hash, "salt-1").Should().BeTrue();
             service.VerifyPassword("secret", hash).Should().BeFalse(); // salt mismatch
         }
-    }
+    
+        // ---------- Pentest M6: no account is told apart from a wrong password ----------
+
+        public static TheoryData<string, bool, bool, UserLifecycleStatus> NoUsableAccount => new()
+        {
+            { "missing", false, false, UserLifecycleStatus.Active },
+            { "pending", false, false, UserLifecycleStatus.PendingVerification },
+            { "disabled", false, true, UserLifecycleStatus.Disabled },
+            { "unverified", true, false, UserLifecycleStatus.Active },
+        };
+
+        [Theory]
+        [MemberData(nameof(NoUsableAccount))]
+        public async Task Authenticate_NoUsableAccount_SameAnswerAsWrongPassword_AndRunsTheDummyCheck(
+            string kind, bool active, bool verified, UserLifecycleStatus status)
+        {
+            _repo.Setup(r => r.GetUserByUsernameAsync("jane", It.IsAny<string?>()))
+                .ReturnsAsync(kind == "missing" ? null! : new User { ItemId = "x", Active = active, IsVerified = verified, Status = status, Password = "h" });
+            var noAccount = await Create().AuthenticateAsync(Request(pass: "guess"), Config());
+
+            _repo.Setup(r => r.GetUserByUsernameAsync("jane", It.IsAny<string?>()))
+                .ReturnsAsync(ActiveUser(BCrypt.Net.BCrypt.HashPassword("secret", 4)));
+            var wrongPassword = await Create().AuthenticateAsync(Request(pass: "guess"), Config());
+
+            (noAccount.StatusCode, noAccount.Error, noAccount.ErrorDescription)
+                .Should().Be((wrongPassword.StatusCode, wrongPassword.Error, wrongPassword.ErrorDescription));
+            noAccount.ErrorDescription.Should().Be("Invalid username or password");
+            _guard.Verify(g => g.FailAsync("jane", "guess", null, It.IsAny<IdentityConfiguration>()), Times.Once,
+                "the BCrypt-equivalent check and the failure count run for a name with no usable account");
+        }
+
+        [Fact]
+        public async Task Authenticate_NoUsableAccount_NoSlotLeft_AnswersLockedLikeARealAccount()
+        {
+            _repo.Setup(r => r.GetUserByUsernameAsync("jane", It.IsAny<string?>())).ReturnsAsync((User)null!);
+            _guard.Setup(g => g.FailAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync(new UnknownUserLoginAttempt(false, false));
+
+            var result = await Create().AuthenticateAsync(Request(), Config());
+
+            result.StatusCode.Should().Be(StatusCodes.Status423Locked);
+            result.Error.Should().Be(OAuthError.AccountLocked);
+            result.ErrorDescription.Should().Be(PasswordCredentialVerifier.LockedDescription);
+        }
+
+        [Fact]
+        public async Task Authenticate_AccountWithoutPassword_StillCostsABcryptCheck()
+        {
+            var user = ActiveUser(string.Empty); // social-only account
+            _repo.Setup(r => r.GetUserByUsernameAsync("jane", It.IsAny<string?>())).ReturnsAsync(user);
+            var bcrypt = BCrypt.Net.BCrypt.HashPassword("x");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            BCrypt.Net.BCrypt.Verify("y", bcrypt);
+            var oneCheck = sw.Elapsed;
+
+            sw.Restart();
+            var result = await Create().AuthenticateAsync(Request(), Config());
+            sw.Stop();
+
+            result.Error.Should().Be(OAuthError.InValidUseNamePassword);
+            sw.Elapsed.Should().BeGreaterThan(oneCheck / 3);
+        }
+}
 }

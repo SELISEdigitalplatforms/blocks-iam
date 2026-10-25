@@ -166,7 +166,7 @@
             <summary>
             Get identity provider by ID
             Retrieves specific provider configuration
-            Does NOT return sensitive credentials (client_secret)
+            Does NOT return sensitive credentials (client_secret, private key)
             </summary>
         </member>
         <member name="M:Api.Controllers.AuthenticationController.UpdateIdentityProvider(System.String,Authentication.DomainService.Shared.RequestModel.UpdateIdentityProviderRequest)">
@@ -188,6 +188,12 @@
             Enable or disable identity provider
             Toggles provider activation status without deleting configuration
             Preferred over deletion for temporary disabling
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.GrantNotAllowed(Blocks.Genesis.BaseResponse)">
+            <summary>
+            A access grant refusal (R8): 403 with the generic error, in the response shape
+            the endpoint always returns.
             </summary>
         </member>
         <member name="T:Api.Controllers.DeviceController">
@@ -254,6 +260,18 @@
             at realistic sizes. Guarded by the roles read permission, not mutate-roles -- it changes
             nothing, and a reader who can open the role should be able to see the consequence of a
             change before deciding to ask someone else to make it.
+            </remarks>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetGrantScope(Iam.DomainService.AccessGrant.IAccessGrantService)">
+            <summary>
+            What the caller may administer in its token organization (access grant):
+            whether it is the system user, the mode, the roles it holds and manages, the roles it may
+            assign, and the permissions it holds. Read from the database, never from the token.
+            </summary>
+            <remarks>
+            Guarded by the roles read permission, like <c>roles/assignable</c>: every screen that
+            uses it already lists roles. The service is taken per action so the controller's
+            constructor does not grow.
             </remarks>
         </member>
         <member name="M:Api.Controllers.IamController.PreviewBulkRoleChange(Iam.DomainService.Users.BulkRoleChangeRequest)">
@@ -364,6 +382,12 @@
             </para>
             </summary>
         </member>
+        <member name="M:Api.Controllers.IamController.MutationResult(System.Object,System.Boolean,System.Collections.Generic.IDictionary{System.String,System.String})">
+            <summary>
+            The answer every mutation endpoint gives: 200 on success, 403 for a access grant
+            refusal (<c>Access_Grant_Not_Allowed</c>), 400 for any other failure.
+            </summary>
+        </member>
         <member name="T:Api.Controllers.IdpController">
             <summary>
             IDP Controller
@@ -448,7 +472,7 @@
             Create or update OIDC client configuration (Upsert)
             Registers new OIDC client or updates existing configuration
             Validates client metadata and OAuth/OIDC compliance
-            Returns generated or existing client_secret
+            On create only, returns the generated client_secret once; it is never returned again
             </summary>
             <param name="request">OIDC client configuration request</param>
             <returns>Saved OIDC client with credentials</returns>
@@ -473,7 +497,7 @@
             <summary>
             Rotate OIDC client secret
             Generates a new client_secret for the existing client and returns it exactly once.
-            The new secret is not stored anywhere else and subsequent GETs mask it as usual.
+            GETs never return the secret.
             </summary>
             <param name="clientId">OIDC client identifier</param>
             <returns>The newly rotated client_secret (one-time disclosure)</returns>
@@ -494,6 +518,18 @@
             <summary>
             Self-service security endpoints.
             All routes live under <c>/security</c>.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.SecurityController.MayRevokeForAsync(System.String)">
+            <summary>
+            Revoking another user's session is managing that user (access grant, R3);
+            revoking one's own is self-service and always allowed.
+            </summary>
+        </member>
+        <member name="T:Api.Middleware.DataValidationExceptionFilter">
+            <summary>
+            A save refused by a system schema's validation rules (IIamDataAccess PrepareWriteAsync / CheckUpdateAsync)
+            is the caller's mistake, not a server error: 400 with one message per property, the field's path as key.
             </summary>
         </member>
         <member name="T:Api.Middleware.SecurityHeadersMiddleware">
@@ -593,6 +629,15 @@
         </member>
         <member name="M:Api.Security.ContentSecurityPolicy.Split(System.String)">
             <summary>Space- or comma-separated list, for origins no runtime key describes.</summary>
+        </member>
+        <member name="T:Api.Security.SecretFieldsJsonModifier">
+            <summary>
+            Keeps client secrets out of every API response. When a client credential, OIDC client or
+            identity provider is written as JSON, its secret properties are left out entirely (no key,
+            not even null), whatever endpoint returns it. A new secret is returned only by create and
+            rotate-secret, through their own response classes, which this does not touch.
+            Only writing is affected: request bodies are read as before.
+            </summary>
         </member>
         <member name="T:Api.Security.StyleNonce">
             <summary>

@@ -20,13 +20,15 @@ using Mfa.DomainService.OTP.Services;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
+using Blocks.Genesis.Entities.Iam;
+using Iam.DomainService.Shared.Entities;
 
 namespace XUnitTest.Auth.SignupLinks;
 
 public class SignupLinkRedemptionOrchestratorTests : IDisposable
 {
     private readonly Mock<ISignupLinkRepository> _links = new();
-    private readonly Mock<ISignupLinkRedemptionRepository> _redemptions = new();
+    private readonly Mock<IUserActivityRepository> _redemptions = new();
     private readonly Mock<ILinkSessionRepository> _sessions = new();
     private readonly Mock<IOidcClientRegistrationLookup> _oidc = new();
     private readonly Mock<IAuthenticationRepository> _authentication = new();
@@ -57,6 +59,45 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    // ---------- SPEC2: logout ends the link session ----------
+
+    [Fact]
+    public async Task EndLinkSession_WithTheTenantsCookie_DeletesTheSession_AndClearsTheCookie()
+    {
+        var http = new DefaultHttpContext();
+        http.Request.Headers["Cookie"] = "blocks-link-session-t1=LS";
+
+        await Sut().EndLinkSessionAsync(http.Request, http.Response);
+
+        _sessions.Verify(s => s.DeleteAsync("t1", "LS"), Times.Once);
+        http.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1=;");
+    }
+
+    [Fact]
+    public async Task EndLinkSession_WithoutTheCookie_CrossSiteCall_DoesNothing()
+    {
+        var http = new DefaultHttpContext();
+        http.Request.Headers["Cookie"] = "blocks-link-session-other=LS";
+
+        await Sut().EndLinkSessionAsync(http.Request, http.Response);
+
+        _sessions.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        http.Response.Headers.SetCookie.ToString().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task EndLinkSession_NoTenantInContext_DoesNothing()
+    {
+        var sut = Sut();
+        BlocksContext.SetContext(null!);
+        var http = new DefaultHttpContext();
+        http.Request.Headers["Cookie"] = "blocks-link-session=LS";
+
+        await sut.EndLinkSessionAsync(http.Request, http.Response);
+
+        _sessions.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
     private SignupLinkRedemptionOrchestrator Sut()
     {
         var config = new ConfigurationBuilder()
@@ -74,7 +115,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         DomainResolver.Configure(new HttpContextAccessor { HttpContext = new DefaultHttpContext() });
         _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()))
             .ReturnsAsync(true);
-        _redemptions.Setup(r => r.InsertAsync(It.IsAny<SignupLinkRedemption>())).Returns(Task.CompletedTask);
+        _redemptions.Setup(r => r.InsertAsync(It.IsAny<UserActivity>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         _sessions.Setup(s => s.CreateAsync(It.IsAny<LinkSessionModel>())).Returns(Task.CompletedTask);
         _users.Setup(u => u.GetIamConfigurationAsync()).ReturnsAsync(new IamConfiguration { ActivationUrlLifetimeInMinutes = 60 });
         _users.Setup(u => u.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
@@ -112,7 +153,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         return new SignupLinkRedemptionOrchestrator(stores, collaborators);
     }
 
-    private static Authentication.DomainService.Entities.IdentityProvider Provider(bool requirePkce = false) => new()
+    private static Blocks.Genesis.Entities.Iam.IdentityProvider Provider(bool requirePkce = false) => new()
     {
         Provider = "construct",
         ProviderType = Iam.DomainService.Utilities.IdpConstants.BlocksOidcProviderType,
@@ -185,8 +226,43 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         var body = ok.Value.Should().BeOfType<RedeemSignupLinkResponse>().Subject;
         body.AuthorizeUrl.Should().StartWith("https://iam.example.com/api/oidc/authorize?");
         http.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1");
-        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
-            x.Outcome == SignupLinkRedemptionOutcome.UserCreated && x.UserId == "user-new")), Times.Once);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<UserActivity>(x =>
+            x.Outcome == "UserCreated" && x.Metadata!["UserId"] == "user-new"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task C15_Redeem_NewUser_UsesTheLinksOrganization_WhileAutoJoinTargetsAnother()
+    {
+        // C15: signup-link redemption never consults the sign-up auto-join setting.
+        _iam.Setup(i => i.GetTenantConfigurationAsync()).ReturnsAsync(new Iam.DomainService.Shared.Entities.IamTenantConfiguration
+        {
+            IsMultiOrgEnabled = true,
+            IsSignupAutoJoinEnabled = true,
+            SignupAutoJoinOrganizationId = "org-auto-join"
+        });
+        var link = ActivePasswordless();
+        _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
+        _users.Setup(u => u.GetUserByEmailAsync(link.Email)).ReturnsAsync((User)null!);
+        SetupNewUserCreate("user-new", link.Email);
+        CreateUserRequest? mappedFrom = null;
+        _mutation.Setup(m => m.MapUser(It.IsAny<CreateUserRequest>()))
+            .Callback<CreateUserRequest>(r => mappedFrom = r)
+            .Returns(new User { ItemId = "user-new", Email = link.Email });
+        var redeemed = ActivePasswordless();
+        redeemed.RedemptionCount = 1;
+        redeemed.Status = SignupLinkStatus.Redeemed;
+        redeemed.CreatedUserId = "user-new";
+        _links.Setup(l => l.TryIncrementRedemptionAsync("link-1", "t1", "user-new", It.IsAny<DateTime>()))
+            .ReturnsAsync(redeemed);
+
+        var http = Http();
+        await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        mappedFrom.Should().NotBeNull();
+        mappedFrom!.OrganizationId.Should().Be("org-acme");
+        typeof(SignupLinkRedemptionOrchestrator).GetConstructors()
+            .SelectMany(c => c.GetParameters())
+            .Should().NotContain(p => p.ParameterType == typeof(Iam.DomainService.Accounts.ISignupOrganizationResolver));
     }
 
     /// <summary>
@@ -250,15 +326,15 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
 
         var sut = Sut();
         _authentication.Setup(a => a.GetIdentityProviderByClientIdAsync("construct-web"))
-            .ReturnsAsync((Authentication.DomainService.Entities.IdentityProvider)null!);
+            .ReturnsAsync((Blocks.Genesis.Entities.Iam.IdentityProvider)null!);
 
         var http = Http();
         var result = await sut.RedeemAsync("good-code", "t1", http.Request, http.Response);
 
         result.Should().BeOfType<BadRequestObjectResult>();
         _mutation.Verify(m => m.CreateUserAsync(It.IsAny<CreateUserRequest>()), Times.Never);
-        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
-            x.Outcome == SignupLinkRedemptionOutcome.Rejected)), Times.Once);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<UserActivity>(x =>
+            x.Outcome == "Rejected"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -281,14 +357,13 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task Redeem_ProviderWithoutPkce_SendsNoChallengeAndCachesNoVerifier()
+    public async Task Redeem_ProviderWithoutPkceFlag_StillCachesVerifier()
     {
         var context = await RedeemAndCaptureFlowContextAsync();
 
-        // The two halves have to agree: /idp/callback sends code_verifier only when the
-        // context holds one, and the token endpoint checks it only when the authorize request
-        // stored a challenge. Half a pair is an invalid_grant at the very last step.
-        context.GetProperty("codeVerifier").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        // PKCE is always on for this leg: the authorize endpoint refuses a client that requires
+        // PKCE when no challenge is sent, whatever the provider row says.
+        context.GetProperty("codeVerifier").GetString().Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -365,8 +440,8 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         body.LoginUrl.Should().BeNull();
         http.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1");
         _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
-        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
-            x.Outcome == SignupLinkRedemptionOutcome.LinkUserReturned)), Times.Once);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<UserActivity>(x =>
+            x.Outcome == "LinkUserReturned"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -407,8 +482,8 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         user.OrganizationIds.Should().Contain("org-acme");
         user.Roles["org-acme"].Should().Equal("site-manager");
         user.Roles["org-other"].Should().Equal("admin");
-        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
-            x.Outcome == SignupLinkRedemptionOutcome.OrganizationJoined)), Times.Once);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<UserActivity>(x =>
+            x.Outcome == "OrganizationJoined"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -447,8 +522,8 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         body.LoginUrl.Should().BeNull();
         user.Roles["org-acme"].Should().Equal(rolesBefore);
         _users.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
-        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
-            x.Outcome == SignupLinkRedemptionOutcome.ExistingUserRedirected)), Times.Once);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<UserActivity>(x =>
+            x.Outcome == "ExistingUserRedirected"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private User ExistingMember(bool mfaEnabled = false) => new()
@@ -615,8 +690,8 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         var result = await Sut().RedeemAsync("good-code", "t1", Http().Request, Http().Response);
         var body = result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<RedeemSignupLinkResponse>().Subject;
         body.ActivationKey.Should().NotBeNullOrEmpty();
-        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
-            x.Outcome == SignupLinkRedemptionOutcome.LinkUserReturned)), Times.Once);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<UserActivity>(x =>
+            x.Outcome == "LinkUserReturned"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -682,8 +757,8 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         user.Status.Should().Be(UserLifecycleStatus.Active);
         user.EmailVerifiedAtUtc.Should().NotBeNull();
         user.OrganizationIds.Should().Contain(["org-other", "org-acme"]);
-        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
-            x.Outcome == SignupLinkRedemptionOutcome.OrganizationJoined)), Times.Once);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<UserActivity>(x =>
+            x.Outcome == "OrganizationJoined"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -716,8 +791,8 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         user.Status.Should().Be(UserLifecycleStatus.Active);
         user.Roles["org-acme"].Should().Equal("member");
         _users.Verify(u => u.UpdateUserAsync(user), Times.Once);
-        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
-            x.Outcome == SignupLinkRedemptionOutcome.ExistingUserRedirected)), Times.Once);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<UserActivity>(x =>
+            x.Outcome == "ExistingUserRedirected"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -1079,8 +1154,8 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
 
         var result = await Sut().RedeemAsync("good-code", "t1", Http().Request, Http().Response);
         result.Should().BeOfType<BadRequestObjectResult>();
-        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
-            x.Outcome == SignupLinkRedemptionOutcome.Rejected && x.RejectionReason == "exhausted")), Times.Once);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<UserActivity>(x =>
+            x.Outcome == "Rejected" && x.ReasonCode == "exhausted"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -1094,7 +1169,7 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
 
         var result = await sut.RedeemAsync("good-code", "t1", Http().Request, Http().Response);
         result.Should().BeOfType<BadRequestObjectResult>();
-        _redemptions.Verify(r => r.InsertAsync(It.Is<SignupLinkRedemption>(x =>
-            x.RejectionReason == "client_invalid")), Times.Once);
+        _redemptions.Verify(r => r.InsertAsync(It.Is<UserActivity>(x =>
+            x.ReasonCode == "client_invalid"), It.IsAny<CancellationToken>()), Times.Once);
     }
 }

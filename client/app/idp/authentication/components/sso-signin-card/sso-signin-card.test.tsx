@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   resolvedTheme: "light",
   showError: vi.fn(),
   hrefSpy: vi.fn(),
+  markerAtRedirect: undefined as string | null | undefined,
 }));
 
 vi.mock("@/hooks/use-toast", () => ({ showErrorToast: (a: unknown) => h.showError(a) }));
@@ -23,6 +24,8 @@ vi.mock("@blocks-idp/authentication/utils/sanitize-provider-url.util", () => ({
 }));
 vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
   buildOIDCNavigationUrl: (p: string) => p,
+  OIDC_DEVICE_RETURN_URL_STORAGE_KEY: "oidc-device-return-url",
+  OIDC_APP_HANDOFF_STORAGE_KEY: "oidc_app_handoff",
 }));
 
 import { SSOSigninCard } from "./sso-signin-card";
@@ -38,6 +41,8 @@ const provider = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  h.hrefSpy.mockReset();
+  sessionStorage.clear();
   h.resolvedTheme = "light";
   Object.defineProperty(window, "location", {
     value: {
@@ -78,6 +83,92 @@ describe("SSOSigninCard", () => {
     fireEvent.click(screen.getByRole("button"));
     await waitFor(() => expect(h.signinByOidcEmail).toHaveBeenCalled());
     await waitFor(() => expect(h.hrefSpy).toHaveBeenCalledWith("https://oidc.google/authorize"));
+  });
+
+  describe("native-app hand-off marker", () => {
+    const startOidc = async (redirectUri: string | undefined) => {
+      h.signinByOidcEmail.mockImplementation(async () => {
+        // Asserted at the moment of leaving, not just eventually.
+        h.hrefSpy.mockImplementation(() => {
+          h.markerAtRedirect = sessionStorage.getItem("oidc_app_handoff");
+        });
+        return { authorizationUrl: "https://login.microsoftonline.com/authorize" };
+      });
+      render(
+        <SSOSigninCard
+          providerConfig={provider}
+          mode="oidc"
+          oidcContext={{ clientId: "c", redirectUri, tenantId: "t1" }}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button"));
+      await waitFor(() =>
+        expect(h.hrefSpy).toHaveBeenCalledWith("https://login.microsoftonline.com/authorize"),
+      );
+    };
+
+    beforeEach(() => {
+      h.markerAtRedirect = undefined;
+    });
+
+    it("is set to 1 before leaving for the provider when redirect_uri is an app scheme (H9)", async () => {
+      await startOidc("com.klaxai.app://login/callback");
+      expect(h.markerAtRedirect).toBe("1");
+      expect(sessionStorage.getItem("oidc_app_handoff")).toBe("1");
+    });
+
+    it("is removed for a web redirect_uri, clearing a stale marker (H9, C13)", async () => {
+      sessionStorage.setItem("oidc_app_handoff", "1");
+      await startOidc("https://app.example.com/cb");
+      expect(h.markerAtRedirect).toBeNull();
+      expect(sessionStorage.getItem("oidc_app_handoff")).toBeNull();
+    });
+
+    it("is removed when there is no redirect_uri (device flow)", async () => {
+      sessionStorage.setItem("oidc_app_handoff", "1");
+      await startOidc(undefined);
+      expect(sessionStorage.getItem("oidc_app_handoff")).toBeNull();
+    });
+
+    it("is not touched by the standard embed flow", async () => {
+      sessionStorage.setItem("oidc_app_handoff", "1");
+      h.getSocialLoginEndpoint.mockResolvedValue({ providerUrl: "https://accounts.google.com/o" });
+      render(<SSOSigninCard providerConfig={provider} />);
+      fireEvent.click(screen.getByRole("button"));
+      await waitFor(() => expect(h.hrefSpy).toHaveBeenCalled());
+      expect(sessionStorage.getItem("oidc_app_handoff")).toBe("1");
+    });
+  });
+
+  it("stashes the device-flow returnUrl before leaving for the provider", async () => {
+    h.signinByOidcEmail.mockResolvedValue({ authorizationUrl: "https://oidc.google/authorize" });
+    render(
+      <SSOSigninCard
+        providerConfig={provider}
+        mode="oidc"
+        oidcContext={{ clientId: "c", tenantId: "t1", returnUrl: "/oidc/device/entry" }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(h.hrefSpy).toHaveBeenCalled());
+    expect(sessionStorage.getItem("oidc-device-return-url")).toBe("/oidc/device/entry");
+  });
+
+  it("does not leave or set the marker when the oidc flow returns no authorization URL", async () => {
+    h.signinByOidcEmail.mockResolvedValue({});
+    render(
+      <SSOSigninCard
+        providerConfig={provider}
+        mode="oidc"
+        oidcContext={{ clientId: "c", redirectUri: "com.klaxai.app://cb", tenantId: "t1" }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() =>
+      expect(h.showError).toHaveBeenCalledWith({ errors: "No authorization URL provided." }),
+    );
+    expect(h.hrefSpy).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("oidc_app_handoff")).toBeNull();
   });
 
   it("shows an error toast when the endpoint returns an error", async () => {

@@ -15,6 +15,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using System.Text.Json;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Users
 {
@@ -71,7 +72,7 @@ namespace XUnitTest.IamTests.Users
                 new() { ItemId = "u1", Email = "u1@e.com", FirstName = "A" },
                 new() { ItemId = "u2", Email = "u2@e.com", FirstName = "B" },
             }.AsQueryable();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((accounts, 2L));
 
             var result = await Create().GetUsersAsync(new GetUsersRequest());
@@ -85,7 +86,7 @@ namespace XUnitTest.IamTests.Users
         public async Task GetUsers_HandlesNullData()
         {
             InstallContext();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync(((IQueryable<GetAccounts>?)null, 0L));
 
             var result = await Create().GetUsersAsync(new GetUsersRequest());
@@ -98,7 +99,7 @@ namespace XUnitTest.IamTests.Users
         public async Task GetUsers_WithNoOrganizationInTheToken_ReturnsNothingAndNeverQueries()
         {
             InstallContext(orgId: string.Empty);
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ThrowsAsync(new InvalidOperationException("the repository must not be reached"));
 
@@ -106,7 +107,7 @@ namespace XUnitTest.IamTests.Users
 
             result.TotalCount.Should().Be(0);
             result.Data.Should().BeEmpty();
-            _repo.Verify(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Verify(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                 It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()), Times.Never);
             _iam.Verify(r => r.GetTenantConfigurationAsync(), Times.Never);
         }
@@ -116,7 +117,7 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext();
             UserListScope? captured = null;
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .Callback<GetUsersRequest, UserListScope>((_, scope) => captured = scope)
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
@@ -131,7 +132,7 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext();
             UserListScope? captured = null;
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .Callback<GetUsersRequest, UserListScope>((_, scope) => captured = scope)
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
@@ -150,7 +151,7 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext(orgId: "org-a");
             UserListScope? captured = null;
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .Callback<GetUsersRequest, UserListScope>((_, scope) => captured = scope)
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
@@ -167,7 +168,7 @@ namespace XUnitTest.IamTests.Users
         public async Task GetUsers_DeniedScopeWithRoles_ReturnsNothingWithoutTenantConfigOrRepository()
         {
             InstallContext(orgId: " ");
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ThrowsAsync(new InvalidOperationException("the repository must not be reached"));
             _iam.Setup(r => r.GetTenantConfigurationAsync())
@@ -181,7 +182,7 @@ namespace XUnitTest.IamTests.Users
             result.TotalCount.Should().Be(0);
             result.Data.Should().BeEmpty();
             result.Errors.Should().BeNull();
-            _repo.Verify(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Verify(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                 It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()), Times.Never);
             _iam.Verify(r => r.GetTenantConfigurationAsync(), Times.Never);
         }
@@ -191,8 +192,8 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext();
             _iam.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ThrowsAsync(new InvalidOperationException("the repository must not be reached"));
 
@@ -205,7 +206,7 @@ namespace XUnitTest.IamTests.Users
             result.Data.Should().BeEmpty();
             result.Errors.Should().ContainSingle();
             result.Errors!["OrganizationIds"].Should().Be("OrganizationIds_Required_For_Role_Filter");
-            _repo.Verify(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Verify(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                 It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()), Times.Never);
         }
 
@@ -214,9 +215,9 @@ namespace XUnitTest.IamTests.Users
         {
             InstallContext();
             _iam.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = false });
             UserListScope? captured = null;
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .Callback<GetUsersRequest, UserListScope>((_, scope) => captured = scope)
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
@@ -234,7 +235,7 @@ namespace XUnitTest.IamTests.Users
         public async Task GetUsers_AllOrganizationsWithoutRoles_DoesNotFetchTenantConfig()
         {
             InstallContext();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(
                     It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
 
@@ -300,6 +301,180 @@ namespace XUnitTest.IamTests.Users
             var result = await Create().GetUserAsync("u9", "org-42");
 
             result.Data.Should().NotContainKey("OrganizationsRoles");
+        }
+
+        // =====================================================================================
+        // Organization scope of the user read: a user is read in the caller's organization.
+        // Only a tenant-wide ("default") caller may name another organization.
+        // =====================================================================================
+
+        private static GetAccounts MemberOf(string id, params string[] organizationIds) => new()
+        {
+            ItemId = id,
+            Email = id + "@e.com",
+            OrganizationIds = organizationIds.ToList(),
+            Roles = organizationIds.ToDictionary(o => o, o => new List<string> { "role-" + o }),
+            Permissions = organizationIds.ToDictionary(o => o, o => new List<string> { "perm-" + o })
+        };
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("org-a")]
+        public async Task GetUser_NonDefaultCaller_ReadsInItsOwnOrganization(string? queryOrganizationId)
+        {
+            InstallContext(orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "org-a", "org-b"));
+
+            var result = await CreateAt(Now).GetUserAsync("u1", queryOrganizationId);
+
+            result.Data.Should().NotBeNull();
+            result.Data!["itemId"].Should().Be("u1");
+            result.Data["roles"].Should().BeEquivalentTo(new List<string> { "role-org-a" });
+            result.Data["permissions"].Should().BeEquivalentTo(new List<string> { "perm-org-a" });
+            result.Data.Should().NotContainKey("OrganizationsRoles");
+            result.Data.Should().NotContainKey("OrganizationsPermissions");
+        }
+
+        [Fact]
+        public async Task GetUser_NonDefaultCaller_ReadsItselfInItsOwnOrganization()
+        {
+            InstallContext(userId: "self", orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("self")).ReturnsAsync(MemberOf("self", "org-a"));
+
+            (await CreateAt(Now).GetUserAsync("self", null)).Data!["itemId"].Should().Be("self");
+            (await CreateAt(Now).GetUserAsync(string.Empty, null)).Data!["itemId"].Should().Be("self");
+        }
+
+        [Fact]
+        public async Task GetUser_NonDefaultCaller_OtherOrganizationInQuery_ReturnsNotAMemberShape()
+        {
+            InstallContext(orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "org-a", "org-b"));
+
+            var otherOrg = await CreateAt(Now).GetUserAsync("u1", "org-b");
+
+            otherOrg.Data.Should().NotBeNull().And.BeEmpty();
+        }
+
+        [Fact]
+        public async Task GetUser_NonDefaultCaller_OtherOrganizationInQuery_MatchesAUserOutsideTheCallersOrganization()
+        {
+            // The answer for an organization outside the caller's scope is the same response a
+            // caller gets for a user who is not a member of the caller's own organization.
+            InstallContext(orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "org-b"));
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u2")).ReturnsAsync(MemberOf("u2", "org-b"));
+
+            var outsideMember = await CreateAt(Now).GetUserAsync("u1", null);
+            var otherOrgQuery = await CreateAt(Now).GetUserAsync("u2", "org-b");
+
+            JsonSerializer.Serialize(otherOrgQuery).Should().Be(JsonSerializer.Serialize(outsideMember));
+        }
+
+        [Fact]
+        public async Task GetUser_NonDefaultCaller_DefaultInQuery_ReturnsNotAMemberShapeWithoutAllOrganizationFields()
+        {
+            InstallContext(orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "default", "org-a", "org-b"));
+
+            var result = await CreateAt(Now).GetUserAsync("u1", "default");
+
+            result.Data.Should().NotBeNull().And.BeEmpty();
+            result.Data.Should().NotContainKey("OrganizationsRoles");
+            result.Data.Should().NotContainKey("OrganizationsPermissions");
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task GetUser_TokenWithoutOrganization_ReturnsNotAMemberShape(string tokenOrganizationId)
+        {
+            InstallContext(orgId: tokenOrganizationId);
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "default", "org-a"));
+
+            var result = await CreateAt(Now).GetUserAsync("u1", null);
+
+            result.Data.Should().NotBeNull().And.BeEmpty();
+        }
+
+        [Fact]
+        public async Task GetUser_NonDefaultCaller_MissingUserInOwnOrganization_ReturnsNullData()
+        {
+            InstallContext(orgId: "org-a");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("nope")).ReturnsAsync((GetAccounts)null!);
+
+            var result = await CreateAt(Now).GetUserAsync("nope", null);
+
+            result.Data.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetUser_DefaultCaller_OtherOrganizationInQuery_IsUnchanged()
+        {
+            InstallContext();
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(MemberOf("u1", "org-a", "org-b"));
+
+            var result = await CreateAt(Now).GetUserAsync("u1", "org-b");
+
+            result.Data!["itemId"].Should().Be("u1");
+            result.Data["roles"].Should().BeEquivalentTo(new List<string> { "role-org-b" });
+            result.Data.Should().NotContainKey("OrganizationsRoles");
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("default")]
+        public async Task GetUser_DefaultCaller_DefaultScope_IncludesAllOrganizationFields(string? queryOrganizationId)
+        {
+            InstallContext();
+            var account = MemberOf("u1", "org-a", "org-b");
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("u1")).ReturnsAsync(account);
+
+            var result = await CreateAt(Now).GetUserAsync("u1", queryOrganizationId);
+
+            result.Data!["itemId"].Should().Be("u1");
+            result.Data["OrganizationsRoles"].Should().BeSameAs(account.Roles);
+            result.Data["OrganizationsPermissions"].Should().BeSameAs(account.Permissions);
+        }
+
+        [Fact]
+        public async Task GetUsers_NonDefaultCaller_ReturnsOnlyTheCallersOrganizationRoles()
+        {
+            InstallContext(orgId: "org-a");
+            var accounts = new List<GetAccounts>
+            {
+                MemberOf("u1", "org-a", "org-b"),
+                MemberOf("u2", "org-a"),
+                new() { ItemId = "u3", Email = "u3@e.com", OrganizationIds = ["org-a"] }
+            }.AsQueryable();
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ReturnsAsync((accounts, 3L));
+
+            var result = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.ToList();
+
+            result[0]["roles"].Should().BeEquivalentTo(new Dictionary<string, List<string>> { ["org-a"] = ["role-org-a"] });
+            result[1]["roles"].Should().BeEquivalentTo(new Dictionary<string, List<string>> { ["org-a"] = ["role-org-a"] });
+            result[2]["roles"].Should().BeEquivalentTo(new Dictionary<string, List<string>>());
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task GetUsers_DefaultCaller_RolesAreUnchanged(bool narrowedToOrganizations)
+        {
+            InstallContext();
+            var account = MemberOf("u1", "org-a", "org-b");
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ReturnsAsync((new List<GetAccounts> { account }.AsQueryable(), 1L));
+
+            var request = narrowedToOrganizations
+                ? new GetUsersRequest { Filter = new GetUsersFilter { OrganizationIds = ["org-a"] } }
+                : new GetUsersRequest();
+
+            var result = (await CreateAt(Now).GetUsersAsync(request)).Data.Single();
+
+            result["roles"].Should().BeSameAs(account.Roles);
         }
 
         // =====================================================================================
@@ -389,7 +564,7 @@ namespace XUnitTest.IamTests.Users
             {
                 Account("locked", future), Account("never", null), Account("expired", past)
             }.AsQueryable();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((accounts, 3L));
 
             var items = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.ToList();
@@ -435,7 +610,7 @@ namespace XUnitTest.IamTests.Users
             InstallContext();
             // C2. Does not claim to prove "no lockout computation" - the helper is private and
             // there are no items to map regardless.
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
 
             var result = await CreateAt(Now).GetUsersAsync(new GetUsersRequest());
@@ -451,7 +626,7 @@ namespace XUnitTest.IamTests.Users
             // C2's literal clause: "no lockout computation is attempted". Asserting the output alone
             // could not show that - an implementation that computed and discarded would pass. A clock
             // that throws when touched is what actually demonstrates it.
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
 
             var svc = new UserManagementQueryService(
@@ -473,30 +648,35 @@ namespace XUnitTest.IamTests.Users
             var svc = new UserManagementQueryService(
                 NullLogger<UserManagementQueryService>.Instance, _repo.Object, new ThrowingClock(), _iam.Object);
 
-            // Non-default org: the default-org path dereferences null before returning, which is the
-            // pre-existing defect this phase deliberately leaves alone.
+            // A tenant-wide caller naming another organization; the default-organization path has its
+            // own missing-user test.
             var result = await svc.GetUserAsync("nope", "org-42");
 
             result.Data.Should().BeNull();
         }
 
         [Fact]
-        public async Task GetUser_MissingUser_DefaultOrg_ThrowsToday_KnownPreExistingDefect()
+        public async Task GetUser_MissingUser_DefaultOrg_ReturnsNullData()
         {
-            // Pins ACTUAL behaviour, not desired. C4 says a non-existent id returns "the existing
-            // not-found error" - there is none. On the default-org path GetUserAsync builds a null
-            // `data` and then dereferences it to add OrganizationsRoles, so the caller gets a 500.
-            //
-            // #427 deliberately does not fix this: introducing a 404 changes the endpoint's status
-            // code and controller response type, which contradicts C6 and the ticket's out-of-scope
-            // list. Asserted so a future fix has to flip this test deliberately rather than silently,
-            // and so the C4 discrepancy is visible in the suite and not only in the PR.
+            // A missing user on the tenant-wide path answers with null data, the same as on every
+            // other path, instead of failing while adding the all-organization fields.
             InstallContext();
             _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("nope")).ReturnsAsync((GetAccounts)null!);
 
-            var act = async () => await CreateAt(Now).GetUserAsync("nope", "default");
+            var result = await CreateAt(Now).GetUserAsync("nope", "default");
 
-            await act.Should().ThrowAsync<NullReferenceException>();
+            result.Data.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetUser_MissingUser_DefaultCallerWithoutQuery_ReturnsNullData()
+        {
+            InstallContext();
+            _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("nope")).ReturnsAsync((GetAccounts)null!);
+
+            var result = await CreateAt(Now).GetUserAsync("nope", null);
+
+            result.Data.Should().BeNull();
         }
 
         [Fact]
@@ -575,7 +755,7 @@ namespace XUnitTest.IamTests.Users
                 CreatedDate = Now.AddDays(-30), LockoutUntilUtc = null,
                 Roles = new Dictionary<string, List<string>> { { "default", new List<string> { "admin" } } }
             };
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((new[] { account }.AsQueryable(), 1L));
 
             var item = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.Single();
@@ -740,7 +920,7 @@ namespace XUnitTest.IamTests.Users
                 new() { ItemId = "invited", Email = "i@e.com", Active = false, Status = UserLifecycleStatus.Active, IsVerified = false },
                 new() { ItemId = "deactivated", Email = "d@e.com", Active = false, Status = UserLifecycleStatus.Disabled, IsVerified = true },
             }.AsQueryable();
-            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+            _repo.Setup(r => r.GetUsersForViewAsync<GetAccounts, GetUsersRequest>(It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
                 .ReturnsAsync((accounts, 3L));
 
             var items = (await CreateAt(Now).GetUsersAsync(new GetUsersRequest())).Data.ToList();

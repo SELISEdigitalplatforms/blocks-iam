@@ -11,6 +11,7 @@ using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Iam.DomainService.Users;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {
@@ -45,7 +46,7 @@ namespace XUnitTest.IamTests.Resources
             InstallContext();
 
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.SaveOrganizationAsync(It.IsAny<Organization>())).Returns(Task.CompletedTask);
             _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
                 .ReturnsAsync(new GetOrganizationsResponse { IsSuccess = true, Organizations = [], TotalCount = 0 });
@@ -55,6 +56,8 @@ namespace XUnitTest.IamTests.Resources
             // Every organization named here exists unless a test says otherwise, so a "not found"
             // in these tests can only have come from the scope check.
             _repo.Setup(r => r.GetOrganizationById(It.IsAny<string>()))
+                .ReturnsAsync((string id) => new Organization { ItemId = id, Name = id });
+            _repo.Setup(r => r.GetOrganizationByIdForView(It.IsAny<string>()))
                 .ReturnsAsync((string id) => new Organization { ItemId = id, Name = id });
         }
 
@@ -226,6 +229,7 @@ namespace XUnitTest.IamTests.Resources
             InstallContext(OrgA);
             var stored = new Organization { ItemId = OrgA, Name = "Old" };
             _repo.Setup(r => r.GetOrganizationById(OrgA)).ReturnsAsync(stored);
+            _repo.Setup(r => r.GetOrganizationByIdForView(OrgA)).ReturnsAsync(stored);
 
             var result = await Create().UpdateOrganizationAsync(OrgA, new SaveOrganizationRequest { Name = "New" });
 
@@ -271,6 +275,7 @@ namespace XUnitTest.IamTests.Resources
                 DefaultPermissionsForMembers = ["blocks-iam::iam::users"]
             };
             _repo.Setup(r => r.GetOrganizationById(OrgA)).ReturnsAsync(stored);
+            _repo.Setup(r => r.GetOrganizationByIdForView(OrgA)).ReturnsAsync(stored);
 
             var result = await Create().UpdateOrganizationAsync(OrgA, new SaveOrganizationRequest
             {
@@ -297,6 +302,7 @@ namespace XUnitTest.IamTests.Resources
                 DefaultPermissionsForMembers = ["blocks-iam::iam::users"]
             };
             _repo.Setup(r => r.GetOrganizationById(OrgA)).ReturnsAsync(stored);
+            _repo.Setup(r => r.GetOrganizationByIdForView(OrgA)).ReturnsAsync(stored);
 
             var result = await Create().UpdateOrganizationAsync(OrgA, new SaveOrganizationRequest
             {

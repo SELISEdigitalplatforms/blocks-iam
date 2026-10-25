@@ -6,6 +6,7 @@ using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth
 {

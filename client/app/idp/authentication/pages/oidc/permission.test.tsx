@@ -24,6 +24,7 @@ const baseContext = {
 };
 
 let hrefSetter: ReturnType<typeof vi.fn>;
+let search = "";
 
 const renderScreen = () =>
   render(
@@ -36,10 +37,15 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.context = { ...baseContext };
   hrefSetter = vi.fn();
+  search = "";
+  sessionStorage.clear();
   Object.defineProperty(window, "location", {
     configurable: true,
     value: {
       origin: "https://iam.example.com",
+      get search() {
+        return search;
+      },
       get href() {
         return "https://iam.example.com/oidc/permission";
       },
@@ -92,24 +98,46 @@ describe("OIDCPermissionScreen", () => {
     expect(errorSpy).toHaveBeenCalledWith("No redirect URI available");
   });
 
-  it("builds the PKCE authorize URL and redirects when Allow is clicked", async () => {
+  const allowAndReadUrl = async () => {
     renderScreen();
     fireEvent.click(screen.getByRole("button", { name: "Allow" }));
-
     await waitFor(() => expect(hrefSetter).toHaveBeenCalledTimes(1));
-    const url = new URL(hrefSetter.mock.calls[0][0]);
+    return new URL(hrefSetter.mock.calls[0][0]);
+  };
+
+  it("builds the authorize URL and forwards the relying party's own PKCE challenge", async () => {
+    search = "?code_challenge=rp-challenge-value&code_challenge_method=S256";
+    const url = await allowAndReadUrl();
+
     expect(url.origin + url.pathname).toBe(
       "https://iam.example.com/api/oidc/authorize",
     );
     expect(url.searchParams.get("client_id")).toBe("client-1");
     expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("code_challenge")).toBe("rp-challenge-value");
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
-    expect(url.searchParams.get("code_challenge")).toBeTruthy();
     expect(url.searchParams.get("state")).toBe("xyz-state");
     expect(url.searchParams.get("nonce")).toBe("n-once");
     expect(url.searchParams.get("tenant_id")).toBe("tenant-1");
+    // The RP holds the verifier; nothing is stashed here.
+    expect(sessionStorage.getItem("oidc-code-verifier")).toBeNull();
+  });
+
+  it("makes its own PKCE pair when IAM itself is the relying party", async () => {
+    h.context = { ...baseContext, redirectUri: "https://iam.example.com/callback" };
+    const url = await allowAndReadUrl();
+
+    expect(url.searchParams.get("code_challenge")).toBeTruthy();
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     // The verifier is stashed for the token exchange step.
     expect(sessionStorage.getItem("oidc-code-verifier")).toBeTruthy();
+  });
+
+  it("adds no challenge for an outside relying party that sent none", async () => {
+    const url = await allowAndReadUrl();
+
+    expect(url.searchParams.get("code_challenge")).toBeNull();
+    expect(sessionStorage.getItem("oidc-code-verifier")).toBeNull();
   });
 
   it("does not redirect on Allow when client id or redirect URI is missing", async () => {

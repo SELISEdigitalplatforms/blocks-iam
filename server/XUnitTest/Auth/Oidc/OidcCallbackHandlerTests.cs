@@ -9,6 +9,7 @@ using FluentAssertions;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Oidc
 {
@@ -195,6 +196,25 @@ namespace XUnitTest.Auth.Oidc
             result.ErrorCode.Should().Be("signup_disabled");
             // The refusal carries the original request so the controller can return the user to
             // the login page instead of leaving them on an error body.
+            result.ClientId.Should().Be("client-1");
+            result.RedirectUri.Should().Be("https://redirect.com");
+            result.OriginalState.Should().Be("state-1");
+        }
+
+        [Fact]
+        public async Task C8_HandleCallbackAsync_ReturnsSignupOrganizationUnavailable_WhenAutoJoinTargetIsUnavailable()
+        {
+            var handler = ArrangeUpToProvisioning(
+                SsoProvisioningResult.From(SsoProvisioningOutcome.OrganizationUnavailable),
+                out _,
+                out _);
+
+            var result = await handler.HandleCallbackAsync("code-1", "state-1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.ErrorCode.Should().Be("signup_organization_unavailable");
+            result.ErrorMessage.Should().Be("This project's organization isn't available right now. Contact your administrator.");
+            // Same redirect-back shape as signup_disabled, so the login page shows the sentence in its dialog.
             result.ClientId.Should().Be("client-1");
             result.RedirectUri.Should().Be("https://redirect.com");
             result.OriginalState.Should().Be("state-1");

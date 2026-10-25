@@ -38,7 +38,7 @@ namespace XUnitTest.Auth.Shared
         public async Task GetSessionAsync_DelegatesToIdpSessionService()
         {
             var idpSession = new Mock<IIdpSessionService>();
-            var expected = new Idp.DomainService.Oidc.Contracts.IdpSessionModel { SessionId = "s1" };
+            var expected = new Blocks.Genesis.Entities.Iam.IdpSessionModel { SessionId = "s1" };
             idpSession.Setup(s => s.GetSessionAsync("s1")).ReturnsAsync(expected);
 
             var facade = new AuthSessionFacade(

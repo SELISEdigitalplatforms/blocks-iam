@@ -26,7 +26,7 @@ const CustomInputOTPSlot = ({ index }: { index: number }) => {
   );
 };
 const FormSchema = z.object({
-  code: z.string().min(5),
+  code: z.string().min(6),
 });
 
 export const ProfileMfaVerifyForm = ({ mfaId }: { mfaId: string }) => {
@@ -85,14 +85,14 @@ export const ProfileMfaVerifyForm = ({ mfaId }: { mfaId: string }) => {
           render={({ field }) => (
             <FormItem>
               <FormControl>
-                <InputOTP maxLength={mfaMethodType == 1 ? 6 : 5} {...field}>
+                <InputOTP maxLength={6} {...field}>
                   <InputOTPGroup className="w-full justify-center gap-6">
                     <CustomInputOTPSlot index={0} />
                     <CustomInputOTPSlot index={1} />
                     <CustomInputOTPSlot index={2} />
                     <CustomInputOTPSlot index={3} />
                     <CustomInputOTPSlot index={4} />
-                    {mfaMethodType === 1 && <CustomInputOTPSlot index={5} />}
+                    <CustomInputOTPSlot index={5} />
                   </InputOTPGroup>
                 </InputOTP>
               </FormControl>

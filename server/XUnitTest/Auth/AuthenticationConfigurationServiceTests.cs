@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Bson;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {
@@ -84,6 +85,7 @@ namespace XUnitTest.Auth
         {
             var current = new IdentityConfiguration { IsOidcEnabled = true, AccessTokenValidForNumberMinutes = 42 };
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(current);
             var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
             {
                 PasswordStrengthCheckerRegex = regex, PasswordStrengthCheckerMessage = message,
@@ -106,6 +108,7 @@ namespace XUnitTest.Auth
                 IsOidcEnabled = true, PasswordStrengthCheckerRegex = "^(a+)+$", PasswordStrengthCheckerMessage = "Stored message"
             };
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(current);
             var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
             {
                 PasswordStrengthCheckerRegex = blank!, PasswordStrengthCheckerMessage = blank!
@@ -136,6 +139,7 @@ namespace XUnitTest.Auth
         {
             var current = new IdentityConfiguration { IsOidcEnabled = false };
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(current);
             var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
             {
                 IsOidcEnabled = true, AccountActionBaseUrl = "https://app.test"
@@ -162,6 +166,7 @@ namespace XUnitTest.Auth
             stored!.PasswordStrengthCheckerRegex.Should().Be(regex);
             stored.PasswordStrengthCheckerMessage.Should().Be(message);
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(stored);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(stored);
             var read = (OkObjectResult)await Create().GetAuthenticationConfigAsync();
             read.Value!.GetType().GetProperty("PasswordStrengthCheckerMessage")!.GetValue(read.Value).Should().Be(message);
         }
@@ -193,6 +198,7 @@ namespace XUnitTest.Auth
         {
             var current = new IdentityConfiguration { IsOidcEnabled = true, AccessTokenValidForNumberMinutes = 42 };
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(current);
 
             var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
             {
@@ -219,6 +225,7 @@ namespace XUnitTest.Auth
                 IsOidcEnabled = true, PasswordPolicyMinLength = 0, PasswordPolicyMaxLength = 64
             };
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(current);
 
             var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
             {
@@ -235,6 +242,7 @@ namespace XUnitTest.Auth
         {
             // H8: an out-of-range MinLength never trips V1-V3 when the policy stays off.
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>())).Returns(Task.CompletedTask);
 
@@ -254,6 +262,7 @@ namespace XUnitTest.Auth
         {
             IdentityConfiguration? saved = null;
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
                 .Callback<IdentityConfiguration>(c => saved = c).Returns(Task.CompletedTask);
@@ -292,6 +301,7 @@ namespace XUnitTest.Auth
                 PasswordPolicyMessage = "Stored policy message"
             };
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(current);
             IdentityConfiguration? saved = null;
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
                 .Callback<IdentityConfiguration>(c => saved = c).Returns(Task.CompletedTask);
@@ -320,6 +330,7 @@ namespace XUnitTest.Auth
                 PasswordPolicyMessage = "Stored policy message"
             };
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(current);
             IdentityConfiguration? saved = null;
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
                 .Callback<IdentityConfiguration>(c => saved = c).Returns(Task.CompletedTask);
@@ -349,6 +360,17 @@ namespace XUnitTest.Auth
                 PasswordPolicyRequireSpecialChars = true,
                 PasswordPolicyMessage = "Admin-facing message"
             });
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(new IdentityConfiguration
+            {
+                ItemId = ObjectId.GenerateNewId(),
+                PasswordPolicyMinLength = 10,
+                PasswordPolicyMaxLength = 64,
+                PasswordPolicyRequireUppercase = true,
+                PasswordPolicyRequireLowercase = true,
+                PasswordPolicyRequireNumbers = true,
+                PasswordPolicyRequireSpecialChars = true,
+                PasswordPolicyMessage = "Admin-facing message"
+            });
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
 
             var result = (OkObjectResult)await Create().GetAuthenticationConfigAsync();
@@ -367,6 +389,7 @@ namespace XUnitTest.Auth
         public async Task GetAuthenticationConfig_DefaultsPasswordPolicyMessageToEmpty_WhenNoConfigurationStored()
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
 
             var result = (OkObjectResult)await Create().GetAuthenticationConfigAsync();
@@ -380,6 +403,8 @@ namespace XUnitTest.Auth
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync())
                 .ReturnsAsync(new IdentityConfiguration { ItemId = ObjectId.GenerateNewId() });
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync())
+                .ReturnsAsync(new IdentityConfiguration { ItemId = ObjectId.GenerateNewId() });
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
 
             var result = await Create().GetAuthenticationConfigAsync();
@@ -391,6 +416,7 @@ namespace XUnitTest.Auth
         public async Task Update_Fails_WhenNoBaseUrl_AndOidcDisabled_AndUseDefault()
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
 
             var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
@@ -410,6 +436,7 @@ namespace XUnitTest.Auth
         public async Task Update_Fails_WhenBaseUrl_NotInTenantAllowedDomains()
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
 
             var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
@@ -428,6 +455,7 @@ namespace XUnitTest.Auth
         public async Task Update_Succeeds_WhenBaseUrl_InTenantAllowedDomains()
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>())).Returns(Task.CompletedTask);
 
@@ -447,6 +475,7 @@ namespace XUnitTest.Auth
         public async Task Update_Succeeds_WhenOidcEnabled_AndNoBaseUrl()
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>())).Returns(Task.CompletedTask);
 
@@ -470,6 +499,7 @@ namespace XUnitTest.Auth
                 IsOidcEnabled = true
             };
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(current);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
             IdentityConfiguration? saved = null;
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
@@ -491,6 +521,7 @@ namespace XUnitTest.Auth
         public async Task Update_PersistsCollectPasswordOnActivation_WhenRequestSetsIt()
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
             IdentityConfiguration? saved = null;
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
@@ -520,6 +551,7 @@ namespace XUnitTest.Auth
                 CollectPasswordOnActivation = false
             };
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(current);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
             IdentityConfiguration? saved = null;
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
@@ -539,6 +571,7 @@ namespace XUnitTest.Auth
         public async Task Update_DefaultsCollectPasswordOnActivationToTrue_WhenNeitherRequestNorCurrentHasIt()
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
             IdentityConfiguration? saved = null;
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
@@ -558,6 +591,7 @@ namespace XUnitTest.Auth
         public async Task Update_ForcesConfiguredIamBaseUrl_AndIgnoresPayload_WhenOidcEnabled()
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
             IdentityConfiguration? saved = null;
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
@@ -579,6 +613,7 @@ namespace XUnitTest.Auth
         public async Task Update_AcceptsIamBaseUrlOutsideTenantDomains_WhenOidcEnabled()
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             // The IAM host is deliberately not one of the tenant's application domains.
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
             IdentityConfiguration? saved = null;
@@ -607,6 +642,7 @@ namespace XUnitTest.Auth
                 IsOidcEnabled = true
             };
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync(current);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
             IdentityConfiguration? saved = null;
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
@@ -629,6 +665,7 @@ namespace XUnitTest.Auth
         public async Task Update_StillHonoursPayloadBaseUrl_WhenOidcDisabled()
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _repo.Setup(r => r.GetAuthenticationConfigurationForViewAsync()).ReturnsAsync((IdentityConfiguration)null!);
             _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
             IdentityConfiguration? saved = null;
             _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))

@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -38,7 +39,7 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<IActionResult> GetAuthenticationConfigAsync()
         {
-            var config = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            var config = await _authenticationRepository.GetAuthenticationConfigurationForViewAsync();
             var publicCertificatePath = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.JwtTokenParameters.PublicCertificatePath;
 
             return new OkObjectResult(new

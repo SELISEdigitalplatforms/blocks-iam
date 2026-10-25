@@ -10,6 +10,7 @@ using FluentValidation.Results;
 using Microsoft.AspNetCore.Http;
 using Moq;
 using System.Net;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {
@@ -24,7 +25,6 @@ namespace XUnitTest.Auth.Shared
         private readonly Mock<IValidator<SaveOidcUiTemplateRequest>> _oidcUiTemplateValidator = new();
         private readonly Mock<IValidator<SaveIdentityProviderRequest>> _saveIdpValidator = new();
         private readonly Mock<IValidator<UpdateIdentityProviderRequest>> _updateIdpValidator = new();
-        private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<IHttpClientFactory> _httpFactory = new();
 
         public AuthenticationDomainServiceExtraTests()
@@ -48,8 +48,8 @@ namespace XUnitTest.Auth.Shared
 
         private AuthenticationDomainService Create() =>
             new(_message.Object, _repo.Object,
-                _oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                _updateIdpValidator.Object, _tenants.Object, _httpFactory.Object);
+                new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
+                    _updateIdpValidator.Object), _httpFactory.Object);
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
         {
@@ -60,14 +60,27 @@ namespace XUnitTest.Auth.Shared
         // ---------- GetVisitorsIpAddresses ----------
 
         [Fact]
-        public void GetVisitorsIps_XForwardedForPresent_ReturnsAllTrimmed()
+        public void GetVisitorsIps_H12_XForwardedForPresent_IgnoresRawHeader_ReturnsOnlyRemoteIp()
         {
+            // H12: the raw header is no longer read. The forwarded-header middleware is the only
+            // place a trusted X-Forwarded-For is honored (it rewrites RemoteIpAddress); whatever it
+            // leaves in the header is untrusted, so it must not reach any IP field.
             var ctx = new DefaultHttpContext();
+            ctx.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.3");
             ctx.Request.Headers["X-Forwarded-For"] = "203.0.113.1, 198.51.100.2 , 192.0.2.3";
 
             var ips = Create().GetVisitorsIpAddresses(ctx).ToList();
 
-            ips.Should().Equal("203.0.113.1", "198.51.100.2", "192.0.2.3");
+            ips.Should().Equal("192.0.2.3");
+        }
+
+        [Fact]
+        public void GetVisitorsIps_H12_XForwardedForPresent_NoRemoteIp_ReturnsEmptySequence()
+        {
+            var ctx = new DefaultHttpContext();
+            ctx.Request.Headers["X-Forwarded-For"] = "203.0.113.1";
+
+            Create().GetVisitorsIpAddresses(ctx).Should().BeEmpty();
         }
 
         [Fact]
@@ -115,6 +128,51 @@ namespace XUnitTest.Auth.Shared
         public void GetOriginHost_NeitherHeader_ReturnsEmpty()
         {
             Create().GetRequestOriginHostName(new DefaultHttpContext()).Should().BeEmpty();
+        }
+
+        // ---------- SaveOIDCClientAsync returns the secret once ----------
+
+        [Fact]
+        public async Task SaveOIDCClient_Create_ReturnsGeneratedSecretOnce()
+        {
+            OidcClientRegistration? saved = null;
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(c => saved = c)
+                .Returns(Task.CompletedTask);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                RedirectUris = new() { "https://app/cb" },
+                AllowedScopes = new() { "openid" },
+                ClientType = "confidential",
+                ClientDisplayName = "App"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            result.ClientSecret.Should().NotBeNullOrWhiteSpace();
+            result.ClientSecret.Should().Be(saved!.ClientSecret);
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_Update_DoesNotReturnSecret()
+        {
+            var existing = new OidcClientRegistration { ItemId = "c1", ClientId = "c1", ClientSecret = "stored" };
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                ItemId = "c1",
+                RedirectUris = new() { "https://app/cb" },
+                AllowedScopes = new() { "openid" },
+                ClientType = "confidential",
+                ClientDisplayName = "App"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            result.ClientSecret.Should().BeNull();
+            existing.ClientSecret.Should().Be("stored");
         }
 
         // ---------- SaveOIDCClientAsync provider sync transitions ----------

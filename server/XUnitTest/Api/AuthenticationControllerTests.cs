@@ -9,10 +9,12 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.AccessGrant;
 using Authentication.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.ApiTests
 {
@@ -32,6 +34,15 @@ namespace XUnitTest.ApiTests
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
         private readonly Mock<IAuthenticationDomainService> _domainService = new();
         private readonly Mock<ISignupLinkRedemptionOrchestrator> _signupLinkRedemption = new();
+        private readonly Mock<IClientCredentialGrantGuard> _clientCredentialGuard = CreateAllowingGuard();
+
+        private static Mock<IClientCredentialGrantGuard> CreateAllowingGuard()
+        {
+            var guard = new Mock<IClientCredentialGrantGuard>();
+            guard.Setup(g => g.MaySaveAsync(It.IsAny<SaveClientCredentialRequest>())).ReturnsAsync(true);
+            guard.Setup(g => g.MayChangeAsync(It.IsAny<string?>())).ReturnsAsync(true);
+            return guard;
+        }
 
         public AuthenticationControllerTests()
         {
@@ -62,9 +73,9 @@ namespace XUnitTest.ApiTests
                 _accountService.Object,
                 _flowService.Object,
                 _configService.Object,
-                _authRepo.Object,
                 _domainService.Object,
-                _signupLinkRedemption.Object);
+                _signupLinkRedemption.Object,
+                _clientCredentialGuard.Object);
             controller.ControllerContext = new ControllerContext
             {
                 HttpContext = new DefaultHttpContext()
@@ -95,6 +106,28 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().ExecuteSignup(new SignupUserRequest());
 
             result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task ExecuteSignup_IgnoresCallerClaimedSsoIdentity()
+        {
+            SignupUserRequest? passed = null;
+            _accountService.Setup(s => s.SignupAccountAsync(It.IsAny<SignupUserRequest>()))
+                .Callback<SignupUserRequest>(r => passed = r)
+                .ReturnsAsync(new BaseAccountResponse { IsSuccess = true });
+
+            await CreateController().ExecuteSignup(new SignupUserRequest
+            {
+                Email = "victim@example.com",
+                IsSsoSignup = true,
+                Provider = "google",
+                ExternalUserId = "attacker-sub"
+            });
+
+            passed.Should().NotBeNull();
+            passed!.IsSsoSignup.Should().BeFalse();
+            passed.Provider.Should().BeNull();
+            passed.ExternalUserId.Should().BeNull();
         }
 
         // ---------- RetrieveLoginOptions ----------
@@ -200,6 +233,20 @@ namespace XUnitTest.ApiTests
             result.Should().BeOfType<BadRequestObjectResult>();
         }
 
+        [Fact]
+        public async Task UpdatePassword_Locked_Returns423()
+        {
+            _accountService.Setup(s => s.ChangePasswordAsync(It.IsAny<ChangePasswordRequest>()))
+                .ReturnsAsync(new BaseAccountResponse
+                {
+                    Errors = new Dictionary<string, string> { { Iam.DomainService.Accounts.AccountService.AccountLockedErrorKey, "locked" } }
+                });
+
+            var result = await CreateController().UpdatePassword(new ChangePasswordRequest());
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(423);
+        }
+
         // ---------- Activate ----------
 
         [Fact]
@@ -235,6 +282,17 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().ResendActivation(new ResendActivationRequest());
 
             result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task ResendActivationRefusedByAccessGrantIs403()
+        {
+            _accountService.Setup(s => s.ResendActivationAsync(It.IsAny<ResendActivationRequest>()))
+                .ReturnsAsync(new BaseAccountResponse { Errors = AccessGrantErrors.Create() });
+
+            var result = await CreateController().ResendActivation(new ResendActivationRequest { UserId = "boss" });
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         }
 
         [Fact]
@@ -377,6 +435,22 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().ExecuteLogout(new LogoutRequest { RefreshToken = "rt" });
 
             result.Should().BeOfType<OkObjectResult>();
+            _signupLinkRedemption.Verify(s => s.EndLinkSessionAsync(It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task ExecuteLogout_Fails_DoesNotTouchTheLinkSession()
+        {
+            _authService.Setup(s => s.ExecuteLogoutAsync(It.IsAny<LogoutRequest>(), It.IsAny<HttpContext>()))
+                .ReturnsAsync(new LogoutFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    LogoutResponse = new LogoutResponse { IsSuccess = false }
+                });
+
+            await CreateController().ExecuteLogout(new LogoutRequest { RefreshToken = "rt" });
+
+            _signupLinkRedemption.Verify(s => s.EndLinkSessionAsync(It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>()), Times.Never);
         }
 
         // ---------- SwitchOrganizationContext ----------
@@ -460,6 +534,7 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().ExecuteGlobalLogout(new LogoutAllRequest());
 
             result.Should().BeOfType<BadRequestObjectResult>();
+            _signupLinkRedemption.Verify(s => s.EndLinkSessionAsync(It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>()), Times.Never);
         }
 
         [Fact]
@@ -474,6 +549,7 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().ExecuteGlobalLogout(new LogoutAllRequest { UseBackchannel = false });
 
             result.Should().BeOfType<OkObjectResult>();
+            _signupLinkRedemption.Verify(s => s.EndLinkSessionAsync(It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>()), Times.Once);
             _authService.Verify(s => s.TriggerBackchannelLogoutAllAsync(It.IsAny<HttpRequest>()), Times.Never);
         }
 
@@ -565,7 +641,7 @@ namespace XUnitTest.ApiTests
         public async Task GetAllIdentityProviders_ReturnsOk()
         {
             _authService.Setup(s => s.GetAllIdentityProvidersAsync())
-                .ReturnsAsync(new List<Authentication.DomainService.Entities.IdentityProvider>());
+                .ReturnsAsync(new List<Blocks.Genesis.Entities.Iam.IdentityProvider>());
 
             var result = await CreateController().GetAllIdentityProviders();
 
@@ -578,7 +654,7 @@ namespace XUnitTest.ApiTests
         public async Task GetIdentityProviderById_NotFound_ReturnsNotFound()
         {
             _authService.Setup(s => s.GetIdentityProviderByIdAsync("missing"))
-                .ReturnsAsync((Authentication.DomainService.Entities.IdentityProvider)null);
+                .ReturnsAsync((Blocks.Genesis.Entities.Iam.IdentityProvider)null);
 
             var result = await CreateController().GetIdentityProviderById("missing");
 
@@ -589,7 +665,7 @@ namespace XUnitTest.ApiTests
         public async Task GetIdentityProviderById_Found_ReturnsOk()
         {
             _authService.Setup(s => s.GetIdentityProviderByIdAsync("id-1"))
-                .ReturnsAsync(new Authentication.DomainService.Entities.IdentityProvider
+                .ReturnsAsync(new Blocks.Genesis.Entities.Iam.IdentityProvider
                 {
                     Provider = "google",
                     ProviderType = "social",
@@ -708,30 +784,23 @@ namespace XUnitTest.ApiTests
             result.Should().BeSameAs(response);
         }
 
-        // ---------- User codes ----------
+        // ---------- User codes (removed) ----------
 
         [Fact]
-        public async Task GenerateUserCode_DelegatesAndReturnsResponse()
+        public void UserCodeRoutes_AreGone()
         {
-            var response = new BaseResponse { IsSuccess = true };
-            _domainService.Setup(d => d.GenerateUserCodeByClientAsync(It.IsAny<GenerateUserCodeRequest>()))
-                .ReturnsAsync(response);
+            // H1: GET/POST auth/user-codes answered 404 once nothing maps the route.
+            var templates = typeof(AuthenticationController)
+                .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly)
+                .SelectMany(m => m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute), true)
+                    .Cast<Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute>())
+                .Select(a => a.Template)
+                .ToList();
 
-            var result = await CreateController().GenerateUserCode(new GenerateUserCodeRequest());
-
-            result.Should().BeSameAs(response);
-        }
-
-        [Fact]
-        public async Task GetUserCodes_DelegatesToRepository()
-        {
-            var list = new List<GetUserCodesByUserIdResponse>();
-            _authRepo.Setup(r => r.GetUserCodesByUserIdAsync(ActorUserId)).ReturnsAsync(list);
-
-            var result = await CreateController().GetUserCodes();
-
-            result.Should().BeSameAs(list);
-            _authRepo.Verify(r => r.GetUserCodesByUserIdAsync(ActorUserId), Times.Once);
+            templates.Should().NotBeEmpty();
+            templates.Should().NotContain(t => t != null && t.Contains("user-codes", StringComparison.OrdinalIgnoreCase));
+            typeof(AuthenticationController).GetMethod("GenerateUserCode").Should().BeNull();
+            typeof(AuthenticationController).GetMethod("GetUserCodes").Should().BeNull();
         }
 
         // ---------- Client credentials ----------
@@ -745,7 +814,7 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().SaveClientCredential(new SaveClientCredentialRequest());
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
         }
 
         [Fact]
@@ -756,7 +825,7 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().RotateClientCredentialSecret("cc-1");
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
         }
 
         [Fact]
@@ -768,8 +837,37 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().DeleteClientCredential("cc-1");
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
             _domainService.Verify(d => d.DeleteClientCredentialAsync(It.Is<DeleteClientCredentialRequest>(r => r.ItemId == "cc-1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task SaveClientCredentialRefusedByAccessGrantIs403AndNeverReachesTheDomainService()
+        {
+            _clientCredentialGuard.Setup(g => g.MaySaveAsync(It.IsAny<SaveClientCredentialRequest>())).ReturnsAsync(false);
+
+            var result = await CreateController().SaveClientCredential(new SaveClientCredentialRequest { Name = "svc", Roles = ["admin"] });
+
+            var forbidden = result.Result.Should().BeOfType<ObjectResult>().Subject;
+            forbidden.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            forbidden.Value.Should().BeOfType<SaveClientCredentialResponse>()
+                .Which.Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
+            _domainService.Verify(d => d.SaveClientCredentialAsync(It.IsAny<SaveClientCredentialRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RotateAndDeleteClientCredentialRefusedByAccessGrantAre403()
+        {
+            _clientCredentialGuard.Setup(g => g.MayChangeAsync("cc-1")).ReturnsAsync(false);
+            var controller = CreateController();
+
+            var rotate = await controller.RotateClientCredentialSecret("cc-1");
+            var delete = await controller.DeleteClientCredential("cc-1");
+
+            rotate.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            delete.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            _domainService.Verify(d => d.RotateClientCredentialSecretAsync(It.IsAny<string>()), Times.Never);
+            _domainService.Verify(d => d.DeleteClientCredentialAsync(It.IsAny<DeleteClientCredentialRequest>()), Times.Never);
         }
 
         [Fact]

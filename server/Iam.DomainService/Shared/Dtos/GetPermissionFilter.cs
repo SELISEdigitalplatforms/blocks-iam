@@ -1,4 +1,5 @@
 ﻿using Iam.DomainService.Enums;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Dtos
 {

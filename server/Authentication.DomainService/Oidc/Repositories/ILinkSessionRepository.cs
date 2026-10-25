@@ -4,7 +4,12 @@ namespace Authentication.DomainService.Oidc.Repositories;
 
 public interface ILinkSessionRepository
 {
-    Task EnsureIndexesAsync(CancellationToken ct = default);
+    /// <summary>Stores the session under <see cref="LinkSessionModel.TenantId"/>.</summary>
     Task CreateAsync(LinkSessionModel session);
-    Task<LinkSessionModel?> GetBySessionIdAsync(string sessionId);
+
+    /// <summary>Reads a session (many times while it lives). No delete on read.</summary>
+    Task<LinkSessionModel?> GetBySessionIdAsync(string tenantId, string sessionId);
+
+    /// <summary>Ends a session: removes the Redis key and the old MongoDB row of older pods.</summary>
+    Task DeleteAsync(string tenantId, string sessionId);
 }

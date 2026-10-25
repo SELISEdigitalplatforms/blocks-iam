@@ -155,6 +155,9 @@ jobs:
             -Dsonar.tests=${{ inputs.SONAR_SOURCES }}
             -Dsonar.test.inclusions=**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/__generated__/**,**/*.gen.*
+            -Dsonar.issue.ignore.multicriteria=tailwindAtRules
+            -Dsonar.issue.ignore.multicriteria.tailwindAtRules.ruleKey=css:S4662
+            -Dsonar.issue.ignore.multicriteria.tailwindAtRules.resourceKey=**/*.css
             -Dsonar.coverage.exclusions=${{ inputs.COVERAGE_EXCLUSIONS }}
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
             -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info

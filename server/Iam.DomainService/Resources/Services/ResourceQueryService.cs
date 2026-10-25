@@ -2,9 +2,10 @@
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
-using Iam.DomainService.SignupLinks;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Resources
 {
@@ -14,30 +15,30 @@ namespace Iam.DomainService.Resources
 
         private readonly ILogger<ResourceQueryService> _logger;
         private readonly IResourceRepository _resourceRepository;
-        private readonly IGrantAuthorizationService _grantAuthorization;
+        private readonly IAccessGrantService _accessGrant;
 
         public ResourceQueryService(
             ILogger<ResourceQueryService> logger,
             IResourceRepository resourceRepository,
-            IGrantAuthorizationService grantAuthorization
+            IAccessGrantService accessGrant
         )
         {
             _logger = logger;
             _resourceRepository = resourceRepository;
-            _grantAuthorization = grantAuthorization;
+            _accessGrant = accessGrant;
         }
 
         public async Task<GetPermissionResponse> GetPermissionAsync(string id)
         {
             _logger.LogInformation("Permission get start");
 
-            var permission = await _resourceRepository.GetPermissionByIdAsync(id);
+            var permission = await _resourceRepository.GetPermissionByIdForViewAsync(id);
 
             _logger.LogInformation("Permission get end");
 
             return new GetPermissionResponse
             {
-                Data = permission
+                Data = IsVisibleToCaller(permission?.OrganizationId) ? permission : null
             };
         }
 
@@ -69,13 +70,13 @@ namespace Iam.DomainService.Resources
         {
             _logger.LogInformation("Role get start");
 
-            var role = await _resourceRepository.GetRoleByIdAsync(id);
+            var role = await _resourceRepository.GetRoleByIdForViewAsync(id);
 
             _logger.LogInformation("Role get end");
 
             return new GetRoleResponse
             {
-                Data = role
+                Data = IsVisibleToCaller(role?.OrganizationId) ? role : null
             };
         }
 
@@ -87,7 +88,7 @@ namespace Iam.DomainService.Resources
                 ? query.OrganizationId
                 : null;
 
-            var (data, count) = await _resourceRepository.GetRolesAsync(query, orgId);
+            var (data, count) = await _resourceRepository.GetRolesForViewAsync(query, orgId);
 
             _logger.LogInformation("Roles get end");
 
@@ -132,9 +133,25 @@ namespace Iam.DomainService.Resources
                 .ToList();
         }
 
+        /// <summary>
+        /// Pins a read by id to the caller's organization, as the list endpoints already are. The
+        /// repository looks up by id alone, so without this a caller in one organization could read
+        /// another organization's role or permission by guessing its id. Out of scope reads as not
+        /// found -- the same empty <c>Data</c> the lists give -- so nothing about the record leaks.
+        /// A tenant-wide token (organization <c>default</c>, or none) keeps reading any
+        /// organization, which its list reads can also name.
+        /// </summary>
+        private static bool IsVisibleToCaller(string? recordOrganizationId)
+        {
+            var tokenOrganizationId = BlocksContext.GetContext()?.OrganizationId;
+            return string.IsNullOrWhiteSpace(tokenOrganizationId)
+                || string.Equals(tokenOrganizationId, DefaultOrganizationId, StringComparison.Ordinal)
+                || string.Equals(recordOrganizationId, tokenOrganizationId, StringComparison.Ordinal);
+        }
+
         public Task<GetAssignableRolesResponse> GetAssignableRolesAsync()
         {
-            return _grantAuthorization.GetAssignableRolesAsync();
+            return _accessGrant.GetAssignableRolesAsync();
         }
 
         public async Task<RoleArchiveImpactResponse> GetRoleArchiveImpactAsync(string id)
@@ -385,21 +402,6 @@ namespace Iam.DomainService.Resources
                 AffectedUserCount = (int)await _resourceRepository.CountUsersWithRoleAsync(role.Slug, userScopeOrgIds, activeOnly: false),
                 ActiveUserCount = (int)await _resourceRepository.CountUsersWithRoleAsync(role.Slug, userScopeOrgIds, activeOnly: true)
             };
-        }
-
-        /// <summary>
-        /// Mirrors the mutation side's resolution so a preview and the write it previews always
-        /// target the same organization.
-        /// </summary>
-        private static string ResolveOrganizationId(string? organizationId)
-        {
-            if (!string.IsNullOrWhiteSpace(organizationId))
-            {
-                return organizationId;
-            }
-
-            var contextOrgId = BlocksContext.GetContext()?.OrganizationId;
-            return string.IsNullOrWhiteSpace(contextOrgId) ? DefaultOrganizationId : contextOrgId;
         }
     }
 }

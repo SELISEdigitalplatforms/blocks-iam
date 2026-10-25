@@ -15,6 +15,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Iam.DomainService.Users;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {
@@ -39,7 +40,7 @@ namespace XUnitTest.IamTests.Resources
             _permValidator.Setup(v => v.ValidateAsync(It.IsAny<CreatePermissionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
             _updatePermValidator.Setup(v => v.ValidateAsync(It.IsAny<UpdatePermissionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
             _roleValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateRoleRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration());
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration());
             _iam.Setup(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<object>())).Returns(Task.CompletedTask);
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
         }
@@ -308,7 +309,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetOrganization_MultiOrgDisabled_ReturnsError()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = false });
 
             var result = await Create().GetOrganizationAsync("org-1");
 
@@ -319,7 +320,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetOrganization_EmptyId_ReturnsInvalidRequest()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
 
             var result = await Create().GetOrganizationAsync("   ");
 
@@ -330,8 +331,9 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetOrganization_HappyPath_ReturnsOrganization()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationById("org-1")).ReturnsAsync(new Organization { ItemId = "org-1", Name = "Acme" });
+            _repo.Setup(r => r.GetOrganizationByIdForView("org-1")).ReturnsAsync(new Organization { ItemId = "org-1", Name = "Acme" });
 
             var result = await Create().GetOrganizationAsync("org-1");
 
@@ -342,7 +344,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetMyOrganization_MultiOrgDisabled_ReturnsError()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = false });
 
             var result = await Create().GetMyOrganizationAsync();
 
@@ -353,7 +355,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetMyOrganization_NoUserContext_ReturnsInvalidRequest()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             BlocksContext.SetContext(null);
 
             var result = await Create().GetMyOrganizationAsync();
@@ -365,7 +367,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetMyOrganization_NoMemberships_ReturnsEmptyList()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string>());
 
             var result = await Create().GetMyOrganizationAsync();
@@ -377,7 +379,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetMyOrganization_WithMemberships_ReturnsOrderedList()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "o2", "o1" });
             _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>())).ReturnsAsync(new List<Organization>
             {
@@ -402,7 +404,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetMyOrganization_MemberOfDefault_IncludesItFirst()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "o1", "default" });
             _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>())).ReturnsAsync(new List<Organization>
             {
@@ -420,7 +422,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetMyOrganization_OnlyMemberOfDefault_ReturnsItRatherThanNothing()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "default" });
             _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>())).ReturnsAsync(new List<Organization>());
 
@@ -439,7 +441,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetMyOrganization_NotAMemberOfDefault_DoesNotInventIt()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "o1" });
             _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>())).ReturnsAsync(new List<Organization>
             {
@@ -454,7 +456,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetMyOrganization_DisabledOrganizations_AreExcluded()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "o1", "o2" });
             _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>())).ReturnsAsync(new List<Organization>
             {
@@ -470,7 +472,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task GetMyOrganization_DisabledOrganizations_DoNotDisturbTheDefaultEntry()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "default", "o2" });
             _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>())).ReturnsAsync(new List<Organization>
             {
@@ -492,7 +494,7 @@ namespace XUnitTest.IamTests.Resources
         private void GivenTwoOrgsHoldingTheSameResource(bool multiOrg = true)
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = multiOrg });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = multiOrg });
             _repo.Setup(r => r.GetAllOrgIdsAsync()).ReturnsAsync(new List<string> { "acme", "globex" });
             _repo.Setup(r => r.GetPermissionsByIdsAsync(It.IsAny<List<string>>()))
                 .ReturnsAsync(new List<Permission> { new() { ItemId = "p-default", Resource = "reports::export" } });

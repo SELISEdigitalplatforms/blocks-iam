@@ -4,15 +4,15 @@ import type {
   IGetUsersPayload,
   ICreateUserPayload,
   IUpdateUserPayload,
-} from "../../iam/models/user";
-import type {
   IAccountActivationPayload,
   IAccountRecoverPayload,
   IAccountResetPasswordPayload,
   IAccountResendActivationPayload,
   IActivationCodeValidationPayload,
+  ISaveSignUpSettingPayload,
+  ISaveRolesAndPermissionsPayload,
+  IGetUserRolesPayload,
 } from "../../iam/models/user";
-import type { ISaveSignUpSettingPayload, ISaveRolesAndPermissionsPayload, IGetUserRolesPayload } from "../../iam/models/user";
 import {
   type IPermission,
   type IGetPermissionsPayload,
@@ -299,6 +299,7 @@ export const mockOrganizationConfigResponse: IOrganizationConfigResponse = {
   consentForMultiOrgEnable: false,
   defaultRoleOnOrgCreation: [],
   itemId: "mock-config-id",
+  isSignupAutoJoinEnabled: false,
 };
 
 export const mockSaveOrganizationConfigPayload: IOrganizationConfigPayload = {

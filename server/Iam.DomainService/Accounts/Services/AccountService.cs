@@ -4,6 +4,7 @@
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentValidation;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -18,6 +19,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Accounts
 {
@@ -63,13 +65,16 @@ namespace Iam.DomainService.Accounts
         private readonly IResourceMutationService _resourceMutationService;
         private readonly ICaptchaService _captchaService;
         private readonly ICaptchaConfigurationService _captchaConfigurationService;
-        private readonly IDbContextProvider _dbContextProvider;
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
+        private readonly IUserSessionTerminator? _userSessionTerminator;
+        private readonly IFailedLoginTracker? _failedLoginTracker;
+        private readonly IAccessGrantService? _accessGrant;
         private readonly IValidator<SignupOrganizationInfo>? _signupOrganizationValidator;
         private readonly IOrganizationNameResolver? _organizationNameResolver;
         private readonly IConfiguration? _configuration;
+        private readonly ISignupOrganizationResolver _signupOrganizationResolver;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -84,15 +89,19 @@ namespace Iam.DomainService.Accounts
             IResourceMutationService resourceMutationService,
             ICaptchaService captchaService,
             ICaptchaConfigurationService captchaConfigurationService,
-            IDbContextProvider dbContextProvider,
             IUserActivityDispatcher userActivityDispatcher,
+            // Required, unlike the optional trailing dependencies: without it a sign-up cannot be placed.
+            ISignupOrganizationResolver signupOrganizationResolver,
             IHttpContextAccessor? httpContextAccessor = null,
             IDefaultOidcClientResolver? defaultOidcClientResolver = null,
             // Trailing and optional, matching the two above, so the many existing call sites and
             // test fixtures that construct this service keep compiling. DI supplies both.
             IValidator<SignupOrganizationInfo>? signupOrganizationValidator = null,
             IOrganizationNameResolver? organizationNameResolver = null,
-            IConfiguration? configuration = null)
+            IConfiguration? configuration = null,
+            IUserSessionTerminator? userSessionTerminator = null,
+            IFailedLoginTracker? failedLoginTracker = null,
+            IAccessGrantService? accessGrant = null)
         {
             _logger = logger;
             _repository = repository;
@@ -106,13 +115,16 @@ namespace Iam.DomainService.Accounts
             _resourceMutationService = resourceMutationService;
             _captchaService = captchaService;
             _captchaConfigurationService = captchaConfigurationService;
-            _dbContextProvider = dbContextProvider;
             _userActivityDispatcher = userActivityDispatcher;
+            _signupOrganizationResolver = signupOrganizationResolver;
             _httpContextAccessor = httpContextAccessor;
             _defaultOidcClientResolver = defaultOidcClientResolver;
             _signupOrganizationValidator = signupOrganizationValidator;
             _organizationNameResolver = organizationNameResolver;
             _configuration = configuration;
+            _userSessionTerminator = userSessionTerminator;
+            _failedLoginTracker = failedLoginTracker;
+            _accessGrant = accessGrant;
         }
 
         public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
@@ -155,17 +167,62 @@ namespace Iam.DomainService.Accounts
             }
 
             var normalizedEmail = signupUserRequest.Email.Trim().ToLowerInvariant();
+
+            // Organization checks run for every email, before the account lookup, so a refusal
+            // (name taken, creation turned off, bad profile, auto-join organization unavailable) cannot
+            // tell whether the email has an account.
+            if (signupUserRequest.CreateOrganizationDuringSignup)
+            {
+                var organizationRefusal = await CheckSignupOrganizationAsync(signupUserRequest);
+                if (organizationRefusal != null)
+                {
+                    return organizationRefusal;
+                }
+            }
+
+            var placement = await ResolveSignupPlacementAsync(signupUserRequest, tenantConfiguration);
+            if (placement.Outcome == SignupOrganizationOutcome.TargetUnavailable)
+            {
+                // Nothing has been written yet: no user, no organization, no mail.
+                _logger.LogWarning(
+                    "Signup refused: the auto-join organization {OrganizationId} is unavailable",
+                    tenantConfiguration.SignupAutoJoinOrganizationId ?? "(none)");
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { IdpConstants.SignupOrganizationUnavailableError, IdpConstants.SignupOrganizationUnavailableMessage }
+                    }
+                };
+            }
+
             var existingHandlingResult = await HandleExistingSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail);
             if (existingHandlingResult != null)
             {
                 return existingHandlingResult;
             }
 
+            return await CreateSignupUserWithPlacementAsync(signupUserRequest, tenantConfiguration, normalizedEmail, placement);
+        }
+
+        private async Task<BaseAccountResponse> CreateSignupUserWithPlacementAsync(
+            SignupUserRequest signupUserRequest,
+            IamTenantConfiguration tenantConfiguration,
+            string normalizedEmail,
+            SignupOrganizationDecision placement)
+        {
             // Generate user id first so org creation can receive creator id in the same signup flow.
             var signupUserId = Guid.NewGuid().ToString();
 
-            var organizationId = DefaultOrganizationId;
-            if (signupUserRequest.CreateOrganizationDuringSignup)
+            // Null means "no organization" (NoOrganization); otherwise "default", the auto-join target, or the
+            // organization created just below.
+            var organizationId = placement.OrganizationId;
+
+            // Only an organization this sign-up created is ever rolled back. The auto-join target and "default"
+            // are shared and must survive a failed sign-up.
+            string? createdOrganizationId = null;
+            if (placement.Outcome == SignupOrganizationOutcome.CreateOwn)
             {
                 var orgResult = await CreateOrganizationForSignupAsync(signupUserRequest, signupUserId);
                 if (!orgResult.IsSuccess)
@@ -174,12 +231,11 @@ namespace Iam.DomainService.Accounts
                 }
 
                 organizationId = orgResult.ItemId ?? DefaultOrganizationId;
+                createdOrganizationId = organizationId == DefaultOrganizationId ? null : organizationId;
             }
 
-            var createdOrganizationId = organizationId == DefaultOrganizationId ? null : organizationId;
-
             var result = signupUserRequest.IsSsoSignup
-                ? await CreateSsoSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId)
+                ? await CreateSsoSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId ?? DefaultOrganizationId)
                 : await CreateEmailSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId);
 
             // Compensate a failed user creation: without this the org survives with no
@@ -189,14 +245,92 @@ namespace Iam.DomainService.Accounts
             {
                 await RollbackSignupOrganizationAsync(createdOrganizationId, normalizedEmail);
             }
-            else if (result.IsSuccess)
+
+            if (result.IsSuccess)
             {
-                // ItemId stays the user id; the organization is reported separately so the
-                // caller does not have to look it up by name afterwards.
-                result.OrganizationId = createdOrganizationId;
+                _logger.LogInformation(
+                    "Signup in tenant {TenantId} placed user {UserId} by {Outcome} into {OrganizationId}",
+                    BlocksContext.GetContext()?.TenantId,
+                    signupUserId,
+                    placement.Outcome,
+                    organizationId ?? "none");
             }
 
-            return result;
+            return result.IsSuccess ? SignupAccepted() : result;
+        }
+
+        /// <summary>
+        /// The one success answer signup gives, for a new email and for one that already has an
+        /// account alike: no user id, no organization id, no hint of which case it was. What
+        /// happens next arrives by mail (activation, password reset, or nothing for a blocked account).
+        /// </summary>
+        private static BaseAccountResponse SignupAccepted() => new()
+        {
+            IsSuccess = true,
+            Errors = new Dictionary<string, string>()
+        };
+
+        /// <summary>
+        /// Everything that can refuse the requested organization before it is created: the profile
+        /// shape, and the tenant's creation rules and name uniqueness (same checks
+        /// <c>CreateOrganizationAsync</c> runs). Null when it would be accepted.
+        /// </summary>
+        private async Task<BaseAccountResponse?> CheckSignupOrganizationAsync(SignupUserRequest signupUserRequest)
+        {
+            var organizationName = signupUserRequest.ResolveOrganizationName()!;
+            var validationErrors = await ValidateSignupOrganizationAsync(signupUserRequest, organizationName);
+            if (validationErrors != null)
+            {
+                return new BaseAccountResponse { IsSuccess = false, Errors = validationErrors };
+            }
+
+            var refusal = await _resourceMutationService.CheckOrganizationCreationAsync(
+                BuildSignupOrganizationRequest(signupUserRequest, organizationName));
+            return refusal == null ? null : await OrganizationRefusedAsync(refusal, organizationName);
+        }
+
+        private async Task<BaseAccountResponse> OrganizationRefusedAsync(BaseMutationResponse orgResponse, string organizationName)
+        {
+            var errors = (orgResponse.Errors as Dictionary<string, string>) ?? new Dictionary<string, string>
+            {
+                { "organization_creation_failed", "Organization creation failed during signup." }
+            };
+
+            return new BaseAccountResponse
+            {
+                IsSuccess = false,
+                Errors = errors,
+                // Only for a name clash, and only as a convenience: the caller gets usable
+                // alternatives instead of sending the user back to invent another name.
+                OrganizationNameSuggestions = errors.ContainsKey("name_already_exists")
+                    ? await SuggestOrganizationNamesAsync(organizationName)
+                    : new List<string>()
+            };
+        }
+
+        /// <summary>
+        /// Where a new email sign-up lands, decided by the shared <see cref="ISignupOrganizationResolver"/> so
+        /// the email and SSO routes cannot drift apart.
+        /// <para>
+        /// The <c>IsSsoSignup</c> branch is unreachable -- <c>POST auth/signup</c> forces it off -- and keeps its
+        /// original placement: <c>default</c>, or the organization the caller asked to create.
+        /// </para>
+        /// </summary>
+        private async Task<SignupOrganizationDecision> ResolveSignupPlacementAsync(
+            SignupUserRequest signupUserRequest,
+            IamTenantConfiguration tenantConfiguration)
+        {
+            if (signupUserRequest.IsSsoSignup)
+            {
+                return signupUserRequest.CreateOrganizationDuringSignup
+                    ? new SignupOrganizationDecision(SignupOrganizationOutcome.CreateOwn)
+                    : new SignupOrganizationDecision(SignupOrganizationOutcome.Default, DefaultOrganizationId);
+            }
+
+            return await _signupOrganizationResolver.ResolveAsync(
+                tenantConfiguration,
+                SignupRoute.Email,
+                signupUserRequest.CreateOrganizationDuringSignup);
         }
 
         private async Task RollbackSignupOrganizationAsync(string organizationId, string email)
@@ -293,6 +427,13 @@ namespace Iam.DomainService.Accounts
             return null;
         }
 
+        /// <summary>
+        /// Signup for an email that already has an account answers exactly like a new signup
+        /// (see <see cref="SignupAccepted"/>); only the mail differs. Active account: the normal
+        /// password-reset mail. Not yet activated: the activation mail again. Blocked by an
+        /// administrator (<see cref="AccountCodes.IsBlocked"/>): no mail. A failure while sending is
+        /// logged, never shown, so it cannot reveal the account either. Null when there is no account.
+        /// </summary>
         private async Task<BaseAccountResponse?> HandleExistingSignupUserAsync(SignupUserRequest signupUserRequest, TenantConfiguration tenantConfiguration, string normalizedEmail)
         {
             var existingUser = await _repository.GetUserByEmailAsync(normalizedEmail);
@@ -301,30 +442,10 @@ namespace Iam.DomainService.Accounts
                 return null;
             }
 
-            if (existingUser.Status == UserLifecycleStatus.Disabled)
+            if (AccountCodes.IsBlocked(existingUser))
             {
-                _logger.LogWarning("Signup blocked -- account disabled for email: {Email}", normalizedEmail);
-                return new BaseAccountResponse
-                {
-                    IsSuccess = false,
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "account_disabled", "This account has been disabled. Please contact support." }
-                    }
-                };
-            }
-
-            if (existingUser.Active && existingUser.IsVerified)
-            {
-                _logger.LogWarning("User already exists with email: {Email}", normalizedEmail);
-                return new BaseAccountResponse
-                {
-                    IsSuccess = false,
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "already_signed_up", $"{normalizedEmail} is already registered" }
-                    }
-                };
+                _logger.LogInformation("Signup for a blocked account {UserId}: no mail sent", existingUser.ItemId);
+                return SignupAccepted();
             }
 
             if (signupUserRequest.IsSsoSignup
@@ -342,12 +463,7 @@ namespace Iam.DomainService.Accounts
 
                 if (linkResult.IsSuccess)
                 {
-                    return new BaseAccountResponse
-                    {
-                        IsSuccess = true,
-                        ItemId = existingUser.ItemId,
-                        Errors = null
-                    };
+                    return SignupAccepted();
                 }
 
                 _logger.LogWarning("ActivateAndLink failed for {Email}: {Errors}", normalizedEmail, string.Join(",", linkResult.Errors?.Keys ?? Enumerable.Empty<string>()));
@@ -361,46 +477,57 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            // The account exists but was never activated, so this is effectively a repeat
-            // signup. Honour the organization the user asked for here too — otherwise the
-            // name they typed is silently discarded and they activate into "default".
-            string? pendingOrganizationId = null;
-            if (signupUserRequest.CreateOrganizationDuringSignup)
+            try
             {
-                var (pendingOrgFailure, attachedOrganizationId) = await AttachOrganizationToPendingUserAsync(
-                    signupUserRequest,
-                    tenantConfiguration,
-                    existingUser);
-
-                // Org failures (name taken, creation disabled) are returned as-is: a brand
-                // new signup with the same name gets the identical error, so this leaks
-                // nothing about whether the account already existed.
-                if (pendingOrgFailure != null)
+                if (existingUser.Active && existingUser.IsVerified)
                 {
-                    return pendingOrgFailure;
+                    _logger.LogInformation("Signup for an active account {UserId}: password-reset mail sent", existingUser.ItemId);
+                    await ProcessRecoverAccountAsync(
+                        existingUser,
+                        AccountMailPurposes.RecoverAccount,
+                        signupUserRequest.ClientId,
+                        signupUserRequest.RedirectUri);
+                    return SignupAccepted();
                 }
 
-                pendingOrganizationId = attachedOrganizationId;
+                // The account exists but was never activated, so this is effectively a repeat
+                // signup. Honour the organization the user asked for here too, otherwise the
+                // name they typed is silently discarded and they activate into "default".
+                if (signupUserRequest.CreateOrganizationDuringSignup)
+                {
+                    var (pendingOrgFailure, _) = await AttachOrganizationToPendingUserAsync(
+                        signupUserRequest,
+                        tenantConfiguration,
+                        existingUser);
+
+                    // The name and the creation rules were checked before the lookup, so this is a
+                    // race or an outage: the activation mail still goes out.
+                    if (pendingOrgFailure != null)
+                    {
+                        _logger.LogWarning(
+                            "Organization for pending account {UserId} not created: {Errors}",
+                            existingUser.ItemId,
+                            string.Join(",", pendingOrgFailure.Errors?.Keys ?? Enumerable.Empty<string>()));
+                    }
+                }
+
+                // Direct call, not a queue hop: the signup request's OIDC context is still in
+                // hand here, so a resend returns the user to the same application.
+                var reactivationSent = await SendReActivationAsync(
+                    existingUser,
+                    signupUserRequest.ClientId,
+                    signupUserRequest.RedirectUri);
+                if (!reactivationSent)
+                {
+                    _logger.LogWarning("Signup for a pending account {UserId}: activation mail not sent", existingUser.ItemId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Signup mail for existing account {UserId} failed", existingUser.ItemId);
             }
 
-            // Direct call, not a queue hop — the signup request's OIDC context is still in
-            // hand here, so a resend returns the user to the same application.
-            var reactivationSent = await SendReActivationAsync(
-                existingUser,
-                signupUserRequest.ClientId,
-                signupUserRequest.RedirectUri);
-            return new BaseAccountResponse
-            {
-                IsSuccess = reactivationSent,
-                ItemId = existingUser.ItemId,
-                OrganizationId = pendingOrganizationId,
-                Errors = reactivationSent
-                    ? new Dictionary<string, string>()
-                    : new Dictionary<string, string>
-                    {
-                        { "reactivation_failed", "Failed to send activation email." }
-                    }
-            };
+            return SignupAccepted();
         }
 
         /// <summary>
@@ -478,21 +605,7 @@ namespace Iam.DomainService.Accounts
             var orgResponse = await _resourceMutationService.CreateOrganizationAsync(orgRequest, creatorUserId);
             if (!orgResponse.IsSuccess)
             {
-                var errors = (orgResponse.Errors as Dictionary<string, string>) ?? new Dictionary<string, string>
-                {
-                    { "organization_creation_failed", "Organization creation failed during signup." }
-                };
-
-                return new BaseAccountResponse
-                {
-                    IsSuccess = false,
-                    Errors = errors,
-                    // Only for a name clash, and only as a convenience: the caller gets usable
-                    // alternatives instead of sending the user back to invent another name.
-                    OrganizationNameSuggestions = errors.ContainsKey("name_already_exists")
-                        ? await SuggestOrganizationNamesAsync(organizationName)
-                        : new List<string>()
-                };
+                return await OrganizationRefusedAsync(orgResponse, organizationName);
             }
 
             return new BaseAccountResponse
@@ -603,12 +716,13 @@ namespace Iam.DomainService.Accounts
             return request;
         }
 
+        /// <param name="organizationId">The organization to join, or null for a user with no organization.</param>
         private async Task<BaseAccountResponse> CreateEmailSignupUserAsync(
             SignupUserRequest signupUserRequest,
             TenantConfiguration tenantConfiguration,
             string normalizedEmail,
             string signupUserId,
-            string organizationId)
+            string? organizationId)
         {
             var createUserRequest = new CreateUserRequest
             {
@@ -629,7 +743,9 @@ namespace Iam.DomainService.Accounts
                 RedirectUri = signupUserRequest.RedirectUri
             };
 
-            var result = await _userManagementMutationService.CreateUserAsync(createUserRequest);
+            var result = organizationId == null
+                ? await _userManagementMutationService.CreateSignupUserWithoutOrganizationAsync(createUserRequest)
+                : await _userManagementMutationService.CreateUserAsync(createUserRequest);
             if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.ItemId))
             {
                 _logger.LogWarning("Signup user creation failed for email: {Email}", normalizedEmail);
@@ -760,12 +876,23 @@ namespace Iam.DomainService.Accounts
 
         public async Task<bool> ProcessActivationAsync(ActivateUserRequest activateUserRequest)
         {
-            var userId = await _cacheClient.GetStringValueAsync(activateUserRequest.Code);
+            var userId = await AccountCodes.ResolveAsync(_cacheClient, AccountCodes.Activation, activateUserRequest.Code);
+            if (userId == null)
+            {
+                _logger.LogWarning("Activation refused: the code is not a live activation code");
+                return false;
+            }
 
             var user = await _repository.GetUserByIdAsync(userId);
             if (user == null)
             {
                 _logger.LogError("User not found for user id: {Uid}", userId);
+                return false;
+            }
+
+            if (AccountCodes.IsBlocked(user))
+            {
+                _logger.LogWarning("Activation refused for blocked user {Uid}", userId);
                 return false;
             }
 
@@ -843,6 +970,9 @@ namespace Iam.DomainService.Accounts
             user.FailedLoginCount = 0;
             user.LastFailedLoginUtc = null;
             user.LockoutUntilUtc = null;
+            // Same as an admin unlock: a new password starts the lockout backoff from the first step.
+            user.LockoutCount = 0;
+            user.LastLockoutUtc = null;
         }
 
         public async Task<BaseAccountResponse> RecoverAccountAsync(RecoveryUserRequest recoveryRequest)
@@ -858,32 +988,43 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            var user = await _repository.GetUserByEmailAsync(recoveryRequest.Email);
-
-            if (user == null)
+            // One answer for every email: unknown, blocked, active or pending, and also when the
+            // lookup, the code store or the mail queue fails. The reason is logged only.
+            try
             {
-                _logger.LogInformation("Forgot password requested for unknown email {Email}", recoveryRequest.Email);
-                return new BaseAccountResponse
+                var user = await _repository.GetUserByEmailAsync(recoveryRequest.Email);
+
+                if (user == null || AccountCodes.IsBlocked(user))
                 {
-                    IsSuccess = true
-                };
+                    // Same reads as the mail path (the account, then the IAM configuration), so the
+                    // answer does not come back noticeably sooner. No mail: an unknown address has
+                    // nobody to write to, and only an administrator unblocks a blocked account.
+                    await _repository.GetIamConfigurationAsync();
+                    _logger.LogInformation(
+                        user == null
+                            ? "Forgot password requested for unknown email"
+                            : "Forgot password ignored for blocked user");
+                }
+                else if (user.Active)
+                {
+                    await ProcessRecoverAccountAsync(
+                        user,
+                        AccountMailPurposes.RecoverAccount,
+                        recoveryRequest.ClientId,
+                        recoveryRequest.RedirectUri);
+                }
+                else
+                {
+                    _logger.LogInformation("Forgot-password routed to activation for inactive user {UserId}", user.ItemId);
+                    await ProcessInactiveAccountRecoveryAsync(
+                        user,
+                        recoveryRequest.ClientId,
+                        recoveryRequest.RedirectUri);
+                }
             }
-
-            if (user.Active)
+            catch (Exception ex)
             {
-                await ProcessRecoverAccountAsync(
-                    user,
-                    AccountMailPurposes.RecoverAccount,
-                    recoveryRequest.ClientId,
-                    recoveryRequest.RedirectUri);
-            }
-            else
-            {
-                _logger.LogInformation("Forgot-password routed to activation for inactive user {UserId}", user.ItemId);
-                await ProcessInactiveAccountRecoveryAsync(
-                    user,
-                    recoveryRequest.ClientId,
-                    recoveryRequest.RedirectUri);
+                _logger.LogError(ex, "Forgot password could not be processed");
             }
 
             return new BaseAccountResponse
@@ -921,11 +1062,12 @@ namespace Iam.DomainService.Accounts
                 return false;
             }
 
-            await _cacheClient.AddStringValueAsync(key, user.ItemId, config.RecoverAccountUrlLifetimeInMinutes * 60);
+            await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Reset, key, user.ItemId, config.RecoverAccountUrlLifetimeInMinutes * 60);
 
             emailPurpose = string.IsNullOrWhiteSpace(emailPurpose) ? AccountMailPurposes.RecoverAccount : emailPurpose;
-            var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose);
 
+            // Stored before the mail goes out: a reset spends this row, so it must exist by the time the
+            // link can be clicked.
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
                 ItemId = Guid.NewGuid().ToString(),
@@ -936,6 +1078,8 @@ namespace Iam.DomainService.Accounts
                 Value = recoverAccountUrl,
                 MailPurpose = emailPurpose
             });
+
+            var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose);
 
             _logger.LogInformation("Send Activation for {UserId} is {Send}", user.ItemId, result ? "sent" : "not sent");
             return true;
@@ -982,12 +1126,25 @@ namespace Iam.DomainService.Accounts
 
         public async Task<bool> ProcessResetPasswordAsync(ResetPasswordRequest resetPasswordRequest)
         {
-            var userId = await _cacheClient.GetStringValueAsync(resetPasswordRequest.Code);
+            var userId = await AccountCodes.ResolveAsync(_cacheClient, AccountCodes.Reset, resetPasswordRequest.Code);
+            if (userId == null)
+            {
+                _logger.LogWarning("Password reset refused: the code is not a live reset code");
+                return false;
+            }
 
             var user = await _repository.GetUserByIdAsync(userId);
             if (user == null)
             {
                 _logger.LogError("User not found for user id: {AccId}", userId);
+                return false;
+            }
+
+            // Spend the code before the password changes, in one conditional write: of two requests
+            // carrying the same code, only one gets past this line. A code that is lost here stays spent.
+            if (!await _repository.TryConsumeUserKeyMapAsync(resetPasswordRequest.Code, userId, DateTime.UtcNow))
+            {
+                _logger.LogWarning("Password reset refused for user {UserId}: the code is already used or expired", userId);
                 return false;
             }
 
@@ -997,7 +1154,7 @@ namespace Iam.DomainService.Accounts
 
             if (result)
             {
-                await _cacheClient.RemoveKeyAsync(resetPasswordRequest.Code);
+                await AccountCodes.RetireAsync(_cacheClient, AccountCodes.Reset, resetPasswordRequest.Code, userId);
                 await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
                     UserId = userId,
@@ -1006,13 +1163,9 @@ namespace Iam.DomainService.Accounts
                     Source = "iam-account"
                 });
 
-                if (resetPasswordRequest.LogoutFromAllDevices)
-                {
-                    await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
-                    {
-                        UserId = userId
-                    });
-                }
+                // Always, whatever LogoutFromAllDevices says: a reset is how a user takes the account
+                // back, so no session may survive it. Every Blocks reset form sends true anyway.
+                await EndAllSessionsAsync(userId, "password_reset");
             }
 
 
@@ -1030,7 +1183,15 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            var result = await ProcessChangePasswordAsync(changePasswordRequest);
+            var (result, locked) = await ChangePasswordCoreAsync(changePasswordRequest);
+
+            if (locked)
+            {
+                return new BaseAccountResponse
+                {
+                    Errors = new Dictionary<string, string> { { AccountLockedErrorKey, AccountLockedMessage } }
+                };
+            }
 
             return new BaseAccountResponse
             {
@@ -1038,7 +1199,14 @@ namespace Iam.DomainService.Accounts
             };
         }
 
+        /// <summary>Error key the API maps to HTTP 423, as login does for a locked account.</summary>
+        public const string AccountLockedErrorKey = "AccountLocked";
+        public const string AccountLockedMessage = "Account is temporarily locked due to failed login attempts";
+
         public async Task<bool> ProcessChangePasswordAsync(ChangePasswordRequest changePasswordRequest)
+            => (await ChangePasswordCoreAsync(changePasswordRequest)).Result;
+
+        private async Task<(bool Result, bool Locked)> ChangePasswordCoreAsync(ChangePasswordRequest changePasswordRequest)
         {
             var bc = BlocksContext.GetContext();
 
@@ -1046,7 +1214,15 @@ namespace Iam.DomainService.Accounts
             if (user == null)
             {
                 _logger.LogError("User not found for user id: {Id}", bc?.UserId);
-                return false;
+                return (false, false);
+            }
+
+            // Same lock and counter as login: while locked, a right and a wrong old password get
+            // the same answer, and the old password is not even checked.
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                _logger.LogWarning("Change password refused, account locked for user id: {Id}", user.ItemId);
+                return (false, true);
             }
 
             var tenantId = bc?.TenantId;
@@ -1055,7 +1231,7 @@ namespace Iam.DomainService.Accounts
             if (!passwordMatched)
             {
                 _logger.LogError("Password not matched");
-                return false;
+                return (false, await RecordWrongOldPasswordAsync(user));
             }
 
             ApplyPasswordRotation(user, changePasswordRequest.NewPassword);
@@ -1075,13 +1251,63 @@ namespace Iam.DomainService.Accounts
 
                 if (config.LogoutOnPasswordChange)
                 {
-                    await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
-                    {
-                        UserId = bc?.UserId ?? string.Empty
-                    });
+                    await EndAllSessionsAsync(bc?.UserId ?? string.Empty, "password_change");
                 }
             }
-            return result;
+            return (result, false);
+        }
+
+        /// <summary>
+        /// Counts a wrong old password on the login counter (same threshold and lock time).
+        /// True when this attempt locked the account.
+        /// </summary>
+        private async Task<bool> RecordWrongOldPasswordAsync(User user)
+        {
+            if (_failedLoginTracker == null)
+            {
+                return false;
+            }
+
+            var updated = await _failedLoginTracker.RecordFailedAttemptAsync(user.ItemId);
+            var lockoutUntilUtc = updated?.LockoutUntilUtc;
+            if (!lockoutUntilUtc.HasValue || updated == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                await SendAccountLockedNotificationAsync(updated, lockoutUntilUtc.Value);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send account locked notification after failed password change for user: {UserId}", user.ItemId);
+            }
+
+            return true;
+        }
+
+        // Inline, so the sessions are dead before the response goes out; the logout-all queue is
+        // only the backup for when that fails (or no terminator is wired).
+        private async Task EndAllSessionsAsync(string userId, string reason)
+        {
+            if (_userSessionTerminator != null)
+            {
+                try
+                {
+                    await _userSessionTerminator.EndAllSessionsAsync(userId, reason);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Ending sessions inline failed for user {UserId}; queueing logout-all", userId);
+                }
+            }
+
+            await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
+            {
+                UserId = userId
+            });
         }
 
         public async Task<BaseAccountResponse> ResendActivationAsync(ResendActivationRequest resendActivationRequest)
@@ -1101,19 +1327,45 @@ namespace Iam.DomainService.Accounts
             if (user == null)
             {
                 _logger.LogError("User not found for user id: {RuserId}", resendActivationRequest.UserId);
-                return new BaseAccountResponse();
+                return new BaseAccountResponse
+                {
+                    Errors = new Dictionary<string, string> { { nameof(ResendActivationRequest.UserId), "User_Not_Found" } }
+                };
             }
 
-            var result = await SendReActivationAsync(user);
-
-            return new BaseAccountResponse
+            // Sending another user an activation link is managing that user (access
+            // grant, R3). Asking for one's own is self-service.
+            if (!await MayResendActivationToAsync(user).ConfigureAwait(false))
             {
-                IsSuccess = result,
-            };
+                return new BaseAccountResponse { Errors = AccessGrantErrors.Create() };
+            }
+
+            // The mail is only queued here; the caller must not hear "sent" when nothing could be
+            // queued (no address, or no activation link could be built).
+            if (!await SendReActivationAsync(user))
+            {
+                return new BaseAccountResponse
+                {
+                    Errors = new Dictionary<string, string> { { "ActivationMail", "ActivationMail_Not_Sent" } }
+                };
+            }
+
+            return new BaseAccountResponse { IsSuccess = true };
         }
+
+        private Task<bool> MayResendActivationToAsync(User user) =>
+            string.Equals(user.ItemId, BlocksContext.GetContext()?.UserId, StringComparison.Ordinal)
+                ? Task.FromResult(true)
+                : _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckManageUser(scope, user));
 
         public async Task<bool> SendReActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {
+            if (string.IsNullOrWhiteSpace(user.Email))
+            {
+                _logger.LogWarning("Activation not sent for user {UserId}: the account has no email address", user.ItemId);
+                return false;
+            }
+
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
             var bc = BlocksContext.GetContext();
@@ -1132,10 +1384,15 @@ namespace Iam.DomainService.Accounts
                 return false;
             }
 
-            await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
+            await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Activation, key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
             var emailPurpose = string.IsNullOrWhiteSpace(user.MailPurpose) ? AccountMailPurposes.AccountActivation : user.MailPurpose;
             var result = await _identityAccessManagementService.SendActivationToEmailAsync(user, accountActivationUri, emailPurpose);
+            if (!result)
+            {
+                _logger.LogWarning("Send ReActivation for {UsId} is not sent", user.ItemId);
+                return false;
+            }
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
@@ -1148,8 +1405,8 @@ namespace Iam.DomainService.Accounts
                 MailPurpose = emailPurpose
             });
 
-            _logger.LogInformation("Send ReActivation for {UsId} is {Send}", user.ItemId, result ? "sent" : "not sent");
-            return result;
+            _logger.LogInformation("Send ReActivation for {UsId} is sent", user.ItemId);
+            return true;
         }
 
         public async Task<BaseAccountResponse> ActivateAndLinkSocialIdentityAsync(ActivateAndLinkSocialIdentityRequest request)
@@ -1224,7 +1481,8 @@ namespace Iam.DomainService.Accounts
             // right to set this account's password, so the name is no new exposure.
             var user = await _repository.GetUserByIdAsync(userId);
 
-            if (user == null)
+            // A blocked account answers like a code that never existed: it cannot activate itself.
+            if (user == null || AccountCodes.IsBlocked(user))
             {
                 return new ActivationCodeValidationResponse
                 {
@@ -1239,32 +1497,47 @@ namespace Iam.DomainService.Accounts
             // The account is the authority on whether activation already happened. The key map's
             // own Activated flag is per-user rather than per-key, so it cannot say which of a
             // resent link's codes was the one spent.
+            // Only a live, latest activation code returns account data. A spent, expired or
+            // wrong-purpose code answers with its status alone: the key map never expires, so
+            // anything more would hand out the account to whoever holds an old link.
             if (user.Active)
             {
                 return new ActivationCodeValidationResponse
                 {
-                    UserId = userId,
-                    FirstName = user.FirstName ?? string.Empty,
-                    LastName = user.LastName ?? string.Empty,
                     Status = ActivationCodeStatus.AlreadyActivated,
                     IsSuccess = false
                 };
             }
 
-            var isCodeLive = await _cacheClient.KeyExistsAsync(validateActivationCodeRequest.ActivationCode);
+            var isCodeLive = await AccountCodes.ResolveAsync(_cacheClient, AccountCodes.Activation, validateActivationCodeRequest.ActivationCode) == userId;
+            if (!isCodeLive)
+            {
+                return new ActivationCodeValidationResponse
+                {
+                    Status = ActivationCodeStatus.Expired,
+                    IsSuccess = false
+                };
+            }
 
             return new ActivationCodeValidationResponse
             {
                 UserId = userId,
                 FirstName = user.FirstName ?? string.Empty,
                 LastName = user.LastName ?? string.Empty,
-                Status = isCodeLive ? ActivationCodeStatus.Valid : ActivationCodeStatus.Expired,
-                IsSuccess = isCodeLive
+                Status = ActivationCodeStatus.Valid,
+                IsSuccess = true
             };
         }
 
         public async Task<SaveSignUpSettingResponse> SaveSignUpSettingAsync(SaveSignUpSettingRequest request)
         {
+            // R6: signup settings are tenant-wide -- they hand roles to every future signup -- so
+            // they belong to the system user.
+            if (!_accessGrant.AuthorizeSystemOnlyIfWired("signup-settings"))
+            {
+                return new SaveSignUpSettingResponse { IsSuccess = false, Errors = AccessGrantErrors.Create() };
+            }
+
             var settings = await _repository.GetTenantConfigurationAsync();
 
             if (settings == null)

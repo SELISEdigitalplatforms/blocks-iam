@@ -1,11 +1,13 @@
 ﻿using Iam.DomainService.Accounts;
 using Iam.DomainService.Configurations;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.SignupLinks;
 using Iam.DomainService.Users;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Iam.DomainService.Utilities
 {
@@ -15,6 +17,7 @@ namespace Iam.DomainService.Utilities
         public static void RegisterSharedServices(this IServiceCollection services)
         {
             #region Services
+            services.TryAddSingleton<IIamDataAccess, IamDataAccess>();
             services.AddSingleton<IUserManagementMutationService, UserManagementMutationService>();
             services.AddSingleton<IUserRepository, UserRepository>();
 
@@ -28,19 +31,21 @@ namespace Iam.DomainService.Utilities
             services.AddSingleton<IUserManagementQueryService, UserManagementQueryService>();
             services.AddSingleton<IResourceQueryService, ResourceQueryService>();
 
+            services.AddSingleton<ISignupOrganizationResolver, SignupOrganizationResolver>();
             services.AddSingleton<IAccountService, AccountService>();
             services.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
 
             services.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();
             services.AddSingleton<ISignupLinkConfigurationService, SignupLinkConfigurationService>();
             services.AddSingleton<ISignupLinkRepository, SignupLinkRepository>();
-            services.AddSingleton<ISignupLinkRedemptionRepository, SignupLinkRedemptionRepository>();
+            services.AddSingleton<IUserActivityRepository, UserActivityRepository>();
             services.AddSingleton<ISignupLinkContextService, SignupLinkContextService>();
             services.AddSingleton<SignupLinkGenerationRepositories>();
             services.AddSingleton<SignupLinkGenerationValidators>();
             services.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
             services.AddSingleton<ISignupLinkSummaryService, SignupLinkSummaryService>();
             services.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
+            services.AddAccessGrant();
             services.AddHttpContextAccessor();
 
 

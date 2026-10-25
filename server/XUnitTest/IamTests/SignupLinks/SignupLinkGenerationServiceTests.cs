@@ -4,6 +4,7 @@ using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
@@ -12,6 +13,8 @@ using Iam.DomainService.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.SignupLinks;
 
@@ -21,6 +24,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
     private readonly Mock<ISignupLinkConfigurationRepository> _configs = new();
     private readonly Mock<IOidcClientRegistrationLookup> _oidc = new();
     private readonly Mock<IResourceRepository> _resources = new();
+    private readonly AccessGrantTestKit _accessGrant = new();
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<IValidator<GenerateSignupLinkRequest>> _generateValidator = new();
     private readonly Mock<IValidator<QuerySignupLinksRequest>> _queryValidator = new();
@@ -57,6 +61,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
 
         SetupRoleTreeForAlice();
 
+
         _configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -84,6 +89,9 @@ public class SignupLinkGenerationServiceTests : IDisposable
             userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
             originalTenantId: TenantId, impersonationSessionId: null, applicationDomain: "test"));
 
+    // Alice acts in the default organization: the system user, who keeps the token-based grant
+    // check she always had. Bob acts in org-acme, where his power is read from the (in-memory)
+    // database (R9).
     private void SetupRoleTreeForAlice()
     {
         var roles = new List<Role>
@@ -99,16 +107,21 @@ public class SignupLinkGenerationServiceTests : IDisposable
 
     private void SetupRoleTreeForBob()
     {
-        var roles = new List<Role>
+        if (_accessGrant.RolesOf("org-acme").Count > 0)
         {
-            new() { Slug = "site-manager", Name = "Site Manager", CanCreateOwn = true, AncestorRoleSlugs = new() },
-            new() { Slug = "site-viewer", Name = "Site Viewer", CanCreateOwn = false, ParentRoleSlug = "site-manager", AncestorRoleSlugs = new() { "site-manager" } },
-            new() { Slug = "tenant-admin", Name = "Tenant Admin", CanCreateOwn = true, ParentRoleSlug = "root", AncestorRoleSlugs = new() { "root" } },
-            new() { Slug = "contractor", Name = "Contractor", CanCreateOwn = false, AncestorRoleSlugs = new() },
-            new() { Slug = "root", Name = "Root", CanCreateOwn = false, AncestorRoleSlugs = new() },
-        }.AsQueryable();
-        _resources.Setup(r => r.GetRolesAsync(It.IsAny<GetRolesRequest>(), It.IsAny<string>()))
-            .ReturnsAsync((roles, 5L));
+            return;
+        }
+
+        _accessGrant
+            .WithRole("site-manager", organizationId: "org-acme")
+            .WithRole("site-viewer", "site-manager", "org-acme")
+            .WithRole("root", organizationId: "org-acme")
+            .WithRole("tenant-admin", "root", "org-acme")
+            .WithRole("contractor", organizationId: "org-acme");
+        _accessGrant
+            .WithPermission("read:project", "org-acme", "site-manager", "site-viewer", "contractor", "root", "tenant-admin")
+            .WithPermission("write:secret", "org-acme", "root", "tenant-admin");
+        _accessGrant.WithUser(ActorId, roles: ["site-manager"], organizationId: "org-acme");
     }
 
     private static SignupLinkConfiguration ActiveConfig() => new()
@@ -132,6 +145,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
             _configs.Object,
             _oidc.Object,
             new GrantAuthorizationService(_resources.Object),
+            _accessGrant.Service(),
             _users.Object),
         new SignupLinkGenerationValidators(
             _configuration,
@@ -287,7 +301,8 @@ public class SignupLinkGenerationServiceTests : IDisposable
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(403);
-        result.Errors!["Roles"].Should().Be("You cannot grant the role: tenant-admin");
+        result.Errors!.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
+        result.Errors.Should().HaveCount(1, "the refusal is generic; the role stays in the server log");
         _links.Verify(l => l.InsertAsync(It.IsAny<SignupLink>()), Times.Never);
     }
 
@@ -440,6 +455,50 @@ public class SignupLinkGenerationServiceTests : IDisposable
         result.StatusCode.Should().Be(403);
         result.Errors!["Permissions"].Should().Contain("write:secret");
         _links.Verify(l => l.InsertAsync(It.IsAny<SignupLink>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SystemUserUngrantableRoleKeepsTheOldRefusal()
+    {
+        // Alice holds only "contractor" in her token: the tenant-admin tree is not hers to give.
+        InstallContext(orgId: "default", roles: ["contractor"], permissions: ["read:project"]);
+
+        var result = await Sut().GenerateAsync(ValidRequest(r => r.Roles = ["site-viewer"]));
+
+        result.StatusCode.Should().Be(403);
+        result.Errors!["Roles"].Should().Be("You cannot grant the role: site-viewer");
+        _accessGrant.Repository.Verify(r => r.GetUserAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task NonSystemUngrantablePermissionGetsTheGenericRefusal()
+    {
+        InstallContext(orgId: "org-acme", roles: ["site-manager"], permissions: ["read:project"]);
+        SetupRoleTreeForBob();
+        var result = await Sut().GenerateAsync(ValidRequest(r =>
+        {
+            r.OrganizationId = null;
+            r.Permissions = ["write:secret"];
+        }));
+        result.StatusCode.Should().Be(403);
+        result.Errors!.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
+        _links.Verify(l => l.InsertAsync(It.IsAny<SignupLink>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RefusalIsLogged()
+    {
+        InstallContext(orgId: "org-acme", roles: ["site-manager"], permissions: ["read:project"]);
+        SetupRoleTreeForBob();
+
+        var result = await Sut().GenerateAsync(ValidRequest(r =>
+        {
+            r.OrganizationId = null;
+            r.Roles = ["tenant-admin"];
+        }));
+
+        result.StatusCode.Should().Be(403);
+        _accessGrant.Logged("AccessGrant denied R9-SignupLink").Should().BeTrue();
     }
 
     [Fact]

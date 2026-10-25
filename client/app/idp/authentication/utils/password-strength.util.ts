@@ -53,7 +53,7 @@ export const getFilledSegments = (strength: number): number =>
 // Fixed literals written directly in this file's own source, never built from a policy.
 const HAS_UPPER = /[A-Z]/;
 const HAS_LOWER = /[a-z]/;
-const HAS_DIGIT = /[0-9]/;
+const HAS_DIGIT = /\d/;
 const HAS_SPECIAL = /[^A-Za-z0-9]/;
 const HAS_RUN_OF_THREE = /(.)\1\1/;
 

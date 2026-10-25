@@ -7,6 +7,7 @@ using Authentication.DomainService.Shared.ResponseModel;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.ApiTests
 {

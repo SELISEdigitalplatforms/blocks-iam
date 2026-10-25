@@ -4,6 +4,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Services
 {
@@ -16,14 +17,17 @@ namespace Iam.DomainService.Services
 
         private readonly IBlocksSecret _blocksSecret;
         private readonly ILogger<IdentityAccessManagementRepository> _logger;
+        private readonly TenantConfigurationStore _tenantConfigurationStore;
 
         public IdentityAccessManagementRepository(
             IDbContextProvider dbContextProvider,
             IBlocksSecret blocksSecret,
-            ILogger<IdentityAccessManagementRepository> logger) : base(dbContextProvider)
+            ILogger<IdentityAccessManagementRepository> logger,
+            IIamDataAccess dataAccess) : base(dbContextProvider, dataAccess)
         {
             _blocksSecret = blocksSecret;
             _logger = logger;
+            _tenantConfigurationStore = new TenantConfigurationStore(dbContextProvider, dataAccess);
         }
 
         /// <summary>
@@ -41,7 +45,7 @@ namespace Iam.DomainService.Services
         {
             var collection = GetCollectionByName<IamConfiguration>(IdentityConfigurationCollectionName);
 
-            return await collection.Find(_ => true).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.IdentityConfiguration, Builders<IamConfiguration>.Filter.Empty, "IdentityAccessManagementRepository.GetIamConfigurationAsync");
         }
 
         public async Task<User> GetUserByEmailAsync(string email)
@@ -53,14 +57,16 @@ namespace Iam.DomainService.Services
             };
             var filter = Builders<User>.Filter.Eq(x => x.Email, NormalizeEmail(email));
 
-            return await (await collection.FindAsync(filter, options)).FirstOrDefaultAsync();
+            var scope = await _dataAccess.ReadAsync(IamSchemas.User, filter, "IdentityAccessManagementRepository.GetUserByEmailAsync", useProjection: false);
+            if (!scope.Granted) return null!;
+            return await (await collection.FindAsync(scope.Filter, options)).FirstOrDefaultAsync();
         }
 
         public async Task<User> GetUserByIdAsync(string itemId)
         {
             var collection = GetCollection<User>();
 
-            return await collection.Find(x => x.ItemId == itemId).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.User, Builders<User>.Filter.Eq(x => x.ItemId, itemId), "IdentityAccessManagementRepository.GetUserByIdAsync") ?? null!;
         }
 
         public async Task<T> GetUserByIdAsync<T>(string itemId)
@@ -69,11 +75,15 @@ namespace Iam.DomainService.Services
             var filter = Builders<User>.Filter.Eq(x => x.ItemId, itemId);
             var project = Builders<User>.Projection.As<T>();
 
-            var cursor = await collection.FindAsync(filter, new FindOptions<User, T>
+            // Own projection (As<T>): only the row filter is applied, not the resolver projection.
+            var scope = await _dataAccess.ReadAsync(IamSchemas.User, filter, "IdentityAccessManagementRepository.GetUserByIdAsync<T>", useProjection: false);
+            if (!scope.Granted) return default!;
+            var cursor = await collection.FindAsync(scope.Filter, new FindOptions<User, T>
             {
                 Projection = project
             });
-            return await cursor.FirstOrDefaultAsync();
+            // Only GET iam/me and iam/users/{id} read this: View column (property) rules clear what the caller may not see.
+            return scope.ForViewAs(await cursor.FirstOrDefaultAsync());
         }
 
         public async Task<bool> CheckPasswordBlackListedAsync(string password)
@@ -109,7 +119,7 @@ namespace Iam.DomainService.Services
         public async Task<bool> InsertUserKeyMapAsync(UserKeyMap userKeyMap)
         {
             var collection = GetCollection<UserKeyMap>();
-            await collection.InsertOneAsync(userKeyMap);
+            await _dataAccess.InsertOneAsync(collection, IamSchemas.UserKeyMap, userKeyMap, "IdentityAccessManagementRepository.InsertUserKeyMapAsync");
 
             return true;
         }
@@ -118,9 +128,9 @@ namespace Iam.DomainService.Services
         {
             NormalizeUserIdentity(user);
             var collection = GetCollection<User>();
-            var result = await collection.ReplaceOneAsync(x => x.ItemId == user.ItemId, user);
+            var result = await _dataAccess.ReplaceOneAsync(collection, IamSchemas.User, Builders<User>.Filter.Eq(x => x.ItemId, user.ItemId), user, "IdentityAccessManagementRepository.UpdateUserAsync");
 
-            return result.IsAcknowledged;
+            return result?.IsAcknowledged ?? false;
         }
 
         public async Task<bool> RecordSuccessfulLoginAsync(string userId, string deviceInformationJson, DateTime nowUtc)
@@ -137,9 +147,12 @@ namespace Iam.DomainService.Services
                 .Set(x => x.LastLoggedInTime, nowUtc)
                 .Set(x => x.LastLoggedInDeviceInfo, deviceInformationJson);
 
-            var updated = await collection.FindOneAndUpdateAsync(
+            var updated = await _dataAccess.FindOneAndUpdateAsync(
+                collection,
+                IamSchemas.User,
                 filter,
                 update,
+                "IdentityAccessManagementRepository.RecordSuccessfulLoginAsync",
                 new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After });
 
             if (updated == null)
@@ -153,11 +166,14 @@ namespace Iam.DomainService.Services
             // already-recorded FirstLoggedInTime with a later one.
             if (updated.LogInCount == 1)
             {
-                await collection.UpdateOneAsync(
+                await _dataAccess.UpdateOneAsync(
+                    collection,
+                    IamSchemas.User,
                     Builders<User>.Filter.And(
                         filter,
                         Builders<User>.Filter.Eq(x => x.FirstLoggedInTime, default(DateTime))),
-                    Builders<User>.Update.Set(x => x.FirstLoggedInTime, nowUtc));
+                    Builders<User>.Update.Set(x => x.FirstLoggedInTime, nowUtc),
+                    "IdentityAccessManagementRepository.RecordSuccessfulLoginAsync.FirstLogin");
             }
 
             return true;
@@ -171,15 +187,34 @@ namespace Iam.DomainService.Services
             // Every outstanding code for the user, not one of them: the cache side of this
             // invalidation drops them all, and leaving rows behind would let a resent link still
             // look unused.
-            var result = await collection.UpdateManyAsync(u => u.UserId == userId && !u.Activated, update);
+            var result = await _dataAccess.UpdateManyAsync(collection, IamSchemas.UserKeyMap, Builders<UserKeyMap>.Filter.Where(u => u.UserId == userId && !u.Activated), update, "IdentityAccessManagementRepository.UpdateUserKeyMapActivationAsync");
 
-            return result.IsAcknowledged;
+            return result?.IsAcknowledged ?? false;
+        }
+
+        public async Task<bool> TryConsumeUserKeyMapAsync(string key, string userId, DateTime nowUtc)
+        {
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(userId))
+            {
+                return false;
+            }
+
+            var collection = GetCollection<UserKeyMap>();
+            var filter = Builders<UserKeyMap>.Filter.Eq(u => u.Key, key)
+                & Builders<UserKeyMap>.Filter.Eq(u => u.UserId, userId)
+                & Builders<UserKeyMap>.Filter.Ne(u => u.Activated, true)
+                & Builders<UserKeyMap>.Filter.Gt(u => u.ExpireDate, nowUtc);
+            var update = Builders<UserKeyMap>.Update.Set(u => u.Activated, true);
+
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.UserKeyMap, filter, update, "IdentityAccessManagementRepository.TryConsumeUserKeyMapAsync");
+
+            return result is { IsAcknowledged: true, ModifiedCount: 1 };
         }
 
         public async Task<List<UserKeyMap>> GetActiveUserKeyMapAsync(string userId)
         {
             var collection = GetCollection<UserKeyMap>();
-            return await collection.Find(u => u.UserId == userId && !u.Activated).ToListAsync();
+            return await _dataAccess.FindListAsync(collection, IamSchemas.UserKeyMap, Builders<UserKeyMap>.Filter.Where(u => u.UserId == userId && !u.Activated), "IdentityAccessManagementRepository.GetActiveUserKeyMapAsync");
         }
 
 
@@ -191,7 +226,7 @@ namespace Iam.DomainService.Services
             }
 
             var collection = GetCollection<UserKeyMap>();
-            return await collection.Find(u => u.Key == key).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.UserKeyMap, Builders<UserKeyMap>.Filter.Eq(u => u.Key, key), "IdentityAccessManagementRepository.GetUserKeyMapByKeyAsync");
         }
 
         public async Task<string> GetUserIdFromKeyMapByKeyAsync(string key)
@@ -205,7 +240,9 @@ namespace Iam.DomainService.Services
             var projection = Builders<UserKeyMap>.Projection.Expression(u => u.UserId);
 
             // Execute FindAsync with filter + projection
-            using var cursor = await collection.FindAsync(filter, new FindOptions<UserKeyMap, string>
+            var scope = await _dataAccess.ReadAsync(IamSchemas.UserKeyMap, filter, "IdentityAccessManagementRepository.GetUserIdFromKeyMapByKeyAsync", useProjection: false);
+            if (!scope.Granted) return string.Empty;
+            using var cursor = await collection.FindAsync(scope.Filter, new FindOptions<UserKeyMap, string>
             {
                 Projection = projection
             });
@@ -229,10 +266,7 @@ namespace Iam.DomainService.Services
 
         public async Task SaveSignUpSettingAsync(TenantConfiguration tenantConfiguration)
         {
-            var collection = GetCollection<TenantConfiguration>();
-
-            var result = await collection.UpdateOneAsync(
-                Builders<TenantConfiguration>.Filter.Empty,
+            await _tenantConfigurationStore.UpdateAsync(
                 Builders<TenantConfiguration>.Update
                     .Set(t => t.IsEmailPasswordSignUpEnabled, tenantConfiguration.IsEmailPasswordSignUpEnabled)
                     .Set(t => t.IsSSoSignUpEnabled, tenantConfiguration.IsSSoSignUpEnabled)
@@ -242,12 +276,39 @@ namespace Iam.DomainService.Services
                     .Set(t => t.LastUpdatedDate, tenantConfiguration.LastUpdatedDate));
         }
 
-        public async Task<TenantConfiguration> GetTenantConfigurationAsync()
+        public async Task<IamTenantConfiguration> GetTenantConfigurationAsync()
         {
-            var collection = GetCollection<TenantConfiguration>();
-            var tenantConfiguration = await collection.Find(_ => true).FirstOrDefaultAsync();
-            return tenantConfiguration;
+            return (await _tenantConfigurationStore.ReadAsync())!;
         }
+
+        public Task<bool> PullSignUpDefaultRoleAsync(string slug) =>
+            PullSignUpDefaultAsync(Builders<TenantConfiguration>.Update.Pull(t => t.DefaultRolesForNewUserOnSignUp, slug));
+
+        public Task<bool> PullSignUpDefaultPermissionAsync(string resource) =>
+            PullSignUpDefaultAsync(Builders<TenantConfiguration>.Update.Pull(t => t.DefaultPermissionsForNewUserOnSignUp, resource));
+
+        private Task<bool> PullSignUpDefaultAsync(UpdateDefinition<TenantConfiguration> update) =>
+            _tenantConfigurationStore.UpdateAsync(update);
+
+        public Task SaveOrganizationConfigAsync(IamTenantConfiguration tenantConfiguration) =>
+            _tenantConfigurationStore.UpdateAsync(
+                Builders<IamTenantConfiguration>.Update
+                    .SetOnInsert(c => c.ItemId, tenantConfiguration.ItemId)
+                    .SetOnInsert(c => c.CreatedBy, tenantConfiguration.CreatedBy)
+                    .SetOnInsert(c => c.CreatedDate, tenantConfiguration.CreatedDate)
+                    .Set(c => c.AllowOrgCreationFromCloud, tenantConfiguration.AllowOrgCreationFromCloud)
+                    .Set(c => c.AllowOrgCreationFromConstruct, tenantConfiguration.AllowOrgCreationFromConstruct)
+                    .Set(c => c.AllowOrgCreationFromSignup, tenantConfiguration.AllowOrgCreationFromSignup)
+                    .Set(c => c.AllowOrgCreationFromPortal, tenantConfiguration.AllowOrgCreationFromPortal)
+                    .Set(c => c.IsMultiOrgEnabled, tenantConfiguration.IsMultiOrgEnabled)
+                    .Set(c => c.IsOrgNameUniquenessEnabled, tenantConfiguration.IsOrgNameUniquenessEnabled)
+                    .Set(c => c.IsSignupAutoJoinEnabled, tenantConfiguration.IsSignupAutoJoinEnabled)
+                    .Set(c => c.SignupAutoJoinOrganizationId, tenantConfiguration.SignupAutoJoinOrganizationId)
+                    .Set(c => c.ConsentForMultiOrgEnable, tenantConfiguration.ConsentForMultiOrgEnable)
+                    .Set(c => c.LastUpdatedBy, tenantConfiguration.LastUpdatedBy)
+                    .Set(c => c.DefaultPermissionsForNewUserOnSignUp, tenantConfiguration.DefaultPermissionsForNewUserOnSignUp)
+                    .Set(c => c.LastUpdatedDate, tenantConfiguration.LastUpdatedDate),
+                upsertLegacy: true);
 
         private static void NormalizeUserIdentity(User user)
         {

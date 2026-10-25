@@ -9,6 +9,7 @@ using FluentValidation;
 using FluentValidation.Results;
 using Moq;
 using System.Net.Http;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {
@@ -20,7 +21,6 @@ namespace XUnitTest.Auth.Shared
         private readonly Mock<IValidator<SaveOidcUiTemplateRequest>> _oidcUiTemplateValidator = new();
         private readonly Mock<IValidator<SaveIdentityProviderRequest>> _saveIdpValidator = new();
         private readonly Mock<IValidator<UpdateIdentityProviderRequest>> _updateIdpValidator = new();
-        private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<IHttpClientFactory> _httpFactory = new();
 
         public AuthenticationDomainServiceTests()
@@ -55,8 +55,8 @@ namespace XUnitTest.Auth.Shared
 
         private AuthenticationDomainService Create() =>
             new(_message.Object, _repo.Object,
-                _oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                _updateIdpValidator.Object, _tenants.Object, _httpFactory.Object);
+                new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
+                    _updateIdpValidator.Object), _httpFactory.Object);
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
         {
@@ -122,6 +122,7 @@ namespace XUnitTest.Auth.Shared
         public async Task UpdateIdp_NotFound_ReturnsError()
         {
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync((IdentityProvider)null!);
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync((IdentityProvider)null!);
             var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest());
             result.Errors.Should().ContainKey("not_found");
         }
@@ -130,6 +131,7 @@ namespace XUnitTest.Auth.Shared
         public async Task UpdateIdp_ImmutableProvider_ReturnsError()
         {
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(Idp());
             var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { Provider = "other" });
             result.Errors.Should().ContainKey("immutable_field");
         }
@@ -138,6 +140,7 @@ namespace XUnitTest.Auth.Shared
         public async Task UpdateIdp_ImmutableClientId_ReturnsError()
         {
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(Idp());
             var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientId = "different" });
             result.Errors.Should().ContainKey("immutable_field");
         }
@@ -147,6 +150,7 @@ namespace XUnitTest.Auth.Shared
         {
             var existing = Idp();
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(existing);
             _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
             var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { DisplayName = "New Name", IsActive = false });
             result.IsSuccess.Should().BeTrue();
@@ -168,6 +172,7 @@ namespace XUnitTest.Auth.Shared
         public async Task UpdateIdp_ImmutableProviderType_ReturnsError()
         {
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(Idp());
             var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ProviderType = "enterprise" });
             result.Errors.Should().ContainKey("immutable_field");
         }
@@ -176,6 +181,7 @@ namespace XUnitTest.Auth.Shared
         public async Task UpdateIdp_ImmutableProtocol_ReturnsError()
         {
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(Idp());
             var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { Protocol = "saml" });
             result.Errors.Should().ContainKey("immutable_field");
         }
@@ -184,6 +190,7 @@ namespace XUnitTest.Auth.Shared
         public async Task UpdateIdp_WellKnownUrlChanged_DiscoveryInvalid_ReturnsErrors()
         {
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(Idp());
             _saveIdpValidator.Setup(v => v.ValidateAsync(It.IsAny<SaveIdentityProviderRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult(new[] { new ValidationFailure("WellKnownUrl", "unreachable") }));
 
@@ -199,6 +206,7 @@ namespace XUnitTest.Auth.Shared
         {
             var existing = Idp();
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(existing);
             _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
 
             var request = new UpdateIdentityProviderRequest
@@ -249,6 +257,7 @@ namespace XUnitTest.Auth.Shared
         public async Task DeleteIdp_NotFound_ReturnsError()
         {
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync((IdentityProvider)null!);
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync((IdentityProvider)null!);
             var result = await Create().DeleteIdentityProviderAsync("idp-1");
             result.Errors.Should().ContainKey("not_found");
         }
@@ -257,6 +266,7 @@ namespace XUnitTest.Auth.Shared
         public async Task DeleteIdp_HappyPath_DeletesAndCleansUpOidcClient()
         {
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(Idp());
             _repo.Setup(r => r.DeleteIdentityProviderAsync("idp-1")).Returns(Task.CompletedTask);
             _repo.Setup(r => r.GetOidcClientRegistrationAsync("cid")).ReturnsAsync(new OidcClientRegistration { ItemId = "cid", ClientId = "cid" });
             _repo.Setup(r => r.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>())).Returns(Task.CompletedTask);
@@ -281,6 +291,7 @@ namespace XUnitTest.Auth.Shared
         public async Task UpdateStatus_NotFound_ReturnsError()
         {
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync((IdentityProvider)null!);
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync((IdentityProvider)null!);
             var result = await Create().UpdateIdentityProviderStatusAsync("idp-1", true);
             result.Errors.Should().ContainKey("not_found");
         }
@@ -291,6 +302,7 @@ namespace XUnitTest.Auth.Shared
             var existing = Idp();
             existing.IsActive = false;
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(existing);
             _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
             var result = await Create().UpdateIdentityProviderStatusAsync("idp-1", true);
             result.IsSuccess.Should().BeTrue();
@@ -304,7 +316,9 @@ namespace XUnitTest.Auth.Shared
         {
             _repo.Setup(r => r.GetIdentityProviderAsync("google")).ReturnsAsync(Idp());
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(Idp());
             _repo.Setup(r => r.GetIdentityProvidersAsync()).ReturnsAsync(new List<IdentityProvider> { Idp() });
+            _repo.Setup(r => r.GetIdentityProvidersForViewAsync()).ReturnsAsync(new List<IdentityProvider> { Idp() });
 
             (await Create().GetIdentityProviderAsync("google")).Should().NotBeNull();
             (await Create().GetIdentityProviderByIdAsync("idp-1")).Should().NotBeNull();
@@ -338,24 +352,6 @@ namespace XUnitTest.Auth.Shared
             result.IsSuccess.Should().BeTrue();
             result.ClientSecret.Should().NotBe("old");
             result.ClientSecret.Should().StartWith("blxsk_");
-        }
-
-        // ---------- GenerateUserCodeByClientAsync ----------
-
-        [Fact]
-        public async Task GenerateUserCode_EmptyClientId_ReturnsError()
-        {
-            var result = await Create().GenerateUserCodeByClientAsync(new GenerateUserCodeRequest { ClientId = "" });
-            result.Errors.Should().ContainKey("invalid_request");
-        }
-
-        [Fact]
-        public async Task GenerateUserCode_HappyPath_Saves()
-        {
-            _repo.Setup(r => r.SaveUserCodeByClientAsync(It.IsAny<UserCode>())).Returns(Task.CompletedTask);
-            var result = await Create().GenerateUserCodeByClientAsync(new GenerateUserCodeRequest { ClientId = "c1", Note = "n" });
-            result.IsSuccess.Should().BeTrue();
-            _repo.Verify(r => r.SaveUserCodeByClientAsync(It.Is<UserCode>(u => u.ClientId == "c1")), Times.Once);
         }
 
         // ---------- SaveClientCredentialAsync ----------
@@ -474,6 +470,7 @@ namespace XUnitTest.Auth.Shared
         public async Task GetOidcClients_ReturnsList()
         {
             _repo.Setup(r => r.GetOIDCCredentialsByTenantAsync()).ReturnsAsync(new List<OidcClientRegistration> { new() { ItemId = "c1", ClientId = "c1" } });
+            _repo.Setup(r => r.GetOIDCCredentialsByTenantForViewAsync()).ReturnsAsync(new List<OidcClientRegistration> { new() { ItemId = "c1", ClientId = "c1" } });
             var result = await Create().GetOidcClientsAsync();
             result.IsSuccess.Should().BeTrue();
             result.oIDCClientCredentials.Should().HaveCount(1);
@@ -636,6 +633,7 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(new OidcClientRegistration { ItemId = "c1", ClientId = "c1" });
             _repo.Setup(r => r.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>())).Returns(Task.CompletedTask);
             _repo.Setup(r => r.GetIdentityProvidersAsync()).ReturnsAsync(new List<IdentityProvider> { Idp(clientId: "c1") });
+            _repo.Setup(r => r.GetIdentityProvidersForViewAsync()).ReturnsAsync(new List<IdentityProvider> { Idp(clientId: "c1") });
             _repo.Setup(r => r.DeleteIdentityProviderAsync("idp-1")).Returns(Task.CompletedTask);
 
             var result = await Create().DeleteOidcClientAsync(new DeleteOIDCClientRequest { ItemId = "c1" });
@@ -689,6 +687,103 @@ namespace XUnitTest.Auth.Shared
 
             result.Should().NotBeNull();
             result!.Issuer.Should().Be("https://test.com/");
+        }
+
+        // ---------- Secrets never leave through a read ----------
+
+        [Fact]
+        public async Task GetOidcClient_NeverReturnsSecret()
+        {
+            _repo.Setup(r => r.GetOIDCCredentialByIdAsync("c1")).ReturnsAsync(new OidcClientRegistration { ItemId = "c1", ClientId = "c1", ClientSecret = "s" });
+            var result = await Create().GetOidcClientAsync("c1");
+            result.oIDCClientCredential!.ClientSecret.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetOidcClients_NeverReturnSecrets()
+        {
+            _repo.Setup(r => r.GetOIDCCredentialsByTenantForViewAsync()).ReturnsAsync(new List<OidcClientRegistration> { new() { ItemId = "c1", ClientId = "c1", ClientSecret = "s" } });
+            var result = await Create().GetOidcClientsAsync();
+            result.oIDCClientCredentials.Should().OnlyContain(c => c.ClientSecret == null);
+        }
+
+        [Fact]
+        public async Task GetClientCredentials_NeverReturnSecrets()
+        {
+            _repo.Setup(r => r.GetClientCredentialsAsync(It.IsAny<string?>())).ReturnsAsync(new List<ClientCredential> { new() { ItemId = "cc-1", ClientSecret = "s" } });
+            var result = await Create().GetClientCredentialsAsync(new GetAllClientCredentialsRequest());
+            result.Should().OnlyContain(c => c.ClientSecret == null);
+        }
+
+        [Fact]
+        public async Task GetIdentityProviders_NeverReturnSecrets()
+        {
+            var listed = Idp();
+            listed.PrivateKey = "pk";
+            _repo.Setup(r => r.GetIdentityProvidersForViewAsync()).ReturnsAsync(new List<IdentityProvider> { listed });
+            var single = Idp();
+            single.PrivateKey = "pk";
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(single);
+
+            var all = await Create().GetAllIdentityProvidersAsync();
+            var one = await Create().GetIdentityProviderByIdAsync("idp-1");
+
+            all.Should().OnlyContain(p => p.ClientSecret == "" && p.PrivateKey == null);
+            one!.ClientSecret.Should().BeEmpty();
+            one.PrivateKey.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task UpdateIdp_NewSecret_ReplacesStoredSecret()
+        {
+            var existing = Idp();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-secret" });
+            result.IsSuccess.Should().BeTrue();
+            existing.ClientSecret.Should().Be("new-secret");
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("  ")]
+        public async Task UpdateIdp_EmptySecret_KeepsStoredSecret(string? secret)
+        {
+            var existing = Idp();
+            existing.PrivateKey = "pk";
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = secret, PrivateKey = secret });
+            result.IsSuccess.Should().BeTrue();
+            existing.ClientSecret.Should().Be("secret");
+            existing.PrivateKey.Should().Be("pk");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_MirrorOfLocalOidcClient_RejectsSecretChange()
+        {
+            var existing = Idp();
+            existing.ProviderType = "blocks-oidc";
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("cid")).ReturnsAsync(new OidcClientRegistration { ItemId = "cid", ClientId = "cid", RegisterAsIdentityProvider = true });
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-secret" });
+            result.IsSuccess.Should().BeFalse();
+            existing.ClientSecret.Should().Be("secret");
+            _repo.Verify(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdateIdp_BlocksOidcProviderOfAnotherProject_ReplacesSecret()
+        {
+            var existing = Idp();
+            existing.ProviderType = "blocks-oidc";
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("cid")).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-secret" });
+            result.IsSuccess.Should().BeTrue();
+            existing.ClientSecret.Should().Be("new-secret");
         }
 
         // ---------- GetClientCredentialsAsync ----------

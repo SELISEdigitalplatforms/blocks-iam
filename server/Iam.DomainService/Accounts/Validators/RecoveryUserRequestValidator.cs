@@ -18,11 +18,20 @@ namespace Iam.DomainService.Accounts
                 .NotEmpty().WithMessage("Email is required.")
                 .EmailAddress().WithMessage("Invalid email format.");
 
+            // With a captcha configured it is required, for every email alike, so recovery cannot be
+            // scripted around it. Without one, a code that is sent is still checked, as before.
+            RuleFor(x => x.CaptchaCode)
+                   .MustAsync(MustSendCaptchaWhenConfigured).WithMessage("Captcha verification is required.")
+                   .When(x => string.IsNullOrWhiteSpace(x.CaptchaCode));
+
             RuleFor(x => x.CaptchaCode)
                    .Cascade(CascadeMode.Stop)
                    .MustAsync(MustMatchCaptcha).WithMessage("Captcha doesn't match")
                    .When(x => !string.IsNullOrWhiteSpace(x.CaptchaCode));
         }
+
+        private async Task<bool> MustSendCaptchaWhenConfigured(string? captchaCode, CancellationToken cancellationToken) =>
+            await GetCaptchaConfig() == null;
 
         private async Task<bool> MustMatchCaptcha(string captchaCode, CancellationToken cancellationToken)
         {

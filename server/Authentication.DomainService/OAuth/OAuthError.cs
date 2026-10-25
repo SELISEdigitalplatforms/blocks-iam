@@ -29,6 +29,12 @@ namespace Authentication.DomainService.OAuth
         public const string InvalidRequestBody = "invalid_request_body";
         public const string InvalidGrantType = "invalid_grant_type";
 
+        /// <summary>
+        /// The one description for every failed password login: unknown user, pending, disabled and
+        /// wrong password alike, so the text never tells which it was.
+        /// </summary>
+        public const string InvalidUsernamePasswordDescription = "Invalid username or password";
+
         public static IActionResult InvalidRequest(string description = "The request is missing a required parameter.", string state = "")
         {
             return new BadRequestObjectResult(new
@@ -84,7 +90,7 @@ namespace Authentication.DomainService.OAuth
                 GrantTypes.Password => new TokenResponse
                 {
                     Error = InValidUseNamePassword,
-                    ErrorDescription = "User name or password invalid",
+                    ErrorDescription = InvalidUsernamePasswordDescription,
                     StatusCode = 401
                 },
                 GrantTypes.MfaCode => new TokenResponse

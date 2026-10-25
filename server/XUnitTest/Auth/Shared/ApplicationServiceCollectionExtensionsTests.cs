@@ -9,6 +9,7 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
 using Mfa.DomainService.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace XUnitTest.Auth.Shared
@@ -41,6 +42,20 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
+        public void RegisterAllServicesRegistersAccessGrantAndBindsItsMode()
+        {
+            var services = Registered();
+            services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(
+                new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+                                        .Build());
+
+            services.Should().Contain(d => d.ServiceType == typeof(Iam.DomainService.AccessGrant.IAccessGrantService) && d.Lifetime == ServiceLifetime.Singleton);
+            services.Should().Contain(d => d.ServiceType == typeof(Iam.DomainService.AccessGrant.IAccessGrantRepository));
+            services.Should().Contain(d => d.ServiceType == typeof(IClientCredentialGrantGuard));
+            services.Should().Contain(d => d.ServiceType.Name == "IGrantAuthorizationService", "the system user keeps the grant check it always had");
+        }
+
+        [Fact]
         public void RegisterAllServices_RegistersIamAndMfaContracts()
         {
             var services = Registered();
@@ -49,6 +64,11 @@ namespace XUnitTest.Auth.Shared
             services.Should().Contain(d => d.ServiceType == typeof(IIdentityAccessManagementRepository));
             services.Should().Contain(d => d.ServiceType == typeof(IResourceRepository));
             services.Should().Contain(d => d.ServiceType == typeof(IMfaManagementRepository));
+            // Shared by AccountService and SsoUserProvisioningService, both singletons.
+            services.Should().Contain(d =>
+                d.ServiceType == typeof(Iam.DomainService.Accounts.ISignupOrganizationResolver)
+                && d.ImplementationType == typeof(Iam.DomainService.Accounts.SignupOrganizationResolver)
+                && d.Lifetime == ServiceLifetime.Singleton);
         }
 
         [Fact]

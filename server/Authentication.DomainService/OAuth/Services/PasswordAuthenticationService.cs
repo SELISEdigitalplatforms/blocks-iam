@@ -5,8 +5,10 @@ using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Authentication.DomainService.Authentication;
+using Blocks.Genesis.Entities.Iam;
 using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Authentication.DomainService.OAuth
@@ -18,13 +20,15 @@ namespace Authentication.DomainService.OAuth
         private readonly IAuthenticationRepository _oAuthRepository;
         private readonly ICryptoService _cryptoService;
         private readonly IPasswordCredentialVerifier _passwordVerifier;
+        private readonly IUnknownUserLoginGuard _unknownUserLoginGuard;
 
         public PasswordAuthenticationService(
             ILogger<PasswordAuthenticationService> logger,
             IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
             ICryptoService cryptoService,
             IAuthenticationRepository oAuthRepository,
-            IPasswordCredentialVerifier passwordVerifier
+            IPasswordCredentialVerifier passwordVerifier,
+            IUnknownUserLoginGuard unknownUserLoginGuard
         )
         {
             _logger = logger;
@@ -32,6 +36,7 @@ namespace Authentication.DomainService.OAuth
             _cryptoService = cryptoService;
             _oAuthRepository = oAuthRepository;
             _passwordVerifier = passwordVerifier;
+            _unknownUserLoginGuard = unknownUserLoginGuard;
         }
 
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
@@ -44,7 +49,20 @@ namespace Authentication.DomainService.OAuth
             // such as "user is not active" or "user not verified" — see
             // PasswordAuthenticationServiceInvariantTests for regression coverage.
             user ??= await _oAuthRepository.GetUserByUsernameAsync(request.Username, request.OrganizationId);
-            if (!IsValidUser(user) || !IsUserActiveAndVerified(user!)) return OAuthError.InValidResponse(request);
+            if (!IsValidUser(user) || !IsUserActiveAndVerified(user!))
+            {
+                // Same work and same signals as a wrong password on a real account: a BCrypt
+                // check, a counted failure, and the lock answer once the slots are gone.
+                var attempt = await _unknownUserLoginGuard.FailAsync(request.Username, request.Password, null, authenticationConfiguration);
+                return attempt.Reserved
+                    ? OAuthError.InValidResponse(request)
+                    : new TokenResponse
+                    {
+                        Error = OAuthError.AccountLocked,
+                        ErrorDescription = PasswordCredentialVerifier.LockedDescription,
+                        StatusCode = StatusCodes.Status423Locked
+                    };
+            }
 
             // Lockout pre-check, password and failed-attempt accounting live in the shared
             // verifier, so the signup-link password step runs the same code. Login maps every
@@ -93,8 +111,8 @@ namespace Authentication.DomainService.OAuth
         // `AuthenticateAsync` to collapse "user not found", "inactive", and "not verified"
         // into the same generic `OAuthError.InValidResponse`. Returning a different error
         // for any of these branches leaks an account-state discriminator. The lockout path
-        // (returning 423) is an intentional, separate response and not a security leak
-        // because the user already knows whether their own account is locked.
+        // (423) is shown for unknown usernames too, at the same thresholds, through
+        // IUnknownUserLoginGuard, so it says nothing about whether the account exists.
         private static bool IsValidUser(User? user) =>
             user != null;
 

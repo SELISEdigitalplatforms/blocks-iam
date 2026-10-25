@@ -1,5 +1,6 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.RequestModel
 {
@@ -26,5 +27,8 @@ namespace Authentication.DomainService.RequestModel
     public class GetOIDCClientResponse : BaseResponse
     {
         public OidcClientRegistration? oIDCClientCredential { get; set; }
+
+        /// <summary>The client's own token lifetimes; null when it uses the project values.</summary>
+        public OidcClientTokenLifetimes? TokenLifetimes { get; set; }
     }
 }

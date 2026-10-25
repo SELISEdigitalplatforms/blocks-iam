@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Authentication.DomainService.Authentication;
@@ -8,6 +8,7 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Iam.DomainService.SignupLinks;
@@ -23,6 +24,7 @@ using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using StackExchange.Redis;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.SignupLinks;
 
@@ -48,7 +50,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private const string BranchLinkUserReturned = "LinkUserReturned";
 
     private readonly ISignupLinkRepository _links;
-    private readonly ISignupLinkRedemptionRepository _redemptions;
+    private readonly IUserActivityRepository _redemptions;
     private readonly ILinkSessionRepository _linkSessions;
     private readonly IOidcClientRegistrationLookup _oidcLookup;
     private readonly IAuthenticationRepository _authentication;
@@ -102,7 +104,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var link = await _links.GetByCodeHashAsync(hash);
         if (link == null)
         {
-            // A miss has no link to hang a SignupLinkRedemptions record on, so this line is its
+            // A miss has no link to hang a redemption event on, so this line is its
             // only trace. The hash rather than the code, so the log cannot be replayed; it is
             // the value SignupLinks.CodeHash holds.
             _logger.LogWarning(
@@ -720,6 +722,15 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         if (!verification.IsValid)
         {
+            // Count the wrong code toward the account's lockout, with the same settings the login
+            // mfa step uses. A locked account is refused above, before any code is checked.
+            var authConfiguration = await _authentication.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
+            await _authentication.IncrementFailedMfaAndApplyLockoutAsync(
+                user.ItemId,
+                authConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
+                authConfiguration.AccountLockDurationInMinutes,
+                DateTime.UtcNow);
+
             return new BadRequestObjectResult(new { error = "invalid_mfa_code", error_description = "Invalid mfa code" });
         }
 
@@ -1278,7 +1289,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var key = Guid.NewGuid().ToString("n");
         var expires = DateTime.UtcNow.AddMinutes(minutes);
 
-        await _cacheClient.AddStringValueAsync(key, user.ItemId, minutes * 60);
+        await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Activation, key, user.ItemId, minutes * 60);
         await _userRepository.InsertUserKeyMapAsync(new UserKeyMap
         {
             ItemId = Guid.NewGuid().ToString(),
@@ -1354,6 +1365,24 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         var tenant = _tenants.GetTenantByID(link.TenantId);
         LinkSessionCookie.Append(request, response, tenant, link.TenantId, session.SessionId, expires);
         return await BuildAuthorizeUrlAsync(link);
+    }
+
+    public async Task EndLinkSessionAsync(HttpRequest request, HttpResponse response)
+    {
+        var tenantId = BlocksContext.GetContext()?.TenantId;
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            return;
+        }
+
+        var sessionId = request.Cookies[IdpConstants.BuildLinkSessionCookieKey(tenantId)];
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            return;
+        }
+
+        await _linkSessions.DeleteAsync(tenantId, sessionId);
+        LinkSessionCookie.Clear(request, response, _tenants.GetTenantByID(tenantId), tenantId);
     }
 
     private static void GrantOrganization(User user, string organizationId, List<string>? roles, List<string>? permissions)
@@ -1579,11 +1608,10 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             ?? throw new InvalidOperationException(
                 $"No identity provider is registered for signup-link client '{link.ClientId}'");
 
-        // PKCE binds the authorization code to this redemption. Driven by the provider's own
-        // flag so the pair matches what /idp/callback will present at the token endpoint:
-        // it sends the verifier only when the context carries one, and the exchange validates
-        // it only when the authorize request stored a challenge.
-        var codeVerifier = provider.RequirePkce ? Base64Url(RandomNumberGenerator.GetBytes(32)) : null;
+        // PKCE binds the authorization code to this redemption. Always on: /idp/callback sends the
+        // verifier the context carries, and the authorize endpoint refuses a client that requires
+        // PKCE when no challenge is sent, whatever the provider row says.
+        var codeVerifier = Base64Url(RandomNumberGenerator.GetBytes(32));
 
         var flowContext = new
         {
@@ -1615,11 +1643,8 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             ["tenant_id"] = link.TenantId
         };
 
-        if (codeVerifier != null)
-        {
-            query["code_challenge"] = CodeChallenge(codeVerifier);
-            query["code_challenge_method"] = IdpConstants.PkceMethodS256;
-        }
+        query["code_challenge"] = CodeChallenge(codeVerifier);
+        query["code_challenge_method"] = IdpConstants.PkceMethodS256;
 
         var qs = string.Join("&", query.Select(kvp =>
             $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
@@ -1638,27 +1663,59 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         int ordinal,
         bool grant)
     {
+        await _redemptions.InsertAsync(
+            BuildRedemptionEvent(link, outcome, null, userId, ordinal, request, grant),
+            CancellationToken.None);
+    }
+
+    /// <summary>
+    /// One <c>signup-link-redeem</c> activity event per redemption. <c>UserId</c> is empty on purpose, so
+    /// the event stays out of every signed-in user's own list. No e-mail: a caller without a user id can
+    /// list every event of the tenant, and no reader needs it.
+    /// </summary>
+    public static UserActivity BuildRedemptionEvent(
+        SignupLink link,
+        SignupLinkRedemptionOutcome outcome,
+        string? reasonCode,
+        string? userId,
+        int ordinal,
+        HttpRequest request,
+        bool grant)
+    {
         var now = DateTime.UtcNow;
-        await _redemptions.InsertAsync(new SignupLinkRedemption
+        var itemId = Guid.NewGuid().ToString("n");
+        return new UserActivity
         {
-            ItemId = Guid.NewGuid().ToString("n"),
-            LinkId = link.ItemId,
+            ItemId = itemId,
+            Category = UserActivityCategory.Account,
+            Event = UserActivityRepository.SignupLinkRedeemEvent,
+            Source = "signup-link",
+            Entity = "SignupLink",
+            EntityId = link.ItemId,
+            UserId = string.Empty,
+            ActorUserId = string.Empty,
             TenantId = link.TenantId,
-            Email = link.Email,
-            UserId = userId,
-            Outcome = outcome,
-            RedemptionOrdinal = ordinal,
-            RedeemedAtUtc = now,
-            IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request),
-            UserAgent = request.Headers.UserAgent.ToString(),
-            GrantedOrganizationId = grant ? link.OrganizationId : null,
-            GrantedRoles = grant ? link.Roles?.ToList() ?? [] : [],
-            GrantedPermissions = grant ? link.Permissions?.ToList() ?? [] : [],
+            Outcome = outcome.ToString(),
+            ReasonCode = reasonCode,
+            MessageId = "signup-link-redemption:" + itemId,
+            Context = new ActivityContext
+            {
+                IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request),
+                UserAgent = request.Headers.UserAgent.ToString()
+            },
+            Metadata = new Dictionary<string, string>
+            {
+                ["UserId"] = userId ?? string.Empty,
+                ["RedemptionOrdinal"] = ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["GrantedOrganizationId"] = (grant ? link.OrganizationId : null) ?? string.Empty,
+                ["GrantedRoles"] = JsonSerializer.Serialize(grant ? link.Roles?.ToList() ?? [] : []),
+                ["GrantedPermissions"] = JsonSerializer.Serialize(grant ? link.Permissions?.ToList() ?? [] : [])
+            },
             CreatedDate = now,
-            CreatedBy = userId,
             LastUpdatedDate = now,
+            CreatedBy = userId,
             LastUpdatedBy = userId
-        });
+        };
     }
 
     private async Task RecordRejectionAsync(
@@ -1670,7 +1727,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         string? detail = null)
     {
         // Every rejection answers the caller with the same invalid-link body on purpose, so
-        // this line and the SignupLinkRedemptions record are the only places the reason shows.
+        // this line and the signup-link-redeem activity event are the only places the reason shows.
         _logger.LogWarning(
             "Signup link redeem rejected ({Reason}) for link {LinkId} in tenant {TenantId}, invitee {MaskedEmail}, user {UserId}: {Detail}",
             reason,
@@ -1682,23 +1739,9 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         try
         {
-            var now = DateTime.UtcNow;
-            await _redemptions.InsertAsync(new SignupLinkRedemption
-            {
-                ItemId = Guid.NewGuid().ToString("n"),
-                LinkId = link.ItemId,
-                TenantId = link.TenantId,
-                Email = link.Email,
-                UserId = userId,
-                Outcome = SignupLinkRedemptionOutcome.Rejected,
-                RejectionReason = reason,
-                RedemptionOrdinal = ordinal,
-                RedeemedAtUtc = now,
-                IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request),
-                UserAgent = request.Headers.UserAgent.ToString(),
-                CreatedDate = now,
-                LastUpdatedDate = now
-            });
+            await _redemptions.InsertAsync(
+                BuildRedemptionEvent(link, SignupLinkRedemptionOutcome.Rejected, reason, userId, ordinal, request, grant: false),
+                CancellationToken.None);
         }
         catch (Exception ex)
         {

@@ -5,6 +5,7 @@ using Authentication.DomainService.Oidc.Repositories;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Shared.Services
 {
@@ -40,12 +41,15 @@ namespace Authentication.DomainService.Shared.Services
         private readonly ICacheClient _cacheClient;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly ILogger<RefreshSessionResolver> _logger;
+        private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
 
         public RefreshSessionResolver(
             ICacheClient cacheClient,
             IRefreshTokenRepository refreshTokenRepository,
-            ILogger<RefreshSessionResolver> logger)
+            ILogger<RefreshSessionResolver> logger,
+            IOidcClientTokenLifetimeService? clientTokenLifetimes = null)
         {
+            _clientTokenLifetimes = clientTokenLifetimes;
             _cacheClient = cacheClient;
             _refreshTokenRepository = refreshTokenRepository;
             _logger = logger;
@@ -238,11 +242,12 @@ namespace Authentication.DomainService.Shared.Services
         /// <summary>
         /// Replay outside the grace window is the only genuine theft signal available here. The whole
         /// lineage goes, not just the presented token — an attacker holding an old value would otherwise
-        /// keep the newest one alive.
+        /// keep the newest one alive. Every lineage key leaves the cache too, because a cache hit is not
+        /// checked against the store.
         /// </summary>
         private async Task HandleReuseAsync(RefreshTokenModel persisted, string presentedTokenId, string fingerprint, string lineageId)
         {
-            var revokedCount = await _refreshTokenRepository.RevokeAllByRefreshTokenSessionIdAsync(lineageId, ReuseDetectedReason);
+            var revokedCount = await _refreshTokenRepository.RevokeLineageAndEvictAsync(lineageId, ReuseDetectedReason);
             await _cacheClient.RemoveKeyAsync(presentedTokenId);
 
             _logger.LogWarning(
@@ -284,7 +289,11 @@ namespace Authentication.DomainService.Shared.Services
                 Audience = persisted.Audience
             };
 
-            var (slidingMinutes, _) = RefreshTokenLifetimeResolver.Resolve(configuration, _logger);
+            // The token's own client decides the idle window when it has one set; otherwise the project value.
+            var effectiveConfiguration = _clientTokenLifetimes == null
+                ? configuration
+                : await _clientTokenLifetimes.ApplyAsync(configuration, persisted.ClientId);
+            var (slidingMinutes, _) = RefreshTokenLifetimeResolver.Resolve(effectiveConfiguration, _logger);
             var ttlSeconds = RefreshTokenLifetimeResolver.ResolveCacheTtlSeconds(slidingMinutes, persisted.AbsoluteExpiry, now);
 
             await _cacheClient.AddStringValueAsync(persisted.TokenId, JsonSerializer.Serialize(tokenCache), ttlSeconds);

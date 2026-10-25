@@ -10,6 +10,137 @@ import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-co
 import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 import { resolveActivationCodeStatus } from "./activation-status";
 
+type ActivationError = "invalid" | "expired" | "already-active" | null;
+
+const errorForStatus = (status: ReturnType<typeof resolveActivationCodeStatus>): ActivationError => {
+  if (status === "AlreadyActivated") return "already-active";
+  if (status === "Expired") return "expired";
+  return "invalid";
+};
+
+type ActivationCopy = NonNullable<
+  NonNullable<ReturnType<typeof useOidcUiConfig>["data"]>["template"]
+>["pages"]["activation"];
+
+const headingForError = (error: ActivationError, copy: ActivationCopy) => {
+  if (error === "invalid") return copy.invalidHeading;
+  if (error === "expired") return copy.expiredHeading;
+  if (error === "already-active") return copy.alreadyActiveHeading;
+  return copy.heading;
+};
+
+const NoticeIcon = ({ children }: Readonly<{ children: React.ReactNode }>) => (
+  <div
+    className="w-12 h-12 rounded-full flex items-center justify-center"
+    style={{ background: "var(--accent-soft)", border: "1px solid var(--border-strong)" }}
+  >
+    {children}
+  </div>
+);
+
+const NoticeMessage = ({ children }: Readonly<{ children: React.ReactNode }>) => (
+  <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
+    {children}
+  </p>
+);
+
+type ResendState = Readonly<{
+  onResend: () => void;
+  disabled: boolean;
+  isPending: boolean;
+  message: string | null;
+  success: boolean;
+}>;
+
+type ActivationBodyArgs = Readonly<{
+  activationError: ActivationError;
+  copy: ActivationCopy;
+  code?: string;
+  tenantId?: string;
+  knownName: { firstName: string; lastName: string };
+  collectPassword: boolean;
+  resend: ResendState;
+}>;
+
+const renderActivationBody = ({
+  activationError,
+  copy,
+  code,
+  tenantId,
+  knownName,
+  collectPassword,
+  resend,
+}: ActivationBodyArgs) => {
+  if (activationError === null) {
+    return (
+      <ActivationForm
+        code={code ?? ""}
+        tenantId={tenantId}
+        firstName={knownName.firstName}
+        lastName={knownName.lastName}
+        collectPassword={collectPassword}
+      />
+    );
+  }
+  if (activationError === "invalid") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-2 text-center">
+        <NoticeIcon>
+          <AlertTriangle size={22} style={{ color: "var(--danger)" }} />
+        </NoticeIcon>
+        <NoticeMessage>{copy.invalidMessage}</NoticeMessage>
+        <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
+          {copy.backToLoginButton}
+        </LoginReturnLink>
+      </div>
+    );
+  }
+  if (activationError === "already-active") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-2 text-center">
+        <NoticeIcon>
+          <CheckCircle2 size={22} style={{ color: "var(--success)" }} />
+        </NoticeIcon>
+        <NoticeMessage>{copy.alreadyActiveMessage}</NoticeMessage>
+        <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
+          {copy.loginButton}
+        </LoginReturnLink>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center gap-3 py-2 text-center">
+      <NoticeIcon>
+        <AlertTriangle size={22} style={{ color: "var(--danger)" }} />
+      </NoticeIcon>
+      <NoticeMessage>{copy.expiredMessage}</NoticeMessage>
+      <button
+        type="button"
+        onClick={resend.onResend}
+        disabled={resend.disabled}
+        className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
+      >
+        {resend.isPending ? copy.activatingButton : copy.resendButton}
+      </button>
+      {resend.message && (
+        <div className="flex items-center gap-2 text-sm">
+          {resend.success ? (
+            <CheckCircle2 className="h-4 w-4 text-(--success)" />
+          ) : (
+            <AlertTriangle className="h-4 w-4 text-(--danger)" />
+          )}
+          <span
+            className={resend.success ? "text-(--success)" : "text-(--danger)"}
+            style={{ fontFamily: "system-ui, sans-serif" }}
+          >
+            {resend.message}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 type ActivationProps = {
   code?: string;
   lang?: string;
@@ -36,9 +167,8 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
 
   // A link without a code can never validate, so that state is known before any request.
   const [isValidCode, setIsValidCode] = useState<boolean | null>(() => (code ? null : false));
-  const [activationError, setActivationError] = useState<
-    "invalid" | "expired" | "already-active" | null
-  >(() => (code ? null : "invalid"));
+  const [activationError, setActivationError] = useState<ActivationError>(
+    () => (code ? null : "invalid"));
   const [activationUserId, setActivationUserId] = useState<string | null>(null);
   const [knownName, setKnownName] = useState<{ firstName: string; lastName: string }>({
     firstName: "",
@@ -91,13 +221,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
         // user id to resend to.
         if (status === "Expired") setActivationUserId(res.userId);
 
-        setActivationError(
-          status === "AlreadyActivated"
-            ? "already-active"
-            : status === "Expired"
-              ? "expired"
-              : "invalid",
-        );
+        setActivationError(errorForStatus(status));
         setIsValidCode(false);
       } catch {
         setActivationError("invalid");
@@ -159,14 +283,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
     }
   };
 
-  const heading =
-    activationError === "invalid"
-      ? template.pages.activation.invalidHeading
-      : activationError === "expired"
-        ? template.pages.activation.expiredHeading
-        : activationError === "already-active"
-          ? template.pages.activation.alreadyActiveHeading
-          : template.pages.activation.heading;
+  const heading = headingForError(activationError, template.pages.activation);
 
   const headingDimFirst = 2;
 
@@ -189,79 +306,24 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
         <div className="flex items-center justify-center py-8">
           <Loader size={28} className="animate-spin" style={{ color: "var(--accent)" }} />
         </div>
-      ) : activationError === null ? (
-        <ActivationForm
-          code={code ?? ""}
-          tenantId={tenantId}
-          firstName={knownName.firstName}
-          lastName={knownName.lastName}
-          collectPassword={collectPasswordOnActivation}
-        />
-      ) : activationError === "invalid" ? (
-        <div className="flex flex-col items-center gap-3 py-2 text-center">
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center"
-            style={{ background: "var(--accent-soft)", border: "1px solid var(--border-strong)" }}
-          >
-            <AlertTriangle size={22} style={{ color: "var(--danger)" }} />
-          </div>
-          <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-            {template.pages.activation.invalidMessage}
-          </p>
-          <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
-            {template.pages.activation.backToLoginButton}
-          </LoginReturnLink>
-        </div>
-      ) : activationError === "already-active" ? (
-        <div className="flex flex-col items-center gap-3 py-2 text-center">
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center"
-            style={{ background: "var(--accent-soft)", border: "1px solid var(--border-strong)" }}
-          >
-            <CheckCircle2 size={22} style={{ color: "var(--success)" }} />
-          </div>
-          <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-            {template.pages.activation.alreadyActiveMessage}
-          </p>
-          <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
-            {template.pages.activation.loginButton}
-          </LoginReturnLink>
-        </div>
       ) : (
-        <div className="flex flex-col items-center gap-3 py-2 text-center">
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center"
-            style={{ background: "var(--accent-soft)", border: "1px solid var(--border-strong)" }}
-          >
-            <AlertTriangle size={22} style={{ color: "var(--danger)" }} />
-          </div>
-          <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-            {template.pages.activation.expiredMessage}
-          </p>
-          <button
-            type="button"
-            onClick={handleResendActivation}
-            disabled={!activationUserId || isResendPending || resendSuccess}
-            className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
-          >
-            {isResendPending ? template.pages.activation.activatingButton : template.pages.activation.resendButton}
-          </button>
-          {resendMessage && (
-            <div className="flex items-center gap-2 text-sm">
-              {resendSuccess ? (
-                <CheckCircle2 className="h-4 w-4 text-(--success)" />
-              ) : (
-                <AlertTriangle className="h-4 w-4 text-(--danger)" />
-              )}
-              <span
-                className={resendSuccess ? "text-(--success)" : "text-(--danger)"}
-                style={{ fontFamily: "system-ui, sans-serif" }}
-              >
-                {resendMessage}
-              </span>
-            </div>
-          )}
-        </div>
+        renderActivationBody({
+          activationError,
+          copy: template.pages.activation,
+          code,
+          tenantId,
+          knownName,
+          collectPassword: collectPasswordOnActivation,
+          resend: {
+            onResend: () => {
+              void handleResendActivation();
+            },
+            disabled: !activationUserId || isResendPending || resendSuccess,
+            isPending: isResendPending,
+            message: resendMessage,
+            success: resendSuccess,
+          },
+        })
       )}
     </OidcAuthShell>
   );

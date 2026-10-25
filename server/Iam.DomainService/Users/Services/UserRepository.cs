@@ -7,16 +7,19 @@ using Iam.DomainService.Shared.Entities;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using System.Text.RegularExpressions;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Users
 {
     public class UserRepository : IUserRepository
     {
         private readonly IIdentityAccessManagementRepository _identityAccessManagementRepository;
+        private readonly IIamDataAccess _dataAccess;
 
-        public UserRepository(IIdentityAccessManagementRepository identityAccessManagementRepository)
+        public UserRepository(IIdentityAccessManagementRepository identityAccessManagementRepository, IIamDataAccess dataAccess)
         {
             _identityAccessManagementRepository = identityAccessManagementRepository;
+            _dataAccess = dataAccess;
         }
 
         public async Task<bool> CheckPasswordBlackListedAsync(string password)
@@ -28,7 +31,7 @@ namespace Iam.DomainService.Users
         {
             NormalizeUserIdentity(user);
             var collection = _identityAccessManagementRepository.GetCollection<User>();
-            await collection.InsertOneAsync(user);
+            await _dataAccess.InsertOneAsync(collection, IamSchemas.User, user, "UserRepository.CreateUserAsync");
 
             return true;
         }
@@ -130,20 +133,34 @@ namespace Iam.DomainService.Users
                 Collation = new Collation("en", strength: CollationStrength.Secondary)
             };
 
-            var user = !string.IsNullOrWhiteSpace(organizatoinId)
-                ? await collection.Find(x => x.UserName == userName && x.OrganizationIds.Any(o => o == organizatoinId), options).FirstOrDefaultAsync()
-                : await collection.Find(x => x.UserName == userName, options).FirstOrDefaultAsync();
+            var filter = !string.IsNullOrWhiteSpace(organizatoinId)
+                ? Builders<User>.Filter.Where(x => x.UserName == userName && x.OrganizationIds.Any(o => o == organizatoinId))
+                : Builders<User>.Filter.Where(x => x.UserName == userName);
 
-            return user;
+            var scope = await _dataAccess.ReadAsync(IamSchemas.User, filter, "UserRepository.GetUserByUserNameOrgIdAsync", useProjection: false);
+            if (!scope.Granted) return null!;
+
+            return await collection.Find(scope.Filter, options).FirstOrDefaultAsync();
         }
 
-        public async Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter>
+        public Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter> =>
+            QueryUsersAsync<T, R>(query, scope, forView: false);
+
+        public Task<(IQueryable<T>?, long)> GetUsersForViewAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter> =>
+            QueryUsersAsync<T, R>(query, scope, forView: true);
+
+        private async Task<(IQueryable<T>?, long)> QueryUsersAsync<T, R>(R query, UserListScope scope, bool forView) where R : BaseGetsRequest<GetUsersFilter>
         {
             var collection = _identityAccessManagementRepository.GetCollection<User>();
 
             var filter = BuildUserFilter(query.Filter, scope);
             var sort = BuildSortDefinition(query.Sort);
             var projection = Builders<User>.Projection.As<T>();
+
+            // Own projection (As<T>): only the row filter is applied, not the resolver projection.
+            var scoped = await _dataAccess.ReadAsync(IamSchemas.User, filter, "UserRepository.GetUsersAsync", useProjection: false);
+            if (!scoped.Granted) return (new List<T>().AsQueryable(), 0);
+            filter = scoped.Filter;
 
             var totalCount = await collection.CountDocumentsAsync(filter);
 
@@ -157,6 +174,7 @@ namespace Iam.DomainService.Users
 
             var cursor = await collection.FindAsync(filter, options);
             var data = await cursor.ToListAsync();
+            if (forView) data = scoped.ForViewAs(data);
 
             return (data.AsQueryable(), totalCount);
         }
@@ -186,6 +204,20 @@ namespace Iam.DomainService.Users
                 return filters.Any() ? builder.And(filters) : builder.Empty;
             }
 
+            AddTextFilters(builder, filters, filter);
+            AddStatusFilters(builder, filters, filter);
+            AddDateAndIdFilters(builder, filters, filter);
+
+            if (scope.Kind == UserListScopeKind.Organizations && filter.Roles is not null && filter.Roles.Count > 0)
+            {
+                filters.Add(BuildRoleFilter(builder, scope.OrganizationIds, filter.Roles));
+            }
+
+            return filters.Any() ? builder.And(filters) : builder.Empty;
+        }
+
+        private static void AddTextFilters(FilterDefinitionBuilder<User> builder, List<FilterDefinition<User>> filters, GetUsersFilter filter)
+        {
             if (!string.IsNullOrWhiteSpace(filter.Name))
             {
                 // searchTerm stays unescaped: the Contains below is a literal
@@ -213,7 +245,10 @@ namespace Iam.DomainService.Users
                 var emailTerm = NormalizeEmail(filter.Email);
                 filters.Add(builder.Regex(u => u.Email, new BsonRegularExpression(Regex.Escape(emailTerm), "i")));
             }
+        }
 
+        private static void AddStatusFilters(FilterDefinitionBuilder<User> builder, List<FilterDefinition<User>> filters, GetUsersFilter filter)
+        {
             if (filter.Status?.Active == true)
                 filters.Add(builder.Eq(u => u.Active, true));
 
@@ -229,7 +264,10 @@ namespace Iam.DomainService.Users
 
             if (filter.Mfa?.Disabled == true)
                 filters.Add(builder.Eq(u => u.MfaEnabled, false));
+        }
 
+        private static void AddDateAndIdFilters(FilterDefinitionBuilder<User> builder, List<FilterDefinition<User>> filters, GetUsersFilter filter)
+        {
             if (filter.JoinedOn.HasValue)
                 filters.Add(builder.Gte(u => u.CreatedDate, filter.JoinedOn.Value.Date));
 
@@ -238,13 +276,6 @@ namespace Iam.DomainService.Users
 
             if (filter.UserIds is not null && filter.UserIds.Count > 0)
                 filters.Add(builder.In(u => u.ItemId, filter.UserIds));
-
-            if (scope.Kind == UserListScopeKind.Organizations && filter.Roles is not null && filter.Roles.Count > 0)
-            {
-                filters.Add(BuildRoleFilter(builder, scope.OrganizationIds, filter.Roles));
-            }
-
-            return filters.Any() ? builder.And(filters) : builder.Empty;
         }
 
         private static FilterDefinition<User> BuildRoleFilter(
@@ -301,7 +332,8 @@ namespace Iam.DomainService.Users
         {
             var collection = _identityAccessManagementRepository.GetCollection<ProjectPeople>();
             var filter = Builders<ProjectPeople>.Filter.Eq(x => x.UserId, userId);
-            return (await collection.FindAsync(filter)).FirstOrDefault().TenantId;
+            // No row (a user invited before project people were kept, or a removed one) is not an error.
+            return (await collection.FindAsync(filter)).FirstOrDefault()?.TenantId ?? string.Empty;
         }
 
         private static List<string> GetOrgSpecficRoles(User user)

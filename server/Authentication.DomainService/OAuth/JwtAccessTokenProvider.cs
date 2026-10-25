@@ -12,9 +12,13 @@ using System.Text;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Resources;
 using Authentication.DomainService.OAuth.RequestModel;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth
 {
+    /// <summary>The resolved roles/permissions of a token together with the organization scope they were read from.</summary>
+    public sealed record TokenClaimSet(ResolvedAuthorizationClaims ResolvedClaims, OrganizationScope OrganizationScope);
+
     public sealed class JwtAccessTokenProvider : IJwtAccessTokenProvider
     {
         private readonly ILogger<JwtAccessTokenProvider> _logger;
@@ -23,7 +27,6 @@ namespace Authentication.DomainService.OAuth
         private readonly ICertificateProviderFactory _certificateProviderFactory;
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IResourceRepository _resourceRepository;
-        private string? _key;
 
 
         public JwtAccessTokenProvider(
@@ -51,8 +54,10 @@ namespace Authentication.DomainService.OAuth
             TokenRequest tokenRequest,
             StateInfo? state = null)
         {
-            _key = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
-            var certificate = await GetOrRetrieveCertAsync(tenant);
+            // A local, not a field: this provider is a singleton, so a field would be shared by
+            // concurrent requests and one tenant's mint could read another tenant's key.
+            var certificateKey = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
+            var certificate = await GetOrRetrieveCertAsync(certificateKey, tenant);
             if (certificate == null) return new JwtAccessToken();
 
             // The authoritative organization decision for every OAuth-family token: password,
@@ -65,7 +70,7 @@ namespace Authentication.DomainService.OAuth
             // the requested organization here instead would mint a token whose claim and whose
             // role set disagree.
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, organizationScope.ClaimValue, state?.Scope);
-            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, tokenRequest, organizationScope, stateInfo: state);
+            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, new TokenClaimSet(resolvedClaims, organizationScope), tokenRequest, stateInfo: state);
         }
 
         /// <summary>
@@ -95,8 +100,10 @@ namespace Authentication.DomainService.OAuth
             return OrganizationAccessResolver.Resolve(user, requestedOrganizationId, isMultiOrgEnabled);
         }
 
-        public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, OrganizationScope organizationScope, StateInfo? stateInfo = null)
+        public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, TokenClaimSet claimSet, TokenRequest tokenRequest, StateInfo? stateInfo = null)
         {
+            var resolvedClaims = claimSet.ResolvedClaims;
+            var organizationScope = claimSet.OrganizationScope;
             var effectiveClaims = resolvedClaims;
             if (tokenRequest.IsLinkAuthentication)
             {
@@ -201,21 +208,21 @@ namespace Authentication.DomainService.OAuth
             }
         }
 
-        public async Task<byte[]?> GetOrRetrieveCertAsync(Tenant tenant)
+        public async Task<byte[]?> GetOrRetrieveCertAsync(string certificateKey, Tenant tenant)
         {
             _logger.LogInformation("Getting Certificate");
-            var cachedCert = _cacheDb.StringGet(_key);
+            var cachedCert = await _cacheDb.StringGetAsync(certificateKey);
             _logger.LogInformation("Has Cache Certificate: {CC}", cachedCert.HasValue);
 
             if (!cachedCert.HasValue)
             {
                 var provider = _certificateProviderFactory.GetProvider(tenant.JwtTokenParameters?.CertificateStorageType ?? CertificateStorageType.Azure);
-                var certificate = await provider.GetCertificateAsync(_key);
+                var certificate = await provider.GetCertificateAsync(certificateKey);
 
                 if (certificate != null && certificate.Length > 0)
                 {
                     var expirationDays = tenant.JwtTokenParameters?.CertificateValidForNumberOfDays - (DateTime.UtcNow - tenant.JwtTokenParameters?.IssueDate)?.Days - 1;
-                    _cacheDb.StringSet(_key, certificate, TimeSpan.FromDays(expirationDays ?? 0));
+                    await _cacheDb.StringSetAsync(certificateKey, certificate, TimeSpan.FromDays(expirationDays ?? 0));
                     _logger.LogInformation("Certificate set to cache");
                 }
                 return certificate;

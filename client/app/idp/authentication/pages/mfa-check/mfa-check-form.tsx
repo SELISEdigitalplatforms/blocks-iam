@@ -25,7 +25,8 @@ import { useState } from "react";
 
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
+import { isAppRedirectUrl, navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
+import { OidcAppHandoff } from "@blocks-idp/authentication/pages/oidc/oidc-app-handoff";
 
 const CustomInputOTPSlot = ({ index }: { index: number }) => {
   return (
@@ -35,10 +36,9 @@ const CustomInputOTPSlot = ({ index }: { index: number }) => {
     />
   );
 };
-const getFormSchema = (type: number) =>
-  z.object({
-    code: z.string().min(type === 2 ? 5 : 6),
-  });
+const formSchema = z.object({
+  code: z.string().min(6),
+});
 export const MfaCheckFrom = () => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
@@ -53,15 +53,19 @@ export const MfaCheckFrom = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  // Set when the client is a native app; OidcAppHandoff then replaces the form and opens the app.
+  const [appHandoffUrl, setAppHandoffUrl] = useState<string | null>(null);
   const { setAuthenticated } = useAuthStore();
   const { remainingTime, resend } = useResendOtp({ mfaId });
 
   const form = useForm<{ code: string }>({
-    resolver: zodResolver(getFormSchema(mfaType)),
+    resolver: zodResolver(formSchema),
     defaultValues: {
       code: "",
     },
   });
+
+  if (appHandoffUrl) return <OidcAppHandoff url={appHandoffUrl} />;
 
   if (!oidcUiConfig?.template) return null;
   const mfaCopy = oidcUiConfig.template.pages.mfa;
@@ -70,6 +74,41 @@ export const MfaCheckFrom = () => {
     isLoading ||
     animCtx?.phase === "submitting" ||
     animCtx?.phase === "succeeded";
+
+  /**
+   * Hands a login the server returned a redirect target for back to the client: a native app
+   * through the hand-off block (no success animation, which would unmount it), anything else
+   * through a full-page navigation once the success animation has played.
+   */
+  const followRedirectUrl = async (redirectUrl: string) => {
+    if (isAppRedirectUrl(redirectUrl)) {
+      animCtx?.resetAnimation();
+      setAppHandoffUrl(redirectUrl);
+      return;
+    }
+    await animCtx?.succeedAnimation();
+    if (!navigateToUrl(redirectUrl)) {
+      const msg = "Login succeeded but no redirect target was provided";
+      setServerError(msg);
+      await animCtx?.failAnimation(msg);
+    }
+  };
+
+  /** Sends a verified login on: to its redirect target, else the device-flow returnUrl, else the profile. */
+  const completeVerifiedLogin = async (redirectUrl: string | undefined) => {
+    if (redirectUrl) {
+      await followRedirectUrl(redirectUrl);
+      return;
+    }
+    if (returnUrl) {
+      await animCtx?.succeedAnimation();
+      // returnUrl comes from the query string, so it may only point back at this origin.
+      if (!navigateToSameOrigin(returnUrl)) navigate("/app/profile");
+      return;
+    }
+    await animCtx?.succeedAnimation();
+    navigate("/app/profile");
+  };
 
   const submitHandler = async ({ code }: { code: string }) => {
     setIsLoading(true);
@@ -112,19 +151,7 @@ export const MfaCheckFrom = () => {
         setAuthenticated();
         const redirectUrl =
           data?.redirect_uri || data?.redirect_url || data?.redirectUrl;
-        if (redirectUrl) {
-          await animCtx?.succeedAnimation();
-          navigateToUrl(redirectUrl);
-          return;
-        }
-        if (returnUrl) {
-          await animCtx?.succeedAnimation();
-          // returnUrl comes from the query string, so it may only point back at this origin.
-          if (!navigateToSameOrigin(returnUrl)) navigate("/app/profile");
-          return;
-        }
-        await animCtx?.succeedAnimation();
-        navigate("/app/profile");
+        await completeVerifiedLogin(redirectUrl);
         return;
       }
 
@@ -170,14 +197,14 @@ export const MfaCheckFrom = () => {
           render={({ field }) => (
             <FormItem>
               <FormControl>
-                <InputOTP maxLength={mfaType === 1 ? 6 : 5} {...field}>
+                <InputOTP maxLength={6} {...field}>
                   <InputOTPGroup className="w-full justify-between gap-6">
                     <CustomInputOTPSlot index={0} />
                     <CustomInputOTPSlot index={1} />
                     <CustomInputOTPSlot index={2} />
                     <CustomInputOTPSlot index={3} />
                     <CustomInputOTPSlot index={4} />
-                    {mfaType === 1 && <CustomInputOTPSlot index={5} />}
+                    <CustomInputOTPSlot index={5} />
                   </InputOTPGroup>
                 </InputOTP>
               </FormControl>

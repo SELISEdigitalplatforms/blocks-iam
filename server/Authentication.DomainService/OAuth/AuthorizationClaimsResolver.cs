@@ -1,5 +1,6 @@
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth;
 

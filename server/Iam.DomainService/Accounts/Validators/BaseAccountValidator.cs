@@ -27,7 +27,7 @@ namespace Iam.DomainService.Accounts
             RuleFor(u => u.Code)
                 .Cascade(CascadeMode.Stop)
                 .NotNull().NotEmpty()
-                .MustAsync(BeARegisteredRecoverAccountCode).WithMessage("The code has expired. Please request a new one to continue");
+                .MustAsync(BeTheLatestCodeForThisPurpose).WithMessage("The code has expired. Please request a new one to continue");
 
             RuleFor(u => u.Password)
                 .Cascade(CascadeMode.Stop)
@@ -52,9 +52,35 @@ namespace Iam.DomainService.Accounts
             return verifyCaptchaQueryResponse.Verified;
         }
 
-        private async Task<bool> BeARegisteredRecoverAccountCode(string accountActivationCode, CancellationToken cancellationToken)
+        // A reset code only resets, an activation code only activates, and only the user's latest
+        // one works. Any other request type has no purpose and is refused.
+        private async Task<bool> BeTheLatestCodeForThisPurpose(BaseAccountRequest request, string code, CancellationToken cancellationToken)
         {
-            return await _cacheClient.KeyExistsAsync(accountActivationCode);
+            var purpose = request switch
+            {
+                ResetPasswordRequest => AccountCodes.Reset,
+                ActivateUserRequest => AccountCodes.Activation,
+                _ => null
+            };
+            if (purpose == null)
+            {
+                return false;
+            }
+
+            var userId = await AccountCodes.ResolveAsync(_cacheClient, purpose, code);
+            if (userId == null)
+            {
+                return false;
+            }
+
+            if (purpose == AccountCodes.Reset)
+            {
+                return true;
+            }
+
+            // An account an administrator blocked cannot activate itself.
+            var user = await _identityAccessManagementRepository.GetUserByIdAsync(userId);
+            return user != null && !AccountCodes.IsBlocked(user);
         }
 
         /// <summary>

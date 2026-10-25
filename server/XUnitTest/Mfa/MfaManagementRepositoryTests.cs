@@ -22,7 +22,7 @@ namespace XUnitTest.Mfa
             return col;
         }
 
-        private MfaManagementRepository Sut() => new(_db.Object);
+        private MfaManagementRepository Sut() => new(_db.Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         [Fact]
         public async Task DeleteItemsAsync_DeletesMany()

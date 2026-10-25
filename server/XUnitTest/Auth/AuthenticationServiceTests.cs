@@ -21,6 +21,7 @@ using Moq;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {
@@ -863,6 +864,21 @@ namespace XUnitTest.Auth
             var payload = ok.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
             payload.Should().ContainKey("access_token");
             _session.Verify(s => s.CreateSessionAsync("user-1", TenantId, It.IsAny<string>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_H2_TrustedGatewayXff_LoginSessionStoresResolvedClientIp()
+        {
+            var jwt = BuildJwt("client-1", "user-1", TenantId);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("client-1"))
+                .ReturnsAsync(new OidcClientRegistration { ItemId = "client-1", ClientId = "client-1", UseTokensCookie = false });
+            _session.Setup(s => s.CreateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync("sess-1");
+
+            // RemoteIpAddress as the forwarded-header middleware leaves it for a trusted gateway hop.
+            var ctx = await XUnitTest.ApiTests.ForwardedHeadersTestPipeline.ThroughTrustedGatewayAsync("198.51.100.99, 203.0.113.10");
+            await Create().BuildFlowResultAsync(new AuthenticationFlowResult { TokenResponse = ValidTokenResponse(jwt) }, ctx);
+
+            _session.Verify(s => s.CreateSessionAsync("user-1", TenantId, "203.0.113.10"), Times.Once);
         }
 
         [Fact]

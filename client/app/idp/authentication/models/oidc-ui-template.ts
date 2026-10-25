@@ -37,6 +37,19 @@ export const DEFAULT_OIDC_UI_TEMPLATE: IOidcUiTemplate = {
   },
 };
 
+// Built-in copy for the sign-up page's create-organization opt-in. Deliberately not part of
+// IOidcUiTemplate: these labels are not tenant-editable. None of it names the project's
+// organization: a user who leaves the box unticked joins it without being told.
+export const SIGNUP_ORGANIZATION_CHOICE_COPY = {
+  createOption: "Create a new organization",
+  createHint: "Start your own workspace and invite your team.",
+  organizationNameHint: "You'll be its owner and can invite teammates after sign-up.",
+  // The auto-join organization is unavailable and the user may create their own instead.
+  nameRequiredMessage: "One more step: name your organization to finish signing up.",
+  // The auto-join organization is unavailable and creating one from sign-up is off.
+  unavailableMessage: "Sign-up isn't available right now. Please contact your administrator.",
+} as const;
+
 // A stored template saved before a field existed comes back with that field as null (the
 // server serializes unset string? properties), so null falls back to the default like undefined.
 const mergeDefaults = (defaults: unknown, value: unknown): unknown => {

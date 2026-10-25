@@ -14,6 +14,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Iam.DomainService.Entities;
 using Authentication.DomainService.Shared;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Idp.DomainService.Oidc.Services;
 
@@ -21,7 +22,7 @@ public interface ITokenGenerationService
 {
     Task<string> GenerateIdTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
     Task<string> GenerateAccessTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
-    Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null);
+    Task<RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null);
 }
 
 public interface IPkceService
@@ -100,7 +101,7 @@ public sealed class OidcSigningKeyMaterial
         return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: false);
     }
 
-        public async Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null)
+        public async Task<RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null)
         {
             // UnifiedTokenSessionService handles all logic. This method is now a thin adapter only.
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
@@ -118,13 +119,21 @@ public sealed class OidcSigningKeyMaterial
                 RestrictedRoles = claims.RestrictedRoles?.ToList() ?? [],
                 RestrictedPermissions = claims.RestrictedPermissions?.ToList() ?? [],
                 Amr = claims.Amr?.ToList() ?? [],
-                Audience = claims.Audience
+                Audience = claims.Audience,
+                SignInUserAgent = claims.SignInUserAgent
             };
-            var visitorsIpAddresses = new List<string> { _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
-            var userAgent = _httpContextAccessor.HttpContext?.Request?.Headers?["User-Agent"].ToString() ?? string.Empty;
+            // A code is usually redeemed by a server: when the claims carry the browser that signed in,
+            // the refresh token records that browser instead of the redeeming request.
+            var signInIpAddress = string.IsNullOrWhiteSpace(claims.SignInIpAddress)
+                || string.Equals(claims.SignInIpAddress, "unknown", StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : claims.SignInIpAddress;
+            var visitorsIpAddresses = new List<string> { signInIpAddress ?? _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
+            var userAgent = !string.IsNullOrWhiteSpace(claims.SignInUserAgent)
+                ? claims.SignInUserAgent
+                : _httpContextAccessor.HttpContext?.Request?.Headers?["User-Agent"].ToString() ?? string.Empty;
             var (refreshToken, slidingExpiry, absoluteExpiry, refreshTokenSessionId) = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
-                null,
-                null,
+                RefreshTokenPredecessor.None,
                 tokenRequest,
                 authConfiguration,
                 tenant,
@@ -132,7 +141,7 @@ public sealed class OidcSigningKeyMaterial
                 visitorsIpAddresses,
                 isImpersonation
             );
-            return new Contracts.RefreshTokenModel
+            return new RefreshTokenModel
             {
                 TokenId = refreshToken,
                 UserId = claims.Sub,

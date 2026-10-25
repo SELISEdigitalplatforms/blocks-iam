@@ -1,4 +1,6 @@
 using Iam.DomainService.Entities;
+using Blocks.Genesis.Entities.Iam;
+using Authentication.DomainService.Entities;
 
 namespace Authentication.DomainService.RequestModel
 {
@@ -25,5 +27,12 @@ namespace Authentication.DomainService.RequestModel
         public List<UserMfaType>? AllowedMfaMethods { get; set; }
         public bool RegisterAsIdentityProvider { get; set; }
         public bool IsDeviceFlowClient { get; set; }
+
+        /// <summary>
+        /// Optional per-client token lifetimes. Null or absent keeps the stored values of an existing
+        /// client (a new client gets none). When present it replaces them; a null field means "use the
+        /// project value" and all-null fields remove the client's values.
+        /// </summary>
+        public OidcClientTokenLifetimes? TokenLifetimes { get; set; }
     }
 }

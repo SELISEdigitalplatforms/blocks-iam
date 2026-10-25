@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {
@@ -579,7 +580,7 @@ namespace XUnitTest.Auth
 
         private void SignupEnabled(bool email = true, bool sso = false)
         {
-            _iamRepo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            _iamRepo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration
             {
                 IsEmailPasswordSignUpEnabled = email,
                 IsSSoSignUpEnabled = sso
@@ -936,6 +937,24 @@ namespace XUnitTest.Auth
 
             var obj = result.Should().BeOfType<ObjectResult>().Subject;
             obj.StatusCode.Should().Be(statusCode);
+        }
+
+        [Fact]
+        public async Task HandleCallback_UsedCodeMissing_KeyExpiredOrNotAnIamCode_ReturnsTodays500Body()
+        {
+            // iam SPEC2 C10: the code store returns nothing (Redis key gone, no old Mongo row); the
+            // callback keeps today's path: exception -> catch -> the same 500 body.
+            var (req, res) = HttpPair();
+            SetupValidCallbackPrerequisites();
+            SetupHttpTokenResponse(new OidcTokenEndpointResponse { AccessToken = "at", RefreshToken = "rt" });
+            _authCodeRepo.Setup(c => c.GetByCodeAsync("code-1")).ReturnsAsync((AuthorizationCodeModel)null!);
+
+            var result = await Create().HandleCallbackAsync("code-1", "st", null, null, req, res);
+
+            var obj = result.Should().BeOfType<ObjectResult>().Subject;
+            obj.StatusCode.Should().Be(500);
+            Prop(obj.Value, "error").Should().Be("server_error");
+            Prop(obj.Value, "error_description").Should().Be("Authentication failed");
         }
 
         [Fact]

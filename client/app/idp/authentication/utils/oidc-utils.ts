@@ -6,6 +6,12 @@ import { sanitizeInternalNavigationTarget } from "@/lib/safe-navigation.util";
 // back by the callback page once the provider sends the browser back to us.
 export const OIDC_DEVICE_RETURN_URL_STORAGE_KEY = "oidc-device-return-url";
 
+// Set before the provider redirect when the login started from a native-app redirect_uri, so the
+// callback page asks the backend for JSON and shows the "Return to the app" hand-off instead of
+// a bare navigation to a custom scheme. It only selects the response mode; the URL followed is
+// always the backend's redirect_uri.
+export const OIDC_APP_HANDOFF_STORAGE_KEY = "oidc_app_handoff";
+
 interface OIDCParams {
   projectKey?: string;
   userName?: string;
@@ -368,6 +374,15 @@ export const getCurrentOIDCParams = (): URLSearchParams => {
   if(params.redirectUri) searchParams.set("redirect_uri", params.redirectUri);
   if (params.returnUrl) searchParams.set("returnUrl", params.returnUrl);
   if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
+
+  // The relying party's own PKCE challenge must reach the consent step unchanged: its verifier
+  // lives on the RP, so any other challenge makes its token exchange fail.
+  const current = new URLSearchParams(globalThis.location.search);
+  const codeChallenge = current.get("code_challenge");
+  if (codeChallenge) {
+    searchParams.set("code_challenge", codeChallenge);
+    searchParams.set("code_challenge_method", current.get("code_challenge_method") || "S256");
+  }
 
   if (params.themeColor) {
     searchParams.set("brandColor", params.themeColor);

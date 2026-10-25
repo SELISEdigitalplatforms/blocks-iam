@@ -12,6 +12,7 @@ using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Iam.DomainService.Users;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {
@@ -40,7 +41,7 @@ namespace XUnitTest.IamTests.Resources
             _roleValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateRoleRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.InsertRoleAsync(It.IsAny<Role>())).ReturnsAsync(true);
             _repo.Setup(r => r.GetOrganizationById(It.IsAny<string>()))
                 .ReturnsAsync((string id) => new Organization { ItemId = id, Name = "O", IsDisabled = false });
@@ -231,7 +232,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task Create_MultiOrgDisabled_SkipsTheAdvisory()
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = false });
             GivenOtherOrganizationsOwningManager((OrgA, "manager_f47ac10b"));
 
             var result = await Create().CreateRoleAsync(RoleReq());

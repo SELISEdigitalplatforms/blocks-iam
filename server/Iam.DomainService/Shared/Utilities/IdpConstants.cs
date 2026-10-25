@@ -25,8 +25,13 @@ namespace Iam.DomainService.Utilities
 
         // Informational only: the change has already been applied when these go out, so a
         // tenant with no template for either purpose simply sends nothing.
-        public const string OrganizationMemberAddedMailPurpose = "organization_member_added";
-        public const string OrganizationMemberRemovedMailPurpose = "organization_member_removed";
+        public const string OrganizationMemberAddedMailPurpose = "OrganizationMemberAdded";
+        public const string OrganizationMemberRemovedMailPurpose = "OrganizationMemberRemoved";
+
+        // Owned by blocks-os (IdentifierConstants.ProjectPeopleInvitationMailPurpose) and stored on the
+        // invited user's MailPurpose. Users invited before the rename still carry the legacy value.
+        public const string ProjectInvitationMailPurpose = "ProjectInvitation";
+        public const string LegacyProjectInvitationMailPurpose = "project_invitation";
 
         #endregion
 
@@ -78,6 +83,24 @@ namespace Iam.DomainService.Utilities
         /// </para>
         /// </summary>
         public const string NoOrganizationId = "no-org";
+
+        #endregion
+
+        #region Signup auto-join
+
+        /// <summary>
+        /// Error key when a new sign-up's auto-join organization is deleted or disabled, and when a config save
+        /// names such a target. Shared by the email sign-up, both SSO first-login routes and the config save.
+        /// </summary>
+        public const string SignupOrganizationUnavailableError = "signup_organization_unavailable";
+
+        /// <summary>Error key when a config save would leave auto-join on without a target.</summary>
+        public const string SignupAutoJoinOrganizationRequiredError = "signup_auto_join_organization_required";
+
+        public const string SignupOrganizationUnavailableMessage = "This project's organization isn't available right now.";
+        public const string SignupOrganizationUnavailableOidcMessage = "This project's organization isn't available right now. Contact your administrator.";
+        public const string SignupAutoJoinTargetUnavailableMessage = "The selected organization does not exist or is disabled.";
+        public const string SignupAutoJoinOrganizationRequiredMessage = "Choose the organization new sign-ups join.";
 
         #endregion
 

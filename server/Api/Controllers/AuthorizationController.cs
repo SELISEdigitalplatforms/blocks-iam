@@ -162,6 +162,13 @@ namespace Blocks.Api.Controllers
                 return BuildCallbackFailure(result);
             }
 
+            // A browser navigation still gets the 302. The SPA fetches this endpoint as JSON when
+            // the sign-in started from a mobile app login, so it can hand off to the app-scheme
+            // redirect itself; that GET receives the same URL as { redirect_uri } instead.
+            var returnRedirectResponse = !(HttpMethods.IsGet(Request.Method) &&
+                Request.Headers.Accept.Any(header =>
+                    header != null && header.Contains("application/json", StringComparison.OrdinalIgnoreCase)));
+
             return await _authorizationFlowService.AuthorizeAsync(
                 result.ClientId,
                 "code",
@@ -176,7 +183,7 @@ namespace Blocks.Api.Controllers
                 Request,
                 Response,
                 result.BlocksUserId,
-                true);
+                returnRedirectResponse);
         }
 
         /// <summary>
@@ -202,15 +209,18 @@ namespace Blocks.Api.Controllers
             if (!string.IsNullOrWhiteSpace(result.ClientId) && !string.IsNullOrWhiteSpace(result.RedirectUri))
             {
                 return Redirect(OidcRedirectUrlBuilder.BuildLoginErrorUrl(
-                    result.ClientId!,
-                    "code",
-                    result.RedirectUri!,
-                    result.Scope ?? "openid profile email offline_access",
-                    result.OriginalState ?? string.Empty,
-                    result.Nonce ?? string.Empty,
-                    result.CodeChallenge ?? string.Empty,
-                    result.CodeChallengeMethod ?? "S256",
-                    result.TenantId,
+                    new OidcLoginUrlRequest
+                    {
+                        ClientId = result.ClientId!,
+                        ResponseType = "code",
+                        RedirectUri = result.RedirectUri!,
+                        Scope = result.Scope ?? "openid profile email offline_access",
+                        State = result.OriginalState ?? string.Empty,
+                        Nonce = result.Nonce ?? string.Empty,
+                        CodeChallenge = result.CodeChallenge ?? string.Empty,
+                        CodeChallengeMethod = result.CodeChallengeMethod ?? "S256",
+                        TenantId = result.TenantId
+                    },
                     errorCode,
                     errorMessage));
             }

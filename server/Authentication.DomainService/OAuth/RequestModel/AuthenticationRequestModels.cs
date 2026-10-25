@@ -1,3 +1,5 @@
+using Blocks.Genesis.Entities.Iam;
+
 namespace Authentication.DomainService.OAuth.RequestModel
 {
     using Iam.DomainService.Entities;
@@ -77,5 +79,12 @@ namespace Authentication.DomainService.OAuth.RequestModel
     {
         [JsonPropertyName("refresh_token")]
         public string? RefreshToken { get; set; }
+
+        /// <summary>
+        /// The name the TypeScript client sends (<c>refreshToken</c>). Used only when neither
+        /// <c>refresh_token</c> nor the session cookie is present.
+        /// </summary>
+        [JsonPropertyName("refreshToken")]
+        public string? ClientRefreshToken { get; set; }
     }
 }

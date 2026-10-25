@@ -2,6 +2,7 @@ using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.SignupLinks;
 
@@ -348,7 +349,7 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             return (null, true);
         }
 
-        var entity = await _repository.GetByIdAsync(id, tenantId);
+        var entity = await _repository.GetByIdForViewAsync(id, tenantId);
         if (entity == null)
         {
             return (null, true);

@@ -45,4 +45,12 @@ public interface ISignupLinkRedemptionOrchestrator
         string? activationCode,
         HttpRequest request,
         HttpResponse response);
+
+    /// <summary>
+    /// Ends the signup-link session on logout when the request carries its cookie
+    /// (<c>blocks-link-session-{tenantId}</c>, tenant of the signed-in user): deletes the session and
+    /// clears the cookie. Without the cookie (e.g. a cross-site call) nothing happens and the session
+    /// ends by its TTL.
+    /// </summary>
+    Task EndLinkSessionAsync(HttpRequest request, HttpResponse response);
 }

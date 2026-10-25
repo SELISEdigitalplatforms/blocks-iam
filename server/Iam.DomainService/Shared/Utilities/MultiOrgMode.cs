@@ -1,6 +1,7 @@
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Utilities
 {

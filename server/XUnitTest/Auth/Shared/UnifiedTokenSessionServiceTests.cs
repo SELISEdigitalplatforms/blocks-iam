@@ -13,11 +13,14 @@ using Moq;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {
     public class UnifiedTokenSessionServiceTests
     {
+        private static readonly string[] LoginIps = ["127.0.0.1"];
+
         [Fact]
         public async Task CreateOrRotateRefreshToken_RevokesOldTokenInsteadOfDeleting()
         {
@@ -29,9 +32,9 @@ namespace XUnitTest.Auth.Shared
             var userRepo = new Mock<IUserRepository>();
             var httpContextAccessor = new Mock<IHttpContextAccessor>();
 
-            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()))
+            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()))
                 .ReturnsAsync("new-token");
-            refreshRepo.Setup(r => r.RevokeByTokenIdAsync("old-token", "superseded_by_rotation"))
+            refreshRepo.Setup(r => r.TryClaimForRotationAsync("old-token", It.IsAny<string>(), "superseded_by_rotation"))
                 .ReturnsAsync(true);
 
             idpSessionService.Setup(s => s.ResolveOrCreateAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
@@ -90,11 +93,10 @@ namespace XUnitTest.Auth.Shared
                 AbsoluteRefreshTokenValidForNumberMinutes = 10080
             };
 
-            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Iam.DomainService.Dtos.DeviceInformation { Device = "Test" });
+            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Blocks.Genesis.Entities.Iam.DeviceInformation { Device = "Test" });
 
             var result = await service.CreateOrRotateRefreshToken(
-                "old-token",
-                oldCache,
+                new RefreshTokenPredecessor("old-token", oldCache),
                 tokenRequest,
                 config,
                 tenant,
@@ -103,7 +105,7 @@ namespace XUnitTest.Auth.Shared
                 impersoanted: false);
 
             result.RefreshToken.Should().NotBeNullOrEmpty();
-            refreshRepo.Verify(r => r.RevokeByTokenIdAsync("old-token", "superseded_by_rotation", It.IsAny<string>()), Times.Once);
+            refreshRepo.Verify(r => r.TryClaimForRotationAsync("old-token", result.RefreshToken, "superseded_by_rotation"), Times.Once);
             refreshRepo.Verify(r => r.DeleteAsync(It.IsAny<string>()), Times.Never);
             cache.Verify(c => c.RemoveKeyAsync("old-token"), Times.Once);
         }
@@ -119,7 +121,7 @@ namespace XUnitTest.Auth.Shared
             var userRepo = new Mock<IUserRepository>();
             var httpContextAccessor = new Mock<IHttpContextAccessor>();
 
-            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()))
+            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()))
                 .ReturnsAsync("new-token");
 
             idpSessionService.Setup(s => s.ResolveOrCreateAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
@@ -163,11 +165,10 @@ namespace XUnitTest.Auth.Shared
                 AbsoluteRefreshTokenValidForNumberMinutes = 10080
             };
 
-            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Iam.DomainService.Dtos.DeviceInformation { Device = "Test" });
+            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Blocks.Genesis.Entities.Iam.DeviceInformation { Device = "Test" });
 
             await service.CreateOrRotateRefreshToken(
-                null,
-                null,
+                RefreshTokenPredecessor.None,
                 tokenRequest,
                 config,
                 tenant,
@@ -192,9 +193,9 @@ namespace XUnitTest.Auth.Shared
             var userRepo = new Mock<IUserRepository>();
             var httpContextAccessor = new Mock<IHttpContextAccessor>();
 
-            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()))
+            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()))
                 .ReturnsAsync("new-token");
-            refreshRepo.Setup(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>()))
+            refreshRepo.Setup(r => r.TryClaimForRotationAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(true);
 
             idpSessionService.Setup(s => s.ResolveOrCreateAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
@@ -247,11 +248,10 @@ namespace XUnitTest.Auth.Shared
                 AbsoluteRefreshTokenValidForNumberMinutes = 10080
             };
 
-            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Iam.DomainService.Dtos.DeviceInformation { Device = "Test" });
+            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Blocks.Genesis.Entities.Iam.DeviceInformation { Device = "Test" });
 
             await service.CreateOrRotateRefreshToken(
-                "old-token",
-                oldCache,
+                new RefreshTokenPredecessor("old-token", oldCache),
                 tokenRequest,
                 config,
                 tenant,
@@ -262,6 +262,47 @@ namespace XUnitTest.Auth.Shared
             userRepo.Verify(r => r.RecordSuccessfulLoginAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
             userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
             userRepo.Verify(r => r.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SwitchedLineage_IsSupersededByALaterHostedLoginOfTheSameUserClientAndSession()
+        {
+            // blocks-iam#624 H13: a lineage that switched organization keeps its client, so the
+            // SessionId + UserId + ClientId scope a later hosted login supersedes now reaches it -- exactly
+            // as for a lineage that never switched. Before the fix its client was empty and it never matched.
+            var (switched, _) = await RefreshTokenLineageTests.RotateOnceAsync(
+                RefreshTokenLineageTests.HostedPredecessor(),
+                new TokenRequest { GrantType = "switch_organization", OrganizationId = "org-b" });
+            switched.ClientId.Should().Be("client-1");
+
+            var cache = new Mock<ICacheClient>();
+            var authDomain = new Mock<IAuthenticationDomainService>();
+            var refreshRepo = new Mock<IRefreshTokenRepository>();
+            var idpSessionService = new Mock<IIdpSessionService>();
+            var userRepo = new Mock<IUserRepository>();
+            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>())).Returns(new Blocks.Genesis.Entities.Iam.DeviceInformation { Device = "Test" });
+            refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>())).ReturnsAsync("id");
+            idpSessionService.Setup(s => s.ResolveOrCreateAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
+                .ReturnsAsync(switched.SessionId!);
+            userRepo.Setup(r => r.RecordSuccessfulLoginAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>())).ReturnsAsync(true);
+
+            var service = new UnifiedTokenSessionService(
+                cache.Object, authDomain.Object, refreshRepo.Object, new Mock<IUserActivityDispatcher>().Object,
+                idpSessionService.Object, new Mock<IHttpContextAccessor>().Object, userRepo.Object,
+                NullLogger<UnifiedTokenSessionService>.Instance);
+
+            var login = await service.CreateOrRotateRefreshToken(
+                RefreshTokenPredecessor.None,
+                new TokenRequest { ClientId = "client-1", GrantType = "authorization_code", Scope = "openid", OrganizationId = "org-a" },
+                new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 30, AbsoluteRefreshTokenValidForNumberMinutes = 10080 },
+                XUnitTest.Auth.OAuth.RefreshTokenAuthenticationServiceTests.MakeTenant(),
+                new User { ItemId = switched.UserId, TokenVersion = 1, UserName = "u", Email = "u@test.local" },
+                LoginIps,
+                impersoanted: false);
+
+            refreshRepo.Verify(r => r.RevokeSupersededLoginLineagesAsync(
+                switched.SessionId!, switched.UserId, switched.ClientId, login.RefreshTokenSessionId, "superseded_by_login"), Times.Once);
+            login.RefreshTokenSessionId.Should().NotBe(switched.RefreshTokenSessionId);
         }
     }
 }

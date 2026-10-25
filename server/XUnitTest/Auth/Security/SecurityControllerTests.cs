@@ -5,6 +5,7 @@ using Authentication.DomainService.Security.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Activity.RequestModel;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Security
 {
@@ -24,6 +26,7 @@ namespace XUnitTest.Auth.Security
         private readonly Mock<ISessionRevocationService> _revocation;
         private readonly Mock<IActivityQueryService> _activity;
         private readonly Mock<IRefreshTokenRepository> _refreshTokens;
+        private readonly Mock<IAccessGrantService> _accessGrant = new();
 
         public SecurityControllerTests()
         {
@@ -64,7 +67,8 @@ namespace XUnitTest.Auth.Security
             return new SecurityController(
                 _securityQuery.Object,
                 _revocation.Object,
-                _activity.Object);
+                _activity.Object,
+                _accessGrant.Object);
         }
 
         [Fact]
@@ -186,6 +190,63 @@ namespace XUnitTest.Auth.Security
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             ok.Value.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task RevokeAnotherUsersSessionIsRefusedWhenTheCallerMayNotManageThem()
+        {
+            _accessGrant.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(false);
+
+            var result = await CreateController().RevokeSession(
+                "their-session",
+                new() { UserId = "other-user", Reason = "admin" },
+                CancellationToken.None);
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        }
+
+        [Fact]
+        public async Task RevokeAnotherUsersRefreshTokenIsRefusedWhenTheCallerMayNotManageThem()
+        {
+            _accessGrant.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(false);
+
+            var result = await CreateController().RevokeRefreshToken(
+                "their-token",
+                new() { UserId = "other-user" },
+                CancellationToken.None);
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        }
+
+        [Fact]
+        public async Task RevokeAnotherUsersSessionProceedsWhenTheCallerMayManageThem()
+        {
+            _accessGrant.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(true);
+            _securityQuery.Setup(s => s.ResolveCurrentSessionIdAsync("other-user", It.IsAny<CancellationToken>()))
+                .ReturnsAsync("their-current");
+            var response = new RevokeSessionResponse { SessionId = "their-session", Warnings = new List<string>() };
+            _revocation.Setup(r => r.RevokeSessionAsync("their-session", "other-user", "their-current", "admin", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(response);
+
+            var result = await CreateController().RevokeSession(
+                "their-session",
+                new() { UserId = "other-user", Reason = "admin" },
+                CancellationToken.None);
+
+            result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task RevokingOwnSessionNeverAsksAccessGrant()
+        {
+            _securityQuery.Setup(s => s.ResolveCurrentSessionIdAsync(ActorUserId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync("current-session");
+            _revocation.Setup(r => r.RevokeSessionAsync("old-session", ActorUserId, "current-session", null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new RevokeSessionResponse { SessionId = "old-session", Warnings = new List<string>() });
+
+            await CreateController().RevokeSession("old-session", new() { UserId = ActorUserId }, CancellationToken.None);
+
+            _accessGrant.Verify(d => d.AuthorizeManageUserAsync(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

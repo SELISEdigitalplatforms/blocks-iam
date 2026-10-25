@@ -1,6 +1,7 @@
 using Authentication.DomainService.Entities;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {

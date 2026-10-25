@@ -1,5 +1,6 @@
 using Iam.DomainService.Entities;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Utilities
 {
@@ -51,9 +52,9 @@ namespace Iam.DomainService.Utilities
                 UserLifecycleStatus.Disabled => UserAccountState.Deactivated,
                 UserLifecycleStatus.Suspended => UserAccountState.Suspended,
                 UserLifecycleStatus.PendingVerification => UserAccountState.PendingVerification,
-                _ => active
-                    ? UserAccountState.Active
-                    : isVerified ? UserAccountState.Deactivated : UserAccountState.PendingVerification
+                _ when active => UserAccountState.Active,
+                _ when isVerified => UserAccountState.Deactivated,
+                _ => UserAccountState.PendingVerification
             };
 
         /// <summary>

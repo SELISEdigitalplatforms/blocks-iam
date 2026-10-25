@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.ApiTests
 {
@@ -173,57 +174,15 @@ namespace XUnitTest.ApiTests
         // ---------- AddAccount ----------
 
         [Fact]
-        public async Task AddAccount_MissingFields_ReturnsBadRequest()
+        public async Task AddAccount_IsDisabled_Returns410AndNeverTouchesTheSession()
         {
-            var result = await CreateController().AddAccount(new AddAccountRequest { UserId = "", TenantId = "" });
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task AddAccount_UntrustedOrigin_ReturnsForbidden()
-        {
-            var result = await CreateController(bearer: false)
-                .AddAccount(new AddAccountRequest { UserId = "u-2", TenantId = TenantId });
-
-            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
-        }
-
-        [Fact]
-        public async Task AddAccount_NoSessionId_ReturnsUnauthorized()
-        {
-            var result = await CreateController(sid: null)
-                .AddAccount(new AddAccountRequest { UserId = "u-2", TenantId = TenantId });
-
-            result.Should().BeOfType<UnauthorizedObjectResult>();
-        }
-
-        [Fact]
-        public async Task AddAccount_ServiceFails_ReturnsBadRequest()
-        {
-            _sessionService.Setup(s => s.AddAccountAsync(SessionId, "u-2", TenantId, It.IsAny<string>()))
-                .ReturnsAsync(false);
-
-            var result = await CreateController()
-                .AddAccount(new AddAccountRequest { UserId = "u-2", TenantId = TenantId, DisplayName = "Two" });
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task AddAccount_Success_ReturnsOkRotatesAndSetsCookie()
-        {
-            _sessionService.Setup(s => s.AddAccountAsync(SessionId, "u-2", TenantId, It.IsAny<string>()))
-                .ReturnsAsync(true);
-            _sessionService.Setup(s => s.RotateSessionAsync(SessionId, "account_add")).ReturnsAsync("rotated-sid");
-
             var controller = CreateController();
             var result = await controller.AddAccount(new AddAccountRequest { UserId = "u-2", TenantId = TenantId, DisplayName = "Two" });
 
-            result.Should().BeOfType<OkObjectResult>();
-            _sessionService.Verify(s => s.UpdateActivityAsync(SessionId), Times.Once);
-            _sessionService.Verify(s => s.RotateSessionAsync(SessionId, "account_add"), Times.Once);
-            controller.Response.Headers.SetCookie.ToString().Should().Contain("idp_session_id_");
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(410);
+            _sessionService.Verify(s => s.AddAccountAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _sessionService.Verify(s => s.RotateSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            controller.Response.Headers.SetCookie.ToString().Should().BeEmpty();
         }
 
         // ---------- SelectAccount ----------

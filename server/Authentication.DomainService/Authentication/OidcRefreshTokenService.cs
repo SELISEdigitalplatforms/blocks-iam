@@ -15,6 +15,7 @@ using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 using System.Text.Json; // required by other files
 
 namespace Authentication.DomainService.Authentication
@@ -31,7 +32,6 @@ namespace Authentication.DomainService.Authentication
         private const string ActiveImpersonationStatus = "active";
 
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
         private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly IAuthenticationService _authenticationService;
@@ -41,7 +41,6 @@ namespace Authentication.DomainService.Authentication
 
         public OidcRefreshTokenService(
             IAuthenticationRepository authenticationRepository,
-            ICacheClient cacheClient,
             ITenants tenants,
             RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             IAuthenticationService authenticationService,
@@ -50,7 +49,6 @@ namespace Authentication.DomainService.Authentication
             ILogger<OidcRefreshTokenService> logger)
         {
             _authenticationRepository = authenticationRepository;
-            _cacheClient = cacheClient;
             _tenants = tenants;
             _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _authenticationService = authenticationService;
@@ -83,6 +81,12 @@ namespace Authentication.DomainService.Authentication
             if (validation != null)
             {
                 return validation;
+            }
+
+            var clientBindingError = CheckLineageClient(tokenCache!, clientId);
+            if (clientBindingError != null)
+            {
+                return clientBindingError;
             }
 
             // A resolved token id that differs from the presented one is a grace-window replay: the
@@ -239,6 +243,18 @@ namespace Authentication.DomainService.Authentication
                 }, null, null, null);
             }
 
+            // A deactivated or suspended account must not mint new tokens from a refresh token it
+            // obtained while still active. The lineage is revoked so the client stops retrying it.
+            if (BlockedUserRefreshGuard.IsBlocked(user))
+            {
+                _logger.LogWarning(
+                    "Refresh refused for a blocked account. reason=user_inactive userId={UserId} tenantId={TenantId}",
+                    tokenCache.UserId,
+                    tokenCache.TenantId);
+                await BlockedUserRefreshGuard.RevokeLineageAsync(_refreshTokenRepository, tokenCache, _logger);
+                return (InvalidGrant(BlockedUserRefreshGuard.ErrorDescription), null, null, null);
+            }
+
             return (null, configuration, tokenCache, user);
         }
 
@@ -345,6 +361,26 @@ namespace Authentication.DomainService.Authentication
             }
 
             return (null, session);
+        }
+
+        /// <summary>
+        /// A refresh token is redeemable only by the client it was issued to (RFC 6749 6). The lineage
+        /// client is already known to be set and registered here; a client-less lineage was refused
+        /// earlier with invalid_client, as before.
+        /// </summary>
+        private IActionResult? CheckLineageClient(RefreshTokenCache tokenCache, string requestClientId)
+        {
+            if (string.Equals(tokenCache.ClientId, requestClientId, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            _logger.LogWarning(
+                "Refresh refused: the requesting client is not the client the token was issued to. reason=client_mismatch refreshTokenSessionId={RefreshTokenSessionId} lineageClientId={LineageClientId}",
+                tokenCache.RefreshTokenSessionId,
+                tokenCache.ClientId);
+
+            return InvalidGrant("Refresh token was not issued to this client");
         }
 
         private static BadRequestObjectResult InvalidGrant(string description) =>

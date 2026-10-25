@@ -3,10 +3,12 @@ using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
+using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Resources.TenantPropagation
 {
@@ -151,12 +153,18 @@ namespace Iam.DomainService.Resources.TenantPropagation
 
                 return targets;
             }
-            catch (Exception ex)
+            // Let the worker retry; a registry outage is not a successful empty propagation.
+            // The filter logs and returns false, so the original exception propagates untouched.
+            catch (Exception ex) when (LogTargetEnumerationFailure(ex))
             {
-                _logger.LogError(ex, "Failed to enumerate tenants from root DB (Tenants collection).");
-                // Let the worker retry; a registry outage is not a successful empty propagation.
                 throw;
             }
+        }
+
+        private bool LogTargetEnumerationFailure(Exception ex)
+        {
+            _logger.LogError(ex, "Failed to enumerate tenants from root DB (Tenants collection).");
+            return false;
         }
 
         private async Task ProcessTenantAsync(
@@ -244,8 +252,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
             {
                 var payload = BuildPermissionBson(permission);
                 await collection.InsertOneAsync(payload);
-                var configCollection = database.GetCollection<TenantConfiguration>("TenantConfigurations");
-                var tenantConfiguration = await configCollection.Find(_ => true).FirstOrDefaultAsync();
+                var tenantConfiguration = await TenantConfigurationStore.ReadAsync(database);
                 if (tenantConfiguration == null || !tenantConfiguration.IsMultiOrgEnabled)
                 {
                     return 1;
@@ -259,7 +266,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
                     return 1;
                 }
 
-                var permissions = orgIds.Select(orgId => BuildPermissionBson(permission, orgId)).ToList();
+                var permissions = orgIds.Select(orgId => BuildPermissionBson(permission, orgId, Guid.NewGuid().ToString())).ToList();
 
                 await collection.InsertManyAsync(permissions);
 
@@ -297,13 +304,14 @@ namespace Iam.DomainService.Resources.TenantPropagation
             return result.IsAcknowledged ? result.ModifiedCount : 0;
         }
 
-        private static BsonDocument BuildPermissionBson(Permission source, string orgId="default")
+        private static BsonDocument BuildPermissionBson(Permission source, string orgId = "default", string? itemId = null)
         {
             var now = DateTime.UtcNow;
+            var id = itemId ?? source.ItemId;
             return new BsonDocument
             {
-                { "_id", source.ItemId },
-                { "ItemId", source.ItemId },
+                { "_id", id },
+                { "ItemId", id },
                 { "Name", source.Name ?? string.Empty },
                 { "Description", source.Description ?? string.Empty },
                 { "Type", source.Type.ToString() },

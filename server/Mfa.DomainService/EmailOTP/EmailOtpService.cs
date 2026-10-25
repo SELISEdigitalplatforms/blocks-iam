@@ -1,11 +1,12 @@
 ﻿using Blocks.Genesis;
-using Blocks.MailDriver;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Utilities;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Mfa.DomainService.OTP.Services
 {
@@ -18,6 +19,8 @@ namespace Mfa.DomainService.OTP.Services
         private const int DefaultLifeCycleInSecond = 300;
         private const int ResendCooldownInSecond = 60;
         private const string DefaultMfaTemplate = "MfaViaEmail";
+        private const string MessageKey = "message";
+        private const string InvalidTwoFactorIdError = "invalid_two_factor_id";
 
         public EmailOtpService(ICacheClient cacheClient,
                                IMfaConfigurationService configurationService,
@@ -38,6 +41,7 @@ namespace Mfa.DomainService.OTP.Services
 
             var context = MfaAuthenticationContext.Create(Guid.NewGuid().ToString(), userInfo.ItemId ?? string.Empty, UserMfaType.Email);
             context.SendPhoneNumberAsEmailDomain = sendPhoneNumberAsEmail ? sendPhoneNumberAsEmailDomain : null;
+            context.ExpiresAtUtc = context.LastSentUtc.AddSeconds(DefaultLifeCycleInSecond);
 
             await _cacheClient.AddStringValueAsync(context.MfaId ?? string.Empty, context.Sterilize(), DefaultLifeCycleInSecond);
 
@@ -50,14 +54,26 @@ namespace Mfa.DomainService.OTP.Services
         {
             if (string.IsNullOrWhiteSpace(mfaId) || !await _cacheClient.KeyExistsAsync(mfaId))
             {
-                return new OtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } } };
+                return new OtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { MessageKey, InvalidTwoFactorIdError } } };
             }
 
             var raw = await _cacheClient.GetStringValueAsync(mfaId);
             if (!MfaAuthenticationContext.TryDeserialize(raw, out var context))
             {
                 // Not a code-based challenge (e.g. a TOTP session) — nothing to resend.
-                return new OtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "message", "resend_not_supported" } } };
+                return new OtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { MessageKey, "resend_not_supported" } } };
+            }
+
+            // A resend may change the code but never the life of the challenge: the expiry is the
+            // one fixed at creation. A challenge written before ExpiresAtUtc existed derives it.
+            var expiresAtUtc = context.ExpiresAtUtc != default
+                ? context.ExpiresAtUtc
+                : context.LastSentUtc.AddSeconds(DefaultLifeCycleInSecond);
+            var remainingSeconds = (int)Math.Ceiling((expiresAtUtc - DateTime.UtcNow).TotalSeconds);
+            if (remainingSeconds <= 0)
+            {
+                await _cacheClient.RemoveKeyAsync(mfaId);
+                return new OtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { MessageKey, InvalidTwoFactorIdError } } };
             }
 
             var cooldown = TimeSpan.FromSeconds(ResendCooldownInSecond);
@@ -71,7 +87,7 @@ namespace Mfa.DomainService.OTP.Services
                     MfaId = mfaId,
                     Errors = new Dictionary<string, string>
                     {
-                        { "message", "resend_too_soon" },
+                        { MessageKey, "resend_too_soon" },
                         { "retry_after_seconds", retryAfter.ToString(System.Globalization.CultureInfo.InvariantCulture) }
                     }
                 };
@@ -89,13 +105,14 @@ namespace Mfa.DomainService.OTP.Services
                 return deliveryError;
             }
 
-            // Regenerate the code under the SAME mfa_id and reset the TTL, so the caller keeps
-            // using the id it already has and the newly delivered code verifies against it.
+            // Regenerate the code under the SAME mfa_id (the previous code stops working) and keep
+            // the ORIGINAL expiry, so the caller keeps the id it already has.
             context.MfaCode = MfaAuthenticationContext.GenerateSecureRandomNumber();
             context.LastSentUtc = DateTime.UtcNow;
+            context.ExpiresAtUtc = expiresAtUtc;
             context.SendPhoneNumberAsEmailDomain = sendPhoneNumberAsEmail ? effectiveDomain : null;
 
-            await _cacheClient.AddStringValueAsync(mfaId, context.Sterilize(), DefaultLifeCycleInSecond);
+            await _cacheClient.AddStringValueAsync(mfaId, context.Sterilize(), remainingSeconds);
 
             var result = await SendMfaCodeAsync(email ?? string.Empty, context.MfaCode ?? string.Empty, userInfo.Language ?? "en-US", sendPhoneNumberAsEmail);
 
@@ -152,19 +169,37 @@ namespace Mfa.DomainService.OTP.Services
 
             if (!isKeyExist)
             {
-                return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } } };
+                return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { MessageKey, InvalidTwoFactorIdError } } };
             }
 
             var keyValue = await _cacheClient.GetStringValueAsync(request.MfaId ?? string.Empty);
-            var mfaContext = MfaAuthenticationContext.Deserialize(keyValue);
+            if (!MfaAuthenticationContext.TryDeserialize(keyValue, out var mfaContext))
+            {
+                // Not a code-based challenge (e.g. a TOTP session): this service cannot verify it.
+                return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { MessageKey, InvalidTwoFactorIdError } } };
+            }
 
-            if (mfaContext.MfaCode == request.VerificationCode)
+            if (CodesMatch(mfaContext.MfaCode, request.VerificationCode))
             {
                 await _cacheClient.RemoveKeyAsync(request.MfaId ?? string.Empty);
                 return new OtpVerificationResponse { IsSuccess = true, IsValid = true, UserId = mfaContext.UserId };
             }
 
-            return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_code" } } };
+            // The owner is returned on failure too, so every caller can count the wrong code
+            // against the right account; the controllers never send it to the client.
+            return new OtpVerificationResponse { UserId = mfaContext.UserId, Errors = new Dictionary<string, string> { { MessageKey, "invalid_two_factor_code" } } };
+        }
+
+        private static bool CodesMatch(string? expected, string? supplied)
+        {
+            if (string.IsNullOrEmpty(expected) || string.IsNullOrEmpty(supplied))
+            {
+                return false;
+            }
+
+            return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(expected),
+                System.Text.Encoding.UTF8.GetBytes(supplied));
         }
     }
 }

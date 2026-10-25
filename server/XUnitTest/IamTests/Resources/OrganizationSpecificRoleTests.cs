@@ -11,6 +11,7 @@ using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Iam.DomainService.Users;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {
@@ -41,7 +42,7 @@ namespace XUnitTest.IamTests.Resources
             _roleValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateRoleRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _repo.Setup(r => r.InsertRoleAsync(It.IsAny<Role>())).ReturnsAsync(true);
             _repo.Setup(r => r.UpdateRoleAsync(It.IsAny<Role>())).ReturnsAsync(true);
             _repo.Setup(r => r.GetOrganizationById(It.IsAny<string>()))
@@ -245,7 +246,7 @@ namespace XUnitTest.IamTests.Resources
         public async Task CreateRole_FromChildOrg_MultiOrgDisabled_IsRefused()
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = false });
 
             var result = await Create().CreateRoleAsync(RoleReq());
 

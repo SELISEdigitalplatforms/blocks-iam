@@ -1,3 +1,4 @@
+using Iam.DomainService.Notifications;
 using Blocks.Genesis;
 using Authentication.DomainService.Utilities;
 using DeviceDetectorNET;
@@ -12,57 +13,66 @@ using FluentValidation;
 using Authentication.DomainService.Shared.RequestModel;
 using Iam.DomainService.Dtos;
 using Authentication.DomainService.Authentication;
+using Blocks.Genesis.Entities.Iam;
+using Authentication.DomainService.Shared.Services;
+using Microsoft.Extensions.Logging;
 
 
 namespace Authentication.DomainService.Services
 {
     public sealed class AuthenticationDomainService : IAuthenticationDomainService
     {
+        private const string ErrorInvalidRequest = "invalid_request";
+        private const string ErrorNotFound = "not_found";
+
         private readonly IMessageClient _messageClient;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IValidator<SaveOIDCClientRequest> _oidcClientValidator;
         private readonly IValidator<SaveOidcUiTemplateRequest> _oidcUiTemplateValidator;
         private readonly IValidator<SaveIdentityProviderRequest> _saveIdpValidator;
         private readonly IValidator<UpdateIdentityProviderRequest> _updateIdpValidator;
-        private readonly ITenants _tenants;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
+        private readonly ILogger<AuthenticationDomainService>? _logger;
+        private readonly IBuiltInNotificationSender? _notificationSender;
+
+        public const string TokenLifetimesSaveFailedMessage = "Token lifetimes could not be saved. Try again.";
 
         private const string Origin_Header_Name = "Origin";
         private const string Referer_Header_Name = "Referer";
-        private const string X_Forwarded_For_Header_Name = "X-Forwarded-For";
         private const string DiscoveryClientName = "oidc-discovery";
 
         public AuthenticationDomainService(IMessageClient messageClient,
                                            IAuthenticationRepository authenticationRepository,
-                                           IValidator<SaveOIDCClientRequest> oidcClientValidator,
-                                           IValidator<SaveOidcUiTemplateRequest> oidcUiTemplateValidator,
-                                           IValidator<SaveIdentityProviderRequest> saveIdpValidator,
-                                           IValidator<UpdateIdentityProviderRequest> updateIdpValidator,
-                                           ITenants tenants,
-                                           IHttpClientFactory httpClientFactory)
+                                           AuthenticationRequestValidators validators,
+                                           IHttpClientFactory httpClientFactory,
+                                           IOidcClientTokenLifetimeService? clientTokenLifetimes = null,
+                                           ILogger<AuthenticationDomainService>? logger = null,
+                                           IBuiltInNotificationSender? notificationSender = null)
         {
+            _notificationSender = notificationSender;
             _messageClient = messageClient;
             _authenticationRepository = authenticationRepository;
-            _oidcClientValidator = oidcClientValidator;
-            _oidcUiTemplateValidator = oidcUiTemplateValidator;
-            _saveIdpValidator = saveIdpValidator;
-            _updateIdpValidator = updateIdpValidator;
-            _tenants = tenants;
+            _oidcClientValidator = validators.OidcClient;
+            _oidcUiTemplateValidator = validators.OidcUiTemplate;
+            _saveIdpValidator = validators.SaveIdentityProvider;
+            _updateIdpValidator = validators.UpdateIdentityProvider;
             _httpClientFactory = httpClientFactory;
+            _clientTokenLifetimes = clientTokenLifetimes;
+            _logger = logger;
         }
 
         public IEnumerable<string> GetVisitorsIpAddresses(HttpContext context)
         {
-            var forwardedForHeader = context.Request.Headers[X_Forwarded_For_Header_Name];
+            // The single source of truth is Connection.RemoteIpAddress, which the
+            // forwarded-header middleware (Program.cs) rewrites only for connections from
+            // trusted networks. The raw X-Forwarded-For header is not read: any entries the
+            // middleware leaves behind are untrusted and client-supplied.
+            var remoteIpAddress = context.Connection.RemoteIpAddress?.ToString();
 
-            var visitorsIpAddress = string.IsNullOrWhiteSpace(forwardedForHeader) ? context.Connection.RemoteIpAddress?.ToString() ?? string.Empty : forwardedForHeader.ToString();
-
-            var visitorsIpAddresses =
-                visitorsIpAddress
-               .Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-               .Select(ipAddress => ipAddress.Trim());
-
-            return visitorsIpAddresses;
+            return string.IsNullOrWhiteSpace(remoteIpAddress)
+                ? Array.Empty<string>()
+                : new[] { remoteIpAddress };
         }
 
         public string GetRequestOriginHostName(HttpContext context)
@@ -149,7 +159,17 @@ namespace Authentication.DomainService.Services
                 };
             }
 
-            var credential = await InitializeOidcClientCredentialAsync(request);
+            var lifetimeErrors = await ValidateTokenLifetimesAgainstProjectAsync(request.TokenLifetimes);
+            if (lifetimeErrors != null)
+            {
+                return new SaveOIDCClientResponse
+                {
+                    IsSuccess = false,
+                    Errors = lifetimeErrors
+                };
+            }
+
+            var (credential, isNewClient) = await InitializeOidcClientCredentialAsync(request);
             ApplyOidcClientScopesAndRedirects(credential, request);
             ApplyOidcClientOptions(credential, request);
 
@@ -220,12 +240,151 @@ namespace Authentication.DomainService.Services
                 }
             }
 
-            return new SaveOIDCClientResponse { IsSuccess = true, ItemId = credential.ItemId };
+            if (!await TrySaveTokenLifetimesAsync(credential.ClientId, request.TokenLifetimes, isNewClient))
+            {
+                return new SaveOIDCClientResponse
+                {
+                    IsSuccess = false,
+                    ItemId = credential.ItemId,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(SaveOIDCClientRequest.TokenLifetimes), TokenLifetimesSaveFailedMessage }
+                    }
+                };
+            }
+
+            if (isNewClient)
+            {
+                await NotifyClientCredentialChangedAsync(OidcClientKind, "created", credential.ClientId, credential.CreatedBy, null);
+            }
+
+            // The secret goes back once, on create only. Lists and gets never return it; a lost
+            // secret is replaced with rotate-secret.
+            return new SaveOIDCClientResponse
+            {
+                IsSuccess = true,
+                ItemId = credential.ItemId,
+                ClientSecret = isNewClient ? credential.ClientSecret : null
+            };
         }
 
-        private async Task<OidcClientRegistration> InitializeOidcClientCredentialAsync(SaveOIDCClientRequest request)
+        private const string OidcClientKind = "oidc-client";
+        private const string ClientCredentialKind = "client-credential";
+
+        /// <summary>
+        /// Tells the acting user and the record's creator that a client was created, its secret
+        /// rotated, or it was deleted. Only the client id goes out, never a secret. Best effort.
+        /// </summary>
+        private Task NotifyClientCredentialChangedAsync(string kind, string change, string? clientId, string? createdBy, string? organizationId)
+        {
+            var bc = BlocksContext.GetContext();
+            var what = kind == OidcClientKind ? "An OIDC client" : "A client credential";
+            var description = change switch
+            {
+                "created" => $"{what} was created.",
+                "secret-rotated" => $"{what} had its secret rotated.",
+                _ => $"{what} was deleted."
+            };
+
+            return _notificationSender.TrySendAsync(new BuiltInNotification(
+                bc?.TenantId,
+                BuiltInNotificationNames.ClientCredentialChanged,
+                BuiltInNotificationSender.Recipients(bc?.UserId, createdBy),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.ClientCredentialChanged,
+                    "Client credential changed",
+                    description,
+                    fields: new Dictionary<string, object?>
+                    {
+                        ["kind"] = kind,
+                        ["change"] = change,
+                        ["clientId"] = clientId,
+                        ["organizationId"] = organizationId
+                    })));
+        }
+
+        /// <summary>
+        /// When only one refresh lifetime is set, the other comes from the project; the pair must still
+        /// satisfy maximum >= idle. Both-set and range rules live in the request validator.
+        /// </summary>
+        private async Task<Dictionary<string, string>?> ValidateTokenLifetimesAgainstProjectAsync(OidcClientTokenLifetimes? lifetimes)
+        {
+            if (lifetimes == null)
+            {
+                return null;
+            }
+
+            var hasSliding = lifetimes.RefreshTokenValidForNumberMinutes.HasValue;
+            var hasAbsolute = lifetimes.AbsoluteRefreshTokenValidForNumberMinutes.HasValue;
+            if (hasSliding == hasAbsolute)
+            {
+                return null;
+            }
+
+            var project = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            var (projectSliding, projectAbsolute) = RefreshTokenLifetimeResolver.Resolve(project);
+
+            if (hasSliding && lifetimes.RefreshTokenValidForNumberMinutes!.Value > projectAbsolute)
+            {
+                return new Dictionary<string, string>
+                {
+                    {
+                        $"{nameof(SaveOIDCClientRequest.TokenLifetimes)}.{nameof(OidcClientTokenLifetimes.RefreshTokenValidForNumberMinutes)}",
+                        $"Refresh token idle lifetime must not exceed the project's maximum refresh token lifetime ({projectAbsolute} minutes)."
+                    }
+                };
+            }
+
+            if (hasAbsolute && lifetimes.AbsoluteRefreshTokenValidForNumberMinutes!.Value < projectSliding)
+            {
+                return new Dictionary<string, string>
+                {
+                    {
+                        $"{nameof(SaveOIDCClientRequest.TokenLifetimes)}.{nameof(OidcClientTokenLifetimes.AbsoluteRefreshTokenValidForNumberMinutes)}",
+                        $"Refresh token maximum lifetime must be at least the project's refresh token idle lifetime ({projectSliding} minutes)."
+                    }
+                };
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Absent lifetimes keep an existing client's stored values; a new client never inherits an entry
+        /// left under the same id. Runs after the client document is saved; a failure is reported to the
+        /// caller and the previous values stay in force.
+        /// </summary>
+        private async Task<bool> TrySaveTokenLifetimesAsync(string clientId, OidcClientTokenLifetimes? lifetimes, bool isNewClient)
+        {
+            if (_clientTokenLifetimes == null || (lifetimes == null && !isNewClient))
+            {
+                return true;
+            }
+
+            try
+            {
+                if (lifetimes == null)
+                {
+                    await _clientTokenLifetimes.DeleteAsync(clientId);
+                }
+                else
+                {
+                    await _clientTokenLifetimes.SaveAsync(clientId, lifetimes);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Saving OIDC client token lifetimes failed. clientId={ClientId}", clientId);
+                return false;
+            }
+        }
+
+        private async Task<(OidcClientRegistration Credential, bool IsNew)> InitializeOidcClientCredentialAsync(SaveOIDCClientRequest request)
         {
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
+            var isNew = credential == null;
             var clientId = string.IsNullOrWhiteSpace(request.ItemId) ? Guid.NewGuid().ToString() : request.ItemId;
 
             credential ??= new OidcClientRegistration
@@ -242,13 +401,16 @@ namespace Authentication.DomainService.Services
             // Device-flow clients are always public (TokenEndpointAuthMethod "none") and never
             // authenticate with a secret, so none is generated — and any secret left over from
             // before the client became device-flow-only is cleared.
-            credential.ClientSecret = request.IsDeviceFlowClient
-                ? null
-                : string.IsNullOrWhiteSpace(credential.ClientSecret)
-                    ? GenerateClientSecret()
-                    : credential.ClientSecret;
+            if (request.IsDeviceFlowClient)
+            {
+                credential.ClientSecret = null;
+            }
+            else if (string.IsNullOrWhiteSpace(credential.ClientSecret))
+            {
+                credential.ClientSecret = GenerateClientSecret();
+            }
 
-            return credential;
+            return (credential, isNew);
         }
 
         private static void ApplyOidcClientScopesAndRedirects(OidcClientRegistration credential, SaveOIDCClientRequest request)
@@ -325,19 +487,28 @@ namespace Authentication.DomainService.Services
             credential.RegisterAsIdentityProvider = !request.IsDeviceFlowClient && request.RegisterAsIdentityProvider;
         }
 
+        private static string ResolveTokenLifetimesKey(OidcClientRegistration client) =>
+            string.IsNullOrWhiteSpace(client.ClientId) ? client.ItemId : client.ClientId;
+
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
         {
             var client = await _authenticationRepository.GetOIDCCredentialByIdAsync(tenantId);
+            var tokenLifetimes = client != null && _clientTokenLifetimes != null
+                ? await _clientTokenLifetimes.GetAsync(ResolveTokenLifetimesKey(client))
+                : null;
+            HideSecret(client);
             return new GetOIDCClientResponse
             {
                 oIDCClientCredential = client,
+                TokenLifetimes = tokenLifetimes,
                 IsSuccess = true,
             };
         }
 
         public async Task<GetOIDCClientsResponse> GetOidcClientsAsync()
         {
-            var clients = await _authenticationRepository.GetOIDCCredentialsByTenantAsync();
+            var clients = await _authenticationRepository.GetOIDCCredentialsByTenantForViewAsync();
+            clients?.ForEach(HideSecret);
 
             return new GetOIDCClientsResponse
             {
@@ -401,7 +572,15 @@ namespace Authentication.DomainService.Services
         {
             // Get the OIDC client before deletion to know the ClientId
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
-            
+
+            // The client's token lifetimes go first: if this fails the client stays, so no values are
+            // left behind for a later client created under the same id.
+            if (_clientTokenLifetimes != null)
+            {
+                var lifetimesKey = !string.IsNullOrWhiteSpace(credential?.ClientId) ? credential.ClientId : request.ItemId;
+                await _clientTokenLifetimes.DeleteAsync(lifetimesKey ?? string.Empty);
+            }
+
             // Delete the OIDC client registration
             await _authenticationRepository.DeleteOidcClientAsync(request);
 
@@ -417,45 +596,24 @@ namespace Authentication.DomainService.Services
                 }
             }
 
-            return new BaseResponse { IsSuccess = true };
-        }
-
-        public async Task<BaseResponse> GenerateUserCodeByClientAsync(GenerateUserCodeRequest request)
-        {
-            if (string.IsNullOrWhiteSpace(request.ClientId))
+            if (credential != null)
             {
-                return new BaseResponse { Errors = new Dictionary<string, string> { { "invalid_request", "ClientId is required." } } };
+                await NotifyClientCredentialChangedAsync(OidcClientKind, "deleted", credential.ClientId, credential.CreatedBy, null);
             }
 
-            var userCode = Guid.NewGuid().ToString("n");
-
-            var clientUserCode = new UserCode
-            {
-                ItemId = Guid.NewGuid().ToString(),
-                ClientId = request.ClientId,
-                UserId = BlocksContext.GetContext()?.UserId,
-                Code = userCode,
-                CreatedBy = BlocksContext.GetContext()?.UserId,
-                LastUpdatedBy = BlocksContext.GetContext()?.UserId,
-                CreatedDate = DateTime.UtcNow,
-                CodeTtlInMinute = request.CodeTtlInMinute,
-                Note = request.Note
-            };
-
-            await _authenticationRepository.SaveUserCodeByClientAsync(clientUserCode);
-            return new BaseResponse { IsSuccess = true, };
+            return new BaseResponse { IsSuccess = true };
         }
 
         public async Task<SaveClientCredentialResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Name))
-                return ClientCredentialSaveFailure("invalid_request", "Name is required.");
+                return ClientCredentialSaveFailure(ErrorInvalidRequest, "Name is required.");
 
             var roles = (request.Roles ?? new List<string>()).Where(r => !string.IsNullOrWhiteSpace(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var permissions = (request.Permissions ?? new List<string>()).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
             if (roles.Count == 0 && permissions.Count == 0)
-                return ClientCredentialSaveFailure("invalid_request", "At least one role or permission is required.");
+                return ClientCredentialSaveFailure(ErrorInvalidRequest, "At least one role or permission is required.");
 
             var blocksContext = BlocksContext.GetContext();
             var scope = OrganizationAccessScopeResolver.Resolve(blocksContext?.OrganizationId);
@@ -470,7 +628,7 @@ namespace Authentication.DomainService.Services
                 // Out of scope is reported as "not found", decided before anything is written, so a
                 // caller learns nothing about credentials belonging to another organization.
                 if (existing == null || !scope.Allows(existing.OrganizationId))
-                    return ClientCredentialSaveFailure("not_found", $"Client credential '{request.ItemId}' not found.");
+                    return ClientCredentialSaveFailure(ErrorNotFound, $"Client credential '{request.ItemId}' not found.");
 
                 existing.Name = request.Name;
                 existing.IsActive = request.IsActive;
@@ -517,6 +675,11 @@ namespace Authentication.DomainService.Services
             };
 
             var createResult = await _authenticationRepository.SaveClientCredentialAsync(clientCredential);
+            if (createResult.IsSuccess)
+            {
+                // A client credential's item id is its client id.
+                await NotifyClientCredentialChangedAsync(ClientCredentialKind, "created", clientCredential.ItemId, clientCredential.CreatedBy, clientCredential.OrganizationId);
+            }
             return new SaveClientCredentialResponse
             {
                 IsSuccess = createResult.IsSuccess,
@@ -529,7 +692,7 @@ namespace Authentication.DomainService.Services
         public async Task<RotateClientCredentialSecretResponse> RotateClientCredentialSecretAsync(string itemId)
         {
             if (string.IsNullOrWhiteSpace(itemId))
-                return new RotateClientCredentialSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "ItemId is required." } } };
+                return new RotateClientCredentialSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorInvalidRequest, "ItemId is required." } } };
 
             var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
             if (scope.Kind == OrganizationAccessScopeKind.Denied)
@@ -544,6 +707,11 @@ namespace Authentication.DomainService.Services
             credential.LastUpdatedDate = DateTime.UtcNow;
 
             var saveResult = await _authenticationRepository.SaveClientCredentialAsync(credential);
+            if (saveResult.IsSuccess)
+            {
+                await NotifyClientCredentialChangedAsync(ClientCredentialKind, "secret-rotated", credential.ItemId, credential.CreatedBy, credential.OrganizationId);
+            }
+
             return new RotateClientCredentialSecretResponse
             {
                 IsSuccess = saveResult.IsSuccess,
@@ -585,7 +753,7 @@ namespace Authentication.DomainService.Services
                 return (null, new BaseResponse
                 {
                     IsSuccess = false,
-                    Errors = new Dictionary<string, string> { { "invalid_request", $"'{IdpConstants.NoOrganizationId}' is not a selectable organization." } }
+                    Errors = new Dictionary<string, string> { { ErrorInvalidRequest, $"'{IdpConstants.NoOrganizationId}' is not a selectable organization." } }
                 });
 
             return (requested, null);
@@ -595,7 +763,7 @@ namespace Authentication.DomainService.Services
             new()
             {
                 IsSuccess = false,
-                Errors = new Dictionary<string, string> { { "not_found", $"Client credential '{itemId}' not found." } }
+                Errors = new Dictionary<string, string> { { ErrorNotFound, $"Client credential '{itemId}' not found." } }
             };
 
         private static BaseResponse ClientCredentialForbidden() =>
@@ -625,7 +793,7 @@ namespace Authentication.DomainService.Services
         public async Task<BaseResponse> DeleteClientCredentialAsync(DeleteClientCredentialRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.ItemId))
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "ItemId is required." } } };
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorInvalidRequest, "ItemId is required." } } };
 
             var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
             if (scope.Kind == OrganizationAccessScopeKind.Denied)
@@ -636,21 +804,24 @@ namespace Authentication.DomainService.Services
                 return ClientCredentialNotFound(request.ItemId);
 
             await _authenticationRepository.DeleteClientCredentialAsync(request);
+            await NotifyClientCredentialChangedAsync(ClientCredentialKind, "deleted", existing.ItemId, existing.CreatedBy, existing.OrganizationId);
             return new BaseResponse { IsSuccess = true };
         }
 
         public async Task<List<ClientCredential>> GetClientCredentialsAsync(GetAllClientCredentialsRequest request)
         {
-            // The listed documents carry ClientSecret, so an unscoped list would hand one
-            // organization's administrator the secrets of every other organization in the tenant.
+            // Scoped so one organization's administrator cannot see another organization's credentials.
+            // The secret itself is never listed: it is returned once on create and on rotate-secret.
             var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
 
-            return scope.Kind switch
+            var credentials = scope.Kind switch
             {
                 OrganizationAccessScopeKind.AllOrganizations => await _authenticationRepository.GetClientCredentialsAsync(null),
                 OrganizationAccessScopeKind.Organization => await _authenticationRepository.GetClientCredentialsAsync(scope.OrganizationId),
                 _ => []
             };
+            credentials.ForEach(HideSecret);
+            return credentials;
         }
 
         public async Task<BaseResponse> CreateIdentityProviderAsync(SaveIdentityProviderRequest request)
@@ -729,12 +900,41 @@ namespace Authentication.DomainService.Services
 
         public async Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id)
         {
-            return await _authenticationRepository.GetIdentityProviderByIdAsync(id);
+            var provider = await _authenticationRepository.GetIdentityProviderByIdForViewAsync(id);
+            HideSecret(provider);
+            return provider;
         }
 
         public async Task<List<IdentityProvider>> GetAllIdentityProvidersAsync()
         {
-            return await _authenticationRepository.GetIdentityProvidersAsync();
+            var providers = await _authenticationRepository.GetIdentityProvidersForViewAsync();
+            providers.ForEach(HideSecret);
+            return providers;
+        }
+
+        private async Task<bool> IsMirrorOfLocalOidcClientAsync(IdentityProvider provider)
+        {
+            if (!string.Equals(provider.ProviderType, IdpConstants.BlocksOidcProviderType, StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(provider.ClientId))
+                return false;
+            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(provider.ClientId);
+            return client?.RegisterAsIdentityProvider == true;
+        }
+
+        // Read results that go back to the API caller never carry a secret. These objects come
+        // from a fresh "ForView" read and are never saved back, so clearing them changes nothing stored.
+        private static void HideSecret(OidcClientRegistration? client)
+        {
+            if (client != null) client.ClientSecret = null;
+        }
+
+        private static void HideSecret(ClientCredential credential) => credential.ClientSecret = null;
+
+        private static void HideSecret(IdentityProvider? provider)
+        {
+            if (provider == null) return;
+            provider.ClientSecret = string.Empty;
+            provider.PrivateKey = null;
         }
 
         public async Task<BaseResponse> UpdateIdentityProviderAsync(string id, UpdateIdentityProviderRequest request)
@@ -756,7 +956,7 @@ namespace Authentication.DomainService.Services
 
             var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(id);
             if (existing == null)
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorNotFound, "Provider not found." } } };
 
             // Immutability check: Provider, ProviderType, Protocol, ClientId cannot change after create.
             if (request.Provider != null && !string.Equals(request.Provider, existing.Provider, StringComparison.OrdinalIgnoreCase))
@@ -767,6 +967,11 @@ namespace Authentication.DomainService.Services
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "immutable_field", "Protocol is immutable and must match the existing value." } } };
             if (request.ClientId != null && !string.Equals(request.ClientId, existing.ClientId, StringComparison.Ordinal))
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "immutable_field", "ClientId is immutable and must match the existing value." } } };
+
+            // A provider made by "register as identity provider" mirrors its OIDC client's secret;
+            // that secret changes only by rotating the OIDC client, or the next client save would undo it.
+            if (!string.IsNullOrWhiteSpace(request.ClientSecret) && await IsMirrorOfLocalOidcClientAsync(existing))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "immutable_field", "This provider uses its OIDC client's secret. Rotate the secret on the OIDC client instead." } } };
 
             // Discovery re-validation when WellKnownUrl changes.
             if (request.WellKnownUrl != null && !string.Equals(request.WellKnownUrl, existing.WellKnownUrl, StringComparison.OrdinalIgnoreCase))
@@ -805,7 +1010,8 @@ namespace Authentication.DomainService.Services
             if (request.Icon != null) existing.Icon = request.Icon;
             if (request.TeamId != null) existing.TeamId = request.TeamId;
             if (request.KeyId != null) existing.KeyId = request.KeyId;
-            if (request.PrivateKey != null) existing.PrivateKey = request.PrivateKey;
+            if (!string.IsNullOrWhiteSpace(request.PrivateKey)) existing.PrivateKey = request.PrivateKey;
+            if (!string.IsNullOrWhiteSpace(request.ClientSecret)) existing.ClientSecret = request.ClientSecret;
             if (request.AppleAudience != null) existing.AppleAudience = request.AppleAudience;
 
             var blocksContext = BlocksContext.GetContext();
@@ -823,7 +1029,7 @@ namespace Authentication.DomainService.Services
 
             var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(id);
             if (existing == null)
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorNotFound, "Provider not found." } } };
 
             // Delete the IdentityProvider
             await _authenticationRepository.DeleteIdentityProviderAsync(id);
@@ -850,7 +1056,7 @@ namespace Authentication.DomainService.Services
 
             var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(id);
             if (existing == null)
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorNotFound, "Provider not found." } } };
 
             existing.IsActive = isActive;
             await _authenticationRepository.UpdateIdentityProviderAsync(existing);
@@ -864,7 +1070,7 @@ namespace Authentication.DomainService.Services
 
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(itemId);
             if (credential == null)
-                return new RotateOidcClientSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", $"OIDC client '{itemId}' not found." } } };
+                return new RotateOidcClientSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorNotFound, $"OIDC client '{itemId}' not found." } } };
 
             // Device-flow clients are always public (TokenEndpointAuthMethod "none") and never
             // hold a secret — reject rotation rather than silently reintroducing one.
@@ -892,6 +1098,8 @@ namespace Authentication.DomainService.Services
                     await _authenticationRepository.UpdateIdentityProviderAsync(linkedProvider);
                 }
             }
+
+            await NotifyClientCredentialChangedAsync(OidcClientKind, "secret-rotated", credential.ClientId, credential.CreatedBy, null);
 
             return new RotateOidcClientSecretResponse
             {

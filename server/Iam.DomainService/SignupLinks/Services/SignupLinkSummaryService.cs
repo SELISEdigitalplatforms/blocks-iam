@@ -1,5 +1,7 @@
 using Blocks.Genesis;
 using FluentValidation;
+using Iam.DomainService.Services;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.SignupLinks;
 
@@ -12,13 +14,13 @@ public class SignupLinkSummaryService : ISignupLinkSummaryService
 
     private readonly ISignupLinkRepository _links;
     private readonly ISignupLinkConfigurationRepository _configurations;
-    private readonly ISignupLinkRedemptionRepository _redemptions;
+    private readonly IUserActivityRepository _redemptions;
     private readonly IValidator<SignupLinkSummaryRequest> _validator;
 
     public SignupLinkSummaryService(
         ISignupLinkRepository links,
         ISignupLinkConfigurationRepository configurations,
-        ISignupLinkRedemptionRepository redemptions,
+        IUserActivityRepository redemptions,
         IValidator<SignupLinkSummaryRequest> validator)
     {
         _links = links;
@@ -64,7 +66,7 @@ public class SignupLinkSummaryService : ISignupLinkSummaryService
         long rejectedAttempts = 0;
         if (baseLinks.Count > 0)
         {
-            rejectedAttempts = await _redemptions.CountRejectedForLinksAsync(
+            rejectedAttempts = await _redemptions.CountSignupLinkRejectionsAsync(
                 tenantId,
                 fromUtc,
                 toUtc,

@@ -7,6 +7,7 @@ using global::Iam.DomainService.Entities;
 using global::Mfa.DomainService.Configuration;
 using global::Mfa.DomainService.Services;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {

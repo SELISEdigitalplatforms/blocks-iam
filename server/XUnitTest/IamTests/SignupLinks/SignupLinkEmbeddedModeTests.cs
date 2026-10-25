@@ -1,6 +1,7 @@
 using FluentAssertions;
 using FluentValidation;
 using Iam.DomainService.SignupLinks;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.SignupLinks;
 

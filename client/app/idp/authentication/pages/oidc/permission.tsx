@@ -59,9 +59,17 @@ export const OIDCPermissionScreen = () => {
 
     setIsSubmitting(true);
     try {
-      // Generate PKCE pair
-      const { verifier, challenge } = await generatePkcePair();
-      sessionStorage.setItem("oidc-code-verifier", verifier);
+      // Forward the relying party's own challenge verbatim: its verifier lives on the RP. Make a
+      // pair only when IAM itself is the RP (same-origin redirect), which keeps the verifier here.
+      const searchParams = new URLSearchParams(globalThis.location.search);
+      let challenge = searchParams.get("code_challenge");
+      let challengeMethod = searchParams.get("code_challenge_method") || "S256";
+      if (!challenge && new URL(currentContext.redirectUri).origin === globalThis.location.origin) {
+        const pair = await generatePkcePair();
+        sessionStorage.setItem("oidc-code-verifier", pair.verifier);
+        challenge = pair.challenge;
+        challengeMethod = "S256";
+      }
 
       // Build authorization endpoint URL
       const authorizeUrl = new URL(`${window.location.origin}/api/oidc/authorize`);
@@ -69,8 +77,10 @@ export const OIDCPermissionScreen = () => {
       authorizeUrl.searchParams.set("response_type", "code");
       authorizeUrl.searchParams.set("redirect_uri", currentContext.redirectUri);
       authorizeUrl.searchParams.set("scope", currentContext.scope || "openid profile email");
-      authorizeUrl.searchParams.set("code_challenge", challenge);
-      authorizeUrl.searchParams.set("code_challenge_method", "S256");
+      if (challenge) {
+        authorizeUrl.searchParams.set("code_challenge", challenge);
+        authorizeUrl.searchParams.set("code_challenge_method", challengeMethod);
+      }
 
       // Add state if present
       if (currentContext.state) {

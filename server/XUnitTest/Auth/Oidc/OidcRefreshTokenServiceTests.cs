@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Primitives;
 using Moq;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 using RtaTests = XUnitTest.Auth.OAuth.RefreshTokenAuthenticationServiceTests;
 
 namespace XUnitTest.Auth.Oidc
@@ -56,7 +57,7 @@ namespace XUnitTest.Auth.Oidc
             new(NullLogger<RefreshTokenAuthenticationService>.Instance, _innerJwt.Object, _innerTenants.Object, _innerTokenMgr.Object, _innerAuthRepo.Object);
 
         private OidcRefreshTokenService Create() =>
-            new(_authRepo.Object, _cache.Object, _tenants.Object, BuildInner(), _authService.Object, _refreshTokenRepo.Object, _sessionResolver.Object, NullLogger<OidcRefreshTokenService>.Instance);
+            new(_authRepo.Object, _tenants.Object, BuildInner(), _authService.Object, _refreshTokenRepo.Object, _sessionResolver.Object, NullLogger<OidcRefreshTokenService>.Instance);
 
         private static HttpRequest MakeRequest(Dictionary<string, string>? form = null)
         {
@@ -230,6 +231,78 @@ namespace XUnitTest.Auth.Oidc
             obj.StatusCode.Should().Be(StatusCodes.Status423Locked);
         }
 
+        // ---------- account state: a deactivated or suspended user cannot refresh ----------
+
+        public static TheoryData<User> BlockedUsers => new()
+        {
+            // What DeactivateUserAsync writes today.
+            new User { ItemId = "u1", Active = false, IsVerified = true, Status = UserLifecycleStatus.Disabled, DeactivatedAtUtc = DateTime.UtcNow },
+            // Status alone, even with the flag left on.
+            new User { ItemId = "u1", Active = true, IsVerified = true, Status = UserLifecycleStatus.Disabled },
+            new User { ItemId = "u1", Active = true, IsVerified = true, Status = UserLifecycleStatus.Suspended },
+            // Deactivated before Status existed: verified once, now inactive.
+            new User { ItemId = "u1", Active = false, IsVerified = true, Status = UserLifecycleStatus.Active },
+        };
+
+        [Theory]
+        [MemberData(nameof(BlockedUsers))]
+        public async Task Rotate_BlockedUser_IsRefusedInvalidGrant_RevokesTheLineage_AndMintsNothing(User user)
+        {
+            SetupClient();
+            var cache = new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "tenant-1", RefreshToken = "rt-1", RefreshTokenSessionId = "lineage-1" };
+            SetupValidRefreshToken(cache, user);
+            SetupSuccessfulInner();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken()));
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            bad.Value.Should().BeEquivalentTo(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" });
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", BlockedUserRefreshGuard.RevokeReason), Times.Once);
+            _innerTokenMgr.Verify(m => m.ManageRefreshTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<JwtAccessToken>(), It.IsAny<IdentityConfiguration>(), It.IsAny<Tenant>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Rotate_BlockedUser_LineageRevokeFails_IsStillRefused()
+        {
+            SetupClient();
+            var cache = new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "tenant-1", RefreshToken = "rt-1" };
+            SetupValidRefreshToken(cache, new User { ItemId = "u1", Active = false, IsVerified = true, Status = UserLifecycleStatus.Disabled });
+            _refreshTokenRepo.Setup(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("store down"));
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken()));
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+            // No lineage id on the cache entry: the presented token id is the lineage root.
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync("rt-1", BlockedUserRefreshGuard.RevokeReason), Times.Once);
+        }
+
+        public static TheoryData<User> UsableUsers => new()
+        {
+            new User { ItemId = "u1", Active = true, IsVerified = true, Status = UserLifecycleStatus.Active },
+            // Never activated (invite / signup link): may hold a session, must keep refreshing.
+            new User { ItemId = "u1", Active = false, IsVerified = false, Status = UserLifecycleStatus.PendingVerification },
+            new User { ItemId = "u1", Active = false, IsVerified = false, Status = UserLifecycleStatus.Active },
+            // A document written before Status existed and later read with the enum's first value.
+            new User { ItemId = "u1", Active = true, IsVerified = true, Status = UserLifecycleStatus.PendingVerification },
+        };
+
+        [Theory]
+        [MemberData(nameof(UsableUsers))]
+        public async Task Rotate_UsableUser_StillRotates(User user)
+        {
+            SetupClient();
+            SetupValidRefreshToken(
+                new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "tenant-1", OrganizationId = "default" },
+                user);
+            SetupSuccessfulInner();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken()));
+
+            result.Should().BeOfType<OkObjectResult>();
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
         // ---------- token issuance outcome ----------
 
         [Fact]
@@ -265,6 +338,87 @@ namespace XUnitTest.Auth.Oidc
             var json = JsonSerializer.Serialize(ok.Value);
             json.Should().Contain("\"refresh_token\":\"new-refresh-token\"");
             json.Should().Contain("\"cookie_set\":false");
+        }
+
+        // ---------- blocks-iam#624: /oidc/token accepts a lineage rotated by switch-org or /auth/refresh ----------
+        //
+        // The successor below is produced by the real rotation rule from a hosted-OIDC predecessor whose
+        // client is "client-1", using the TokenRequest shape each endpoint builds -- including the
+        // pre-fix shape that named no client -- and is then presented to /oidc/token.
+
+        public static TheoryData<string, string?, string> EndpointRotations => new()
+        {
+            { GrantTypes.SwitchOrganization, "client-1", "org-b" },   // H3: switch-org, as fixed
+            { GrantTypes.SwitchOrganization, null, "org-b" },         // H3/H10: even a caller naming no client
+            { GrantTypes.RefreshToken, "client-1", "default" },       // H5: /auth/refresh, as fixed
+            { GrantTypes.RefreshToken, null, "default" },             // H5/H10
+        };
+
+        [Theory]
+        [MemberData(nameof(EndpointRotations))]
+        public async Task Rotate_LineageRotatedBySwitchOrgOrAuthRefresh_PassesTheClientCheckAndReturns200(
+            string grantType, string? requestedClient, string organizationId)
+        {
+            var (stored, successor) = await XUnitTest.Auth.Shared.RefreshTokenLineageTests.RotateOnceAsync(
+                XUnitTest.Auth.Shared.RefreshTokenLineageTests.HostedPredecessor(),
+                new TokenRequest { GrantType = grantType, ClientId = requestedClient, OrganizationId = organizationId });
+            stored.ClientId.Should().Be("client-1");
+            successor.ClientId.Should().Be("client-1");
+
+            SetupClient("client-1");
+            SetupValidRefreshToken(successor, new User { ItemId = successor.UserId! });
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("client-1", successor.RefreshToken!)));
+
+            result.Should().BeOfType<OkObjectResult>("the lineage still names a registered client");
+            minted.Should().ContainSingle().Which.ClientId.Should().Be("client-1");
+        }
+
+        [Fact]
+        public async Task Rotate_LineageWhoseClientMatchesTheRequest_RotatesAgainWithTheSameClientAndNoMismatch()
+        {
+            // H9: /oidc/token -> /oidc/token. The request the endpoint mints from names the stored
+            // client, which the rotation rule keeps as-is (the no-warning half is asserted by
+            // RefreshTokenLineageTests.Rotation_ResolvesTheSuccessorClientFromTheLineageWithoutWarning).
+            var predecessor = XUnitTest.Auth.Shared.RefreshTokenLineageTests.HostedPredecessor("rt-1");
+            SetupClient("client-1");
+            SetupValidRefreshToken(predecessor, new User { ItemId = predecessor.UserId! });
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("client-1", "rt-1")));
+
+            result.Should().BeOfType<OkObjectResult>();
+            var request = minted.Should().ContainSingle().Subject;
+            request.ClientId.Should().Be("client-1");
+
+            var (stored, successor) = await XUnitTest.Auth.Shared.RefreshTokenLineageTests.RotateOnceAsync(predecessor, request);
+            stored.ClientId.Should().Be("client-1");
+            successor.ClientId.Should().Be("client-1");
+        }
+
+        [Fact]
+        public async Task Rotate_ClientLessLineageAfterAuthRefresh_IsStillInvalidClient()
+        {
+            // C2: an already client-less lineage is not repaired by /auth/refresh, and /oidc/token keeps
+            // refusing it exactly as before.
+            var predecessor = XUnitTest.Auth.Shared.RefreshTokenLineageTests.HostedPredecessor();
+            predecessor.ClientId = string.Empty;
+            var (_, successor) = await XUnitTest.Auth.Shared.RefreshTokenLineageTests.RotateOnceAsync(
+                predecessor,
+                new TokenRequest { GrantType = GrantTypes.RefreshToken, ClientId = predecessor.ClientId, OrganizationId = "default" });
+            successor.ClientId.Should().BeNullOrEmpty();
+
+            SetupClient("client-1");
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
+            _sessionResolver.Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync(successor);
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("client-1", successor.RefreshToken!)));
+
+            var unauth = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
+            unauth.Value.Should().BeEquivalentTo(new { error = "invalid_client", error_description = "Client configuration not found" });
+            VerifyNothingWasMinted();
         }
 
         // ---------- impersonated refresh: one rotation, never a root intermediate ----------
@@ -526,5 +680,90 @@ namespace XUnitTest.Auth.Oidc
             _authRepo.Verify(r => r.UpdateImpersonationSessionAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>()), Times.Never);
         }
 
+            // ---------- the token is redeemable only by the client it was issued to ----------
+
+        private void SetupLineage(string lineageClientId)
+        {
+            SetupValidRefreshToken(
+                new RefreshTokenCache { UserId = "u1", ClientId = lineageClientId, TenantId = "tenant-1", OrganizationId = "default", RefreshToken = "rt-1", RefreshTokenSessionId = "lineage-1" },
+                new User { ItemId = "u1" });
+        }
+
+        [Fact]
+        public async Task Rotate_RequestClientMatchesLineageClient_Rotates()
+        {
+            SetupClient("c1");
+            SetupLineage("c1");
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("c1")));
+
+            result.Should().BeOfType<OkObjectResult>();
+            minted.Should().ContainSingle().Which.ClientId.Should().Be("c1");
+        }
+
+        [Fact]
+        public async Task Rotate_RequestClientDiffersFromLineageClient_ReturnsInvalidGrant_AndMintsNothing()
+        {
+            SetupClient("c2");
+            SetupClient("c1");
+            SetupLineage("c1");
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("c2")));
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            bad.Value.Should().BeEquivalentTo(new { error = "invalid_grant", error_description = "Refresh token was not issued to this client" });
+            minted.Should().BeEmpty();
+            _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Rotate_ClientIdComparison_IsCaseSensitive()
+        {
+            SetupClient("C1");
+            SetupClient("c1");
+            SetupLineage("c1");
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("C1")));
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+            minted.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task Rotate_PublicClientWithoutSecret_MatchingLineage_Rotates()
+        {
+            SetupValidRefreshToken(
+                new RefreshTokenCache { UserId = "u1", ClientId = "spa", TenantId = "tenant-1", OrganizationId = "default", RefreshToken = "rt-1" },
+                new User { ItemId = "u1" });
+            // A public client has no secret to send; it only has to be the token's client.
+            _authRepo.Setup(r => r.GetOidcClientRegistrationAsync("spa"))
+                .ReturnsAsync(new OidcClientRegistration { ClientId = "spa", ClientType = "public", TokenEndpointAuthMethod = "none", UseTokensCookie = false });
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("spa")));
+
+            result.Should().BeOfType<OkObjectResult>();
+            minted.Should().ContainSingle();
+        }
+
+        [Fact]
+        public async Task Rotate_LineageWithoutClient_KeepsTheInvalidClientAnswer()
+        {
+            // Unchanged behavior: a client-less lineage was refused before the binding check existed.
+            SetupClient("c1");
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
+            _sessionResolver.Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync(new RefreshTokenCache { UserId = "u1", ClientId = "", TenantId = "tenant-1" });
+            var minted = CaptureMintedRequests();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken("c1")));
+
+            var unauth = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
+            unauth.Value.Should().BeEquivalentTo(new { error = "invalid_client", error_description = "Client configuration not found" });
+            minted.Should().BeEmpty();
+        }
     }
 }

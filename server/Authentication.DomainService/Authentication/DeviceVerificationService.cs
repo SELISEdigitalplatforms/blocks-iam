@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -27,6 +28,8 @@ namespace Authentication.DomainService.Authentication
     /// </summary>
     public sealed class DeviceVerificationService
     {
+        private const string UserCodeNotFoundMessage = "user_code not found";
+
         private readonly IDeviceAuthorizationRepository _repository;
         private readonly IIdpSessionRepository _sessionRepository;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -63,13 +66,13 @@ namespace Authentication.DomainService.Authentication
             var entity = await _repository.GetByUserCodeAsync(normalizedCode, ct);
             if (entity == null)
             {
-                return DeviceEndpointErrors.InvalidGrant("user_code not found");
+                return DeviceEndpointErrors.InvalidGrant(UserCodeNotFoundMessage);
             }
 
             if (!RequestTenantMatches(httpContext.Request, entity.TenantId))
             {
                 _logger.LogWarning("Device verify tenant mismatch for request {RequestId}", entity.Id);
-                return DeviceEndpointErrors.InvalidGrant("user_code not found");
+                return DeviceEndpointErrors.InvalidGrant(UserCodeNotFoundMessage);
             }
 
             if (entity.Status == DeviceAuthorizationStatus.Expired
@@ -162,7 +165,7 @@ namespace Authentication.DomainService.Authentication
             var entity = await _repository.GetByUserCodeAsync(normalizedCode, ct);
             if (entity == null)
             {
-                return new ObjectResult(new { error = "invalid_grant", error_description = "user_code not found" })
+                return new ObjectResult(new { error = "invalid_grant", error_description = UserCodeNotFoundMessage })
                 {
                     StatusCode = StatusCodes.Status400BadRequest
                 };
@@ -171,13 +174,44 @@ namespace Authentication.DomainService.Authentication
             if (!RequestTenantMatches(httpContext.Request, entity.TenantId))
             {
                 _logger.LogWarning("Device decision tenant mismatch for request {RequestId}", entity.Id);
-                return new ObjectResult(new { error = "invalid_grant", error_description = "user_code not found" })
+                return new ObjectResult(new { error = "invalid_grant", error_description = UserCodeNotFoundMessage })
                 {
                     StatusCode = StatusCodes.Status400BadRequest
                 };
             }
 
             var decision = (request.Decision ?? string.Empty).Trim().ToLowerInvariant();
+            var decisionError = ValidateDecisionRequest(request, entity, decision);
+            if (decisionError != null)
+            {
+                return decisionError;
+            }
+
+            var tenantId = entity.TenantId;
+            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request);
+            var (approverError, approverUserId) = await ResolveApproverAsync(httpContext, tenantId);
+            if (approverError != null)
+            {
+                return approverError;
+            }
+
+            var (ok, newStatus) = await ApplyDecisionAsync(entity, approverUserId!, decision, ct);
+
+            if (!ok)
+            {
+                _logger.LogWarning("Device decide CAS failed for {RequestId} (already terminal)", entity.Id);
+                return new ObjectResult(new { error = "request_not_pending" }) { StatusCode = StatusCodes.Status410Gone };
+            }
+
+            return new OkObjectResult(new DeviceApproveResponse
+            {
+                Redirect = $"{apiBase}/device/{Uri.EscapeDataString(tenantId)}/success?outcome={(newStatus == DeviceAuthorizationStatus.Approved ? "approved" : "denied")}",
+                Status = newStatus,
+            });
+        }
+
+        private IActionResult? ValidateDecisionRequest(DeviceDecisionRequest request, DeviceAuthorizationRequestModel entity, string decision)
+        {
             if (decision != "allow" && decision != "deny")
             {
                 return DeviceEndpointErrors.InvalidRequest("decision must be 'allow' or 'deny'");
@@ -203,27 +237,35 @@ namespace Authentication.DomainService.Authentication
                 return DeviceEndpointErrors.InvalidRequest("approval token is invalid");
             }
 
-            var tenantId = entity.TenantId;
-            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request);
+            return null;
+        }
+
+        private async Task<(IActionResult? Error, string? ApproverUserId)> ResolveApproverAsync(HttpContext httpContext, string tenantId)
+        {
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenantId)];
             if (string.IsNullOrWhiteSpace(sessionId))
             {
-                return new ObjectResult(new { error = "login_required" }) { StatusCode = StatusCodes.Status401Unauthorized };
+                return (new ObjectResult(new { error = "login_required" }) { StatusCode = StatusCodes.Status401Unauthorized }, null);
             }
 
             var session = await _sessionRepository.GetBySessionIdAsync(sessionId);
             if (!IsValidTenantSession(session, tenantId))
             {
-                return new ObjectResult(new { error = "login_required" }) { StatusCode = StatusCodes.Status401Unauthorized };
+                return (new ObjectResult(new { error = "login_required" }) { StatusCode = StatusCodes.Status401Unauthorized }, null);
             }
 
             var approver = session?.Accounts.FirstOrDefault(a =>
                 string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
             if (approver == null)
             {
-                return new ObjectResult(new { error = "login_required" }) { StatusCode = StatusCodes.Status401Unauthorized };
+                return (new ObjectResult(new { error = "login_required" }) { StatusCode = StatusCodes.Status401Unauthorized }, null);
             }
 
+            return (null, approver.UserId);
+        }
+
+        private async Task<(bool Ok, string NewStatus)> ApplyDecisionAsync(DeviceAuthorizationRequestModel entity, string approverUserId, string decision, CancellationToken ct)
+        {
             var now = DateTime.UtcNow;
             bool ok;
             string newStatus;
@@ -232,7 +274,7 @@ namespace Authentication.DomainService.Authentication
                 // Resolve the same effective org a normal authorization_code login would use
                 // (OidcAuthorizationEndpoint), so a device-flow token carries the org the user
                 // actually has access to instead of minting with no OrganizationId at all.
-                var approvingUser = await _authenticationRepository.GetUserByIdAsync(approver.UserId);
+                var approvingUser = await _authenticationRepository.GetUserByIdAsync(approverUserId);
                 var tenantConfiguration = await _resourceRepository.GetTenantConfigurationAsync();
                 var organizationId = approvingUser != null
                     ? OrganizationAccessResolver.ResolveEffectiveOrganizationId(
@@ -240,7 +282,7 @@ namespace Authentication.DomainService.Authentication
                         tenantConfiguration?.IsMultiOrgEnabled ?? false)
                     : null;
 
-                ok = await _repository.MarkApprovedAsync(entity.Id, approver.UserId, now, ct, organizationId);
+                ok = await _repository.MarkApprovedAsync(entity.Id, approverUserId, now, ct, organizationId);
                 newStatus = DeviceAuthorizationStatus.Approved;
             }
             else
@@ -249,17 +291,7 @@ namespace Authentication.DomainService.Authentication
                 newStatus = DeviceAuthorizationStatus.Denied;
             }
 
-            if (!ok)
-            {
-                _logger.LogWarning("Device decide CAS failed for {RequestId} (already terminal)", entity.Id);
-                return new ObjectResult(new { error = "request_not_pending" }) { StatusCode = StatusCodes.Status410Gone };
-            }
-
-            return new OkObjectResult(new DeviceApproveResponse
-            {
-                Redirect = $"{apiBase}/device/{Uri.EscapeDataString(tenantId)}/success?outcome={(newStatus == DeviceAuthorizationStatus.Approved ? "approved" : "denied")}",
-                Status = newStatus,
-            });
+            return (ok, newStatus);
         }
 
         public IActionResult EntryAsync(HttpRequest request)
