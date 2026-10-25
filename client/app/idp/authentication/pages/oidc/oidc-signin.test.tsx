@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -146,6 +146,49 @@ describe("OIDCSignin", () => {
     const form = screen.getByTestId("login-form");
     expect(form).toHaveTextContent("client=url-client");
     expect(form).toHaveTextContent("redirect=https://app/url-cb");
+  });
+
+  describe("/oidc/login with no application", () => {
+    const renderWithLoginRoute = (entry: string) =>
+      render(
+        <MemoryRouter initialEntries={[entry]}>
+          <Routes>
+            <Route path="/oidc/login" element={<OIDCSignin />} />
+            <Route path="/login" element={<div data-testid="iam-login" />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+    beforeEach(() => setPath("/oidc/login"));
+
+    it("redirects to IAM's own /login instead of the dead-end card", () => {
+      renderWithLoginRoute("/oidc/login?brandColor=%23124091");
+      expect(screen.getByTestId("iam-login")).toBeInTheDocument();
+      expect(screen.queryByTestId("signin")).not.toBeInTheDocument();
+    });
+
+    it("stays when the link names a tenant", () => {
+      renderWithLoginRoute("/oidc/login?tenant_id=tenant-1");
+      expect(screen.queryByTestId("iam-login")).not.toBeInTheDocument();
+      expect(screen.getByTestId("signin")).toBeInTheDocument();
+    });
+
+    it("stays when the flow context holds a client", () => {
+      h.context = { clientId: "client-1" };
+      renderWithLoginRoute("/oidc/login");
+      expect(screen.queryByTestId("iam-login")).not.toBeInTheDocument();
+    });
+
+    it("stays for a device-flow return trip", () => {
+      renderWithLoginRoute("/oidc/login?returnUrl=https%3A%2F%2Fiam.example.com%2Fdevice%2Ft");
+      expect(screen.queryByTestId("iam-login")).not.toBeInTheDocument();
+    });
+
+    it("stays while a social sign-in code is being redeemed", () => {
+      h.signinBySSO.mockReturnValue(new Promise(() => {}));
+      renderWithLoginRoute("/oidc/login?code=abc&state=xyz");
+      expect(screen.queryByTestId("iam-login")).not.toBeInTheDocument();
+    });
   });
 
   it("completes social sign-in and navigates to the permission screen", async () => {

@@ -40,9 +40,9 @@ namespace Api.Controllers
         public async Task<IActionResult> GetSummary([FromQuery] string? uid, CancellationToken ct)
         {
             var actor = ResolveActor(uid);
-            if (string.IsNullOrWhiteSpace(actor))
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
             {
-                return BadRequest(new { error = "user_id_required" });
+                return GrantNotAllowed();
             }
             var summary = await _securityQueryService.GetSecuritySummaryAsync(actor, ct);
             return Ok(summary);
@@ -53,9 +53,9 @@ namespace Api.Controllers
         public async Task<ActionResult<IReadOnlyList<UserSessionDto>>> GetUserSessions([FromQuery] string? uid, CancellationToken ct)
         {
             var actor = ResolveActor(uid);
-            if (string.IsNullOrWhiteSpace(actor))
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
             {
-                return BadRequest(new { error = "user_id_required" });
+                return GrantNotAllowed();
             }
             var sessions = await _securityQueryService.GetUserSessionsAsync(actor, ct);
             return Ok(sessions);
@@ -69,9 +69,9 @@ namespace Api.Controllers
             CancellationToken ct)
         {
             var actor = ResolveActor(uid);
-            if (string.IsNullOrWhiteSpace(actor))
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
             {
-                return BadRequest(new { error = "user_id_required" });
+                return GrantNotAllowed();
             }
 
             var details = await _securityQueryService.GetSessionDetailsAsync(actor, sessionId, ct);
@@ -89,8 +89,8 @@ namespace Api.Controllers
             [FromBody] RevokeSessionRequest? req,
             CancellationToken ct)
         {
-            var actor = ResolveActor(req.UserId);
-            if (!await MayRevokeForAsync(actor).ConfigureAwait(false))
+            var actor = ResolveActor(req?.UserId);
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
             {
                 return GrantNotAllowed();
             }
@@ -105,6 +105,11 @@ namespace Api.Controllers
                 return BadRequest(new { error = "cannot_revoke_current_session", hint = "POST /auth/logout" });
             }
 
+            if (result.Warnings.Contains("session_not_found"))
+            {
+                return BadRequest(new { error = "session_not_found" });
+            }
+
             return Ok(result);
         }
 
@@ -117,8 +122,8 @@ namespace Api.Controllers
             [FromBody] RevokeSessionRequest? req,
             CancellationToken ct)
         {
-            var actor = ResolveActor(req.UserId);
-            if (!await MayRevokeForAsync(actor).ConfigureAwait(false))
+            var actor = ResolveActor(req?.UserId);
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
             {
                 return GrantNotAllowed();
             }
@@ -133,6 +138,11 @@ namespace Api.Controllers
                 return BadRequest(new { error = "cannot_revoke_current_session", hint = "POST /auth/logout" });
             }
 
+            if (result.Warnings.Contains("refresh_token_not_found"))
+            {
+                return BadRequest(new { error = "refresh_token_not_found" });
+            }
+
             return Ok(result);
         }
 
@@ -143,9 +153,9 @@ namespace Api.Controllers
             CancellationToken ct)
         {
             var actor = ResolveActor(payload?.UserId);
-            if (string.IsNullOrWhiteSpace(actor))
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
             {
-                return BadRequest(new { error = "user_id_required" });
+                return GrantNotAllowed();
             }
 
             var req = new GetActivitiesRequest
@@ -185,13 +195,27 @@ namespace Api.Controllers
         }
 
         /// <summary>
-        /// Revoking another user's session is managing that user (access grant, R3);
-        /// revoking one's own is self-service and always allowed.
+        /// Whose sessions and activity a call may read or revoke. A user may always act on themselves.
+        /// Acting on another user is managing that user (access grant, R3), and only the Blocks OS console
+        /// may do it: a project's own token, as an app such as Construct holds, acts on its own user alone.
+        /// A token with no user, such as a client credential, acts on no one.
         /// </summary>
-        private Task<bool> MayRevokeForAsync(string actor) =>
-            string.Equals(actor, BlocksContext.GetContext()?.UserId, StringComparison.Ordinal)
-                ? Task.FromResult(true)
-                : _accessGrant.AuthorizeManageUserAsync(actor);
+        private async Task<bool> MayActForAsync(string actor)
+        {
+            var caller = BlocksContext.GetContext()?.UserId;
+            if (string.IsNullOrWhiteSpace(caller))
+            {
+                return false;
+            }
+
+            if (string.Equals(actor, caller, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return _accessGrant.IsConsoleCaller()
+                && await _accessGrant.AuthorizeManageUserAsync(actor).ConfigureAwait(false);
+        }
 
         private ObjectResult GrantNotAllowed() =>
             StatusCode(StatusCodes.Status403Forbidden, new { error = AccessGrantErrors.GrantNotAllowed });

@@ -13,6 +13,13 @@ namespace Iam.DomainService.AccessGrant
         /// <summary>The current caller from <c>BlocksContext</c>; never null.</summary>
         GrantCaller CurrentCaller();
 
+        /// <summary>
+        /// True when the current call comes from the Blocks OS console: an impersonated token (OS acting
+        /// inside a project) or a root-tenant token (OS on its own tenant). A project's own token, as an
+        /// app such as Construct holds, is not. Both signals are signed token claims.
+        /// </summary>
+        bool IsConsoleCaller();
+
         /// <summary>The current caller's power in its token organization. No reads for the system user.</summary>
         Task<GrantScope> GetScopeAsync();
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { Loader } from "lucide-react";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@seliseblocks/genesis-os";
@@ -104,6 +104,23 @@ export const OIDCSignin = () => {
 
     activateSocial();
   }, [code, navigate, oidcContext.clientId, oidcContext.userName, setAuthenticated, setTokens, state]);
+
+  // `/oidc/login` with no application at all — no client, no return address, no tenant —
+  // is reached from a bookmark or an IAM page whose "Sign in" link lost the flow. The
+  // fallback card below then reads IAM's own login options, and IAM's own tenant allows
+  // only authorization_code, so it can only render "this sign-in link is missing the
+  // application". Send the user to `/login` instead: it starts IAM's own OIDC request and
+  // comes back here with a client, so the real form renders.
+  const hasApplication = !!(
+    effectiveClientId ||
+    oidcContext.redirectUri ||
+    urlRedirectUri ||
+    effectiveReturnUrl ||
+    tenantId
+  );
+  if (isOidcPasswordFlow && !code && !hasApplication) {
+    return <Navigate to="/login" replace />;
+  }
 
   if (isActivatingSocial) {
     return (
