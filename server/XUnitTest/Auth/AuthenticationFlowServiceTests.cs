@@ -785,7 +785,8 @@ namespace XUnitTest.Auth
             var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-            Prop(ok.Value, "refresh_token").Should().Be("successor-rt");
+            ok.Value.Should().BeAssignableTo<IDictionary<string, object?>>()
+                .Which["refresh_token"].Should().Be("successor-rt");
             _refresher.Verify(r => r.AuthenticateAsync(
                 It.Is<TokenRequest>(t => t.GraceReplayTokenId == "successor-rt"
                                       && t.GraceReplayAbsoluteExpiry == successor.AbsoluteExpiresUtc),
@@ -860,21 +861,72 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task Refresh_HappyPath_ReturnsOkWithTokens()
+        public async Task Refresh_NoAppDomain_ReturnsTokensInBody()
+        {
+            var body = await RefreshOkBody(tenant: null, origin: null);
+
+            body["access_token"].Should().Be("new-at");
+            body["refresh_token"].Should().Be("new-rt");
+            body["cookie_set"].Should().Be(false);
+        }
+
+        [Fact]
+        public async Task Refresh_CookiesSet_OmitsTokensFromBody()
+        {
+            var ctx = new DefaultHttpContext();
+
+            var body = await RefreshOkBody(AppTenant(), "https://app.example.com", ctx);
+
+            body["cookie_set"].Should().Be(true);
+            body.Should().NotContainKey("access_token");
+            body.Should().NotContainKey("refresh_token");
+            ctx.Response.Headers.Should().ContainKey("Set-Cookie");
+        }
+
+        [Fact]
+        public async Task Refresh_ClientOptedOutOfCookies_ReturnsTokensInBodyAndSetsNoCookie()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("client-1"))
+                .ReturnsAsync(new OidcClientRegistration { ClientId = "client-1", UseTokensCookie = false });
+            var ctx = new DefaultHttpContext();
+
+            var body = await RefreshOkBody(AppTenant(), "https://app.example.com", ctx);
+
+            body["access_token"].Should().Be("new-at");
+            body["cookie_set"].Should().Be(false);
+            ctx.Response.Headers.Should().NotContainKey("Set-Cookie");
+        }
+
+        private async Task<IDictionary<string, object?>> RefreshOkBody(Tenant? tenant, string? origin, DefaultHttpContext? ctx = null)
         {
             Resolves(Session());
             _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
             _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
-                .ReturnsAsync(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });
-            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
-            var ctx = new DefaultHttpContext();
+                .ReturnsAsync(new TokenResponse
+                {
+                    AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600,
+                    ExpiresUtc = DateTime.UtcNow.AddHours(1), RefreshExpiresUtc = DateTime.UtcNow.AddHours(5)
+                });
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync(tenant!);
+            ctx ??= new DefaultHttpContext();
+            if (origin != null)
+            {
+                ctx.Request.Headers["Origin"] = origin;
+            }
 
             var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-            Prop(ok.Value, "access_token").Should().Be("new-at");
-            Prop(ok.Value, "cookie_set").Should().Be(true);
+            return ok.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
         }
+
+        private static Tenant AppTenant() => new()
+        {
+            TenantId = TenantId,
+            DbConnectionString = "",
+            Applications = new List<Applications> { new() { Domain = "app.example.com", CookieDomain = ".example.com", IsDomainVerified = true } },
+            JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = "", IssueDate = DateTime.UtcNow }
+        };
 
         // ==================== blocks-iam#624 — /auth/refresh keeps the lineage's OIDC client ====================
 

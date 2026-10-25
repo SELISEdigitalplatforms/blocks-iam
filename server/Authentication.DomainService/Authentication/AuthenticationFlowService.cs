@@ -659,18 +659,24 @@ namespace Authentication.DomainService.Authentication
             var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
             var tenant = await _tokenRefresher.GetTenantByIDAsync(tenantId);
             var (domain, _, _) = DomainResolver.ResolveDomain(tenant, httpRequest);
-            AppendCookies(response, httpResponse, domain);
 
-            return new OkObjectResult(new
+            // Same rule as login: tokens go in cookies or in the body, never both. A client that opted
+            // out of cookies, or a caller with no app domain (CLI, server), gets them in the body.
+            var cookiesSet = await UsesTokensCookieAsync(tokenCache.ClientId)
+                && AppendCookies(response, httpResponse, domain);
+
+            return new OkObjectResult(TokenResponsePayload.Build(response, cookiesSet));
+        }
+
+        private async Task<bool> UsesTokensCookieAsync(string? clientId)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
             {
-                access_token = response.AccessToken,
-                refresh_token = response.RefreshToken,
-                token_type = response.TokenType,
-                expires_in = response.ExpiresIn,
-                scope = response.Scope,
-                id_token = response.IdToken,
-                cookie_set = true
-            });
+                return true;
+            }
+
+            var registration = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
+            return registration?.UseTokensCookie ?? true;
         }
 
         private static ObjectResult BuildRefreshErrorResult(TokenResponse response)
@@ -713,7 +719,7 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
+        private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string? domain)
         {
             return CookieHelper.AppendCookies(response, httpResponse, domain);
         }

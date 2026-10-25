@@ -1,6 +1,6 @@
-using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.RequestModel;
+using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.Services;
 using Blocks.Genesis;
 using Blocks.Genesis.Entities.Iam;
@@ -17,10 +17,10 @@ namespace XUnitTest.Auth.Shared
     /// </summary>
     public class OidcClientTokenLifetimeServiceTests
     {
-        private readonly Mock<IKeyValueStore> _store = new();
+        private readonly Mock<IAuthenticationRepository> _repo = new();
 
         private OidcClientTokenLifetimeService Sut() =>
-            new(_store.Object, NullLogger<OidcClientTokenLifetimeService>.Instance);
+            new(_repo.Object, NullLogger<OidcClientTokenLifetimeService>.Instance);
 
         private static IdentityConfiguration Project() => new()
         {
@@ -34,9 +34,8 @@ namespace XUnitTest.Auth.Shared
         };
 
         private void Stored(string clientId, OidcClientTokenLifetimes? value) =>
-            _store.Setup(s => s.GetAsync<OidcClientTokenLifetimes>(
-                    OidcClientTokenLifetimeService.StoreKeyPrefix + clientId, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(value);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(clientId))
+                .ReturnsAsync(new OidcClientRegistration { ItemId = clientId, ClientId = clientId, TokenLifetimes = value });
 
         // ---------- ApplyAsync: unchanged project instance (C1, C2) ----------
 
@@ -51,7 +50,7 @@ namespace XUnitTest.Auth.Shared
             var result = await Sut().ApplyAsync(project, clientId);
 
             result.Should().BeSameAs(project);
-            _store.Verify(s => s.GetAsync<OidcClientTokenLifetimes>(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+            _repo.Verify(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
@@ -63,14 +62,14 @@ namespace XUnitTest.Auth.Shared
             var result = await Sut().ApplyAsync(project, "cid");
 
             result.Should().BeSameAs(project);
-            _store.Verify(s => s.GetAsync<OidcClientTokenLifetimes>("oidc-client-token-lifetimes:cid", It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Once);
+            _repo.Verify(r => r.GetOidcClientRegistrationAsync("cid"), Times.Once);
         }
 
         [Fact]
         public async Task Apply_EntryWithNoValue_ReturnsSameInstance()
         {
             var project = Project();
-            Stored("cid", new OidcClientTokenLifetimes { ClientId = "cid" });
+            Stored("cid", new OidcClientTokenLifetimes());
 
             (await Sut().ApplyAsync(project, "cid")).Should().BeSameAs(project);
         }
@@ -204,54 +203,28 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task Apply_StoreReadFails_ThrowsInsteadOfFallingBack()
         {
-            _store.Setup(s => s.GetAsync<OidcClientTokenLifetimes>(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
                 .ThrowsAsync(new TimeoutException("store unavailable"));
 
             await Assert.ThrowsAsync<TimeoutException>(() => Sut().ApplyAsync(Project(), "cid"));
         }
 
-        // ---------- Save / Get / Delete ----------
+        // ---------- Get ----------
 
         [Fact]
-        public async Task Save_WithValues_UpsertsUnderTheClientKey_WithClientId()
+        public async Task Get_UnknownClient_IsReportedAsNone()
         {
-            OidcClientTokenLifetimes? written = null;
-            _store.Setup(s => s.SetAsync("oidc-client-token-lifetimes:cid", It.IsAny<OidcClientTokenLifetimes>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-                .Callback<string, OidcClientTokenLifetimes, bool, CancellationToken>((_, v, _, _) => written = v)
-                .Returns(Task.CompletedTask);
-
-            await Sut().SaveAsync("cid", new OidcClientTokenLifetimes { ClientId = "other", AccessTokenValidForNumberMinutes = 30 });
-
-            written.Should().NotBeNull();
-            written!.ClientId.Should().Be("cid");
-            written.AccessTokenValidForNumberMinutes.Should().Be(30);
-            written.RefreshTokenValidForNumberMinutes.Should().BeNull();
-            _store.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task Save_AllNull_DeletesTheEntry()
-        {
-            await Sut().SaveAsync("cid", new OidcClientTokenLifetimes());
-
-            _store.Verify(s => s.DeleteAsync("oidc-client-token-lifetimes:cid", It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Once);
-            _store.Verify(s => s.SetAsync(It.IsAny<string>(), It.IsAny<OidcClientTokenLifetimes>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task Get_EntryWithoutValues_IsReportedAsNone()
-        {
-            Stored("cid", new OidcClientTokenLifetimes { ClientId = "cid" });
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("cid")).ReturnsAsync((OidcClientRegistration)null!);
 
             (await Sut().GetAsync("cid")).Should().BeNull();
         }
 
         [Fact]
-        public async Task Delete_BlankClientId_DoesNothing()
+        public async Task Get_EntryWithoutValues_IsReportedAsNone()
         {
-            await Sut().DeleteAsync("");
+            Stored("cid", new OidcClientTokenLifetimes());
 
-            _store.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+            (await Sut().GetAsync("cid")).Should().BeNull();
         }
 
         // ---------- Request validation (C3, C4, C5) ----------
