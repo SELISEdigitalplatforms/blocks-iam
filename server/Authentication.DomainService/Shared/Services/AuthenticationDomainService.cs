@@ -32,11 +32,8 @@ namespace Authentication.DomainService.Services
         private readonly IValidator<SaveIdentityProviderRequest> _saveIdpValidator;
         private readonly IValidator<UpdateIdentityProviderRequest> _updateIdpValidator;
         private readonly IHttpClientFactory _httpClientFactory;
-        private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
         private readonly ILogger<AuthenticationDomainService>? _logger;
         private readonly IBuiltInNotificationSender? _notificationSender;
-
-        public const string TokenLifetimesSaveFailedMessage = "Token lifetimes could not be saved. Try again.";
 
         private const string Origin_Header_Name = "Origin";
         private const string Referer_Header_Name = "Referer";
@@ -46,7 +43,6 @@ namespace Authentication.DomainService.Services
                                            IAuthenticationRepository authenticationRepository,
                                            AuthenticationRequestValidators validators,
                                            IHttpClientFactory httpClientFactory,
-                                           IOidcClientTokenLifetimeService? clientTokenLifetimes = null,
                                            ILogger<AuthenticationDomainService>? logger = null,
                                            IBuiltInNotificationSender? notificationSender = null)
         {
@@ -58,7 +54,6 @@ namespace Authentication.DomainService.Services
             _saveIdpValidator = validators.SaveIdentityProvider;
             _updateIdpValidator = validators.UpdateIdentityProvider;
             _httpClientFactory = httpClientFactory;
-            _clientTokenLifetimes = clientTokenLifetimes;
             _logger = logger;
         }
 
@@ -172,6 +167,7 @@ namespace Authentication.DomainService.Services
             var (credential, isNewClient) = await InitializeOidcClientCredentialAsync(request);
             ApplyOidcClientScopesAndRedirects(credential, request);
             ApplyOidcClientOptions(credential, request);
+            ApplyOidcClientTokenLifetimes(credential, request.TokenLifetimes, isNewClient);
 
             await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
 
@@ -238,19 +234,6 @@ namespace Authentication.DomainService.Services
                     // Mirrors DeleteOidcClientAsync which also cleans up by ClientId.
                     await _authenticationRepository.DeleteIdentityProviderAsync(existingProvider.ItemId);
                 }
-            }
-
-            if (!await TrySaveTokenLifetimesAsync(credential.ClientId, request.TokenLifetimes, isNewClient))
-            {
-                return new SaveOIDCClientResponse
-                {
-                    IsSuccess = false,
-                    ItemId = credential.ItemId,
-                    Errors = new Dictionary<string, string>
-                    {
-                        { nameof(SaveOIDCClientRequest.TokenLifetimes), TokenLifetimesSaveFailedMessage }
-                    }
-                };
             }
 
             if (isNewClient)
@@ -350,35 +333,17 @@ namespace Authentication.DomainService.Services
         }
 
         /// <summary>
-        /// Absent lifetimes keep an existing client's stored values; a new client never inherits an entry
-        /// left under the same id. Runs after the client document is saved; a failure is reported to the
-        /// caller and the previous values stay in force.
+        /// Absent lifetimes keep an existing client's values; a new client starts with none. Present lifetimes
+        /// replace them, and all-empty lifetimes clear them (back to the project values). Saved with the client.
         /// </summary>
-        private async Task<bool> TrySaveTokenLifetimesAsync(string clientId, OidcClientTokenLifetimes? lifetimes, bool isNewClient)
+        private static void ApplyOidcClientTokenLifetimes(OidcClientRegistration credential, OidcClientTokenLifetimes? requested, bool isNewClient)
         {
-            if (_clientTokenLifetimes == null || (lifetimes == null && !isNewClient))
+            if (requested == null && !isNewClient)
             {
-                return true;
+                return;
             }
 
-            try
-            {
-                if (lifetimes == null)
-                {
-                    await _clientTokenLifetimes.DeleteAsync(clientId);
-                }
-                else
-                {
-                    await _clientTokenLifetimes.SaveAsync(clientId, lifetimes);
-                }
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "Saving OIDC client token lifetimes failed. clientId={ClientId}", clientId);
-                return false;
-            }
+            credential.TokenLifetimes = OidcClientTokenLifetimeService.OwnValues(requested);
         }
 
         private async Task<(OidcClientRegistration Credential, bool IsNew)> InitializeOidcClientCredentialAsync(SaveOIDCClientRequest request)
@@ -487,15 +452,10 @@ namespace Authentication.DomainService.Services
             credential.RegisterAsIdentityProvider = !request.IsDeviceFlowClient && request.RegisterAsIdentityProvider;
         }
 
-        private static string ResolveTokenLifetimesKey(OidcClientRegistration client) =>
-            string.IsNullOrWhiteSpace(client.ClientId) ? client.ItemId : client.ClientId;
-
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
         {
             var client = await _authenticationRepository.GetOIDCCredentialByIdAsync(tenantId);
-            var tokenLifetimes = client != null && _clientTokenLifetimes != null
-                ? await _clientTokenLifetimes.GetAsync(ResolveTokenLifetimesKey(client))
-                : null;
+            var tokenLifetimes = OidcClientTokenLifetimeService.OwnValues(client?.TokenLifetimes);
             HideSecret(client);
             return new GetOIDCClientResponse
             {
@@ -573,15 +533,7 @@ namespace Authentication.DomainService.Services
             // Get the OIDC client before deletion to know the ClientId
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
 
-            // The client's token lifetimes go first: if this fails the client stays, so no values are
-            // left behind for a later client created under the same id.
-            if (_clientTokenLifetimes != null)
-            {
-                var lifetimesKey = !string.IsNullOrWhiteSpace(credential?.ClientId) ? credential.ClientId : request.ItemId;
-                await _clientTokenLifetimes.DeleteAsync(lifetimesKey ?? string.Empty);
-            }
-
-            // Delete the OIDC client registration
+            // Delete the OIDC client registration (its token lifetimes are part of it)
             await _authenticationRepository.DeleteOidcClientAsync(request);
 
             // Delete the related IdentityProvider by ClientId

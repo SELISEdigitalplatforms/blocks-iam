@@ -1,4 +1,4 @@
-using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Blocks.Genesis.Entities.Iam;
 using Microsoft.Extensions.Logging;
@@ -6,18 +6,13 @@ using Microsoft.Extensions.Logging;
 namespace Authentication.DomainService.Shared.Services
 {
     /// <summary>
-    /// Reads, writes and applies the optional per-OIDC-client token lifetimes.
+    /// Reads and applies the optional per-OIDC-client token lifetimes. They are stored on the client
+    /// document (<see cref="OidcClientRegistration.TokenLifetimes"/>) and written with it.
     /// </summary>
     public interface IOidcClientTokenLifetimeService
     {
-        /// <summary>The stored lifetimes of a client, or null when none are stored.</summary>
+        /// <summary>The client's own lifetimes, or null when the client has none (= project values).</summary>
         Task<OidcClientTokenLifetimes?> GetAsync(string clientId);
-
-        /// <summary>Stores the lifetimes; an entry with no value is deleted instead.</summary>
-        Task SaveAsync(string clientId, OidcClientTokenLifetimes lifetimes);
-
-        /// <summary>Deletes the stored lifetimes of a client (no-op when none are stored).</summary>
-        Task DeleteAsync(string clientId);
 
         /// <summary>
         /// Returns the configuration to issue tokens with for <paramref name="clientId"/>. When the client has
@@ -29,18 +24,14 @@ namespace Authentication.DomainService.Shared.Services
 
     public sealed class OidcClientTokenLifetimeService : IOidcClientTokenLifetimeService
     {
-        public const string StoreKeyPrefix = "oidc-client-token-lifetimes:";
-
-        private readonly IKeyValueStore _keyValueStore;
+        private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ILogger<OidcClientTokenLifetimeService> _logger;
 
-        public OidcClientTokenLifetimeService(IKeyValueStore keyValueStore, ILogger<OidcClientTokenLifetimeService> logger)
+        public OidcClientTokenLifetimeService(IAuthenticationRepository authenticationRepository, ILogger<OidcClientTokenLifetimeService> logger)
         {
-            _keyValueStore = keyValueStore;
+            _authenticationRepository = authenticationRepository;
             _logger = logger;
         }
-
-        public static string StoreKey(string clientId) => StoreKeyPrefix + clientId;
 
         public async Task<OidcClientTokenLifetimes?> GetAsync(string clientId)
         {
@@ -49,46 +40,20 @@ namespace Authentication.DomainService.Shared.Services
                 return null;
             }
 
-            var stored = await _keyValueStore.GetAsync<OidcClientTokenLifetimes>(StoreKey(clientId));
-            return stored != null && stored.HasAnyValue() ? stored : null;
+            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
+            return OwnValues(client?.TokenLifetimes);
         }
 
-        public async Task SaveAsync(string clientId, OidcClientTokenLifetimes lifetimes)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(clientId);
-            ArgumentNullException.ThrowIfNull(lifetimes);
-
-            if (!lifetimes.HasAnyValue())
-            {
-                await DeleteAsync(clientId);
-                return;
-            }
-
-            await _keyValueStore.SetAsync(StoreKey(clientId), new OidcClientTokenLifetimes
-            {
-                ClientId = clientId,
-                AccessTokenValidForNumberMinutes = lifetimes.AccessTokenValidForNumberMinutes,
-                RefreshTokenValidForNumberMinutes = lifetimes.RefreshTokenValidForNumberMinutes,
-                AbsoluteRefreshTokenValidForNumberMinutes = lifetimes.AbsoluteRefreshTokenValidForNumberMinutes
-            });
-
-            _logger.LogInformation(
-                "OIDC client token lifetimes saved. clientId={ClientId} accessMinutes={Access} slidingMinutes={Sliding} absoluteMinutes={Absolute}",
-                clientId,
-                lifetimes.AccessTokenValidForNumberMinutes,
-                lifetimes.RefreshTokenValidForNumberMinutes,
-                lifetimes.AbsoluteRefreshTokenValidForNumberMinutes);
-        }
-
-        public async Task DeleteAsync(string clientId)
-        {
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return;
-            }
-
-            await _keyValueStore.DeleteAsync(StoreKey(clientId));
-        }
+        /// <summary>The lifetimes to store or report: null when no field is set, so "all empty" = project values.</summary>
+        public static OidcClientTokenLifetimes? OwnValues(OidcClientTokenLifetimes? lifetimes) =>
+            lifetimes != null && lifetimes.HasAnyValue()
+                ? new OidcClientTokenLifetimes
+                {
+                    AccessTokenValidForNumberMinutes = lifetimes.AccessTokenValidForNumberMinutes,
+                    RefreshTokenValidForNumberMinutes = lifetimes.RefreshTokenValidForNumberMinutes,
+                    AbsoluteRefreshTokenValidForNumberMinutes = lifetimes.AbsoluteRefreshTokenValidForNumberMinutes
+                }
+                : null;
 
         public async Task<IdentityConfiguration?> ApplyAsync(IdentityConfiguration? projectConfiguration, string? clientId)
         {

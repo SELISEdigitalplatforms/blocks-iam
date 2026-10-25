@@ -600,7 +600,7 @@ namespace XUnitTest.IamTests.Notifications
                     new Mock<IValidator<SaveIdentityProviderRequest>>().Object,
                     new Mock<IValidator<UpdateIdentityProviderRequest>>().Object),
                 new Mock<IHttpClientFactory>().Object,
-                null, NullLogger<AuthenticationDomainService>.Instance, _sender);
+                NullLogger<AuthenticationDomainService>.Instance, _sender);
 
         [Fact]
         public async Task Create_NotifiesActor_WithClientIdOnly()

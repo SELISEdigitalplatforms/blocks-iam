@@ -2,7 +2,6 @@ using System.Security.Claims;
 using System.Text.Json;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Dtos;
-using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Repositories;
@@ -97,7 +96,7 @@ namespace XUnitTest.Auth.Shared
         private readonly Mock<IAuthenticationRepository> _repo = new();
         private readonly Mock<IValidator<SaveOIDCClientRequest>> _oidcValidator = new();
 
-        private AuthenticationDomainService DomainService(bool withLifetimes = true)
+        private AuthenticationDomainService DomainService()
         {
             _oidcValidator.Setup(v => v.ValidateAsync(It.IsAny<SaveOIDCClientRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
@@ -109,16 +108,38 @@ namespace XUnitTest.Auth.Shared
                     new Mock<IValidator<SaveIdentityProviderRequest>>().Object,
                     new Mock<IValidator<UpdateIdentityProviderRequest>>().Object),
                 new Mock<IHttpClientFactory>().Object,
-                withLifetimes ? _lifetimes.Object : null,
                 NullLogger<AuthenticationDomainService>.Instance);
         }
 
-        private void ExistingClient(string id = "cid") =>
-            _repo.Setup(r => r.GetOidcClientRegistrationAsync(id))
-                .ReturnsAsync(new OidcClientRegistration { ItemId = id, ClientId = id, ClientSecret = "s" });
+        /// <summary>A stored client document the fake repository reads and replaces, like Mongo would.</summary>
+        private OidcClientRegistration? _stored;
 
-        private void NoExistingClient() =>
-            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+        private void ExistingClient(string id = "cid", OidcClientTokenLifetimes? lifetimes = null)
+        {
+            _stored = new OidcClientRegistration { ItemId = id, ClientId = id, ClientSecret = "s", TokenLifetimes = lifetimes };
+            BackedByStoredDocument();
+        }
+
+        private void NoExistingClient()
+        {
+            _stored = null;
+            BackedByStoredDocument();
+        }
+
+        private void BackedByStoredDocument()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
+                .ReturnsAsync((string id) => _stored?.ItemId == id ? Copy(_stored) : null!);
+            _repo.Setup(r => r.GetOIDCCredentialByIdAsync(It.IsAny<string>()))
+                .ReturnsAsync((string id) => _stored?.ItemId == id ? Copy(_stored) : null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(c => _stored = Copy(c))
+                .Returns(Task.CompletedTask);
+        }
+
+        /// <summary>Round-trips through BSON so a test never shares an instance with the "database".</summary>
+        private static OidcClientRegistration Copy(OidcClientRegistration client) =>
+            MongoDB.Bson.Serialization.BsonSerializer.Deserialize<OidcClientRegistration>(MongoDB.Bson.BsonExtensionMethods.ToBson(client));
 
         private static SaveOIDCClientRequest SaveRequest(OidcClientTokenLifetimes? lifetimes, string? itemId = "cid") => new()
         {
@@ -129,71 +150,67 @@ namespace XUnitTest.Auth.Shared
             TokenLifetimes = lifetimes
         };
 
+        private async Task<OidcClientTokenLifetimes?> ShownLifetimes() =>
+            (await DomainService().GetOidcClientAsync("cid")).TokenLifetimes;
+
         [Fact]
-        public async Task Save_WithLifetimes_StoresThemAfterTheClient()
+        public async Task Save_DefaultThenCustomThenDefaultAgain_EachStepIsStoredAndShown()
         {
-            ExistingClient();
-            var order = new List<string>();
-            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
-                .Callback(() => order.Add("client")).Returns(Task.CompletedTask);
-            _lifetimes.Setup(l => l.SaveAsync("cid", It.IsAny<OidcClientTokenLifetimes>()))
-                .Callback(() => order.Add("lifetimes")).Returns(Task.CompletedTask);
+            NoExistingClient();
+            var service = DomainService();
 
-            var result = await DomainService().SaveOIDCClientAsync(SaveRequest(Custom));
+            // New client, project values: nothing stored.
+            (await service.SaveOIDCClientAsync(SaveRequest(null))).IsSuccess.Should().BeTrue();
+            _stored!.TokenLifetimes.Should().BeNull();
+            (await ShownLifetimes()).Should().BeNull();
 
-            result.IsSuccess.Should().BeTrue();
-            order.Should().Equal("client", "lifetimes");
-            _lifetimes.Verify(l => l.SaveAsync("cid", It.Is<OidcClientTokenLifetimes>(v =>
-                v.AccessTokenValidForNumberMinutes == 30 && v.RefreshTokenValidForNumberMinutes == 1440 && v.AbsoluteRefreshTokenValidForNumberMinutes == 43200)), Times.Once);
+            // Custom values for this client.
+            (await service.SaveOIDCClientAsync(SaveRequest(Custom))).IsSuccess.Should().BeTrue();
+            (await ShownLifetimes()).Should().BeEquivalentTo(Custom);
+
+            // Back to the project values: the form sends every field empty.
+            (await service.SaveOIDCClientAsync(SaveRequest(new OidcClientTokenLifetimes()))).IsSuccess.Should().BeTrue();
+            _stored!.TokenLifetimes.Should().BeNull();
+            (await ShownLifetimes()).Should().BeNull();
+
+            // And custom again.
+            var again = new OidcClientTokenLifetimes { AccessTokenValidForNumberMinutes = 60 };
+            (await service.SaveOIDCClientAsync(SaveRequest(again))).IsSuccess.Should().BeTrue();
+            (await ShownLifetimes()).Should().BeEquivalentTo(again);
         }
 
         [Fact]
-        public async Task Save_ExistingClientWithoutLifetimes_KeepsStoredValues()
+        public async Task Save_ExistingClientWithoutLifetimes_KeepsItsCustomValues()
         {
-            ExistingClient();
+            ExistingClient(lifetimes: Custom);
 
             var result = await DomainService().SaveOIDCClientAsync(SaveRequest(null));
 
             result.IsSuccess.Should().BeTrue();
-            _lifetimes.Verify(l => l.SaveAsync(It.IsAny<string>(), It.IsAny<OidcClientTokenLifetimes>()), Times.Never);
-            _lifetimes.Verify(l => l.DeleteAsync(It.IsAny<string>()), Times.Never);
+            _stored!.TokenLifetimes.Should().BeEquivalentTo(Custom);
             _repo.Verify(r => r.GetAuthenticationConfigurationAsync(), Times.Never);
         }
 
         [Fact]
-        public async Task Save_NewClientWithoutLifetimes_RemovesAnyLeftoverEntry()
+        public async Task Save_OneFieldCustom_OthersStayEmpty_SoTheyUseTheProjectValues()
         {
-            NoExistingClient();
+            ExistingClient(lifetimes: Custom);
 
-            var result = await DomainService().SaveOIDCClientAsync(SaveRequest(null, itemId: "reused-id"));
+            await DomainService().SaveOIDCClientAsync(SaveRequest(new OidcClientTokenLifetimes { AccessTokenValidForNumberMinutes = 45 }));
 
-            result.IsSuccess.Should().BeTrue();
-            _lifetimes.Verify(l => l.DeleteAsync("reused-id"), Times.Once);
+            _stored!.TokenLifetimes!.AccessTokenValidForNumberMinutes.Should().Be(45);
+            _stored.TokenLifetimes.RefreshTokenValidForNumberMinutes.Should().BeNull();
+            _stored.TokenLifetimes.AbsoluteRefreshTokenValidForNumberMinutes.Should().BeNull();
         }
 
         [Fact]
-        public async Task Save_AllNullLifetimes_IsPassedOnSoTheEntryIsCleared()
+        public async Task RotateSecret_KeepsTheClientsCustomValues()
         {
-            ExistingClient();
+            ExistingClient(lifetimes: Custom);
 
-            await DomainService().SaveOIDCClientAsync(SaveRequest(new OidcClientTokenLifetimes()));
+            (await DomainService().RotateOidcClientSecretAsync("cid")).IsSuccess.Should().BeTrue();
 
-            _lifetimes.Verify(l => l.SaveAsync("cid", It.Is<OidcClientTokenLifetimes>(v => !v.HasAnyValue())), Times.Once);
-        }
-
-        [Fact]
-        public async Task Save_LifetimeStoreFails_ReportsTokenLifetimesError_ClientStaysSaved()
-        {
-            ExistingClient();
-            _lifetimes.Setup(l => l.SaveAsync(It.IsAny<string>(), It.IsAny<OidcClientTokenLifetimes>()))
-                .ThrowsAsync(new TimeoutException("store unavailable"));
-
-            var result = await DomainService().SaveOIDCClientAsync(SaveRequest(Custom));
-
-            result.IsSuccess.Should().BeFalse();
-            result.Errors.Should().ContainKey("TokenLifetimes")
-                .WhoseValue.Should().Be(AuthenticationDomainService.TokenLifetimesSaveFailedMessage);
-            _repo.Verify(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()), Times.Once);
+            _stored!.TokenLifetimes.Should().BeEquivalentTo(Custom);
         }
 
         [Fact]
@@ -209,7 +226,6 @@ namespace XUnitTest.Auth.Shared
             result.IsSuccess.Should().BeFalse();
             result.Errors.Should().ContainKey("TokenLifetimes.AccessTokenValidForNumberMinutes");
             _repo.Verify(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()), Times.Never);
-            _lifetimes.Verify(l => l.SaveAsync(It.IsAny<string>(), It.IsAny<OidcClientTokenLifetimes>()), Times.Never);
         }
 
         [Fact]
@@ -224,7 +240,6 @@ namespace XUnitTest.Auth.Shared
             result.Errors.Should().ContainKey("TokenLifetimes.RefreshTokenValidForNumberMinutes")
                 .WhoseValue.Should().Contain("10080 minutes");
             _repo.Verify(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()), Times.Never);
-            _lifetimes.Verify(l => l.SaveAsync(It.IsAny<string>(), It.IsAny<OidcClientTokenLifetimes>()), Times.Never);
         }
 
         [Fact]
@@ -252,72 +267,14 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
-        public async Task Save_WithoutLifetimeService_BehavesAsBefore()
+        public async Task Get_UnknownClient_ReturnsNoLifetimes()
         {
-            ExistingClient();
-
-            var result = await DomainService(withLifetimes: false).SaveOIDCClientAsync(SaveRequest(Custom));
-
-            result.IsSuccess.Should().BeTrue();
-        }
-
-        [Fact]
-        public async Task Get_ReturnsStoredLifetimes_NextToTheClient()
-        {
-            _repo.Setup(r => r.GetOIDCCredentialByIdAsync("cid")).ReturnsAsync(new OidcClientRegistration { ItemId = "cid", ClientId = "cid" });
-            _lifetimes.Setup(l => l.GetAsync("cid")).ReturnsAsync(Custom);
-
-            var result = await DomainService().GetOidcClientAsync("cid");
-
-            result.oIDCClientCredential!.ClientId.Should().Be("cid");
-            result.TokenLifetimes.Should().BeSameAs(Custom);
-        }
-
-        [Fact]
-        public async Task Get_ClientWithoutLifetimes_ReturnsNull()
-        {
-            _repo.Setup(r => r.GetOIDCCredentialByIdAsync("cid")).ReturnsAsync(new OidcClientRegistration { ItemId = "cid", ClientId = "cid" });
-            _lifetimes.Setup(l => l.GetAsync("cid")).ReturnsAsync((OidcClientTokenLifetimes?)null);
-
-            (await DomainService().GetOidcClientAsync("cid")).TokenLifetimes.Should().BeNull();
-        }
-
-        [Fact]
-        public async Task Get_UnknownClient_DoesNotReadLifetimes()
-        {
-            _repo.Setup(r => r.GetOIDCCredentialByIdAsync("nope")).ReturnsAsync((OidcClientRegistration)null!);
+            NoExistingClient();
 
             var result = await DomainService().GetOidcClientAsync("nope");
 
             result.oIDCClientCredential.Should().BeNull();
             result.TokenLifetimes.Should().BeNull();
-            _lifetimes.Verify(l => l.GetAsync(It.IsAny<string>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task Delete_RemovesLifetimesBeforeTheClient()
-        {
-            ExistingClient();
-            _repo.Setup(r => r.GetIdentityProvidersAsync()).ReturnsAsync(new List<IdentityProvider>());
-            var order = new List<string>();
-            _lifetimes.Setup(l => l.DeleteAsync("cid")).Callback(() => order.Add("lifetimes")).Returns(Task.CompletedTask);
-            _repo.Setup(r => r.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>())).Callback(() => order.Add("client")).Returns(Task.CompletedTask);
-
-            var result = await DomainService().DeleteOidcClientAsync(new DeleteOIDCClientRequest { ItemId = "cid" });
-
-            result.IsSuccess.Should().BeTrue();
-            order.Should().Equal("lifetimes", "client");
-        }
-
-        [Fact]
-        public async Task Delete_LifetimeDeleteFails_ClientIsNotDeleted()
-        {
-            ExistingClient();
-            _lifetimes.Setup(l => l.DeleteAsync(It.IsAny<string>())).ThrowsAsync(new TimeoutException("store unavailable"));
-
-            await Assert.ThrowsAsync<TimeoutException>(() => DomainService().DeleteOidcClientAsync(new DeleteOIDCClientRequest { ItemId = "cid" }));
-
-            _repo.Verify(r => r.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>()), Times.Never);
         }
 
         // =====================================================================================
