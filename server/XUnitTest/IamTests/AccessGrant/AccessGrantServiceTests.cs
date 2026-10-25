@@ -295,6 +295,7 @@ namespace XUnitTest.IamTests.AccessGrant
             result.IsSystemUser.Should().BeFalse();
             result.IsTopUser.Should().BeFalse();
             result.HeldRoles.Should().Equal("manager");
+            result.PowerRoles.Should().Equal("manager");
             result.ManagedRoles.Should().Equal("viewer");
             result.AssignableRoles.Should().Equal("viewer");
             result.HeldPermissions.Should().Equal(

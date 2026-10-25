@@ -204,6 +204,7 @@ namespace Iam.DomainService.AccessGrant
                 IsSystemUser = scope.IsSystem,
                 IsTopUser = !scope.IsSystem && scope.IsTop,
                 HeldRoles = Sorted(scope.HeldRoles),
+                PowerRoles = Sorted(scope.PowerRoles),
                 ManagedRoles = Sorted(scope.ManagedRoles),
                 AssignableRoles = Sorted(assignable.Hierarchy.Concat(assignable.Standalone).Select(r => r.Slug)),
                 HeldPermissions = Sorted(scope.HeldPermissions),
