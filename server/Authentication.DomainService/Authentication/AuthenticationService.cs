@@ -1652,6 +1652,9 @@ namespace Authentication.DomainService.Authentication
         }
 
 
+        /// <summary>The impersonation session status a successful stop records.</summary>
+        private const string ImpersonationStoppedStatus = "ended_by_admin_stop";
+
         public async Task<IActionResult> ExecuteStopImpersonationAsync(StopImpersonationRequest request, HttpRequest httpRequest, HttpResponse httpResponse)
         {
             var bc = BlocksContext.GetContext();
@@ -1688,7 +1691,17 @@ namespace Authentication.DomainService.Authentication
 
             var rootRefreshCache = await _authSession.TryResolveRefreshSessionAsync(refreshToken, configuration);
 
-            if (rootRefreshCache == null || !rootRefreshCache.Impersonated)
+            // A stop whose answer never reached the client leaves it holding the impersonated token it
+            // presented here, while the lineage has already moved back to root. Its retry resolves onto that
+            // root successor; refusing it used to strand the client on the project's access token until
+            // that expired. Issuing the root pair again finishes the stop it already asked for.
+            var isRetryOfFinishedStop = rootRefreshCache != null
+                && !rootRefreshCache.Impersonated
+                && !string.Equals(rootRefreshCache.RefreshToken, refreshToken, StringComparison.Ordinal)
+                && string.Equals(session.Status, ImpersonationStoppedStatus, StringComparison.Ordinal)
+                && string.Equals(rootRefreshCache.UserId, bc.UserId, StringComparison.OrdinalIgnoreCase);
+
+            if (rootRefreshCache == null || (!rootRefreshCache.Impersonated && !isRetryOfFinishedStop))
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_refresh_token" });
             }
@@ -1727,22 +1740,30 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = tokenResponse.Error });
             }
 
-            try
+            if (isRetryOfFinishedStop)
             {
-                var updates = new Dictionary<string, object>
-                    {
-                        { "status", "ended_by_admin_stop" },
-                        { "ended_at", DateTime.UtcNow }
-                    };
-                await _authenticationRepository.UpdateImpersonationSessionAsync(impersonationSessionId, updates);
-                // httpResponse.Cookies.Delete(IdpConstants.ImpersonationIdCookieName);
+                // Recorded and audited by the attempt whose answer was lost.
+                _logger.LogInformation("Impersonation stop retried after it had already finished; root session issued again for session {SessionId}", impersonationSessionId);
             }
-            catch (Exception ex)
+            else
             {
-                _logger.LogWarning(ex, "Failed to cleanup impersonation session {SessionId}", impersonationSessionId);
-            }
+                try
+                {
+                    var updates = new Dictionary<string, object>
+                        {
+                            { "status", ImpersonationStoppedStatus },
+                            { "ended_at", DateTime.UtcNow }
+                        };
+                    await _authenticationRepository.UpdateImpersonationSessionAsync(impersonationSessionId, updates);
+                    // httpResponse.Cookies.Delete(IdpConstants.ImpersonationIdCookieName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to cleanup impersonation session {SessionId}", impersonationSessionId);
+                }
 
-            await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopped, bc!.UserId, session.TargetTenantId, IdpConstants.SeverityInfo, IdpConstants.StatusSuccess, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopped, bc!.UserId, session.TargetTenantId, IdpConstants.SeverityInfo, IdpConstants.StatusSuccess, rootTenant.TenantId);
+            }
 
             var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
             if (!cookiesSet)

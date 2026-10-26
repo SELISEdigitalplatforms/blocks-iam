@@ -42,8 +42,10 @@ namespace Authentication.DomainService.Shared
         Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, IdentityConfiguration authConfiguration, User? user);
 
         /// <summary>
-        /// The shared refresh-token validity check. Returns null when the presented token cannot be used;
-        /// a result carrying a different token id is a grace-window replay onto the rotation successor.
+        /// The shared refresh-token validity check, for impersonation start and stop. Returns null when the
+        /// presented token cannot be used; a result carrying a different token id is a grace-window replay
+        /// onto the newest successor — including one an earlier impersonation change created, since these
+        /// callers move the session on purpose and a retry must reach where the first attempt left it.
         /// </summary>
         Task<RefreshTokenCache?> TryResolveRefreshSessionAsync(string presentedTokenId, IdentityConfiguration configuration);
     }

@@ -19,6 +19,13 @@ namespace Authentication.DomainService.OAuth
         public const string InvalidRefreshToken = "invalid_refresh_token";
         public const string AuthConfigMissing = "auth_config_missing";
         public const string SessionExpired = "session_expired";
+
+        /// <summary>
+        /// The refresh token was replaced by an impersonation start, stop or switch, so the session is in
+        /// another tenant or organization now. Sent as an <c>error_description</c>: the client's cookie may
+        /// already hold the newer token, so it is not a sign-out by itself.
+        /// </summary>
+        public const string SessionChanged = "session_changed";
         public const string OidcStateRequired = "oidc_state_required";
         public const string SessionCreationFailed = "session_creation_failed";
         public const string ImpersonationFailed = "impersonation_failed";

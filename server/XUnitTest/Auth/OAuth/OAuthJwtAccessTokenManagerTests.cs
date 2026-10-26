@@ -6,6 +6,7 @@ using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Shared.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Dtos;
@@ -375,6 +376,81 @@ namespace XUnitTest.Auth.OAuth
             _cache.Verify(c => c.GetStringValueAsync("old-token"), Times.Once);
             _cache.Verify(c => c.RemoveKeyAsync("old-token"), Times.Once);
             _refreshRepo.Verify(r => r.TryClaimForRotationAsync("old-token", It.IsAny<string>(), "superseded_by_rotation"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ManageRefreshToken_ImpersonationChange_RecordsTheReplacementAsAnImpersonation()
+        {
+            // A refresh replaying the predecessor must not be handed the moved session; the reason is what
+            // lets the resolver tell the two apart.
+            var oldCache = new Authentication.DomainService.Dtos.RefreshTokenCache
+            {
+                RefreshToken = "old-token",
+                UserId = "u1",
+                TenantId = "tenant-1",
+                ClientId = "client-1",
+                RefreshTokenSessionId = "lineage-1",
+                ExpiresUtc = DateTime.UtcNow.AddMinutes(30),
+                AbsoluteExpiresUtc = DateTime.UtcNow.AddDays(7)
+            };
+            _cache.Setup(c => c.GetStringValueAsync("old-token"))
+                .ReturnsAsync(System.Text.Json.JsonSerializer.Serialize(oldCache));
+            _cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>())).ReturnsAsync(true);
+
+            var request = MakeRequest(GrantTypes.ImpersonationCloud);
+            request.RefreshToken = "old-token";
+
+            var (token, _) = await Create().ManageRefreshTokenAsync(
+                request,
+                RefreshTokenAuthenticationServiceTests.MakeJwtAccessToken(),
+                new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 30 },
+                RefreshTokenAuthenticationServiceTests.MakeTenant(),
+                new User { ItemId = "u1" });
+
+            token.Should().NotBeNullOrWhiteSpace();
+            _refreshRepo.Verify(r => r.TryClaimForRotationAsync("old-token", It.IsAny<string>(), "superseded_by_impersonation"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ManageRefreshToken_RefreshLosingToAnImpersonationChange_MintsNothingAndSaysTheSessionChanged()
+        {
+            // The winner moved the session to another tenant: there is nothing in this caller's tenant to
+            // hand back, and the refusal must say why so the client checks its cookie before signing out.
+            var oldCache = new Authentication.DomainService.Dtos.RefreshTokenCache
+            {
+                RefreshToken = "old-token",
+                UserId = "u1",
+                TenantId = "tenant-1",
+                ClientId = "client-1",
+                RefreshTokenSessionId = "lineage-1",
+                ExpiresUtc = DateTime.UtcNow.AddMinutes(30),
+                AbsoluteExpiresUtc = DateTime.UtcNow.AddDays(7)
+            };
+            _cache.Setup(c => c.GetStringValueAsync("old-token"))
+                .ReturnsAsync(System.Text.Json.JsonSerializer.Serialize(oldCache));
+            _cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>())).ReturnsAsync(true);
+            _refreshRepo.Setup(r => r.TryClaimForRotationAsync("old-token", It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
+            var resolver = new Mock<IRefreshSessionResolver>();
+            resolver.Setup(r => r.ResolveRefreshSessionAsync("old-token", It.IsAny<IdentityConfiguration>(), false))
+                .ReturnsAsync(RefreshSessionResolution.Changed);
+            var sessions = new UnifiedTokenSessionService(_cache.Object, _authDomain.Object, _refreshRepo.Object, _dispatcher.Object, _idpSession.Object,
+                _httpContextAccessor.Object, _userRepository.Object, NullLogger<UnifiedTokenSessionService>.Instance, refreshSessionResolver: resolver.Object);
+            var manager = new OAuthJwtAccessTokenManager(_jwtProvider.Object, _authDomain.Object, _authRepo.Object, _mfaPolicy.Object, _cache.Object,
+                _tenants.Object, _otpFactory.Object, sessions, _idpSession.Object);
+
+            var request = MakeRequest(GrantTypes.RefreshToken);
+            request.RefreshToken = "old-token";
+
+            var (token, _) = await manager.ManageRefreshTokenAsync(
+                request,
+                RefreshTokenAuthenticationServiceTests.MakeJwtAccessToken(),
+                new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 30 },
+                RefreshTokenAuthenticationServiceTests.MakeTenant(),
+                new User { ItemId = "u1" });
+
+            token.Should().BeEmpty();
+            request.SessionChanged.Should().BeTrue();
+            _refreshRepo.Verify(r => r.CreateAsync(It.IsAny<Blocks.Genesis.Entities.Iam.RefreshTokenModel>()), Times.Never);
         }
 
         // ---------- blocks-iam#624 C10: the rotation leg makes no extra store call ----------

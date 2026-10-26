@@ -126,7 +126,9 @@ namespace Authentication.DomainService.OAuth
                 return new TokenResponse
                 {
                     Error = OAuthError.InvalidRefreshToken,
-                    ErrorDescription = "Refresh token is invalid or expired",
+                    ErrorDescription = tokenRequest.SessionChanged
+                        ? OAuthError.SessionChanged
+                        : "Refresh token is invalid or expired",
                     StatusCode = 400
                 };
             }

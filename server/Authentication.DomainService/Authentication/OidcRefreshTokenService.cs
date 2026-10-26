@@ -207,7 +207,17 @@ namespace Authentication.DomainService.Authentication
             // One shared check decides validity for every refresh consumer: unrevoked, inside the sliding
             // window and inside the absolute cap, with a rotation superseded moments ago resolving to its
             // successor instead of failing.
-            var tokenCache = await _refreshSessionResolver.TryResolveRefreshSessionAsync(refreshToken, configuration);
+            //
+            // A token an impersonation start, stop or switch replaced is not followed: its newest successor
+            // is in another tenant or organization, and handing it back put a page in one tenant on another
+            // tenant's token behind an ordinary 200.
+            var resolution = await _refreshSessionResolver.ResolveRefreshSessionAsync(refreshToken, configuration, followImpersonationTransitions: false);
+            var tokenCache = resolution.Session;
+
+            if (resolution.SessionChanged)
+            {
+                return (new BadRequestObjectResult(new { error = "invalid_grant", error_description = OAuthError.SessionChanged }), null, null, null);
+            }
 
             if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
             {
