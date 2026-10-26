@@ -52,7 +52,8 @@ public class SignupLinkGenerationServiceTests : IDisposable
             .ReturnsAsync(new OidcClientRegistrationInfo(
                 "construct-web",
                 ["https://construct.example.com/callback"],
-                true));
+                true,
+                IdentityProvider: OidcIdentityProviderState.Active));
 
         _configs.Setup(c => c.GetByIdAsync(CfgId, TenantId)).ReturnsAsync(ActiveConfig());
         _users.Setup(u => u.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync((User)null!);
@@ -371,6 +372,24 @@ public class SignupLinkGenerationServiceTests : IDisposable
         var result = await Sut().GenerateAsync(ValidRequest());
         result.IsSuccess.Should().BeFalse();
         result.Errors!["ClientId"].Should().Be("Client not found or inactive");
+    }
+
+    [Theory]
+    [InlineData(OidcIdentityProviderState.None, "Client is not registered as a Blocks OIDC identity provider")]
+    [InlineData(OidcIdentityProviderState.Inactive, "The client's Blocks OIDC identity provider is inactive")]
+    public async Task ClientWithoutActiveIdentityProvider_Returns400_AndStoresNoLink(OidcIdentityProviderState state, string message)
+    {
+        // A configuration saved while the provider existed can outlive it. Generating then
+        // would hand out a link every invitee sees as invalid_link.
+        _oidc.Setup(o => o.GetByClientIdAsync("construct-web"))
+            .ReturnsAsync(new OidcClientRegistrationInfo("construct-web", ["https://construct.example.com/callback"], true, IdentityProvider: state));
+
+        var result = await Sut().GenerateAsync(ValidRequest());
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.Errors!["ClientId"].Should().Be(message);
+        _links.Verify(l => l.InsertAsync(It.IsAny<SignupLink>()), Times.Never);
     }
 
     [Fact]

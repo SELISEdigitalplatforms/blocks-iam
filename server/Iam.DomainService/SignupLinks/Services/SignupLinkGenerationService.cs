@@ -381,7 +381,8 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
             return GenerateSignupLinkResult.Fail(400, "RedirectUri", "RedirectUri is not registered for this client");
         }
 
-        return null;
+        var providerProblem = SignupLinkConfigurationValidation.IdentityProviderProblem(client.IdentityProvider);
+        return providerProblem != null ? GenerateSignupLinkResult.Fail(400, "ClientId", providerProblem) : null;
     }
 
     public static (string? OrganizationId, string? Error) ResolveOrganization(

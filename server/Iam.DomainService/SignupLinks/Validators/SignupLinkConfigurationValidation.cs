@@ -1,4 +1,5 @@
 using Blocks.Genesis.Entities.Iam;
+using Iam.DomainService.Services;
 
 namespace Iam.DomainService.SignupLinks;
 
@@ -57,6 +58,18 @@ internal static class SignupLinkConfigurationValidation
             && string.IsNullOrEmpty(uri.Query)
             && string.IsNullOrEmpty(uri.Fragment);
     }
+
+    /// <summary>
+    /// Why an OIDC link could not finish against a client with this provider state, or null when
+    /// it can. Redemption refuses such a client with a bare invalid_link, so saving a
+    /// configuration or generating a link refuses it first, where the caller can be told why.
+    /// </summary>
+    public static string? IdentityProviderProblem(OidcIdentityProviderState state) => state switch
+    {
+        OidcIdentityProviderState.Active => null,
+        OidcIdentityProviderState.Inactive => "The client's Blocks OIDC identity provider is inactive",
+        _ => "Client is not registered as a Blocks OIDC identity provider"
+    };
 
     /// <summary>Absent mode means Oidc, so callers predating embedded mode keep working.</summary>
     public static SignupLinkMode Resolve(SignupLinkMode? mode) => mode ?? SignupLinkMode.Oidc;

@@ -37,7 +37,8 @@ public class SignupLinkConfigurationServiceTests : IDisposable
             .ReturnsAsync(new OidcClientRegistrationInfo(
                 "construct-web",
                 ["https://construct.example.com/callback"],
-                true));
+                true,
+                IdentityProvider: OidcIdentityProviderState.Active));
         _resources.Setup(r => r.GetNonArchivedRolesBySlugAsync("site-manager"))
             .ReturnsAsync([new Role { Slug = "site-manager", Name = "Site Manager" }]);
         _repo.Setup(r => r.FindByNameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
@@ -245,6 +246,43 @@ public class SignupLinkConfigurationServiceTests : IDisposable
             .ReturnsAsync(new OidcClientRegistrationInfo("construct-web", ["https://construct.example.com/callback"], false));
         var inactive = await Sut().CreateAsync(ValidCreate());
         inactive.Errors!["ClientId"].Should().Be("Client not found or inactive");
+    }
+
+    [Theory]
+    [InlineData(OidcIdentityProviderState.None, "Client is not registered as a Blocks OIDC identity provider")]
+    [InlineData(OidcIdentityProviderState.Inactive, "The client's Blocks OIDC identity provider is inactive")]
+    public async Task ClientWithoutActiveIdentityProvider_RejectedOnCreate(OidcIdentityProviderState state, string message)
+    {
+        // Redemption ends at /idp/callback, which needs the provider; without one every link
+        // from this configuration would only ever answer invalid_link.
+        _oidc.Setup(o => o.GetByClientIdAsync("construct-web"))
+            .ReturnsAsync(new OidcClientRegistrationInfo("construct-web", ["https://construct.example.com/callback"], true, IdentityProvider: state));
+
+        var result = await Sut().CreateAsync(ValidCreate());
+
+        result.IsSuccess.Should().BeFalse();
+        result.Errors!["ClientId"].Should().Be(message);
+        _repo.Verify(r => r.InsertAsync(It.IsAny<SignupLinkConfiguration>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ClientWithoutIdentityProvider_RejectedOnPatch()
+    {
+        var existing = Stored();
+        _repo.Setup(r => r.GetByIdAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
+        _oidc.Setup(o => o.GetByClientIdAsync("construct-web"))
+            .ReturnsAsync(new OidcClientRegistrationInfo("construct-web", ["https://construct.example.com/callback"], true));
+
+        // The console sends the mode on every PATCH, which is what makes the client re-checked.
+        var result = await Sut().UpdateAsync(existing.ItemId, new UpdateSignupLinkConfigurationRequest
+        {
+            Mode = SignupLinkMode.Oidc,
+            Name = "Renamed"
+        });
+
+        result.IsSuccess.Should().BeFalse();
+        result.Errors!["ClientId"].Should().Be("Client is not registered as a Blocks OIDC identity provider");
+        _repo.Verify(r => r.ReplaceAsync(It.IsAny<SignupLinkConfiguration>()), Times.Never);
     }
 
     [Fact]

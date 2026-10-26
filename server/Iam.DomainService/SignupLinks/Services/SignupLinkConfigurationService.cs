@@ -396,7 +396,8 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             return Failure("RedirectUri", "RedirectUri is not registered for this client");
         }
 
-        return null;
+        var providerProblem = SignupLinkConfigurationValidation.IdentityProviderProblem(client.IdentityProvider);
+        return providerProblem != null ? Failure("ClientId", providerProblem) : null;
     }
 
     private async Task<BaseMutationResponse?> ValidateRolesAsync(IEnumerable<string>? roles)
