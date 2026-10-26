@@ -1,6 +1,7 @@
 import { useOIDCContext } from "@/layouts/oidc-layout";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import {
   readSsoReturnUri,
   resolveLoginReturnTarget,
@@ -92,7 +93,7 @@ export const OIDCErrorScreen = () => {
   const [searchParams] = useSearchParams();
   // Falls back to the default template when the config call fails, so the error page always renders.
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId || searchParams.get("tenant_id") || undefined);
-  const template = oidcUiConfig.template;
+  const template = oidcUiConfig.template ?? DEFAULT_OIDC_UI_TEMPLATE;
 
   const errorCode = searchParams.get("error");
   const errorDescription = searchParams.get("error_description");
