@@ -21,6 +21,8 @@ import { LoginReturnLink } from "@blocks-idp/authentication/components/login-ret
 import { Button } from "@/components/ui-kits/button/button";
 import { isErrorWithErrors } from "@/lib/error";
 import type { RedeemSignupLinkResponse } from "@blocks-idp/authentication/services/signup-link.service";
+import type { IAccountActivationResponse } from "@blocks-idp/iam/models/user";
+import { Activation } from "../activation";
 
 function readLinkCode(): string | null {
   if (globalThis.window === undefined) return null;
@@ -72,6 +74,17 @@ function applyRedeemNavigation(res: RedeemSignupLinkResponse | undefined): {
     return { activationKey: res.activationKey };
   }
   return {};
+}
+
+/**
+ * A Blocks OIDC link's activation answers with the authorize request back into the app, signed
+ * in or through its sign-in screen as the configuration chose. Without one, the activation
+ * success page follows as for any other invitation.
+ */
+function followAuthorizeUrl(res: IAccountActivationResponse): boolean {
+  if (!res.authorizeUrl) return false;
+  globalThis.window.location.assign(res.authorizeUrl);
+  return true;
 }
 
 export function InvitationPage() {
@@ -237,7 +250,20 @@ export function InvitationPage() {
     );
   }
 
-  if (activationKey || contextQuery.data.credentialMode === "PasswordRequired") {
+  if (activationKey) {
+    // The password is set here, on the same page: the key stays in memory rather than in a URL,
+    // and no email is ever sent for it.
+    return (
+      <Activation
+        code={activationKey}
+        tenantId={tenantId}
+        collectPassword
+        onActivated={followAuthorizeUrl}
+      />
+    );
+  }
+
+  if (contextQuery.data.credentialMode === "PasswordRequired") {
     return (
       <OidcAuthShell {...shellProps} heading={`Welcome, ${contextQuery.data.firstName}`}>
         <div className="flex flex-col gap-3 py-4">
@@ -245,18 +271,12 @@ export function InvitationPage() {
             Continue into {contextQuery.data.applicationName} as{" "}
             {contextQuery.data.maskedEmail}. Password setup is required for this invite.
           </p>
-          {activationKey ? (
-            <p className="text-xs break-all" style={{ color: "var(--muted)" }} data-testid="activation-key">
-              Activation ready. Complete password setup with your application.
+          <div className="flex flex-col items-center gap-3 py-4">
+            <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+            <p className="text-sm" style={{ color: "var(--muted)" }}>
+              Preparing your invite…
             </p>
-          ) : (
-            <div className="flex flex-col items-center gap-3 py-4">
-              <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
-              <p className="text-sm" style={{ color: "var(--muted)" }}>
-                Preparing your invite…
-              </p>
-            </div>
-          )}
+          </div>
         </div>
       </OidcAuthShell>
     );

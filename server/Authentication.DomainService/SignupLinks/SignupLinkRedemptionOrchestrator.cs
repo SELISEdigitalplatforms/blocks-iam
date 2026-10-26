@@ -806,17 +806,12 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
                 return null;
             }
 
-            if (link.SignInAfterActivation)
+            if (link.Mode == SignupLinkMode.Oidc)
             {
-                // The invitee has just proven possession of a single-use activation key and
-                // set the password in the same request. Minting here spares them signing in
-                // with a password chosen seconds ago, and works for both modes -- unlike the
-                // link-session cookie, which only an OIDC authorize request can spend.
-                var result = await _embeddedTokens.IssueAsync(link, user, ["link"], request);
-                return WithForwardedTo(result, link.ForwardedTo);
+                return await CompleteOidcActivationAsync(link, user, request, response);
             }
 
-            if (link.Mode == SignupLinkMode.Embedded)
+            if (!link.SignInAfterActivation)
             {
                 // No authorize request will ever be made for an embedded link, so the link
                 // session has nothing to spend it and the authorize URL has no client to
@@ -824,8 +819,11 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
                 return null;
             }
 
-            await IssueLinkSessionAsync(link, user.ItemId, request, response, new List<string> { "link" });
-            return null;
+            // The invitee has just proven possession of a single-use activation key and set the
+            // password in the same request. Minting here spares them signing in with a password
+            // chosen seconds ago.
+            var result = await _embeddedTokens.IssueAsync(link, user, ["link"], request);
+            return WithForwardedTo(result, link.ForwardedTo);
         }
         catch (Exception ex)
         {
@@ -833,6 +831,51 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return null;
         }
     }
+
+    /// <summary>
+    /// An OIDC link is activated on the Blocks-hosted invitation page, not in the app the invitee
+    /// was invited to, and only an authorize request lands them there, on the link's page. So the
+    /// activation answers with one in both cases the configuration allows.
+    /// <para>
+    /// SignInAfterActivation mints the link session that request spends: they arrive signed in.
+    /// Without it, the request carries prompt=login and they finish on the app's sign-in screen
+    /// with the password they just chose, as the configuration promises. An account with a
+    /// second factor takes that path too, because the link session would walk past the factor
+    /// and the sign-in screen asks for it.
+    /// </para>
+    /// </summary>
+    private async Task<IActionResult> CompleteOidcActivationAsync(
+        SignupLink link,
+        User user,
+        HttpRequest request,
+        HttpResponse response)
+    {
+        string authorizeUrl;
+        if (link.SignInAfterActivation && !HasEnrolledSecondFactor(user))
+        {
+            authorizeUrl = await IssueLinkSessionAsync(link, user.ItemId, request, response, ["link"]);
+        }
+        else
+        {
+            // A link session left in this browser by an earlier redemption would sign its user in
+            // ahead of prompt=login, which only overrides the IdP session.
+            await EndLinkSessionAsync(link.TenantId, request, response);
+            authorizeUrl = await BuildAuthorizeUrlAsync(link, promptLogin: true);
+        }
+
+        return new OkObjectResult(new Dictionary<string, object?>
+        {
+            ["mode"] = nameof(SignupLinkMode.Oidc),
+            ["authorizeUrl"] = authorizeUrl
+        });
+    }
+
+    /// <summary>
+    /// A second factor a link session would skip. An authenticator the account never enrolled is
+    /// not one yet: the same exception <see cref="CompleteForExistingUserAsync"/> makes.
+    /// </summary>
+    private static bool HasEnrolledSecondFactor(User user) =>
+        user.MfaEnabled && !(user.UserMfaType == UserMfaType.TOTP && !user.IsMfaVerified);
 
     /// <summary>
     /// Adds the link's forwarded path to a token response, so the client knows where to land
@@ -1375,6 +1418,11 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return;
         }
 
+        await EndLinkSessionAsync(tenantId, request, response);
+    }
+
+    private async Task EndLinkSessionAsync(string tenantId, HttpRequest request, HttpResponse response)
+    {
         var sessionId = request.Cookies[IdpConstants.BuildLinkSessionCookieKey(tenantId)];
         if (string.IsNullOrWhiteSpace(sessionId))
         {
@@ -1596,8 +1644,12 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     /// derives from the client display name, not a provider <em>type</em> such as
     /// <c>blocks-oidc</c>.
     /// </para>
+    /// <para>
+    /// <paramref name="promptLogin"/> sends the browser to the client's sign-in screen instead of
+    /// letting an IdP session in this browser -- possibly someone else's -- sign it in silently.
+    /// </para>
     /// </summary>
-    private async Task<string> BuildAuthorizeUrlAsync(SignupLink link)
+    private async Task<string> BuildAuthorizeUrlAsync(SignupLink link, bool promptLogin = false)
     {
         var state = Base64Url(RandomNumberGenerator.GetBytes(16));
         var nonce = Base64Url(RandomNumberGenerator.GetBytes(16));
@@ -1645,6 +1697,11 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
 
         query["code_challenge"] = CodeChallenge(codeVerifier);
         query["code_challenge_method"] = IdpConstants.PkceMethodS256;
+
+        if (promptLogin)
+        {
+            query["prompt"] = "login";
+        }
 
         var qs = string.Join("&", query.Select(kvp =>
             $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));

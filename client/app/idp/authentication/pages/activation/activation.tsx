@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ComponentProps, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { AlertTriangle, CheckCircle2, Loader } from "lucide-react";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
@@ -59,6 +59,7 @@ type ActivationBodyArgs = Readonly<{
   tenantId?: string;
   knownName: { firstName: string; lastName: string };
   collectPassword: boolean;
+  onActivated?: ComponentProps<typeof ActivationForm>["onActivated"];
   resend: ResendState;
 }>;
 
@@ -69,6 +70,7 @@ const renderActivationBody = ({
   tenantId,
   knownName,
   collectPassword,
+  onActivated,
   resend,
 }: ActivationBodyArgs) => {
   if (activationError === null) {
@@ -79,6 +81,7 @@ const renderActivationBody = ({
         firstName={knownName.firstName}
         lastName={knownName.lastName}
         collectPassword={collectPassword}
+        onActivated={onActivated}
       />
     );
   }
@@ -145,18 +148,30 @@ type ActivationProps = {
   code?: string;
   lang?: string;
   tenantId?: string;
+  /**
+   * Overrides the tenant's activation password setting. A password-required signup link has
+   * to end with a password, whatever the tenant asks of ordinary invitations.
+   */
+  collectPassword?: boolean;
+  onActivated?: ComponentProps<typeof ActivationForm>["onActivated"];
 };
 
-export const Activation = ({ code, tenantId }: ActivationProps) => {
+export const Activation = ({
+  code,
+  tenantId,
+  collectPassword,
+  onActivated,
+}: ActivationProps) => {
   const navigate = useNavigate();
   // `collectPasswordOnActivation` decides whether this page is a password form or a plain
   // confirmation, so the form is held back until the configuration query has settled --
   // the fallback template makes `template` truthy immediately, loaded or not.
   const {
     data: oidcUiConfig,
-    collectPasswordOnActivation,
+    collectPasswordOnActivation: tenantCollectsPassword,
     isLoading: isUiConfigLoading,
   } = useOidcUiConfig(tenantId);
+  const collectPasswordOnActivation = collectPassword ?? tenantCollectsPassword;
   const template = oidcUiConfig?.template;
   const {
     isPending: isActivationPending,
@@ -314,6 +329,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
           tenantId,
           knownName,
           collectPassword: collectPasswordOnActivation,
+          onActivated,
           resend: {
             onResend: () => {
               void handleResendActivation();

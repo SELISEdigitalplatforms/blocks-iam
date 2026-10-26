@@ -176,8 +176,8 @@ public class AuthenticationController : ControllerBase
             return BadRequest(result);
         }
 
-        // H3: signup-link activation keys bind the restricted link-session cookie, and, when
-        // the configuration asks for it, come back signed in instead.
+        // Signup-link activation keys come back with where to go next: an OIDC link's authorize
+        // URL into its client, or an embedded link's session when the configuration asks for one.
         var signedIn = await _signupLinkRedemption.CompleteActivationAsync(command?.Code, Request, Response);
         if (signedIn == null)
         {
@@ -185,7 +185,7 @@ public class AuthenticationController : ControllerBase
         }
 
         // Additive: the activation fields every existing caller reads stay exactly where they
-        // were, and the token fields are layered on top. A non-200 (an MFA challenge) is
+        // were, and the link's fields are layered on top. A non-200 (an MFA challenge) is
         // returned untouched, because it is not an activation response at all.
         if (signedIn is ObjectResult { Value: Dictionary<string, object?> tokens } ok
             && (ok.StatusCode ?? StatusCodes.Status200OK) == StatusCodes.Status200OK)

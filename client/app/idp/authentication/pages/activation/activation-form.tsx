@@ -20,6 +20,7 @@ import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authenticati
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { resolveActivationCodeStatus } from "./activation-status";
 import { PASSWORD_MAX_INPUT_LENGTH } from "@blocks-idp/authentication/utils/password-policy.util";
+import type { IAccountActivationResponse } from "@blocks-idp/iam/models/user";
 
 /** Pulls a readable message out of the several shapes an activation failure arrives in. */
 const readErrorMessage = (source: unknown, fallback: string): string => {
@@ -95,6 +96,11 @@ type ActivationFormProps = {
    * configuration; when false, confirming this form is all the activation needs.
    */
   collectPassword?: boolean;
+  /**
+   * Takes over after a successful activation when it returns true; otherwise the success page
+   * follows as usual.
+   */
+  onActivated?: (response: IAccountActivationResponse) => boolean;
 };
 
 export const ActivationForm = ({
@@ -103,6 +109,7 @@ export const ActivationForm = ({
   firstName,
   lastName,
   collectPassword = true,
+  onActivated,
 }: ActivationFormProps) => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
@@ -280,6 +287,7 @@ export const ActivationForm = ({
           return;
         }
         await animCtx?.succeedAnimation();
+        if (onActivated?.(res)) return;
         // The activation link carries the originating app's clientId/redirect_uri; keep
         // them so the success page's "Log in" re-enters that OIDC flow. tenantId is a
         // path segment here, which buildOIDCNavigationUrl cannot see, so add it by hand.
@@ -293,7 +301,7 @@ export const ActivationForm = ({
         );
       }
     },
-    [animCtx, mutateAsync, code, captchaCode, tenantId, settleFailure, navigate, successUrl],
+    [animCtx, mutateAsync, code, captchaCode, tenantId, settleFailure, onActivated, navigate, successUrl],
   );
 
   /**
