@@ -101,9 +101,15 @@ export const MfaCheckFrom = () => {
       return;
     }
     if (returnUrl) {
-      await animCtx?.succeedAnimation();
       // returnUrl comes from the query string, so it may only point back at this origin.
-      if (!navigateToSameOrigin(returnUrl)) navigate("/app/profile");
+      // A refused device-flow return must not drop the user on the console instead.
+      if (navigateToSameOrigin(returnUrl)) {
+        await animCtx?.succeedAnimation();
+        return;
+      }
+      const msg = "Login succeeded but the return address is not valid. Open the device link again.";
+      setServerError(msg);
+      await animCtx?.failAnimation(msg);
       return;
     }
     await animCtx?.succeedAnimation();
