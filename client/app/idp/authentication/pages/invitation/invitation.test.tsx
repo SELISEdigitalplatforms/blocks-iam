@@ -41,7 +41,7 @@ vi.mock("../activation", () => ({
   },
 }));
 
-import InvitationPage from "./invitation";
+import InvitationPage, { EMBEDDED_LINK_COPY } from "./invitation";
 
 function renderJoin(hash = "#link=abc123") {
   window.history.replaceState(null, "", `/oidc/invitation/t1${hash}`);
@@ -62,6 +62,26 @@ describe("InvitationPage", () => {
     getContext.mockReset();
     redeem.mockReset();
     activationProps = null;
+  });
+
+  it("refuses an Embedded link without redeeming it", async () => {
+    getContext.mockResolvedValue({
+      valid: true,
+      credentialMode: "Passwordless",
+      firstName: "Asif",
+      maskedEmail: "as•••@example.com",
+      applicationName: "Partner Portal",
+      mode: "Embedded",
+    });
+
+    renderJoin("#link=abc");
+
+    // Redeem would spend the code on a page that cannot use the tokens it answers with.
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: EMBEDDED_LINK_COPY.heading })).toBeInTheDocument(),
+    );
+    expect(screen.getByText(EMBEDDED_LINK_COPY.message)).toBeInTheDocument();
+    expect(redeem).not.toHaveBeenCalled();
   });
 
   it("sets the password on the page when redeem hands back an activation key", async () => {

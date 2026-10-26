@@ -42,6 +42,11 @@ function clearLinkHash() {
 }
 
 export const CONFIRM_STEP_TIMED_OUT = "This step timed out. Open your invitation link again.";
+export const EMBEDDED_LINK_COPY = {
+  heading: "This invitation opens in your application",
+  message:
+    "It can't be used on this page. Ask the person who invited you for the link to the application's own invitation page. Nothing has been used up, so the invitation still works there.",
+};
 export const NO_CREDENTIAL_YET_COPY =
   "This account has no password yet. Sign in normally first, then open your invitation again.";
 
@@ -127,6 +132,9 @@ export function InvitationPage() {
 
   useEffect(() => {
     if (!contextQuery.data?.valid || !code) return;
+    // Redeeming would spend the code and answer with tokens this page cannot use; the context
+    // lookup spends nothing, so the app's own join page can still redeem it.
+    if (contextQuery.data.mode === "Embedded") return;
     if (redeemedRef.current || redeemMutation.isPending || redeemMutation.isSuccess) return;
     redeemedRef.current = true;
     redeemMutation.mutate(code, {
@@ -179,6 +187,16 @@ export function InvitationPage() {
     showCorners: false,
     footerNote: <OidcFooter footerText={template.pages.shared.footerText} />,
   };
+
+  if (contextQuery.data.mode === "Embedded") {
+    return (
+      <OidcAuthShell {...shellProps} heading={EMBEDDED_LINK_COPY.heading}>
+        <p className="py-6 text-center text-sm" style={{ color: "var(--fg)" }}>
+          {EMBEDDED_LINK_COPY.message}
+        </p>
+      </OidcAuthShell>
+    );
+  }
 
   if (passwordNotSet) {
     return (
