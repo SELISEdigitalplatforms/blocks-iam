@@ -233,6 +233,8 @@ namespace Authentication.DomainService.Authentication
                 Amr = authCode.Amr is { Count: > 0 } ? authCode.Amr : ["pwd"],
                 Roles = roles,
                 Permissions = permissions,
+                TokenVersion = user.TokenVersion,
+                SecurityStamp = user.SecurityStamp,
                 IsLinkAuthentication = authCode.IsLinkAuthentication,
                 RestrictedRoles = authCode.RestrictedRoles?.ToList() ?? [],
                 RestrictedPermissions = authCode.RestrictedPermissions?.ToList() ?? [],

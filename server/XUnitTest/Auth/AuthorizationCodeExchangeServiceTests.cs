@@ -133,6 +133,29 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task Exchange_AccessTokenClaims_CarryTheLoadedUsersTokenVersionAndSecurityStamp()
+        {
+            SetupValidExchange();
+            var user = ValidUser();
+            user.TokenVersion = 4;
+            user.SecurityStamp = "S2";
+            _userRepo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(user);
+            OidcClaims? passed = null;
+            _tokenService.Setup(t => t.GenerateAccessTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<int>()))
+                .Callback<OidcClaims, string, int>((claims, _, _) => passed = claims)
+                .ReturnsAsync(SignedAccessToken());
+
+            var result = await Create().ExchangeAsync(BuildContext().Request);
+
+            result.Should().BeOfType<OkObjectResult>();
+            passed!.Sub.Should().Be("user-1");
+            passed.TokenVersion.Should().Be(4);
+            passed.SecurityStamp.Should().Be("S2");
+            // No extra user read: the user loaded to check the code is the one used.
+            _userRepo.Verify(r => r.GetUserByIdAsync("user-1"), Times.Once);
+        }
+
+        [Fact]
         public async Task Exchange_ReadAndConsume_UseTheSameModel_SoOneStorePerRequest()
         {
             SetupValidExchange();
