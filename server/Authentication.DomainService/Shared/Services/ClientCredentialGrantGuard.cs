@@ -81,7 +81,7 @@ namespace Authentication.DomainService.Services
 
             return _accessGrant.Authorize(
                 scope,
-                AccessGrantRules.CheckGrant(scope, existing.Roles, existing.Permissions, AccessGrantRules.ClientCredential));
+                AccessGrantRules.CheckManageHolder(scope, existing.Roles, existing.Permissions, AccessGrantRules.ClientCredential, itemId));
         }
     }
 }

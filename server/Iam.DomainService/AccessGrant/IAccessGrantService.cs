@@ -3,7 +3,7 @@ using Iam.DomainService.Resources.ResponseModel;
 namespace Iam.DomainService.AccessGrant
 {
     /// <summary>
-    /// access grant -- "grant only what you hold" -- in one place: who the system user
+    /// access grant -- position in the role tree decides power -- in one place: who the system user
     /// is, the caller's <see cref="GrantScope"/>, what a refusal does, the
     /// hidden-power warning (R11) and ending sessions after a removal (R12). The rules themselves
     /// are <see cref="AccessGrantRules"/>.

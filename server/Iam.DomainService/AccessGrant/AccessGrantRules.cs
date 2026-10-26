@@ -3,14 +3,16 @@ using Blocks.Genesis.Entities.Iam;
 namespace Iam.DomainService.AccessGrant
 {
     /// <summary>
-    /// "Grant only what you hold": rules R1-R10 as pure functions of a <see cref="GrantScope"/>.
+    /// Position in the role tree decides power: rules R1-R10 as pure functions of a <see cref="GrantScope"/>.
     /// </summary>
     /// <remarks>
     /// Every check returns null when it passes and a <see cref="GrantDenial"/> when it would
     /// refuse; the service logs it and refuses the request. Every check passes for the system user, so a
     /// single-organization tenant -- whose callers always resolve to <c>default</c> -- is never
-    /// affected. Peers are allowed (same power passes), several roles are a union, and a slug the
-    /// organization does not know is never a source of power.
+    /// affected. Any other caller is a top user (its manage power comes from a standalone role or a
+    /// direct permission: the organization's owner) or a descendant (acts only below its own roles).
+    /// Nobody edits itself or a role it holds, copies from <c>default</c> are read-only outside
+    /// <c>default</c>, and a slug the organization does not know is never a source of power.
     /// </remarks>
     public static class AccessGrantRules
     {
@@ -25,9 +27,20 @@ namespace Iam.DomainService.AccessGrant
         public const string SignupLink = "R9-SignupLink";
         public const string AccessAttribute = "R10-AccessAttributes";
 
+        /// <summary>The permission that guards role create, edit, archive and permission changes.</summary>
+        public const string MutateRolesPermission = "blocks-iam::iam::mutate-roles";
+
+        /// <summary>The permission that guards user create, access changes, activation and deactivation.</summary>
+        public const string MutateUsersPermission = "blocks-iam::iam::mutate-users";
+
+        /// <summary>True for a permission that gives the power to manage roles or users.</summary>
+        public static bool IsManagePermission(string? resource) =>
+            string.Equals(resource, MutateRolesPermission, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(resource, MutateUsersPermission, StringComparison.OrdinalIgnoreCase);
+
         /// <summary>
-        /// R1. Role R may be assigned when it is a live role in O, it is below a role the caller
-        /// holds if it has a parent, and every permission it carries is one the caller holds.
+        /// R1. Role R may be given when it is a live role in O and the caller is a top user, or R is
+        /// below a role the caller holds. A copy from <c>default</c> may be given like any role.
         /// </summary>
         public static GrantDenial? CheckAssignRole(GrantScope scope, string slug, string rule = AssignRole)
         {
@@ -43,17 +56,15 @@ namespace Iam.DomainService.AccessGrant
                 return new GrantDenial(rule, slug ?? string.Empty, "role_not_found_or_archived");
             }
 
-            if (!string.IsNullOrWhiteSpace(role.ParentRoleSlug) && !scope.ManagedRoles.Contains(role.Slug))
-            {
-                return new GrantDenial(rule, role.Slug, "managed_role_outside_caller_tree");
-            }
-
-            return scope.PermissionsOf(role.Slug).Any(p => !scope.HeldPermissions.Contains(p))
-                ? new GrantDenial(rule, role.Slug, "role_carries_permission_not_held")
-                : null;
+            return scope.IsTop || scope.ManagedRoles.Contains(role.Slug)
+                ? null
+                : new GrantDenial(rule, role.Slug, "role_not_below_caller");
         }
 
-        /// <summary>R2. Permission P may be granted (to a user, role or client credential) when the caller holds it.</summary>
+        /// <summary>
+        /// R2. Permission P may be given directly (to a user or a client credential) only by a top
+        /// user. A descendant gives power through roles below it, never as a direct permission.
+        /// </summary>
         public static GrantDenial? CheckGrantPermission(GrantScope scope, string resource, string rule = GrantPermission)
         {
             ArgumentNullException.ThrowIfNull(scope);
@@ -62,9 +73,29 @@ namespace Iam.DomainService.AccessGrant
                 return null;
             }
 
-            return !string.IsNullOrWhiteSpace(resource) && scope.HeldPermissions.Contains(resource)
+            if (string.IsNullOrWhiteSpace(resource))
+            {
+                return new GrantDenial(rule, string.Empty, "permission_empty");
+            }
+
+            return scope.IsTop ? null : new GrantDenial(rule, resource, "descendant_cannot_grant_direct_permission");
+        }
+
+        /// <summary>
+        /// R2 for a role. A top user may put any permission on a role it may edit; a descendant only
+        /// one its own roles carry (or it holds directly), so a role below it is never stronger than it.
+        /// </summary>
+        public static GrantDenial? CheckRolePermission(GrantScope scope, string resource, string rule = EditRole)
+        {
+            ArgumentNullException.ThrowIfNull(scope);
+            if (scope.IsSystem || scope.IsTop)
+            {
+                return null;
+            }
+
+            return !string.IsNullOrWhiteSpace(resource) && scope.OwnPermissions.Contains(resource)
                 ? null
-                : new GrantDenial(rule, resource ?? string.Empty, "permission_not_held");
+                : new GrantDenial(rule, resource ?? string.Empty, "permission_not_on_own_role");
         }
 
         /// <summary>R1 on every role and R2 on every permission; the first denial wins.</summary>
@@ -89,8 +120,10 @@ namespace Iam.DomainService.AccessGrant
         }
 
         /// <summary>
-        /// R3. User U may be managed when U is not the caller, U is a member of O, every live role
-        /// U holds in O passes R1 and every direct permission U holds in O passes R2.
+        /// R3. User U may be managed when U is not the caller and U is a member of O. A top user may
+        /// manage every member; a descendant only a user whose every live role in O is below the
+        /// caller (or is a role the caller holds too that carries no manage power, such as a base
+        /// role everybody has) and whose direct permissions in O the caller's own roles carry.
         /// </summary>
         /// <param name="scope">The caller's power.</param>
         /// <param name="user">The user acted on, as stored before the change.</param>
@@ -118,22 +151,51 @@ namespace Iam.DomainService.AccessGrant
                 return new GrantDenial(ManageUser, user.ItemId, "user_not_member_of_organization");
             }
 
-            // Unknown and archived slugs are ignored: they grant nothing, so they cannot put U
-            // above the caller.
-            var holdsRoleAboveCaller = GrantsIn(user.Roles, organizationId)
-                .Where(slug => scope.FindRole(slug) is not null)
-                .Any(slug => CheckAssignRole(scope, slug) is not null);
-            if (holdsRoleAboveCaller)
+            return CheckManageHolder(
+                scope,
+                GrantsIn(user.Roles, organizationId),
+                GrantsIn(user.Permissions, organizationId),
+                ManageUser,
+                user.ItemId);
+        }
+
+        /// <summary>
+        /// Whether the caller may manage something that holds these roles and direct permissions in
+        /// O (a user or a client credential). A top user may; a descendant only when every live role
+        /// is below it (or a role it holds too that gives no power to manage) and every direct
+        /// permission is one its own roles carry.
+        /// </summary>
+        public static GrantDenial? CheckManageHolder(
+            GrantScope scope,
+            IEnumerable<string>? roles,
+            IEnumerable<string>? permissions,
+            string rule,
+            string target)
+        {
+            ArgumentNullException.ThrowIfNull(scope);
+            if (scope.IsSystem || scope.IsTop)
             {
-                return new GrantDenial(ManageUser, user.ItemId, "user_holds_role_above_caller");
+                return null;
+            }
+
+            // Unknown and archived slugs are ignored: they grant nothing, so they cannot put the
+            // holder above the caller.
+            if (Clean(roles).Where(slug => scope.FindRole(slug) is not null).Any(slug => !IsBelowOrSharedBase(scope, slug)))
+            {
+                return new GrantDenial(rule, target, "holds_role_not_below_caller");
             }
 
             // Direct permissions are not filtered by the catalog: a direct grant mints a claim even
             // after its permission is archived, so it is power whether or not the catalog lists it.
-            return GrantsIn(user.Permissions, organizationId).Any(p => !scope.HeldPermissions.Contains(p))
-                ? new GrantDenial(ManageUser, user.ItemId, "user_holds_permission_above_caller")
+            return Clean(permissions).Any(p => !scope.OwnPermissions.Contains(p))
+                ? new GrantDenial(rule, target, "holds_permission_above_caller")
                 : null;
         }
+
+        /// <summary>A role below the caller, or one the caller holds too that gives no power to manage.</summary>
+        private static bool IsBelowOrSharedBase(GrantScope scope, string slug) =>
+            scope.ManagedRoles.Contains(slug)
+            || (scope.HeldRoles.Contains(slug) && !scope.CarriesManagePower(slug));
 
         /// <summary>
         /// R4 with R3. A list replace (users/access, the existing-email create) is checked on its
@@ -162,7 +224,6 @@ namespace Iam.DomainService.AccessGrant
 
             var (addedRoles, removedRoles) = Delta(GrantsIn(user.Roles, scope.OrganizationId), requestedRoles);
             var (addedPermissions, removedPermissions) = Delta(GrantsIn(user.Permissions, scope.OrganizationId), requestedPermissions);
-
             return CheckRoleDelta(scope, addedRoles, removedRoles)
                 ?? addedPermissions.Concat(removedPermissions)
                     .Select(p => CheckGrantPermission(scope, p, AccessDelta))
@@ -188,37 +249,50 @@ namespace Iam.DomainService.AccessGrant
                     .FirstOrDefault(d => d is not null);
         }
 
-        /// <summary>R5, create. A new role is empty, so only its parent matters: one the caller holds or manages.</summary>
+        /// <summary>
+        /// R5, create. A top user may create a standalone role or one under any live role in O. A
+        /// descendant must create it under one of its power roles or a role below them, never standalone.
+        /// </summary>
         public static GrantDenial? CheckCreateRole(GrantScope scope, string? parentSlug)
         {
             ArgumentNullException.ThrowIfNull(scope);
-            if (scope.IsSystem || string.IsNullOrWhiteSpace(parentSlug))
+            if (scope.IsSystem)
             {
                 return null;
             }
 
-            return scope.HoldsOrManages(parentSlug)
+            if (string.IsNullOrWhiteSpace(parentSlug))
+            {
+                return scope.IsTop ? null : new GrantDenial(EditRole, string.Empty, "descendant_must_create_below_own_role");
+            }
+
+            if (scope.FindRole(parentSlug) is null)
+            {
+                return new GrantDenial(EditRole, parentSlug, "parent_not_found_or_archived");
+            }
+
+            return scope.IsTop || scope.MayParent(parentSlug)
                 ? null
                 : new GrantDenial(EditRole, parentSlug, "parent_not_held_or_managed");
         }
 
         /// <summary>
-        /// R5, edit (update, archive, assign/unassign permissions, change parent). The caller may
-        /// not edit a role it holds; the role must pass R1 before (and, through the parent and
-        /// permission rules, after); every added or removed permission passes R2; a new parent must
-        /// be held or managed.
+        /// R5, edit (update, archive, assign/unassign permissions, change parent). Never a copy from
+        /// <c>default</c> and never a role the caller holds. A top user may then edit any role of O:
+        /// any parent, any permission. A descendant only a role below it, kept below it, and may add
+        /// only permissions its own roles carry.
         /// </summary>
         /// <param name="scope">The caller's power.</param>
         /// <param name="role">The role as stored.</param>
         /// <param name="newParentSlug">The parent after the change; only checked when <paramref name="parentChanged"/>.</param>
         /// <param name="parentChanged">True when the request moves the role.</param>
-        /// <param name="changedPermissions">Resources added to or removed from the role.</param>
+        /// <param name="addedPermissions">Resources added to the role. Taking a permission away never raises power.</param>
         public static GrantDenial? CheckEditRole(
             GrantScope scope,
             Role role,
             string? newParentSlug = null,
             bool parentChanged = false,
-            IEnumerable<string>? changedPermissions = null)
+            IEnumerable<string>? addedPermissions = null)
         {
             ArgumentNullException.ThrowIfNull(scope);
             ArgumentNullException.ThrowIfNull(role);
@@ -227,25 +301,39 @@ namespace Iam.DomainService.AccessGrant
                 return null;
             }
 
+            if (role.CreatedFromDefault)
+            {
+                return new GrantDenial(EditRole, role.Slug, "default_copy_is_read_only");
+            }
+
             if (scope.HeldRoles.Contains(role.Slug))
             {
                 return new GrantDenial(EditRole, role.Slug, "cannot_edit_own_role");
             }
 
-            var before = CheckAssignRole(scope, role.Slug, EditRole);
-            if (before is not null)
+            if (!scope.IsTop && !scope.ManagedRoles.Contains(role.Slug))
             {
-                return before;
+                return new GrantDenial(EditRole, role.Slug, "role_not_below_caller");
             }
 
-            if (parentChanged && !string.IsNullOrWhiteSpace(newParentSlug) && !scope.HoldsOrManages(newParentSlug))
+            var parentDenial = parentChanged ? CheckNewParent(scope, role, newParentSlug) : null;
+            return parentDenial
+                ?? Clean(addedPermissions)
+                    .Select(p => CheckRolePermission(scope, p))
+                    .FirstOrDefault(d => d is not null);
+        }
+
+        /// <summary>A moved role: a top user may put it anywhere; a descendant must keep it under one of its power roles or below them.</summary>
+        private static GrantDenial? CheckNewParent(GrantScope scope, Role role, string? newParentSlug)
+        {
+            if (string.IsNullOrWhiteSpace(newParentSlug))
             {
-                return new GrantDenial(EditRole, role.Slug, "parent_not_held_or_managed");
+                return scope.IsTop ? null : new GrantDenial(EditRole, role.Slug, "descendant_cannot_move_role_to_top");
             }
 
-            return Clean(changedPermissions)
-                .Select(p => CheckGrantPermission(scope, p, EditRole))
-                .FirstOrDefault(d => d is not null);
+            return scope.IsTop || scope.MayParent(newParentSlug)
+                ? null
+                : new GrantDenial(EditRole, role.Slug, "parent_not_held_or_managed");
         }
 
         /// <summary>R6. Permissions, tenant configuration and signup settings belong to the system user.</summary>
