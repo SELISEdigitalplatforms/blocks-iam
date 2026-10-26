@@ -1,79 +1,153 @@
-
 import { useOIDCContext } from "@/layouts/oidc-layout";
-import { Button } from "@/components/ui-kits/button/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui-kits/card/card";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
-import { AlertCircle } from "lucide-react";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import {
+  readSsoReturnUri,
+  resolveLoginReturnTarget,
+} from "@blocks-idp/authentication/utils/oidc-utils";
+import { AlertCircle, CheckCircle2, Clock, type LucideIcon } from "lucide-react";
+import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router";
+import { OidcAuthShell, OidcFooter, useOidcAuthAnimation } from "./oidc-auth-shell";
+import { OIDC_ERROR_PANEL } from "./oidc-panel-config";
+
+type Tone = "danger" | "warn" | "success";
+
+type ErrorCopy = {
+  title: string;
+  message: string;
+  icon: LucideIcon;
+  tone: Tone;
+};
+
+// Plain words for the codes a user can actually hit. Anything else shows the server's own text.
+const KNOWN_ERRORS: Record<string, ErrorCopy> = {
+  invalid_state: {
+    title: "Sign-in expired",
+    message: "Your sign-in took too long or was started in another tab. Please start again.",
+    icon: Clock,
+    tone: "warn",
+  },
+  oidc_flow_expired: {
+    title: "Sign-in expired",
+    message: "Your sign-in took too long. Please start again.",
+    icon: Clock,
+    tone: "warn",
+  },
+  state_already_used: {
+    title: "Already signed in",
+    message: "This sign-in was already completed. Go back to the application to continue.",
+    icon: CheckCircle2,
+    tone: "success",
+  },
+};
+
+const TONE_CLASSES: Record<Tone, { icon: string; ring: string }> = {
+  danger: { icon: "text-(--danger)", ring: "bg-(--danger-soft) border-(--danger-border)" },
+  warn: { icon: "text-(--warn)", ring: "bg-(--warn-soft) border-(--warn-border)" },
+  success: { icon: "text-(--success)", ring: "bg-(--success-soft) border-(--success-border)" },
+};
 
 const formatErrorCode = (code: string): string =>
   code
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
+const resolveCopy = (errorCode: string | null, errorDescription: string | null): ErrorCopy => {
+  if (errorCode && KNOWN_ERRORS[errorCode]) return KNOWN_ERRORS[errorCode];
+
+  if (errorCode || errorDescription) {
+    return {
+      title: "Sign In Failed",
+      message: errorDescription || "Sign-in could not be completed. Please try again.",
+      icon: AlertCircle,
+      tone: "danger",
+    };
+  }
+
+  return {
+    title: "Access Blocked",
+    message:
+      "We couldn't sign you in at this time. Please try again, or contact support if the problem persists.",
+    icon: AlertCircle,
+    tone: "danger",
+  };
+};
+
+/** Puts the side panel in its failed state, so it never says "enter your email and password" here. */
+const PanelFailure = ({ message }: Readonly<{ message: string }>) => {
+  const failAnimation = useOidcAuthAnimation()?.failAnimation;
+
+  useEffect(() => {
+    void failAnimation?.(message, { instant: true });
+    // Run once per message: the context hands out a new function on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [message]);
+
+  return null;
+};
+
 export const OIDCErrorScreen = () => {
-  const { themeColor } = useOIDCContext();
+  const { tenantId } = useOIDCContext();
   const [searchParams] = useSearchParams();
+  // Falls back to the default template when the config call fails, so the error page always renders.
+  const { data: oidcUiConfig } = useOidcUiConfig(tenantId || searchParams.get("tenant_id") || undefined);
+  const template = oidcUiConfig.template;
 
   const errorCode = searchParams.get("error");
   const errorDescription = searchParams.get("error_description");
+  const copy = resolveCopy(errorCode, errorDescription);
+  const tone = TONE_CLASSES[copy.tone];
+  const Icon = copy.icon;
 
-  const hasApiError = !!errorCode || !!errorDescription;
+  const fallbackRedirectUri = useMemo(() => readSsoReturnUri(), []);
+  const returnsToApplication = resolveLoginReturnTarget(true, {
+    preferOidcLogin: true,
+    fallbackRedirectUri,
+  }).external;
 
   return (
-    <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
-      <CardHeader className="flex flex-col items-center gap-3 pb-2 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
-          <AlertCircle className="h-7 w-7 text-red-500" />
+    <OidcAuthShell
+      panelConfig={OIDC_ERROR_PANEL}
+      theme={template.theme}
+      logoUrlLight={template.branding.logoUrlLight}
+      logoUrlDark={template.branding.logoUrlDark}
+      brandName={template.branding.brandName}
+      heading={copy.title}
+      headingDimFirst={0}
+      headingAlign="center"
+      successTitle=""
+      successSubtitle=""
+      showCorners={false}
+      footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
+    >
+      <PanelFailure message={copy.title} />
+      <div className="flex flex-col items-center gap-6 text-center oidc-animate-fade-up">
+        <div
+          className={`flex h-16 w-16 items-center justify-center rounded-full border ${tone.ring}`}
+        >
+          <Icon className={`h-8 w-8 ${tone.icon}`} aria-hidden />
         </div>
-        <CardTitle className="text-2xl font-semibold text-foreground">
-          {hasApiError ? "Sign In Failed" : "Access Blocked"}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="mt-2 flex flex-1 flex-col justify-between gap-6">
-        <div className="space-y-4">
-          {hasApiError ? (
-            <div className="space-y-2 rounded-lg border border-red-100 bg-red-50 p-4">
-              {errorDescription && (
-                <p className="text-sm font-medium text-red-700">{errorDescription}</p>
-              )}
-              {errorCode && (
-                <p className="text-xs text-red-500">
-                  Error code:{" "}
-                  <span className="font-semibold">{formatErrorCode(errorCode)}</span>
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2 rounded-lg border border-red-100 bg-red-50 p-4">
-              <p className="text-sm font-medium text-red-700">
-                We couldn&apos;t sign you in at this time.
-              </p>
-              <p className="text-xs text-red-500">
-                The request could not be completed. Please try again, or contact support if the
-                problem persists.
-              </p>
-            </div>
-          )}
-          <p className="text-center text-sm text-muted-foreground">
-            If this problem persists, please contact your administrator.
-          </p>
-        </div>
-        <LoginReturnLink preferOidcLogin className="w-full">
-          <Button
-            variant="outline"
-            className="w-full rounded font-medium hover:opacity-90"
-            style={{ color: themeColor, borderColor: themeColor }}
-          >
-            Back to Sign In
-          </Button>
+
+        <p className="max-w-sm text-sm leading-relaxed text-(--fg)">{copy.message}</p>
+
+        <LoginReturnLink
+          preferOidcLogin
+          fallbackRedirectUri={fallbackRedirectUri}
+          className="oidc-sci-fi-btn flex w-full items-center justify-center"
+        >
+          {returnsToApplication ? "Back to application" : "Back to Sign In"}
         </LoginReturnLink>
-      </CardContent>
-    </Card>
+
+        <div className="flex flex-col items-center gap-1 text-xs text-(--muted)">
+          <p>If this keeps happening, contact your administrator.</p>
+          {errorCode && (
+            <p>
+              Error code: <span className="font-mono">{formatErrorCode(errorCode)}</span>
+            </p>
+          )}
+        </div>
+      </div>
+    </OidcAuthShell>
   );
 };

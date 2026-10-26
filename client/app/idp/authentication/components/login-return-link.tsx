@@ -12,6 +12,8 @@ type LoginReturnLinkProps = Omit<ComponentPropsWithRef<"a">, "href"> & {
    * Only for pages inside a live flow — see resolveLoginReturnTarget.
    */
   preferOidcLogin?: boolean;
+  /** Application redirect_uri to use when the URL carries none (see readSsoReturnUri). */
+  fallbackRedirectUri?: string;
 };
 
 /**
@@ -25,12 +27,13 @@ type LoginReturnLinkProps = Omit<ComponentPropsWithRef<"a">, "href"> & {
 export const LoginReturnLink = ({
   children,
   preferOidcLogin,
+  fallbackRedirectUri,
   ...rest
 }: LoginReturnLinkProps) => {
   const location = useLocation();
   const { href, external } = resolveLoginReturnTarget(
     location.pathname.startsWith("/oidc"),
-    { preferOidcLogin },
+    { preferOidcLogin, fallbackRedirectUri },
   );
 
   if (external) {

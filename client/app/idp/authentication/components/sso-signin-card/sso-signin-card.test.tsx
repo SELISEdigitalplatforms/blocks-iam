@@ -2,7 +2,6 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
-  getSocialLoginEndpoint: vi.fn(),
   signinByOidcEmail: vi.fn(),
   resolvedTheme: "light",
   showError: vi.fn(),
@@ -13,9 +12,6 @@ const h = vi.hoisted(() => ({
 vi.mock("@/hooks/use-toast", () => ({ showErrorToast: (a: unknown) => h.showError(a) }));
 vi.mock("@/hooks/use-theme", () => ({ useTheme: () => ({ resolvedTheme: h.resolvedTheme }) }));
 vi.mock("@/lib/runtime-env", () => ({ getRuntimeEnv: () => "https://iam.test" }));
-vi.mock("@blocks-idp/authentication/services/oauth.service", () => ({
-  oauthService: { getSocialLoginEndpoint: (...a: unknown[]) => h.getSocialLoginEndpoint(...a) },
-}));
 vi.mock("@blocks-idp/authentication/services/auth.service", () => ({
   authService: { signinByOidcEmail: (...a: unknown[]) => h.signinByOidcEmail(...a) },
 }));
@@ -26,6 +22,7 @@ vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
   buildOIDCNavigationUrl: (p: string) => p,
   OIDC_DEVICE_RETURN_URL_STORAGE_KEY: "oidc-device-return-url",
   OIDC_APP_HANDOFF_STORAGE_KEY: "oidc_app_handoff",
+  OIDC_SSO_RETURN_URI_STORAGE_KEY: "oidc-sso-return-uri",
 }));
 
 import { SSOSigninCard } from "./sso-signin-card";
@@ -63,12 +60,25 @@ describe("SSOSigninCard", () => {
     expect(screen.getByText("Sign in with Google")).toBeInTheDocument();
   });
 
-  it("redirects to the social login endpoint in the default flow", async () => {
-    h.getSocialLoginEndpoint.mockResolvedValue({ providerUrl: "https://accounts.google.com/o" });
+  it("sends the user to IAM's sign-in when there is no OIDC request to attach to", async () => {
     render(<SSOSigninCard providerConfig={provider} />);
     fireEvent.click(screen.getByRole("button"));
-    await waitFor(() => expect(h.getSocialLoginEndpoint).toHaveBeenCalled());
-    await waitFor(() => expect(h.hrefSpy).toHaveBeenCalledWith("https://accounts.google.com/o"));
+    await waitFor(() => expect(h.hrefSpy).toHaveBeenCalledWith("/login"));
+    expect(h.signinByOidcEmail).not.toHaveBeenCalled();
+  });
+
+  it("keeps the application redirect_uri for the error page before leaving", async () => {
+    h.signinByOidcEmail.mockResolvedValue({ authorizationUrl: "https://oidc.google/authorize" });
+    render(
+      <SSOSigninCard
+        providerConfig={provider}
+        mode="oidc"
+        oidcContext={{ clientId: "c", redirectUri: "https://app.example.com/cb", tenantId: "t1" }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(h.hrefSpy).toHaveBeenCalled());
+    expect(sessionStorage.getItem("oidc-sso-return-uri")).toBe("https://app.example.com/cb");
   });
 
   it("uses the oidc flow when mode is oidc", async () => {
@@ -132,7 +142,6 @@ describe("SSOSigninCard", () => {
 
     it("is not touched by the standard embed flow", async () => {
       sessionStorage.setItem("oidc_app_handoff", "1");
-      h.getSocialLoginEndpoint.mockResolvedValue({ providerUrl: "https://accounts.google.com/o" });
       render(<SSOSigninCard providerConfig={provider} />);
       fireEvent.click(screen.getByRole("button"));
       await waitFor(() => expect(h.hrefSpy).toHaveBeenCalled());
@@ -171,9 +180,11 @@ describe("SSOSigninCard", () => {
     expect(sessionStorage.getItem("oidc_app_handoff")).toBeNull();
   });
 
-  it("shows an error toast when the endpoint returns an error", async () => {
-    h.getSocialLoginEndpoint.mockResolvedValue({ error: "provider down" });
-    render(<SSOSigninCard providerConfig={provider} />);
+  it("shows an error toast when the oidc endpoint returns an error", async () => {
+    h.signinByOidcEmail.mockResolvedValue({ error: "provider down" });
+    render(
+      <SSOSigninCard providerConfig={provider} mode="oidc" oidcContext={{ clientId: "c", tenantId: "t1" }} />,
+    );
     fireEvent.click(screen.getByRole("button"));
     await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "provider down" }));
   });

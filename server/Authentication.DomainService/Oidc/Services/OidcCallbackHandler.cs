@@ -78,6 +78,8 @@ namespace Authentication.DomainService.Oidc.Services
             _ssoUserProvisioningService = ssoUserProvisioningService;
         }
 
+        private static string UsedStateKey(string state) => $"oidc_social_state_used:{state}";
+
         public async Task<OidcCallbackResult> HandleCallbackAsync(string code, string state)
         {
             try
@@ -87,6 +89,12 @@ namespace Authentication.DomainService.Oidc.Services
                 
                 if (string.IsNullOrWhiteSpace(oidcSocialStateJson))
                 {
+                    if (!string.IsNullOrWhiteSpace(await _cacheClient.GetStringValueAsync(UsedStateKey(state))))
+                    {
+                        _logger.LogInformation("OIDC social state {State} was already used", state);
+                        return new OidcCallbackResult { IsSuccess = false, ErrorCode = "state_already_used", ErrorMessage = "This sign-in was already completed" };
+                    }
+
                     _logger.LogWarning("Invalid OIDC state: {State}", state);
                     return new OidcCallbackResult { IsSuccess = false, ErrorCode = "invalid_state", ErrorMessage = "Invalid or expired OIDC state" };
                 }
@@ -315,6 +323,7 @@ namespace Authentication.DomainService.Oidc.Services
 
                 // 6. Clean up temporary states. The actual authorization code must be created
                 // through AuthorizationFlowService.AuthorizeAsync so it persists as AuthorizationCodeModel.
+                await _cacheClient.AddStringValueAsync(UsedStateKey(state), "1", IdpConstants.OidcSocialStateUsedCacheTtlSeconds);
                 await _cacheClient.RemoveKeyAsync($"oidc_social_state:{state}");
                 await _cacheClient.RemoveKeyAsync(contextKey);
 

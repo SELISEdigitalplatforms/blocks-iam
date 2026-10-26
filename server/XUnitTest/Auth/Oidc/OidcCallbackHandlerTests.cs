@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
@@ -87,6 +88,30 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
+        public async Task HandleCallbackAsync_ReturnsStateAlreadyUsed_WhenCallbackIsOpenedAgain()
+        {
+            var handler = Create(out _, out var cache, out _, out _);
+            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
+            cache.Setup(c => c.GetStringValueAsync("oidc_social_state_used:state-1")).ReturnsAsync("1");
+
+            var result = await handler.HandleCallbackAsync("code-1", "state-1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.ErrorCode.Should().Be("state_already_used");
+        }
+
+        [Fact]
+        public async Task HandleCallbackAsync_ReturnsInvalidState_WhenStateUnknown()
+        {
+            var handler = Create(out _, out var cache, out _, out _);
+            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
+
+            var result = await handler.HandleCallbackAsync("code-1", "state-1");
+
+            result.ErrorCode.Should().Be("invalid_state");
+        }
+
+        [Fact]
         public async Task HandleCallbackAsync_ReturnsError_WhenOidcStateNull()
         {
             var handler = Create(out _, out var cache, out _, out _);
@@ -161,6 +186,8 @@ namespace XUnitTest.Auth.Oidc
             result.Scope.Should().Be("openid");
             result.Nonce.Should().Be("nonce-1");
             cache.Verify(c => c.RemoveKeyAsync(It.IsAny<string>()), Times.Exactly(2));
+            cache.Verify(c => c.AddStringValueAsync(
+                "oidc_social_state_used:state-1", "1", IdpConstants.OidcSocialStateUsedCacheTtlSeconds), Times.Once);
         }
 
         [Fact]

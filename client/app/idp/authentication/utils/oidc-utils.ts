@@ -12,6 +12,20 @@ export const OIDC_DEVICE_RETURN_URL_STORAGE_KEY = "oidc-device-return-url";
 // always the backend's redirect_uri.
 export const OIDC_APP_HANDOFF_STORAGE_KEY = "oidc_app_handoff";
 
+// The application's redirect_uri, kept before a social provider redirect. When the server can no
+// longer find the sign-in (expired or already used), the error page has no application in its URL;
+// this lets its "Back" link still return the user to the app they came from.
+export const OIDC_SSO_RETURN_URI_STORAGE_KEY = "oidc-sso-return-uri";
+
+/** Reads the kept application redirect_uri; never throws (storage can be blocked). */
+export const readSsoReturnUri = (): string | undefined => {
+  try {
+    return sessionStorage.getItem(OIDC_SSO_RETURN_URI_STORAGE_KEY) || undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 interface OIDCParams {
   projectKey?: string;
   userName?: string;
@@ -319,10 +333,10 @@ export const getApplicationOrigin = (redirectUri?: string): string | undefined =
  */
 export const resolveLoginReturnTarget = (
   isOidc: boolean,
-  options?: { preferOidcLogin?: boolean },
+  options?: { preferOidcLogin?: boolean; fallbackRedirectUri?: string },
 ): { href: string; external: boolean } => {
   const { redirectUri, clientId } = extractOIDCParams();
-  const applicationOrigin = getApplicationOrigin(redirectUri);
+  const applicationOrigin = getApplicationOrigin(redirectUri || options?.fallbackRedirectUri);
 
   // Pages reached from inside a live flow (signup) opt out of the hand-back above.
   // Their params came from an initiate call that cached a flow context, so the state
