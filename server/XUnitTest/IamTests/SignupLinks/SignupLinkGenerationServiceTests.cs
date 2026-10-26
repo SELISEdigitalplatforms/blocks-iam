@@ -371,12 +371,43 @@ public class SignupLinkGenerationServiceTests : IDisposable
 
         var result = await Sut().GenerateAsync(ValidRequest());
         result.IsSuccess.Should().BeFalse();
-        result.Errors!["ClientId"].Should().Be("Client not found or inactive");
+        result.Errors!["ClientId"].Should().Be(
+            "The OIDC client 'construct-web' is disabled. Enable it or update the signup link configuration.");
+    }
+
+    [Fact]
+    public async Task ConfigurationClientDeleted_Returns400_NamingTheClient()
+    {
+        _oidc.Setup(o => o.GetByClientIdAsync("construct-web")).ReturnsAsync((OidcClientRegistrationInfo?)null);
+
+        var result = await Sut().GenerateAsync(ValidRequest());
+
+        result.StatusCode.Should().Be(400);
+        result.Errors!["ClientId"].Should().Be(
+            "The OIDC client 'construct-web' no longer exists. Update the signup link configuration to use an existing client.");
+        _links.Verify(l => l.InsertAsync(It.IsAny<SignupLink>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RequestClient_Missing_PointsAtTheRequest()
+    {
+        _oidc.Setup(o => o.GetByClientIdAsync("other-web")).ReturnsAsync((OidcClientRegistrationInfo?)null);
+
+        var result = await Sut().GenerateAsync(ValidRequest(r =>
+        {
+            r.ClientId = "other-web";
+            r.RedirectUri = "https://other.example.com/callback";
+        }));
+
+        result.StatusCode.Should().Be(400);
+        result.Errors!["ClientId"].Should().Be("The OIDC client 'other-web' in this request does not exist.");
     }
 
     [Theory]
-    [InlineData(OidcIdentityProviderState.None, "Client is not registered as a Blocks OIDC identity provider")]
-    [InlineData(OidcIdentityProviderState.Inactive, "The client's Blocks OIDC identity provider is inactive")]
+    [InlineData(OidcIdentityProviderState.None,
+        "The OIDC client 'construct-web' is not registered as a Blocks OIDC identity provider. Register it or update the signup link configuration.")]
+    [InlineData(OidcIdentityProviderState.Inactive,
+        "The Blocks OIDC identity provider for client 'construct-web' is inactive. Activate it or update the signup link configuration.")]
     public async Task ClientWithoutActiveIdentityProvider_Returns400_AndStoresNoLink(OidcIdentityProviderState state, string message)
     {
         // A configuration saved while the provider existed can outlive it. Generating then
@@ -550,7 +581,8 @@ public class SignupLinkGenerationServiceTests : IDisposable
         _configs.Setup(c => c.GetByIdAsync(CfgId, TenantId)).ReturnsAsync(cfg);
         var result = await Sut().GenerateAsync(ValidRequest());
         result.IsSuccess.Should().BeFalse();
-        result.Errors!["RedirectUri"].Should().Contain("not registered");
+        result.Errors!["RedirectUri"].Should().Be(
+            "The redirect URI 'https://evil.example/callback' is no longer registered on OIDC client 'construct-web'. Update the signup link configuration.");
     }
 
     [Theory]

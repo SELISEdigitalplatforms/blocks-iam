@@ -57,7 +57,8 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         var mode = SignupLinkConfigurationValidation.Resolve(request.Mode);
         if (mode == SignupLinkMode.Oidc)
         {
-            var clientError = await ValidateClientAndRedirectAsync(request.ClientId, request.RedirectUri);
+            var clientError = await ValidateClientAndRedirectAsync(
+                request.ClientId, request.RedirectUri, SignupLinkClientSource.ChosenNow);
             if (clientError != null)
             {
                 return clientError;
@@ -305,7 +306,13 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
             return null;
         }
 
-        var clientError = await ValidateClientAndRedirectAsync(clientId, redirectUri);
+        // Only the mode arriving is how the console saves an unrelated edit, and it still re-checks
+        // the stored client on purpose: a configuration that cannot produce working links should be
+        // fixed on its next save rather than look healthy.
+        var source = request.ClientId != null || request.RedirectUri != null
+            ? SignupLinkClientSource.ChosenNow
+            : SignupLinkClientSource.StoredConfiguration;
+        var clientError = await ValidateClientAndRedirectAsync(clientId, redirectUri, source);
         if (clientError != null)
         {
             return clientError;
@@ -381,23 +388,14 @@ public class SignupLinkConfigurationService : ISignupLinkConfigurationService
         }, null);
     }
 
-    private async Task<BaseMutationResponse?> ValidateClientAndRedirectAsync(string clientId, string redirectUri)
+    private async Task<BaseMutationResponse?> ValidateClientAndRedirectAsync(
+        string clientId,
+        string redirectUri,
+        SignupLinkClientSource source)
     {
         var client = await _oidcLookup.GetByClientIdAsync(clientId);
-        if (client == null || !client.IsActive)
-        {
-            return Failure("ClientId", "Client not found or inactive");
-        }
-
-        var registered = client.RedirectUris.Any(u =>
-            string.Equals(u, redirectUri, StringComparison.Ordinal));
-        if (!registered)
-        {
-            return Failure("RedirectUri", "RedirectUri is not registered for this client");
-        }
-
-        var providerProblem = SignupLinkConfigurationValidation.IdentityProviderProblem(client.IdentityProvider);
-        return providerProblem != null ? Failure("ClientId", providerProblem) : null;
+        var problem = SignupLinkConfigurationValidation.FindClientProblem(client, clientId, redirectUri, source);
+        return problem is { } p ? Failure(p.Field, p.Message) : null;
     }
 
     private async Task<BaseMutationResponse?> ValidateRolesAsync(IEnumerable<string>? roles)
