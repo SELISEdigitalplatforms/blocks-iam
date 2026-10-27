@@ -1695,10 +1695,13 @@ namespace Authentication.DomainService.Authentication
             // presented here, while the lineage has already moved back to root. Its retry resolves onto that
             // root successor; refusing it used to strand the client on the project's access token until
             // that expired. Issuing the root pair again finishes the stop it already asked for.
+            // The lineage is the evidence: only a stop moves an impersonated lineage back to root, and the
+            // caller still carries this impersonation's access token. The session record is not consulted.
             var isRetryOfFinishedStop = rootRefreshCache != null
                 && !rootRefreshCache.Impersonated
                 && !string.Equals(rootRefreshCache.RefreshToken, refreshToken, StringComparison.Ordinal)
-                && string.Equals(session.Status, ImpersonationStoppedStatus, StringComparison.Ordinal)
+                && bc.Impersonated
+                && string.Equals(bc.ImpersonationSessionId, session.Id, StringComparison.Ordinal)
                 && string.Equals(rootRefreshCache.UserId, bc.UserId, StringComparison.OrdinalIgnoreCase);
 
             if (rootRefreshCache == null || (!rootRefreshCache.Impersonated && !isRetryOfFinishedStop))
