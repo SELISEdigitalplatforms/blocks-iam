@@ -1697,10 +1697,12 @@ namespace Authentication.DomainService.Authentication
             // that expired. Issuing the root pair again finishes the stop it already asked for.
             // The lineage is the evidence: only a stop moves an impersonated lineage back to root, and the
             // caller still carries this impersonation's access token. The session record is not consulted.
+            // The endpoint has already reset the context to root (Impersonated is false here); only an
+            // impersonated access token carries an impersonation session id, so that id is what ties the
+            // caller to this impersonation.
             var isRetryOfFinishedStop = rootRefreshCache != null
                 && !rootRefreshCache.Impersonated
                 && !string.Equals(rootRefreshCache.RefreshToken, refreshToken, StringComparison.Ordinal)
-                && bc.Impersonated
                 && string.Equals(bc.ImpersonationSessionId, session.Id, StringComparison.Ordinal)
                 && string.Equals(rootRefreshCache.UserId, bc.UserId, StringComparison.OrdinalIgnoreCase);
 

@@ -534,14 +534,20 @@ namespace XUnitTest.Auth
         // root token that stop issued, and the client still holds the project's cookies. Retrying must
         // finish the stop rather than strand the client in the project.
 
-        /// <summary>The caller's access token is the project's, issued for impersonation <paramref name="sessionId"/>.</summary>
-        private static void CallerImpersonating(string sessionId) =>
+        /// <summary>
+        /// The caller's access token is the project's, issued for impersonation <paramref name="sessionId"/>,
+        /// and the context is reset to root the way the stop endpoint does before calling the service.
+        /// </summary>
+        private static void CallerImpersonating(string sessionId)
+        {
             BlocksContext.SetContext(BlocksContext.Create(
                 tenantId: TargetTenantId, roles: null, userId: ActorId, impersonated: true,
                 isAuthenticated: true, requestUri: "https://test", organizationId: "default",
                 permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
                 userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
                 originalTenantId: TenantId, impersonationSessionId: sessionId, applicationDomain: "test"));
+            DomainResolver.ResetToOriginalBlocksContextForImpersonation();
+        }
 
         // The session record keeps the status it had while the impersonation ran: the retry is recognised
         // from the lineage, not from the record.
