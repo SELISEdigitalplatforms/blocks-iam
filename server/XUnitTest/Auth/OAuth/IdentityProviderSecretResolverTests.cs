@@ -609,6 +609,21 @@ namespace XUnitTest.Auth.OAuth
         }
     }
 
+    public sealed class IdentityProviderLogTests
+    {
+        [Theory]
+        [InlineData("google", "google")]
+        [InlineData("goo\r\ngle", "google")]
+        [InlineData("fake\nERROR forged entry", "fakeERROR forged entry")]
+        [InlineData(null, null)]
+        public void Name_RemovesLineBreaks_SoARequestCannotForgeLogEntries(string? provider, string? expected)
+        {
+            var idp = new IdentityProvider { Provider = provider!, ProviderType = "social", ClientId = "cid", ClientSecret = "", TokenEndpointAuthMethod = "client_secret_post" };
+
+            IdentityProviderLog.Name(idp).Should().Be(expected);
+        }
+    }
+
     [CollectionDefinition(nameof(IdentityProviderSecretHttpIdentityCollection), DisableParallelization = true)]
     public sealed class IdentityProviderSecretHttpIdentityCollection { }
 }

@@ -948,7 +948,7 @@ namespace Authentication.DomainService.Services
 
             if (stored != null)
             {
-                _logger?.LogWarning("Identity provider {Provider} was not deleted; its secrets are kept.", provider.Provider);
+                _logger?.LogWarning("Identity provider {Provider} was not deleted; its secrets are kept.", IdentityProviderLog.Name(provider));
                 return;
             }
 
@@ -979,7 +979,7 @@ namespace Authentication.DomainService.Services
 
             if (StoredReference(stored, kind) == reference)
             {
-                _logger?.LogWarning("Identity provider {Provider} was not updated; its {SecretKind} secret is kept.", provider.Provider, kind);
+                _logger?.LogWarning("Identity provider {Provider} was not updated; its {SecretKind} secret is kept.", IdentityProviderLog.Name(provider), kind);
                 return;
             }
 
@@ -1020,7 +1020,7 @@ namespace Authentication.DomainService.Services
 
             if (stored == null && keepWhenMissing)
             {
-                _logger?.LogWarning("Identity provider {Provider} could not be read back after the update; the secrets created by this request are kept.", provider.Provider);
+                _logger?.LogWarning("Identity provider {Provider} could not be read back after the update; the secrets created by this request are kept.", IdentityProviderLog.Name(provider));
                 return false;
             }
 
@@ -1039,10 +1039,10 @@ namespace Authentication.DomainService.Services
 
         // Type only: a repository exception message can carry document values.
         private void LogReReadFailed(IdentityProvider provider, Exception ex) =>
-            _logger?.LogWarning("Identity provider {Provider} could not be re-read ({FailureClass}); its secrets are kept.", provider.Provider, ex.GetType().Name);
+            _logger?.LogWarning("Identity provider {Provider} could not be re-read ({FailureClass}); its secrets are kept.", IdentityProviderLog.Name(provider), ex.GetType().Name);
 
         private void LogRotationNotUndone(IdentityProvider provider) =>
-            _logger?.LogWarning("Identity provider {Provider} was not updated, but a secret rotation in the same request cannot be undone.", provider.Provider);
+            _logger?.LogWarning("Identity provider {Provider} was not updated, but a secret rotation in the same request cannot be undone.", IdentityProviderLog.Name(provider));
 
         public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider)
         {

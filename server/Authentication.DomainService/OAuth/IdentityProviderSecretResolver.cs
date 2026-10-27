@@ -60,6 +60,14 @@ namespace Authentication.DomainService.OAuth
         Task RetireAsync(IdentityProvider provider, IdentityProviderSecretKind kind, string? reference, CancellationToken cancellationToken = default);
     }
 
+    /// <summary>Log-safe forms of identity provider fields that come from requests.</summary>
+    public static class IdentityProviderLog
+    {
+        /// <summary>The provider name with line breaks removed, so it cannot forge log entries.</summary>
+        public static string? Name(IdentityProvider provider) =>
+            provider.Provider?.Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", string.Empty, StringComparison.Ordinal);
+    }
+
     /// <summary>The sign-in side of <see cref="IIdentityProviderSecretResolver"/>, shared by every token-exchange site.</summary>
     public static class IdentityProviderSecretResolverExtensions
     {
@@ -255,9 +263,9 @@ namespace Authentication.DomainService.OAuth
         {
             _logger.LogWarning(
                 "The {SecretKind} of identity provider {Provider} is unavailable: {FailureClass}.",
-                kind, provider.Provider, failureClass);
+                kind, IdentityProviderLog.Name(provider), failureClass);
 
-            return new IdentityProviderSecretUnavailableException(provider.Provider, kind, failureClass);
+            return new IdentityProviderSecretUnavailableException(IdentityProviderLog.Name(provider), kind, failureClass);
         }
 
         public async Task<(string? ClientSecretReference, string? PrivateKeyReference)> StoreAsync(
@@ -321,7 +329,7 @@ namespace Authentication.DomainService.OAuth
                     // The old secret is unusable and left as it is; a new one takes its place.
                     _logger.LogInformation(
                         "The {SecretKind} of identity provider {Provider} could not be rotated ({FailureClass}); storing a new secret.",
-                        kind, provider.Provider, ex.GetType().Name);
+                        kind, IdentityProviderLog.Name(provider), ex.GetType().Name);
                 }
             }
 
@@ -352,7 +360,7 @@ namespace Authentication.DomainService.OAuth
             {
                 _logger.LogWarning(
                     "Retiring the {SecretKind} of identity provider {Provider} failed: {FailureClass}. The secret is left orphaned.",
-                    kind, provider.Provider, ex.GetType().Name);
+                    kind, IdentityProviderLog.Name(provider), ex.GetType().Name);
             }
         }
 
