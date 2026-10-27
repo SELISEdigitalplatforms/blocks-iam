@@ -1,10 +1,10 @@
-using Blocks.Secrets;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -320,6 +320,7 @@ namespace XUnitTest.Auth.Shared
             referenceAtWrite.Should().BeNull();
             existing.ClientSecret.Should().NotBeNullOrEmpty("the mirrored OIDC client secret is now authoritative");
             _secrets.Verify(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
 
         [Fact]
@@ -341,12 +342,13 @@ namespace XUnitTest.Auth.Shared
             linked.ClientSecretReference.Should().BeNull();
             linked.ClientSecret.Should().Be(result.ClientSecret);
             _secrets.Verify(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
 
         [Fact]
         public async Task RotateOidcClientSecret_DeniedProviderWrite_KeepsTheReferencedSecret()
         {
-            // Q6: the stored provider still points at the reference, so it is not retired.
+            // A denied write is a silent no-op: the stored provider still points at the reference, so it is not retired.
             _repo.Setup(r => r.GetOidcClientRegistrationAsync("item-1")).ReturnsAsync(RotatableClient(true));
             _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
             var linked = Idp(clientId: "cid");
@@ -359,6 +361,26 @@ namespace XUnitTest.Auth.Shared
 
             (await Create().RotateOidcClientSecretAsync("item-1")).IsSuccess.Should().BeTrue();
 
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task RotateOidcClientSecret_ReReadFails_StillSucceeds_AndKeepsTheReplacedSecret()
+        {
+            // The provider write completed; a failing check must not turn the rotation into an error.
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("item-1")).ReturnsAsync(RotatableClient(true));
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            var linked = Idp(clientId: "cid");
+            linked.ClientSecretReference = "cs-ref";
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(linked);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(linked);
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ThrowsAsync(new InvalidOperationException("read failed"));
+
+            (await Create().RotateOidcClientSecretAsync("item-1")).IsSuccess.Should().BeTrue();
+
+            linked.ClientSecretReference.Should().BeNull();
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
             _secrets.VerifyNoOtherCalls();
         }
 
@@ -384,6 +406,7 @@ namespace XUnitTest.Auth.Shared
 
             result.IsSuccess.Should().BeTrue();
             _secrets.Verify(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
 
         // ---------- RotateOidcClientSecretAsync provider secret sync ----------

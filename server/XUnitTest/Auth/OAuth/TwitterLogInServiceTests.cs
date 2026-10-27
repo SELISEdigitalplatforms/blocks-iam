@@ -1,10 +1,10 @@
-using Blocks.Secrets;
 using System.Text.Json;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.SocialServices;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -213,7 +213,7 @@ namespace XUnitTest.Auth.OAuth
             twitter.FirstName.Should().Be("A");
             twitter.LastName.Should().Be("C");
         }
-    
+
         // ---------- #649: client secret resolved through Blocks Secrets ----------
 
         private static IdentityProvider ReferencedProvider(string? legacy = "stale-plaintext")
@@ -271,6 +271,9 @@ namespace XUnitTest.Auth.OAuth
             result.ExternalUserData.Should().BeOfType<TwitterUserData>();
             result.AccessToken.Should().BeNull();
             _http.VerifyNoOtherCalls();
+            // Exactly one read: a failed read is not retried.
+            _secrets.Verify(s => s.GetValueAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
     }
 }

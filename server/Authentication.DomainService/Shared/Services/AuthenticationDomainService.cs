@@ -899,9 +899,13 @@ namespace Authentication.DomainService.Services
             }
             catch
             {
-                // No document points at the secrets created above: retire them, then fail as before.
-                await _secretResolver.RetireAsync(provider, IdentityProviderSecretKind.ClientSecret, clientSecretReference, CancellationToken.None);
-                await _secretResolver.RetireAsync(provider, IdentityProviderSecretKind.PrivateKey, privateKeyReference, CancellationToken.None);
+                // The insert may still have committed (a timeout after the write), so the secrets
+                // created above are retired only when no stored document points at them. A missing
+                // document means the insert did not land: retire them, then fail as before.
+                var created = new List<(IdentityProviderSecretKind Kind, string Reference)>(2);
+                if (clientSecretReference != null) created.Add((IdentityProviderSecretKind.ClientSecret, clientSecretReference));
+                if (privateKeyReference != null) created.Add((IdentityProviderSecretKind.PrivateKey, privateKeyReference));
+                await RetireUnreferencedCreatedSecretsAsync(provider, created, keepWhenMissing: false);
                 throw;
             }
 
@@ -930,7 +934,19 @@ namespace Authentication.DomainService.Services
             if (string.IsNullOrEmpty(provider.ClientSecretReference) && string.IsNullOrEmpty(provider.PrivateKeyReference))
                 return;
 
-            if (await _authenticationRepository.GetIdentityProviderByIdAsync(provider.ItemId) != null)
+            IdentityProvider? stored;
+            try
+            {
+                stored = await _authenticationRepository.GetIdentityProviderByIdAsync(provider.ItemId);
+            }
+            catch (Exception ex)
+            {
+                // The delete itself completed: a failing check must not turn it into an error.
+                LogReReadFailed(provider, ex);
+                return;
+            }
+
+            if (stored != null)
             {
                 _logger?.LogWarning("Identity provider {Provider} was not deleted; its secrets are kept.", provider.Provider);
                 return;
@@ -949,7 +965,19 @@ namespace Authentication.DomainService.Services
             if (string.IsNullOrEmpty(reference))
                 return;
 
-            if (StoredReference(await _authenticationRepository.GetIdentityProviderByIdAsync(provider.ItemId), kind) == reference)
+            IdentityProvider? stored;
+            try
+            {
+                stored = await _authenticationRepository.GetIdentityProviderByIdAsync(provider.ItemId);
+            }
+            catch (Exception ex)
+            {
+                // The update itself completed: a failing check must not turn it into an error.
+                LogReReadFailed(provider, ex);
+                return;
+            }
+
+            if (StoredReference(stored, kind) == reference)
             {
                 _logger?.LogWarning("Identity provider {Provider} was not updated; its {SecretKind} secret is kept.", provider.Provider, kind);
                 return;
@@ -960,6 +988,61 @@ namespace Authentication.DomainService.Services
 
         private static string? StoredReference(IdentityProvider? provider, IdentityProviderSecretKind kind) =>
             kind == IdentityProviderSecretKind.ClientSecret ? provider?.ClientSecretReference : provider?.PrivateKeyReference;
+
+        /// <summary>
+        /// After a provider write whose outcome is not known (it threw, or a data-access denial made
+        /// it a silent no-op), re-reads the provider and retires each secret created in this request
+        /// that the stored document does not point at. Returns true when the stored document was
+        /// found without one of them, which means the write did not land.
+        /// </summary>
+        /// <remarks>
+        /// Fail safe, orphan over dangling: a soft-deleted secret that a live provider points at
+        /// breaks its sign-in, while an orphaned secret is harmless. So nothing is retired when the
+        /// re-read fails, nor, with <paramref name="keepWhenMissing"/>, when it finds no document
+        /// (after an update, a read rule on a field the update changed can hide the document).
+        /// </remarks>
+        private async Task<bool> RetireUnreferencedCreatedSecretsAsync(
+            IdentityProvider provider, IReadOnlyList<(IdentityProviderSecretKind Kind, string Reference)> created, bool keepWhenMissing)
+        {
+            if (created.Count == 0)
+                return false;
+
+            IdentityProvider? stored;
+            try
+            {
+                stored = await _authenticationRepository.GetIdentityProviderByIdAsync(provider.ItemId);
+            }
+            catch (Exception ex)
+            {
+                LogReReadFailed(provider, ex);
+                return false;
+            }
+
+            if (stored == null && keepWhenMissing)
+            {
+                _logger?.LogWarning("Identity provider {Provider} could not be read back after the update; the secrets created by this request are kept.", provider.Provider);
+                return false;
+            }
+
+            var notWritten = false;
+            foreach (var (kind, reference) in created)
+            {
+                if (StoredReference(stored, kind) == reference)
+                    continue;
+
+                notWritten = true;
+                await _secretResolver.RetireAsync(provider, kind, reference, CancellationToken.None);
+            }
+
+            return notWritten;
+        }
+
+        // Type only: a repository exception message can carry document values.
+        private void LogReReadFailed(IdentityProvider provider, Exception ex) =>
+            _logger?.LogWarning("Identity provider {Provider} could not be re-read ({FailureClass}); its secrets are kept.", provider.Provider, ex.GetType().Name);
+
+        private void LogRotationNotUndone(IdentityProvider provider) =>
+            _logger?.LogWarning("Identity provider {Provider} was not updated, but a secret rotation in the same request cannot be undone.", provider.Provider);
 
         public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider)
         {
@@ -1097,21 +1180,20 @@ namespace Authentication.DomainService.Services
             }
             catch
             {
-                await UndoSecretWritesAsync(existing, secretWrite);
+                // The replace may still have committed (a timeout after the write): a secret created
+                // here is retired only when the stored document does not point at it.
+                await RetireUnreferencedCreatedSecretsAsync(existing, secretWrite.Created, keepWhenMissing: true);
+                if (secretWrite.Rotated)
+                    LogRotationNotUndone(existing);
                 throw;
             }
 
             // A denied write is a silent no-op: a secret created here that the stored document
             // does not point at would be an orphan, so it is retired. The response stays as today.
-            if (secretWrite.Created.Count > 0)
-            {
-                var stored = await _authenticationRepository.GetIdentityProviderByIdAsync(existing.ItemId);
-                foreach (var (kind, reference) in secretWrite.Created)
-                {
-                    if (StoredReference(stored, kind) != reference)
-                        await _secretResolver.RetireAsync(existing, kind, reference, CancellationToken.None);
-                }
-            }
+            // A rotation in the same request cannot be undone, so it is logged. A denied update that
+            // only rotated cannot be told apart from an applied one: its reference is unchanged.
+            if (await RetireUnreferencedCreatedSecretsAsync(existing, secretWrite.Created, keepWhenMissing: true) && secretWrite.Rotated)
+                LogRotationNotUndone(existing);
 
             return new BaseResponse { IsSuccess = true };
         }
@@ -1174,7 +1256,7 @@ namespace Authentication.DomainService.Services
                 await _secretResolver.RetireAsync(provider, kind, reference, CancellationToken.None);
 
             if (write.Rotated)
-                _logger?.LogWarning("Identity provider {Provider} was not updated, but a secret rotation in the same request cannot be undone.", provider.Provider);
+                LogRotationNotUndone(provider);
         }
 
         public async Task<BaseResponse> DeleteIdentityProviderAsync(string id)

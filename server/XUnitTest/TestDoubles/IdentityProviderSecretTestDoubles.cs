@@ -18,9 +18,15 @@ internal static class IdentityProviderSecretTestDoubles
     /// <summary>
     /// A real <see cref="IdentityProviderSecretResolver"/> whose DI scopes serve
     /// <paramref name="secrets"/> as the scoped <see cref="ISecretService"/>. The mock doubles as the
-    /// counting fake: verify calls on it. Without one, a strict mock fails any secret call, which
-    /// suits callers that only use legacy (plaintext) providers and supply no secret.
+    /// counting fake: verify calls on it. Without one, a strict mock throws on any secret call.
     /// </summary>
+    /// <remarks>
+    /// A strict mock's throw fails a test only where the exception escapes. The resolver swallows
+    /// it in two places: <c>RetireAsync</c> logs any non-cancellation failure as a warning, and a
+    /// sign-in read turns it into <see cref="IdentityProviderSecretUnavailableException"/>. So
+    /// strictness alone does not prove "no delete" or "no read": assert it with
+    /// <c>Verify(..., Times.Never)</c> or <c>VerifyNoOtherCalls()</c>.
+    /// </remarks>
     public static IdentityProviderSecretResolver Resolver(
         Mock<ISecretService>? secrets = null,
         ILogger<IdentityProviderSecretResolver>? logger = null)

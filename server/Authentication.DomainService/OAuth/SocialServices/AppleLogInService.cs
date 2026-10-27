@@ -44,14 +44,10 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 return new SocialCallbackResult { ExternalUserData = new AppleUserData() };
             }
 
-            string? privateKey;
-            try
+            // False when a referenced secret cannot be read (the resolver logs it): fail without calling the provider.
+            var (resolved, privateKey) = await _secretResolver.TryGetPrivateKeyAsync(identityProvider);
+            if (!resolved)
             {
-                privateKey = await _secretResolver.GetPrivateKeyAsync(identityProvider);
-            }
-            catch (IdentityProviderSecretUnavailableException)
-            {
-                // Logged by the resolver (provider and failure class only). No token request is sent.
                 return new SocialCallbackResult { ExternalUserData = new AppleUserData() };
             }
 
@@ -98,11 +94,12 @@ namespace Authentication.DomainService.OAuth.SocialServices
             var callbackResult = await HandleSocialLoginCallback(stateInfo);
             return callbackResult.ExternalUserData;
         }
-        /// <summary>Signs the client assertion with the provider's legacy plaintext <c>PrivateKey</c>.</summary>
-        public string GenerateClientSecret(IdentityProvider identityProvider) =>
-            GenerateClientSecret(identityProvider, identityProvider.PrivateKey);
 
-        /// <summary>Signs the client assertion with an already-resolved private key (PEM).</summary>
+        /// <summary>
+        /// Signs the client assertion with an already-resolved private key (PEM). Resolve it with
+        /// <see cref="IIdentityProviderSecretResolver.GetPrivateKeyAsync"/>: the provider's
+        /// <c>PrivateKey</c> field is empty once the key lives in Blocks Secrets.
+        /// </summary>
         public string GenerateClientSecret(IdentityProvider identityProvider, string? privateKeyPem)
         {
             string teamId = identityProvider.TeamId ?? "";

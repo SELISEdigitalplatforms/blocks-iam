@@ -94,9 +94,28 @@ namespace XUnitTest.Auth.OAuth
         public async Task LegacyProvider_WithNoAmbientTenant_StillResolves()
         {
             // C3: legacy providers keep working whatever the secret store's state.
-            var (sut, _) = CountingResolver();
+            var (sut, scopes) = CountingResolver();
 
             (await sut.GetClientSecretAsync(Provider())).Should().Be(LegacyValue);
+            scopes.Created.Should().Be(0);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task WhitespaceOnlyReference_CountsAsAReference_AndFailsClosed()
+        {
+            // Decision: a non-empty reference is authoritative, and whitespace is not empty. IAM never
+            // writes a blank reference, so one found here is treated as broken: the read fails
+            // closed rather than falling back to the plaintext field.
+            BlocksContext.SetContext(IdentityProviderSecretTestDoubles.AnonymousContext(TenantId), false);
+            _secrets.Setup(s => s.GetValueAsync("  ", It.IsAny<CancellationToken>())).ThrowsAsync(new SecretNotFoundException("  "));
+            var sut = IdentityProviderSecretTestDoubles.Resolver(_secrets);
+
+            var act = () => sut.GetClientSecretAsync(Provider(clientSecretReference: "  "));
+
+            (await act.Should().ThrowAsync<IdentityProviderSecretUnavailableException>()).Which.FailureClass.Should().Be(nameof(SecretNotFoundException));
+            _secrets.Verify(s => s.GetValueAsync("  ", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
 
         [Fact]
@@ -142,6 +161,8 @@ namespace XUnitTest.Auth.OAuth
             _secrets.Verify(s => s.GetValueAsync(Reference, It.IsAny<CancellationToken>()), Times.Exactly(2));
         }
 
+        // The meaningful check is ValidateOnBuild + ValidateScopes: building the provider throws if
+        // the singleton resolver depends on the scoped ISecretService directly.
         [Fact]
         public void Resolver_IsASingletonThatDoesNotCaptureTheScopedSecretService()
         {
@@ -160,7 +181,8 @@ namespace XUnitTest.Auth.OAuth
         [Fact]
         public async Task AnonymousRequest_ReadsInASynthesizedServiceContextForTheAmbientTenant_AndRestoresIt()
         {
-            // H13, C9
+            // H13, C9. The final check here also holds through the runtime's own AsyncLocal rollback;
+            // AfterTheRead_TheCallersContextIsExplicitlyRestored proves the explicit restore.
             var ambient = IdentityProviderSecretTestDoubles.AnonymousContext(TenantId);
             BlocksContext.SetContext(ambient, false);
             BlocksContext? seen = null;
@@ -194,6 +216,27 @@ namespace XUnitTest.Auth.OAuth
 
             seen.Should().BeSameAs(caller);
             BlocksContext.GetContext().Should().BeSameAs(caller);
+        }
+
+        [Fact]
+        public async Task AnonymousRequest_WithNoOrganization_ReadsUnderTheDefaultOrganization()
+        {
+            // Service secrets are not scoped by organization, so the fallback only fills the field.
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: TenantId, roles: [], userId: string.Empty, isAuthenticated: false,
+                requestUri: "/api/social/callback", organizationId: " ", expireOn: DateTime.UtcNow.AddMinutes(5),
+                email: string.Empty, permissions: [], userName: string.Empty, phoneNumber: string.Empty,
+                displayName: string.Empty, oauthToken: string.Empty, originalTenantId: TenantId), false);
+            BlocksContext? seen = null;
+            _secrets.Setup(s => s.GetValueAsync(Reference, It.IsAny<CancellationToken>()))
+                .Callback(() => seen = BlocksContext.GetContext())
+                .ReturnsAsync(VaultValue);
+
+            await IdentityProviderSecretTestDoubles.Resolver(_secrets).GetClientSecretAsync(Provider(clientSecretReference: Reference));
+
+            seen!.OrganizationId.Should().Be("default");
+            seen.TenantId.Should().Be(TenantId);
+            seen.UserId.Should().Be(IdentityProviderSecretResolver.ServiceUserId);
         }
 
         // In an ordinary flow the runtime rolls back AsyncLocal changes made inside an awaited
@@ -409,6 +452,63 @@ namespace XUnitTest.Auth.OAuth
         }
 
         [Fact]
+        public async Task Store_WithNoTenant_DescribesTheProviderOnly()
+        {
+            BlocksContext.SetContext(null, false);
+            SetSecretRequest? request = null;
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<SetSecretRequest, CancellationToken>((r, _) => request = r)
+                .ReturnsAsync("new-ref");
+
+            await IdentityProviderSecretTestDoubles.Resolver(_secrets).StoreAsync(Provider(), null, "PEM");
+
+            request!.Name.Should().Be(IdentityProviderSecretResolver.PrivateKeyName);
+            request.Description.Should().Be("Identity provider google: private key");
+        }
+
+        [Fact]
+        public async Task Store_LongProviderName_IsCutTo200CharactersInTheDescription()
+        {
+            BlocksContext.SetContext(CallerContext("t1"), true);
+            var provider = Provider();
+            provider.Provider = new string('p', 200) + new string('q', 50);
+            SetSecretRequest? request = null;
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<SetSecretRequest, CancellationToken>((r, _) => request = r)
+                .ReturnsAsync("new-ref");
+
+            await IdentityProviderSecretTestDoubles.Resolver(_secrets).StoreAsync(provider, "s", null);
+
+            request!.Description.Should().Be($"Identity provider {new string('p', 200)} (tenant t1): client secret");
+        }
+
+        [Fact]
+        public async Task Replace_ReferencedPrivateKey_RotatesInPlace()
+        {
+            BlocksContext.SetContext(CallerContext(), true);
+            _secrets.Setup(s => s.RotateAsync("pk-ref", It.Is<RotateSecretRequest>(r => r.Value == "new-pem"), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var result = await IdentityProviderSecretTestDoubles.Resolver(_secrets)
+                .ReplaceAsync(Provider(privateKeyReference: "pk-ref"), IdentityProviderSecretKind.PrivateKey, "new-pem");
+
+            result.Should().Be(("pk-ref", false));
+            _secrets.Verify(s => s.RotateAsync("pk-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task Retire_Cancellation_Propagates()
+        {
+            _secrets.Setup(s => s.DeleteAsync(Reference, It.IsAny<CancellationToken>())).ThrowsAsync(new OperationCanceledException());
+            var logger = new CapturingLogger<IdentityProviderSecretResolver>();
+
+            var act = () => IdentityProviderSecretTestDoubles.Resolver(_secrets, logger).RetireAsync(Provider(), IdentityProviderSecretKind.ClientSecret, Reference);
+
+            await act.Should().ThrowAsync<OperationCanceledException>();
+            logger.Entries.Should().BeEmpty();
+        }
+
+        [Fact]
         public async Task Retire_UnexpectedFailure_LogsAWarningWithoutTheReference()
         {
             // C12, C8
@@ -424,8 +524,10 @@ namespace XUnitTest.Auth.OAuth
     }
 
     /// <summary>
-    /// The ambient-HTTP-identity cases. They switch <see cref="BlocksContext.IsTestMode"/> off, which
-    /// is process-wide, so they run outside the parallel test collections.
+    /// The ambient-HTTP-identity cases. They swap the process-wide
+    /// <see cref="BlocksHttpContextAccessor.Instance"/>, so they run outside the parallel test
+    /// collections. <see cref="BlocksContext.IsTestMode"/> is per thread (a ThreadLocal in Genesis
+    /// 4.4.9), so it is switched off on the thread that runs the read.
     /// </summary>
     [Collection(nameof(IdentityProviderSecretHttpIdentityCollection))]
     public sealed class IdentityProviderSecretResolverHttpIdentityTests
@@ -441,21 +543,35 @@ namespace XUnitTest.Auth.OAuth
                 .ReturnsAsync("v");
             var sut = IdentityProviderSecretTestDoubles.Resolver(secrets);
 
-            var previousMode = BlocksContext.IsTestMode;
             var previousAccessor = BlocksHttpContextAccessor.Instance;
             var accessor = new HttpContextAccessor();
-            BlocksContext.IsTestMode = false;
             BlocksHttpContextAccessor.Instance = accessor;
             try
             {
                 accessor.HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) };
                 BlocksContext.SetContext(asyncLocal, false);
 
-                (await Task.Run(() => sut.GetClientSecretAsync(new IdentityProvider
+                // The mocked read completes synchronously, so the whole resolve, every GetContext()
+                // call included, runs on the thread where test mode was switched off.
+                (await Task.Run(() =>
                 {
-                    Provider = "google", ProviderType = "social", ClientId = "cid", ClientSecret = "", ClientSecretReference = Reference,
-                    TokenEndpointAuthMethod = "client_secret_post",
-                }))).Should().Be("v");
+                    var previousMode = BlocksContext.IsTestMode;
+                    BlocksContext.IsTestMode = false;
+                    try
+                    {
+                        var read = sut.GetClientSecretAsync(new IdentityProvider
+                        {
+                            Provider = "google", ProviderType = "social", ClientId = "cid", ClientSecret = "", ClientSecretReference = Reference,
+                            TokenEndpointAuthMethod = "client_secret_post",
+                        });
+                        read.IsCompleted.Should().BeTrue("the read must not leave the thread whose test mode is off");
+                        return read;
+                    }
+                    finally
+                    {
+                        BlocksContext.IsTestMode = previousMode;
+                    }
+                })).Should().Be("v");
 
                 return seen;
             }
@@ -464,7 +580,6 @@ namespace XUnitTest.Auth.OAuth
                 accessor.HttpContext = null;
                 BlocksHttpContextAccessor.Instance = previousAccessor;
                 BlocksContext.SetContext(null, false);
-                BlocksContext.IsTestMode = previousMode;
             }
         }
 

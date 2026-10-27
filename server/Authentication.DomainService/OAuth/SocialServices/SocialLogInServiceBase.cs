@@ -51,14 +51,10 @@ namespace Authentication.DomainService.OAuth
                 return new SocialCallbackResult { ExternalUserData = CreateEmptyUserData() };
             }
 
-            string? clientSecret;
-            try
+            // False when a referenced secret cannot be read (the resolver logs it): fail without calling the provider.
+            var (resolved, clientSecret) = await _secretResolver.TryGetClientSecretAsync(identityProvider);
+            if (!resolved)
             {
-                clientSecret = await _secretResolver.GetClientSecretAsync(identityProvider);
-            }
-            catch (IdentityProviderSecretUnavailableException)
-            {
-                // Logged by the resolver (provider and failure class only). No token request is sent.
                 return new SocialCallbackResult { ExternalUserData = CreateEmptyUserData() };
             }
 

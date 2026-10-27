@@ -37,7 +37,7 @@ namespace Authentication.DomainService.OAuth
         Task<string?> GetPrivateKeyAsync(IdentityProvider provider, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Stores the supplied non-empty values as new <c>service</c> secrets in one call:
+        /// Stores the supplied non-blank values as new <c>service</c> secrets in one call:
         /// <c>SetAsync</c> for one value, all-or-nothing <c>SetManyAsync</c> for both. Returns the
         /// new references (null for a value that was not supplied). Secret-store exceptions propagate.
         /// </summary>
@@ -54,10 +54,46 @@ namespace Authentication.DomainService.OAuth
             IdentityProvider provider, IdentityProviderSecretKind kind, string value, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Soft-deletes a secret. Never throws apart from cancellation: not-found and state
-        /// failures are ignored, anything else is logged as a warning.
+        /// Soft-deletes a secret. Apart from a null <paramref name="provider"/> and cancellation it
+        /// never throws: not-found and state failures are ignored, anything else is logged as a warning.
         /// </summary>
         Task RetireAsync(IdentityProvider provider, IdentityProviderSecretKind kind, string? reference, CancellationToken cancellationToken = default);
+    }
+
+    /// <summary>The sign-in side of <see cref="IIdentityProviderSecretResolver"/>, shared by every token-exchange site.</summary>
+    public static class IdentityProviderSecretResolverExtensions
+    {
+        /// <summary>
+        /// Resolves the client secret for a token request. <c>Resolved</c> is false when the
+        /// referenced secret cannot be read: the resolver has logged it, and the caller fails the
+        /// sign-in with its usual provider-failure result without calling the provider.
+        /// </summary>
+        public static async Task<(bool Resolved, string? Value)> TryGetClientSecretAsync(
+            this IIdentityProviderSecretResolver resolver, IdentityProvider provider, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                return (true, await resolver.GetClientSecretAsync(provider, cancellationToken).ConfigureAwait(false));
+            }
+            catch (IdentityProviderSecretUnavailableException)
+            {
+                return (false, null);
+            }
+        }
+
+        /// <summary>As <see cref="TryGetClientSecretAsync"/>, for the Apple private key.</summary>
+        public static async Task<(bool Resolved, string? Value)> TryGetPrivateKeyAsync(
+            this IIdentityProviderSecretResolver resolver, IdentityProvider provider, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                return (true, await resolver.GetPrivateKeyAsync(provider, cancellationToken).ConfigureAwait(false));
+            }
+            catch (IdentityProviderSecretUnavailableException)
+            {
+                return (false, null);
+            }
+        }
     }
 
     /// <summary>
@@ -96,8 +132,16 @@ namespace Authentication.DomainService.OAuth
     /// <b>Read context.</b> Sign-in callbacks are anonymous, and the secret package refuses an
     /// unauthenticated context. Unless the caller is already authenticated (then the real caller
     /// is the audit actor), the read runs in a synthesized authenticated service context carrying
-    /// the ambient tenant, which is the tenant whose <c>IdentityProviders</c> was just read. The
-    /// pattern is the one <c>CaptchaSecretResolver</c> uses, copied here with its own actor.
+    /// the ambient tenant, which is the tenant whose <c>IdentityProviders</c> was just read.
+    /// </para>
+    /// <para>
+    /// This follows <c>CaptchaSecretResolver</c>'s rule (a synthesized service context for the
+    /// ambient tenant, a scope per call, typed failures, no cache), with two differences. Captcha
+    /// always synthesizes the context, while an authenticated caller here reads as itself. Captcha
+    /// switches through <see cref="BlocksContext.ExecuteInContext{T}(BlocksContext, Func{T})"/>,
+    /// while this class sets the context itself and restores it in a <c>finally</c>. The context
+    /// builder is a copy of Captcha's with this resolver's own actor, so <c>Captcha.Driver</c>
+    /// stays unchanged.
     /// </para>
     /// <para>
     /// <b>Write context.</b> Writes run as the console caller (impersonated into the project).
@@ -126,6 +170,9 @@ namespace Authentication.DomainService.OAuth
             _logger = logger;
         }
 
+        // Decision: references are tested with IsNullOrEmpty, not IsNullOrWhiteSpace. IAM never
+        // writes a blank reference, so a whitespace-only one counts as a reference and fails closed
+        // instead of falling back to the plaintext field.
         public Task<string?> GetClientSecretAsync(IdentityProvider provider, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(provider);
@@ -174,21 +221,25 @@ namespace Authentication.DomainService.OAuth
         {
             // The ambient context is unauthenticated here, so GetContext() returned the AsyncLocal
             // value: that is what is written back.
-            var restore = ambient;
-
             try
             {
                 var organizationId = string.IsNullOrWhiteSpace(ambient.OrganizationId) ? DefaultOrganizationId : ambient.OrganizationId;
 
-                // changeContext: true so the secret package sees this context even where the
-                // request carries an (unauthenticated) HTTP identity.
+                // changeContext: true makes GetContext() return this context whatever the HTTP
+                // identity is. On this branch that identity is not authenticated, so GetContext()
+                // would fall through to the AsyncLocal value anyway; forcing it keeps the read from
+                // depending on that.
                 BlocksContext.SetContext(BuildServiceContext(tenantId, organizationId), true);
 
                 return await GetValueInScopeAsync(reference, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
-                BlocksContext.SetContext(restore, restore is not null);
+                // The caller's original force flag cannot be read back. It does not matter: this is
+                // an async method, so the caller gets its own ExecutionContext (flag included) back
+                // when it returns. This restore covers a continuation that runs without that
+                // ExecutionContext, and ambient is never null here (the tenant check above).
+                BlocksContext.SetContext(ambient, true);
             }
         }
 

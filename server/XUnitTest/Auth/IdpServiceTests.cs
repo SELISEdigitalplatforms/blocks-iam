@@ -1,4 +1,3 @@
-using Blocks.Secrets;
 ﻿using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
@@ -8,6 +7,7 @@ using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Services;
@@ -927,6 +927,9 @@ namespace XUnitTest.Auth
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error").Should().Be("invalid_grant");
             _httpService.VerifyNoOtherCalls();
+            // Exactly one read: a failed read is not retried.
+            _secrets.Verify(s => s.GetValueAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
 
         [Fact]

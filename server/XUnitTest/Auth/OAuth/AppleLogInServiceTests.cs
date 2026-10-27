@@ -1,4 +1,3 @@
-using Blocks.Secrets;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -8,6 +7,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.SocialServices;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
@@ -66,7 +66,8 @@ namespace XUnitTest.Auth.OAuth
         [Fact]
         public void GenerateClientSecret_ProducesSignedJwt_WithExpectedClaims()
         {
-            var secret = Create().GenerateClientSecret(Provider());
+            var provider = Provider();
+            var secret = Create().GenerateClientSecret(provider, provider.PrivateKey);
 
             var token = new JwtSecurityTokenHandler().ReadJwtToken(secret);
             token.Header.Alg.Should().Be(SecurityAlgorithms.EcdsaSha256);
@@ -154,7 +155,7 @@ namespace XUnitTest.Auth.OAuth
             using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             return ecdsa.ExportECPrivateKeyPem();
         }
-    
+
         // ---------- #649: private key resolved through Blocks Secrets ----------
 
         [Fact]
@@ -220,6 +221,9 @@ namespace XUnitTest.Auth.OAuth
             result.ExternalUserData.Should().BeOfType<AppleUserData>();
             result.AccessToken.Should().BeNull();
             _http.VerifyNoOtherCalls();
+            // Exactly one read: a failed read is not retried.
+            _secrets.Verify(s => s.GetValueAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
 
         private static bool ValidatesWith(string jwt, ECDsa key)

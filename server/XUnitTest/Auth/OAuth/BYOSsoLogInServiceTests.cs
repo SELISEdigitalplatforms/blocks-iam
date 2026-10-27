@@ -1,10 +1,10 @@
-using Blocks.Secrets;
 using System.Text.Json;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.SocialServices;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -145,7 +145,7 @@ namespace XUnitTest.Auth.OAuth
                     It.IsAny<BYOSsoUserData>()),
                 Times.Once);
         }
-    
+
         // ---------- #649: client secret resolved through Blocks Secrets ----------
 
         private IdentityProvider ReferencedProvider()
@@ -206,6 +206,9 @@ namespace XUnitTest.Auth.OAuth
             result.ExternalUserData.Email.Should().BeNullOrEmpty();
             result.AccessToken.Should().BeNull();
             _http.VerifyNoOtherCalls();
+            // Exactly one read: a failed read is not retried.
+            _secrets.Verify(s => s.GetValueAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
     }
 }

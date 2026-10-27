@@ -1,4 +1,4 @@
-﻿using Authentication.DomainService.Entities;
+﻿﻿using Authentication.DomainService.Entities;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -396,14 +396,10 @@ namespace Authentication.DomainService.Authentication
             FlowContext flowContext,
             HttpRequest httpRequest)
         {
-            string? clientSecret;
-            try
+            // False when a referenced secret cannot be read (the resolver logs it): fail without calling the provider.
+            var (resolved, clientSecret) = await _secretResolver.TryGetClientSecretAsync(identityProvider, httpRequest.HttpContext.RequestAborted);
+            if (!resolved)
             {
-                clientSecret = await _secretResolver.GetClientSecretAsync(identityProvider, httpRequest.HttpContext.RequestAborted);
-            }
-            catch (IdentityProviderSecretUnavailableException)
-            {
-                // Logged by the resolver (provider and failure class only). No token request is sent.
                 return (new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" }), null);
             }
 
