@@ -2,7 +2,6 @@ import { Button } from "@/components/ui-kits/button/button";
 import { showErrorToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { ISsoProviderConfigurationWithMeta } from "@blocks-idp/authentication/models/sso.model";
-import { oauthService } from "@blocks-idp/authentication/services/oauth.service";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { useTheme } from "@/hooks/use-theme";
 import { useCallback, useMemo } from "react";
@@ -10,6 +9,7 @@ import { sanitizeProviderUrl } from "@blocks-idp/authentication/utils/sanitize-p
 import {
   OIDC_APP_HANDOFF_STORAGE_KEY,
   OIDC_DEVICE_RETURN_URL_STORAGE_KEY,
+  OIDC_SSO_RETURN_URI_STORAGE_KEY,
 } from "@blocks-idp/authentication/utils/oidc-utils";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { isAppRedirectUrl } from "@/lib/utils";
@@ -45,6 +45,16 @@ const updateAppHandoffMarker = (redirectUri: string | undefined) => {
     sessionStorage.setItem(OIDC_APP_HANDOFF_STORAGE_KEY, "1");
   } else {
     sessionStorage.removeItem(OIDC_APP_HANDOFF_STORAGE_KEY);
+  }
+};
+
+/** Kept for the error page, in case the server loses the sign-in while the user is at the provider. */
+const rememberSsoReturnUri = (redirectUri: string | undefined) => {
+  try {
+    if (redirectUri) sessionStorage.setItem(OIDC_SSO_RETURN_URI_STORAGE_KEY, redirectUri);
+    else sessionStorage.removeItem(OIDC_SSO_RETURN_URI_STORAGE_KEY);
+  } catch {
+    // Storage blocked: the error page falls back to IAM's own login.
   }
 };
 
@@ -90,23 +100,15 @@ export const SSOSigninCard = ({
             oidcContext.returnUrl,
           );
         }
+        rememberSsoReturnUri(oidcContext.redirectUri);
         updateAppHandoffMarker(oidcContext.redirectUri);
         window.location.href = sanitizeProviderUrl(res.authorizationUrl);
         return;
       }
 
-      // Standard embed social login flow
-      const res = await oauthService.getSocialLoginEndpoint({
-        provider: providerConfig.provider,
-        audience: providerConfig.audience,
-        sendAsResponse: true,
-        nextUrl: undefined,
-      });
-
-      if (res.error) return showErrorToast({ errors: res.error });
-      if (!res.providerUrl)
-        return showErrorToast({ errors: "No redirect URL provided." });
-      window.location.href = sanitizeProviderUrl(res.providerUrl);
+      // No OIDC request on this page, so there is nothing for the provider callback to return
+      // to. IAM's own /login starts one and shows these same buttons inside it.
+      window.location.href = "/login";
     } catch (error) {
       console.error("SSO Sign-in error:", error);
       if (isErrorWithErrors(error))

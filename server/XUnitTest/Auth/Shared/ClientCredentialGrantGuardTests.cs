@@ -9,7 +9,7 @@ namespace XUnitTest.Auth.Shared
 {
     /// <summary>
     /// R8: a client credential carries only what the caller could assign, and changing, rotating or
-    /// deleting one is managing whatever it carries. The caller "caller" holds "manager".
+    /// deleting one is managing whatever it carries. The caller "caller" holds "manager" (a descendant).
     /// </summary>
     public sealed class ClientCredentialGrantGuardTests : IDisposable
     {
@@ -35,7 +35,9 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task CreateCarriesOnlyWhatTheCallerCouldAssign()
         {
-            (await Guard().MaySaveAsync(new SaveClientCredentialRequest { Name = "svc", Roles = ["viewer"], Permissions = ["write"] })).Should().BeTrue();
+            (await Guard().MaySaveAsync(new SaveClientCredentialRequest { Name = "svc", Roles = ["viewer"] })).Should().BeTrue();
+            (await Guard().MaySaveAsync(new SaveClientCredentialRequest { Name = "svc", Permissions = ["write"] }))
+                .Should().BeFalse("a descendant gives power through roles, never as a direct permission");
             (await Guard().MaySaveAsync(new SaveClientCredentialRequest { Name = "svc", Roles = ["owner"] })).Should().BeFalse();
             (await Guard().MaySaveAsync(new SaveClientCredentialRequest { Name = "svc", Permissions = ["billing"] })).Should().BeFalse();
         }

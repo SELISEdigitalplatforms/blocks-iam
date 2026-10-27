@@ -354,3 +354,43 @@ export const JOIN_PANEL: OidcPanelConfig = {
     { text: "$ GET /api/iam/signup-links/context", color: "var(--accent2)" },
   ],
 };
+
+/* ──────────────────────────────────────────────────────────────
+   SIGN-IN ERROR — the provider sent the browser back, but IAM could
+   not finish the sign-in (expired, already used, or refused).
+   The page opens with this panel already in its failed state.
+   ────────────────────────────────────────────────────────────── */
+export const OIDC_ERROR_PANEL: OidcPanelConfig = {
+  heading: "OIDC Authentication Pipeline",
+  subtext:
+    "Your sign-in provider sent you back, but the Blocks IAM service could not finish the sign-in. Start again from the application.",
+
+  idleBadge:       "Stopped",
+  submittingBadge: "Checking",
+  successBadge:    "Authenticated",
+  failedBadge:     "Stopped",
+
+  idleNode: {
+    icon:        "shield-check",
+    title:       "Sign-in stopped",
+    description: "The sign-in could not be completed.",
+  },
+
+  validatingNode: {
+    icon:         "key",
+    service:      "IAM Service",
+    title:        "Completing Sign-in",
+    activeLabel:  "GET /api/oidc/callback …",
+    successLabel: "Sign-in completed",
+    failLabel:    "Sign-in could not be completed",
+  },
+
+  successNodes: [],
+
+  terminalMessages: [],
+
+  errorTerminalPrefix: [
+    { text: "$ GET /api/oidc/callback",  color: "var(--accent2)" },
+    { text: "  > state checked",          color: "var(--muted)"   },
+  ],
+};

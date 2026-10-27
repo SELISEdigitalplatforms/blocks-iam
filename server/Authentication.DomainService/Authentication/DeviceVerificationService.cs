@@ -87,8 +87,9 @@ namespace Authentication.DomainService.Authentication
             }
 
             var tenantId = entity.TenantId;
-            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request);
-            var currentUrl = $"{apiBase}/device/{Uri.EscapeDataString(tenantId)}?user_code={Uri.EscapeDataString(entity.UserCode)}";
+            // Relative on purpose: the login page only follows a same-origin returnUrl, and behind the
+            // TLS proxy Request.Scheme is http, so an absolute URL was refused on the https page.
+            var currentUrl = $"/device/{Uri.EscapeDataString(tenantId)}?user_code={Uri.EscapeDataString(entity.UserCode)}";
 
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenantId)];
             var session = !string.IsNullOrWhiteSpace(sessionId)

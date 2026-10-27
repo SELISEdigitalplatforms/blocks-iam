@@ -75,6 +75,16 @@ namespace XUnitTest.IamTests.Resources
                 Mock.Of<ITenantPermissionPropagator>(), Mock.Of<IUserActivityDispatcher>(), _users.Object,
                 accessGrant: wired ? _kit.Service() : null);
 
+        /// <summary>The caller holds "manager": a descendant, below admin, above viewer.</summary>
+        private void BeDescendant() => _kit.WithUser("caller", ["manager"]);
+
+        private Role WithDefaultCopy(string slug)
+        {
+            var copy = new Role { ItemId = "role-" + slug, Slug = slug, Name = slug, OrganizationId = Org, CreatedFromDefault = true };
+            _kit.RolesOf().Add(copy);
+            return copy;
+        }
+
         private static void ShouldBeRefused(BaseResponse result) =>
             result.Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
 
@@ -96,9 +106,25 @@ namespace XUnitTest.IamTests.Resources
         [InlineData(null, true)]
         [InlineData("admin", true)]
         [InlineData("viewer", true)]
-        [InlineData("owner", false)]
-        public async Task CreateRoleHangsOnlyBelowAHeldOrManagedRole(string? parent, bool allowed)
+        [InlineData("owner", true)]
+        public async Task TopUserCreatesARoleStandaloneOrUnderAnyRole(string? parent, bool allowed)
         {
+            var result = await Create().CreateRoleAsync(new CreateRoleRequest { Name = "Team", Slug = "team", ParentRoleSlug = parent });
+
+            result.IsSuccess.Should().Be(allowed);
+            _inserted.Should().ContainSingle();
+        }
+
+        [Theory]
+        [InlineData(null, false)]
+        [InlineData("manager", true)]
+        [InlineData("viewer", true)]
+        [InlineData("owner", false)]
+        [InlineData("admin", false)]
+        public async Task DescendantCreatesARoleOnlyBelowItsOwnRole(string? parent, bool allowed)
+        {
+            BeDescendant();
+
             var result = await Create().CreateRoleAsync(new CreateRoleRequest { Name = "Team", Slug = "team", ParentRoleSlug = parent });
 
             if (allowed)
@@ -139,18 +165,48 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
-        public async Task UpdateOwnRoleOrARoleAboveTheCallerIsRefused()
+        public async Task TopUserUpdatesEveryRoleButItsOwn()
         {
             ShouldBeRefused(await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-admin", Name = "Admin" }));
-            ShouldBeRefused(await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-owner", Name = "Owner" }));
-            (await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-manager", Name = "Lead", ParentRoleSlug = "admin" }))
+            (await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-owner", Name = "Owner" })).IsSuccess.Should().BeTrue();
+            (await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-viewer", Name = "Viewer", ParentRoleSlug = "auditor" }))
                 .IsSuccess.Should().BeTrue();
         }
 
         [Fact]
-        public async Task MovingARoleBelowARoleTheCallerDoesNotHoldIsRefused()
+        public async Task DescendantUpdatesOnlyRolesBelowIt()
         {
+            BeDescendant();
+
+            ShouldBeRefused(await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-manager", Name = "Lead", ParentRoleSlug = "admin" }));
+            ShouldBeRefused(await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-admin", Name = "Admin" }));
+            ShouldBeRefused(await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-owner", Name = "Owner" }));
+            (await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-viewer", Name = "Viewer", ParentRoleSlug = "manager" }))
+                .IsSuccess.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task DescendantMovingARoleOutOfItsTreeIsRefused()
+        {
+            BeDescendant();
+
             ShouldBeRefused(await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-viewer", Name = "Viewer", ParentRoleSlug = "auditor" }));
+            ShouldBeRefused(await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-viewer", Name = "Viewer", ParentRoleSlug = null }));
+        }
+
+        [Fact]
+        public async Task ACopyFromDefaultIsReadOnlyForEveryOrganizationUser()
+        {
+            WithDefaultCopy("member");
+
+            var update = await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "role-member", Name = "Member" });
+            var assign = await Create().SetRolesAsync(new SetRolesRequest { Slug = "member", AddPermissions = ["perm-read"] });
+            var archive = await Create().ArchiveRoleAsync("role-member");
+
+            update.Errors.Should().ContainKey("forbidden");
+            assign.Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
+            archive.Errors.Should().ContainKey("forbidden");
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("member", It.IsAny<List<string>>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
@@ -197,6 +253,9 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task ArchivingOwnRoleOrARoleAboveTheCallerIsRefused()
         {
+            BeDescendant();
+
+            ShouldBeRefused(await Create().ArchiveRoleAsync("role-manager"));
             ShouldBeRefused(await Create().ArchiveRoleAsync("role-admin"));
             ShouldBeRefused(await Create().ArchiveRoleAsync("role-owner"));
             _repo.Verify(r => r.RemoveRoleFromAllUsersAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
@@ -216,8 +275,9 @@ namespace XUnitTest.IamTests.Resources
         // ---------- roles/assign-permissions ----------
 
         [Fact]
-        public async Task AssigningAPermissionTheCallerDoesNotHoldIsRefused()
+        public async Task DescendantAddsOnlyPermissionsItsOwnRolesCarry()
         {
+            BeDescendant();
             var service = Create();
 
             var refused = await service.SetRolesAsync(new SetRolesRequest { Slug = "viewer", AddPermissions = ["perm-billing"] });
@@ -226,6 +286,14 @@ namespace XUnitTest.IamTests.Resources
             refused.Errors.Should().ContainKey(AccessGrantErrors.GrantNotAllowed);
             allowed.Success.Should().BeTrue();
             _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("viewer", It.Is<List<string>>(l => l.Contains("perm-billing")), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task TopUserPutsAnyPermissionOnARoleOfTheOrganization()
+        {
+            var result = await Create().SetRolesAsync(new SetRolesRequest { Slug = "viewer", AddPermissions = ["perm-billing"] });
+
+            result.Success.Should().BeTrue();
         }
 
         [Fact]
@@ -241,6 +309,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task CreatorMayOnlyBeGivenRolesTheCallerCouldAssign()
         {
+            BeDescendant();
             var refused = await Create().CreateOrganizationAsync(new CreateOrganizationRequest
             {
                 Name = "New",

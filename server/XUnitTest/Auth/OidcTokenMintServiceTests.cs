@@ -122,6 +122,26 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task MintAsync_CopiesTokenVersionAndSecurityStamp_FromUser_WithNoExtraReads()
+        {
+            OidcClaims? captured = null;
+            _tokenService.Setup(t => t.GenerateAccessTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<int>()))
+                .Callback<OidcClaims, string, int>((c, _, _) => captured = c)
+                .ReturnsAsync("access-token");
+            var request = BuildRequest(request: null);
+            request.User.TokenVersion = 3;
+            request.User.SecurityStamp = "S1";
+
+            await Create().MintAsync(request);
+
+            captured!.TokenVersion.Should().Be(3);
+            captured.SecurityStamp.Should().Be("S1");
+            // The user is already in the request: issuing reads only the configuration, as before.
+            _repo.Verify(r => r.GetAuthenticationConfigurationAsync(), Times.Once);
+            _repo.VerifyNoOtherCalls();
+        }
+
+        [Fact]
         public async Task MintAsync_DefaultsAmrToPwd_WhenNoneProvided()
         {
             OidcClaims? captured = null;

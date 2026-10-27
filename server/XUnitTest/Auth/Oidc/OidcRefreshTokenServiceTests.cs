@@ -303,6 +303,26 @@ namespace XUnitTest.Auth.Oidc
             _refreshTokenRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
+        [Fact]
+        public async Task Rotate_IssuesTheAccessToken_FromThePersistedUser_NotTheRefreshRecordsVersion()
+        {
+            // The refresh record keeps the synthetic TokenVersion = 1 from the code exchange; the new
+            // access token's token_version / security_stamp must come from the user as stored now.
+            SetupClient();
+            SetupValidRefreshToken(
+                new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "tenant-1", OrganizationId = "default", TokenVersion = 1 },
+                new User { ItemId = "u1", Active = true, IsVerified = true, Status = UserLifecycleStatus.Active, TokenVersion = 4, SecurityStamp = "S4" });
+            SetupSuccessfulInner();
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken()));
+
+            result.Should().BeOfType<OkObjectResult>();
+            _innerJwt.Verify(p => p.GetJwtAccessToken(
+                It.IsAny<IdentityConfiguration>(), It.IsAny<Tenant>(),
+                It.Is<User>(u => u.TokenVersion == 4 && u.SecurityStamp == "S4"),
+                It.IsAny<TokenRequest>(), It.IsAny<StateInfo>()), Times.Once);
+        }
+
         // ---------- token issuance outcome ----------
 
         [Fact]

@@ -124,6 +124,13 @@ public class SignupLinkGenerationServiceTests : IDisposable
         _accessGrant.WithUser(ActorId, roles: ["site-manager"], organizationId: "org-acme");
     }
 
+    /// <summary>Bob's standalone site-manager role gets the manage power: Bob becomes a top user.</summary>
+    private void MakeBobATopUser()
+    {
+        SetupRoleTreeForBob();
+        _accessGrant.WithPermission(AccessGrantRules.MutateUsersPermission, "org-acme", "site-manager");
+    }
+
     private static SignupLinkConfiguration ActiveConfig() => new()
     {
         ItemId = CfgId,
@@ -230,7 +237,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
     public async Task H2_ConcreteToken_IgnoresAbsentPayloadOrg()
     {
         InstallContext(orgId: "org-acme", roles: ["site-manager"], permissions: ["read:project"]);
-        SetupRoleTreeForBob();
+        MakeBobATopUser();
         SignupLink? saved = null;
         _links.Setup(l => l.InsertAsync(It.IsAny<SignupLink>()))
             .Callback<SignupLink>(e => saved = e)
@@ -250,7 +257,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
             .Returns(Task.CompletedTask);
 
         InstallContext(orgId: "org-acme", roles: ["site-manager"], permissions: ["read:project"]);
-        SetupRoleTreeForBob();
+        MakeBobATopUser();
 
         var result = await Sut().GenerateAsync(ValidRequest(r =>
         {
@@ -307,7 +314,7 @@ public class SignupLinkGenerationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task H4_BobCanGrantSiteViewerAndContractor()
+    public async Task H4_DescendantBobGivesOnlyRolesBelowHimAndNoDirectPermissions()
     {
         InstallContext(orgId: "org-acme", roles: ["site-manager"], permissions: ["read:project"]);
         SetupRoleTreeForBob();
@@ -316,13 +323,28 @@ public class SignupLinkGenerationServiceTests : IDisposable
         {
             r.OrganizationId = null;
             r.Roles = ["site-viewer"];
+            r.Permissions = ["read:project"];
         }));
-        viewer.IsSuccess.Should().BeTrue();
+        viewer.StatusCode.Should().Be(403, "the config's direct permissions are not Bob's to give");
 
         var contractor = await Sut().GenerateAsync(ValidRequest(r =>
         {
             r.OrganizationId = null;
             r.Email = "c2@example.com";
+            r.Roles = ["contractor"];
+        }));
+        contractor.StatusCode.Should().Be(403, "contractor is standalone, not below Bob");
+    }
+
+    [Fact]
+    public async Task H4_TopUserBobGivesAnyRoleAndPermission()
+    {
+        InstallContext(orgId: "org-acme", roles: ["site-manager"], permissions: ["read:project"]);
+        MakeBobATopUser();
+
+        var contractor = await Sut().GenerateAsync(ValidRequest(r =>
+        {
+            r.OrganizationId = null;
             r.Roles = ["contractor"];
         }));
         contractor.IsSuccess.Should().BeTrue();

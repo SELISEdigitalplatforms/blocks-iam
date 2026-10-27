@@ -46,12 +46,12 @@ namespace Iam.DomainService.AccessGrant
 
             // Blank collapses to "default" here on purpose, unlike the write-scope resolvers: for
             // this feature "default" is the system user, and every caller the platform itself
-            // makes -- workers, signup, SSO provisioning -- carries no organization.
+            // makes -- workers, signup, SSO provisioning -- carries no organization. An impersonated
+            // or root-tenant call is NOT the system user by that alone: it acts in its token's
+            // organization like anybody else (owner rule, 2026-10-25).
             if (context is null
                 || !context.IsAuthenticated
-                || string.Equals(organizationId, IdpConstants.DefaultOrganizationId, StringComparison.Ordinal)
-                || context.Impersonated
-                || IsRootTenant(context.TenantId))
+                || string.Equals(organizationId, IdpConstants.DefaultOrganizationId, StringComparison.Ordinal))
             {
                 return new GrantCaller(context?.UserId ?? string.Empty, organizationId, true);
             }
@@ -202,10 +202,13 @@ namespace Iam.DomainService.AccessGrant
             return new GrantScopeResponse
             {
                 IsSystemUser = scope.IsSystem,
+                IsTopUser = !scope.IsSystem && scope.IsTop,
                 HeldRoles = Sorted(scope.HeldRoles),
+                PowerRoles = Sorted(scope.PowerRoles),
                 ManagedRoles = Sorted(scope.ManagedRoles),
                 AssignableRoles = Sorted(assignable.Hierarchy.Concat(assignable.Standalone).Select(r => r.Slug)),
-                HeldPermissions = Sorted(scope.HeldPermissions)
+                HeldPermissions = Sorted(scope.HeldPermissions),
+                OwnPermissions = Sorted(scope.OwnPermissions)
             };
         }
 

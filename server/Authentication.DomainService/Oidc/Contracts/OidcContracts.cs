@@ -35,6 +35,16 @@ public sealed class OidcClaims
     public List<string> RestrictedPermissions { get; set; } = [];
 
     /// <summary>
+    /// The user's <c>TokenVersion</c>, emitted as <c>token_version</c> on access tokens only. Genesis
+    /// needs it (with <see cref="SecurityStamp"/>) to attach a delegation grant to queued work. Null
+    /// omits both claims.
+    /// </summary>
+    public int? TokenVersion { get; set; }
+
+    /// <summary>The user's <c>SecurityStamp</c>, emitted as <c>security_stamp</c> beside <see cref="TokenVersion"/>.</summary>
+    public string? SecurityStamp { get; set; }
+
+    /// <summary>
     /// Not a token claim: the address of the browser that signed in (the authorize request). The
     /// refresh-token record uses it instead of the address of whoever redeems the code, which for a
     /// confidential client is a server.
