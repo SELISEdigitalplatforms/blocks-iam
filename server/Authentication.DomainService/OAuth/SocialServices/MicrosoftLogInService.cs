@@ -9,8 +9,9 @@ namespace Authentication.DomainService.OAuth
         public MicrosoftLogInService(
             ILogger<MicrosoftLogInService> logger,
             IAuthenticationRepository authenticationRepository,
-            IHttpService httpService
-        ) : base(logger, authenticationRepository, httpService)
+            IHttpService httpService,
+            IIdentityProviderSecretResolver secretResolver
+        ) : base(logger, authenticationRepository, httpService, secretResolver)
         {
         }
 

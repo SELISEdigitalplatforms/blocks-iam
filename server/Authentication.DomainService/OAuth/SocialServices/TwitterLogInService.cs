@@ -11,15 +11,18 @@ namespace Authentication.DomainService.OAuth.SocialServices
         private readonly ILogger<TwitterLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IHttpService _httpService;
+        private readonly IIdentityProviderSecretResolver _secretResolver;
 
         public TwitterLogInService(
             ILogger<TwitterLogInService> logger,
             IAuthenticationRepository authenticationRepository,
-            IHttpService httpService)
+            IHttpService httpService,
+            IIdentityProviderSecretResolver secretResolver)
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
             _httpService = httpService;
+            _secretResolver = secretResolver;
         }
 
         public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
@@ -50,11 +53,22 @@ namespace Authentication.DomainService.OAuth.SocialServices
 
             Dictionary<string, string>? headers = null;
 
+            string? clientSecret;
+            try
+            {
+                clientSecret = await _secretResolver.GetClientSecretAsync(identityProvider);
+            }
+            catch (IdentityProviderSecretUnavailableException)
+            {
+                // Logged by the resolver (provider and failure class only). No token request is sent.
+                return new SocialCallbackResult { ExternalUserData = new TwitterUserData() };
+            }
+
             // Detect confidential client (client_secret is available)
-            if (!string.IsNullOrWhiteSpace(identityProvider.ClientSecret))
+            if (!string.IsNullOrWhiteSpace(clientSecret))
             {
                 var authHeader = Convert.ToBase64String(
-                    Encoding.UTF8.GetBytes($"{identityProvider.ClientId}:{identityProvider.ClientSecret}")
+                    Encoding.UTF8.GetBytes($"{identityProvider.ClientId}:{clientSecret}")
                 );
 
                 headers = new Dictionary<string, string>

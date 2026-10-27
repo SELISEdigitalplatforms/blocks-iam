@@ -18,17 +18,20 @@ namespace Authentication.DomainService.OAuth.SocialServices
         private readonly ILogger<AppleLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IHttpService _httpService;
+        private readonly IIdentityProviderSecretResolver _secretResolver;
 
         public AppleLogInService(
             ILogger<AppleLogInService> logger,
             IAuthenticationRepository authenticationRepository,
             ICacheClient cacheClient,
-            IHttpService httpService
+            IHttpService httpService,
+            IIdentityProviderSecretResolver secretResolver
         )
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
             _httpService = httpService;
+            _secretResolver = secretResolver;
         }
 
         public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
@@ -41,11 +44,22 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 return new SocialCallbackResult { ExternalUserData = new AppleUserData() };
             }
 
+            string? privateKey;
+            try
+            {
+                privateKey = await _secretResolver.GetPrivateKeyAsync(identityProvider);
+            }
+            catch (IdentityProviderSecretUnavailableException)
+            {
+                // Logged by the resolver (provider and failure class only). No token request is sent.
+                return new SocialCallbackResult { ExternalUserData = new AppleUserData() };
+            }
+
             var postData = new Dictionary<string, string>
                 {
                     { "code", stateInfo.Code },
                     { "client_id", identityProvider.ClientId },
-                    { "client_secret",  GenerateClientSecret(identityProvider)},
+                    { "client_secret",  GenerateClientSecret(identityProvider, privateKey)},
                     { "redirect_uri", stateInfo.RedirectUri },
                     { "grant_type", GrantTypes.AuthCode }
                 };
@@ -84,12 +98,17 @@ namespace Authentication.DomainService.OAuth.SocialServices
             var callbackResult = await HandleSocialLoginCallback(stateInfo);
             return callbackResult.ExternalUserData;
         }
-        public string GenerateClientSecret(IdentityProvider identityProvider)
+        /// <summary>Signs the client assertion with the provider's legacy plaintext <c>PrivateKey</c>.</summary>
+        public string GenerateClientSecret(IdentityProvider identityProvider) =>
+            GenerateClientSecret(identityProvider, identityProvider.PrivateKey);
+
+        /// <summary>Signs the client assertion with an already-resolved private key (PEM).</summary>
+        public string GenerateClientSecret(IdentityProvider identityProvider, string? privateKeyPem)
         {
             string teamId = identityProvider.TeamId ?? "";
             string clientId = identityProvider.ClientId;
             string keyId = identityProvider.KeyId ?? "";
-            var privateKey = identityProvider.PrivateKey ?? "";
+            var privateKey = privateKeyPem ?? "";
             var ecdsa = ECDsa.Create();
             ecdsa.ImportFromPem(privateKey);
             var securityKey = new ECDsaSecurityKey(ecdsa)

@@ -65,6 +65,23 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
+        public void IdentityProvider_WithSecretReferences_OmitsAllFourSecretFields()
+        {
+            // #649 H12, E8: the Blocks Secrets reference ids are hidden like the secrets themselves.
+            var provider = Idp();
+            provider.ClientSecretReference = "cs-ref-1";
+            provider.PrivateKeyReference = "pk-ref-1";
+
+            var single = Write(provider).AsObject();
+            var wrapped = Write(new { data = new List<IdentityProvider> { provider }, isSuccess = true }).ToJsonString();
+
+            single.Select(p => p.Key).Should().NotContain(new[] { "clientSecret", "privateKey", "clientSecretReference", "privateKeyReference" });
+            single["clientId"]!.GetValue<string>().Should().Be("cid");
+            wrapped.Should().NotContain("cs-ref-1").And.NotContain("pk-ref-1").And.NotContain("Reference")
+                .And.NotContain("idp-secret").And.NotContain("apple-key");
+        }
+
+        [Fact]
         public void CreateAndRotateResponses_StillCarryTheNewSecret()
         {
             Write(new SaveClientCredentialResponse { IsSuccess = true, ClientSecret = "once" })["clientSecret"]!.GetValue<string>().Should().Be("once");

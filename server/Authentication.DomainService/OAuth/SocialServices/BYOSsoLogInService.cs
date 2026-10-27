@@ -14,8 +14,9 @@ namespace Authentication.DomainService.OAuth
             ILogger<BYOSsoLogInService> logger,
             IAuthenticationRepository authenticationRepository,
             IHttpService httpService,
-            IExternalUserMapperRegistry mapperRegistry
-        ) : base(logger, authenticationRepository, httpService)
+            IExternalUserMapperRegistry mapperRegistry,
+            IIdentityProviderSecretResolver secretResolver
+        ) : base(logger, authenticationRepository, httpService, secretResolver)
         {
             _mapperRegistry = mapperRegistry;
         }
@@ -30,11 +31,22 @@ namespace Authentication.DomainService.OAuth
                 return new SocialCallbackResult { ExternalUserData = new BYOSsoUserData() };
             }
 
+            string? clientSecret;
+            try
+            {
+                clientSecret = await _secretResolver.GetClientSecretAsync(identityProvider);
+            }
+            catch (IdentityProviderSecretUnavailableException)
+            {
+                // Logged by the resolver (provider and failure class only). No token request is sent.
+                return new SocialCallbackResult { ExternalUserData = new BYOSsoUserData() };
+            }
+
             var postData = new Dictionary<string, string>
                 {
                     { "code", stateInfo.Code },
                     { "client_id", identityProvider.ClientId },
-                    { "client_secret", identityProvider.ClientSecret },
+                    { "client_secret", clientSecret ?? string.Empty },
                     { "redirect_uri", stateInfo.RedirectUri },
                     { "grant_type", GrantTypes.AuthCode }
                 };

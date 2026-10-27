@@ -16,6 +16,8 @@ using Authentication.DomainService.Authentication;
 using Blocks.Genesis.Entities.Iam;
 using Authentication.DomainService.Shared.Services;
 using Microsoft.Extensions.Logging;
+using Authentication.DomainService.OAuth;
+using Blocks.Secrets;
 
 
 namespace Authentication.DomainService.Services
@@ -24,6 +26,9 @@ namespace Authentication.DomainService.Services
     {
         private const string ErrorInvalidRequest = "invalid_request";
         private const string ErrorNotFound = "not_found";
+        private const string ErrorSecretStoreUnavailable = "secret_store_unavailable";
+        private const string SecretStoreUnavailableMessage = "The secret store is unavailable. Try again later.";
+        private const string SecretValueRejectedMessage = "The value cannot be stored in the secret store.";
 
         private readonly IMessageClient _messageClient;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -32,6 +37,7 @@ namespace Authentication.DomainService.Services
         private readonly IValidator<SaveIdentityProviderRequest> _saveIdpValidator;
         private readonly IValidator<UpdateIdentityProviderRequest> _updateIdpValidator;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IIdentityProviderSecretResolver _secretResolver;
         private readonly ILogger<AuthenticationDomainService>? _logger;
         private readonly IBuiltInNotificationSender? _notificationSender;
 
@@ -43,6 +49,7 @@ namespace Authentication.DomainService.Services
                                            IAuthenticationRepository authenticationRepository,
                                            AuthenticationRequestValidators validators,
                                            IHttpClientFactory httpClientFactory,
+                                           IIdentityProviderSecretResolver secretResolver,
                                            ILogger<AuthenticationDomainService>? logger = null,
                                            IBuiltInNotificationSender? notificationSender = null)
         {
@@ -54,6 +61,7 @@ namespace Authentication.DomainService.Services
             _saveIdpValidator = validators.SaveIdentityProvider;
             _updateIdpValidator = validators.UpdateIdentityProvider;
             _httpClientFactory = httpClientFactory;
+            _secretResolver = secretResolver;
             _logger = logger;
         }
 
@@ -217,7 +225,10 @@ namespace Authentication.DomainService.Services
                         existingProvider.ProviderType = IdpConstants.BlocksOidcProviderType;
                         existingProvider.Protocol = IdpConstants.OidcProtocol;
                         existingProvider.ClientId = credential.ClientId;
+                        // The mirrored plaintext becomes authoritative: drop any reference so it is used.
+                        var replacedReference = existingProvider.ClientSecretReference;
                         existingProvider.ClientSecret = credential.ClientSecret;
+                        existingProvider.ClientSecretReference = null;
                         existingProvider.DisplayName = request.ClientDisplayName ?? credential.ClientId;
                         existingProvider.RedirectUris = credential.RedirectUris ?? new List<string>();
                         existingProvider.Scope = credential.Scope;
@@ -226,6 +237,7 @@ namespace Authentication.DomainService.Services
                         existingProvider.TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod;
                         existingProvider.IsActive = credential.IsActive;
                         await _authenticationRepository.UpdateIdentityProviderAsync(existingProvider);
+                        await RetireReplacedSecretAsync(existingProvider, IdentityProviderSecretKind.ClientSecret, replacedReference);
                     }
                 }
                 else if (existingProvider != null && !string.IsNullOrWhiteSpace(existingProvider.ItemId))
@@ -233,6 +245,7 @@ namespace Authentication.DomainService.Services
                     // Flag was turned off — remove the previously linked Blocks provider.
                     // Mirrors DeleteOidcClientAsync which also cleans up by ClientId.
                     await _authenticationRepository.DeleteIdentityProviderAsync(existingProvider.ItemId);
+                    await RetireSecretsOfDeletedProviderAsync(existingProvider);
                 }
             }
 
@@ -549,6 +562,7 @@ namespace Authentication.DomainService.Services
                 if (relatedProvider != null && !string.IsNullOrWhiteSpace(relatedProvider.ItemId))
                 {
                     await _authenticationRepository.DeleteIdentityProviderAsync(relatedProvider.ItemId);
+                    await RetireSecretsOfDeletedProviderAsync(relatedProvider);
                 }
             }
 
@@ -845,9 +859,107 @@ namespace Authentication.DomainService.Services
                 LastUpdatedDate = now,
             };
 
-            await _authenticationRepository.CreateIdentityProviderAsync(provider);
+            // Supplied secrets go to Blocks Secrets before the insert; the document keeps references only.
+            string? clientSecretReference;
+            string? privateKeyReference;
+            try
+            {
+                (clientSecretReference, privateKeyReference) =
+                    await _secretResolver.StoreAsync(provider, request.ClientSecret, request.PrivateKey);
+            }
+            catch (SecretVaultException)
+            {
+                return SecretStoreUnavailable();
+            }
+            catch (SecretValidationException)
+            {
+                // With both values supplied the batch is all-or-nothing and does not say which
+                // value was refused, so both fields are reported.
+                var fields = new List<string>(2);
+                if (!string.IsNullOrWhiteSpace(request.ClientSecret)) fields.Add(nameof(IdentityProvider.ClientSecret));
+                if (!string.IsNullOrWhiteSpace(request.PrivateKey)) fields.Add(nameof(IdentityProvider.PrivateKey));
+                return SecretValueRejected(fields.ToArray());
+            }
+
+            if (clientSecretReference != null)
+            {
+                provider.ClientSecretReference = clientSecretReference;
+                provider.ClientSecret = string.Empty;
+            }
+
+            if (privateKeyReference != null)
+            {
+                provider.PrivateKeyReference = privateKeyReference;
+                provider.PrivateKey = null;
+            }
+
+            try
+            {
+                await _authenticationRepository.CreateIdentityProviderAsync(provider);
+            }
+            catch
+            {
+                // No document points at the secrets created above: retire them, then fail as before.
+                await _secretResolver.RetireAsync(provider, IdentityProviderSecretKind.ClientSecret, clientSecretReference, CancellationToken.None);
+                await _secretResolver.RetireAsync(provider, IdentityProviderSecretKind.PrivateKey, privateKeyReference, CancellationToken.None);
+                throw;
+            }
+
             return new BaseResponse { IsSuccess = true };
         }
+
+        private static BaseResponse SecretStoreUnavailable() => new()
+        {
+            IsSuccess = false,
+            Errors = new Dictionary<string, string> { { ErrorSecretStoreUnavailable, SecretStoreUnavailableMessage } }
+        };
+
+        private static BaseResponse SecretValueRejected(params string[] fields) => new()
+        {
+            IsSuccess = false,
+            Errors = fields.ToDictionary(f => f, _ => SecretValueRejectedMessage)
+        };
+
+        /// <summary>
+        /// Retires the secrets of a provider whose document delete was just requested. Data-access
+        /// denials make the delete a silent no-op, so the provider is re-read first: the secrets of
+        /// a provider that still exists are never retired.
+        /// </summary>
+        private async Task RetireSecretsOfDeletedProviderAsync(IdentityProvider provider)
+        {
+            if (string.IsNullOrEmpty(provider.ClientSecretReference) && string.IsNullOrEmpty(provider.PrivateKeyReference))
+                return;
+
+            if (await _authenticationRepository.GetIdentityProviderByIdAsync(provider.ItemId) != null)
+            {
+                _logger?.LogWarning("Identity provider {Provider} was not deleted; its secrets are kept.", provider.Provider);
+                return;
+            }
+
+            await _secretResolver.RetireAsync(provider, IdentityProviderSecretKind.ClientSecret, provider.ClientSecretReference, CancellationToken.None);
+            await _secretResolver.RetireAsync(provider, IdentityProviderSecretKind.PrivateKey, provider.PrivateKeyReference, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Retires a secret that an update has just un-referenced, once the stored provider is
+        /// confirmed to no longer point at it (a denied update is a silent no-op).
+        /// </summary>
+        private async Task RetireReplacedSecretAsync(IdentityProvider provider, IdentityProviderSecretKind kind, string? reference)
+        {
+            if (string.IsNullOrEmpty(reference))
+                return;
+
+            if (StoredReference(await _authenticationRepository.GetIdentityProviderByIdAsync(provider.ItemId), kind) == reference)
+            {
+                _logger?.LogWarning("Identity provider {Provider} was not updated; its {SecretKind} secret is kept.", provider.Provider, kind);
+                return;
+            }
+
+            await _secretResolver.RetireAsync(provider, kind, reference, CancellationToken.None);
+        }
+
+        private static string? StoredReference(IdentityProvider? provider, IdentityProviderSecretKind kind) =>
+            kind == IdentityProviderSecretKind.ClientSecret ? provider?.ClientSecretReference : provider?.PrivateKeyReference;
 
         public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider)
         {
@@ -891,6 +1003,8 @@ namespace Authentication.DomainService.Services
             if (provider == null) return;
             provider.ClientSecret = string.Empty;
             provider.PrivateKey = null;
+            provider.ClientSecretReference = null;
+            provider.PrivateKeyReference = null;
         }
 
         public async Task<BaseResponse> UpdateIdentityProviderAsync(string id, UpdateIdentityProviderRequest request)
@@ -946,6 +1060,11 @@ namespace Authentication.DomainService.Services
                 }
             }
 
+            // Supplied secrets are rotated or stored in Blocks Secrets; an empty one changes nothing.
+            var secretWrite = await WriteSuppliedSecretsAsync(existing, request);
+            if (secretWrite.Error != null)
+                return secretWrite.Error;
+
             // Partial merge: only copy non-null request fields.
             if (request.DisplayName != null) existing.DisplayName = request.DisplayName;
             if (request.IsActive.HasValue) existing.IsActive = request.IsActive.Value;
@@ -966,16 +1085,96 @@ namespace Authentication.DomainService.Services
             if (request.Icon != null) existing.Icon = request.Icon;
             if (request.TeamId != null) existing.TeamId = request.TeamId;
             if (request.KeyId != null) existing.KeyId = request.KeyId;
-            if (!string.IsNullOrWhiteSpace(request.PrivateKey)) existing.PrivateKey = request.PrivateKey;
-            if (!string.IsNullOrWhiteSpace(request.ClientSecret)) existing.ClientSecret = request.ClientSecret;
             if (request.AppleAudience != null) existing.AppleAudience = request.AppleAudience;
 
             var blocksContext = BlocksContext.GetContext();
             existing.LastUpdatedBy = blocksContext?.UserId;
             existing.LastUpdatedDate = DateTime.UtcNow;
 
-            await _authenticationRepository.UpdateIdentityProviderAsync(existing);
+            try
+            {
+                await _authenticationRepository.UpdateIdentityProviderAsync(existing);
+            }
+            catch
+            {
+                await UndoSecretWritesAsync(existing, secretWrite);
+                throw;
+            }
+
+            // A denied write is a silent no-op: a secret created here that the stored document
+            // does not point at would be an orphan, so it is retired. The response stays as today.
+            if (secretWrite.Created.Count > 0)
+            {
+                var stored = await _authenticationRepository.GetIdentityProviderByIdAsync(existing.ItemId);
+                foreach (var (kind, reference) in secretWrite.Created)
+                {
+                    if (StoredReference(stored, kind) != reference)
+                        await _secretResolver.RetireAsync(existing, kind, reference, CancellationToken.None);
+                }
+            }
+
             return new BaseResponse { IsSuccess = true };
+        }
+
+        private sealed record SecretWriteResult(BaseResponse? Error, List<(IdentityProviderSecretKind Kind, string Reference)> Created, bool Rotated);
+
+        private async Task<SecretWriteResult> WriteSuppliedSecretsAsync(IdentityProvider existing, UpdateIdentityProviderRequest request)
+        {
+            var created = new List<(IdentityProviderSecretKind Kind, string Reference)>(2);
+            var rotated = false;
+            var current = IdentityProviderSecretKind.ClientSecret;
+
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(request.ClientSecret))
+                {
+                    current = IdentityProviderSecretKind.ClientSecret;
+                    var (reference, wasCreated) = await _secretResolver.ReplaceAsync(existing, current, request.ClientSecret);
+                    if (wasCreated) created.Add((current, reference)); else rotated = true;
+                    existing.ClientSecretReference = reference;
+                    existing.ClientSecret = string.Empty;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.PrivateKey))
+                {
+                    current = IdentityProviderSecretKind.PrivateKey;
+                    var (reference, wasCreated) = await _secretResolver.ReplaceAsync(existing, current, request.PrivateKey);
+                    if (wasCreated) created.Add((current, reference)); else rotated = true;
+                    existing.PrivateKeyReference = reference;
+                    existing.PrivateKey = null;
+                }
+            }
+            catch (SecretVaultException)
+            {
+                await UndoSecretWritesAsync(existing, new SecretWriteResult(null, created, rotated));
+                return new SecretWriteResult(SecretStoreUnavailable(), [], false);
+            }
+            catch (SecretValidationException)
+            {
+                await UndoSecretWritesAsync(existing, new SecretWriteResult(null, created, rotated));
+                return new SecretWriteResult(SecretValueRejected(current.ToString()), [], false);
+            }
+            catch
+            {
+                // Any other failure propagates to the global handler as before, leaving no new orphan.
+                await UndoSecretWritesAsync(existing, new SecretWriteResult(null, created, rotated));
+                throw;
+            }
+
+            return new SecretWriteResult(null, created, rotated);
+        }
+
+        /// <summary>
+        /// The provider document was not written: retire secrets this call created. A rotation
+        /// cannot be undone, so it is only logged (the stored reference now holds the new value).
+        /// </summary>
+        private async Task UndoSecretWritesAsync(IdentityProvider provider, SecretWriteResult write)
+        {
+            foreach (var (kind, reference) in write.Created)
+                await _secretResolver.RetireAsync(provider, kind, reference, CancellationToken.None);
+
+            if (write.Rotated)
+                _logger?.LogWarning("Identity provider {Provider} was not updated, but a secret rotation in the same request cannot be undone.", provider.Provider);
         }
 
         public async Task<BaseResponse> DeleteIdentityProviderAsync(string id)
@@ -987,8 +1186,9 @@ namespace Authentication.DomainService.Services
             if (existing == null)
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { ErrorNotFound, "Provider not found." } } };
 
-            // Delete the IdentityProvider
+            // Delete the IdentityProvider, then its secrets (a live provider never points at a deleted secret)
             await _authenticationRepository.DeleteIdentityProviderAsync(id);
+            await RetireSecretsOfDeletedProviderAsync(existing);
 
             // Delete related OidcClientRegistration by ClientId
             if (!string.IsNullOrWhiteSpace(existing.ClientId))
@@ -1050,8 +1250,11 @@ namespace Authentication.DomainService.Services
                 var linkedProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(credential.ClientId);
                 if (linkedProvider != null && !string.IsNullOrWhiteSpace(linkedProvider.ItemId))
                 {
+                    var replacedReference = linkedProvider.ClientSecretReference;
                     linkedProvider.ClientSecret = credential.ClientSecret;
+                    linkedProvider.ClientSecretReference = null;
                     await _authenticationRepository.UpdateIdentityProviderAsync(linkedProvider);
+                    await RetireReplacedSecretAsync(linkedProvider, IdentityProviderSecretKind.ClientSecret, replacedReference);
                 }
             }
 

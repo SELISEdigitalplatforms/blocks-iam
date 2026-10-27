@@ -1,3 +1,4 @@
+using Blocks.Secrets;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.SocialServices;
@@ -14,9 +15,10 @@ namespace XUnitTest.Auth.OAuth
     {
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
         private readonly Mock<IHttpService> _http = new();
+        private readonly Mock<ISecretService> _secrets = new(MockBehavior.Strict);
 
         private FaceBookLogInService Create() =>
-            new(NullLogger<FaceBookLogInService>.Instance, _authRepo.Object, _http.Object);
+            new(NullLogger<FaceBookLogInService>.Instance, _authRepo.Object, _http.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets));
 
         private static IdentityProvider Provider() => new()
         {
@@ -127,6 +129,69 @@ namespace XUnitTest.Auth.OAuth
 
             user.Should().BeOfType<FaceBookUserData>();
             user.ExternalProviderUserId.Should().Be("fb-2");
+        }
+    
+        // ---------- #649: client secret resolved through Blocks Secrets ----------
+
+        private static IdentityProvider ReferencedProvider()
+        {
+            var idp = Provider();
+            idp.ClientSecret = "stale-plaintext";
+            idp.ClientSecretReference = "cs-ref";
+            return idp;
+        }
+
+        private List<string> CaptureTokenUrls()
+        {
+            var urls = new List<string>();
+            _http.Setup(h => h.Get<SocialOauthAccessToken>(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()))
+                .Callback<string, Dictionary<string, string>, CancellationToken, int?>((url, _, _, _) => urls.Add(url))
+                .ReturnsAsync(((SocialOauthAccessToken)null!, "stop"));
+            return urls;
+        }
+
+        [Fact]
+        public async Task ReferencedProvider_SendsTheResolvedSecret_WithOneRead()
+        {
+            // H5, C4, C13 (Facebook looks the provider up by name and sends the secret in the query)
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            _authRepo.Setup(r => r.GetIdentityProviderAsync(It.IsAny<string>())).ReturnsAsync(ReferencedProvider());
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ReturnsAsync("vault-s");
+            var urls = CaptureTokenUrls();
+
+            await Create().HandleSocialLoginCallback(State());
+
+            urls.Should().ContainSingle().Which.Should().Contain("client_secret=vault-s").And.NotContain("stale-plaintext");
+            _secrets.Verify(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task LegacyProvider_SendsThePlaintext_WithNoSecretCall()
+        {
+            // H7, C13
+            _authRepo.Setup(r => r.GetIdentityProviderAsync(It.IsAny<string>())).ReturnsAsync(Provider());
+            var urls = CaptureTokenUrls();
+
+            await Create().HandleSocialLoginCallback(State());
+
+            urls.Should().ContainSingle().Which.Should().Contain("client_secret=secret-1");
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task ReferencedSecretUnavailable_FailsTheSignIn_WithoutCallingTheProvider()
+        {
+            // C2, C3, C4
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            _authRepo.Setup(r => r.GetIdentityProviderAsync(It.IsAny<string>())).ReturnsAsync(ReferencedProvider());
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ThrowsAsync(new SecretNotFoundException("cs-ref"));
+
+            var result = await Create().HandleSocialLoginCallback(State());
+
+            result.ExternalUserData.Should().BeOfType<FaceBookUserData>();
+            result.AccessToken.Should().BeNull();
+            _http.VerifyNoOtherCalls();
         }
     }
 }
