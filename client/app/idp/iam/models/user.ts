@@ -230,6 +230,11 @@ export interface IAccountActivationPayload {
 export interface IAccountActivationResponse {
   errors: unknown | null;
   isSuccess: boolean;
+  /**
+   * Set when the code came from a Blocks OIDC signup link: the authorize request that takes the
+   * invitee into the app the link was for.
+   */
+  authorizeUrl?: string;
 }
 
 export interface IAccountResendActivationPayload {
