@@ -235,13 +235,27 @@ test.describe("OIDC error screen", () => {
       await expect(page.getByText(/invalid or expired oidc state/i)).toHaveCount(0);
     });
 
-    await test.step("[Positive] 'Back to Sign In' link returns to /oidc/login", async () => {
+    await test.step("[Positive] 'Back to Sign In' with a client in the URL returns into /oidc/login", async () => {
+      await page.goto("/oidc/error?clientId=client-1&state=s1", { waitUntil: "domcontentloaded" });
+
+      const back = page.getByRole("link", { name: /back to sign in/i });
+      await expect(back).toBeVisible({ timeout: 30_000 });
+      await expect(back).toHaveAttribute("href", /^\/oidc\/login\?.*clientId=client-1/);
+    });
+
+    // With no application in the URL, a bare /oidc/login is a dead end, so the link goes to
+    // IAM's own login launcher instead (0472d5b5, "send /oidc/login with no application to IAM's own login").
+    await test.step("[Positive] 'Back to Sign In' without a client returns to IAM's own /login", async () => {
       await page.goto("/oidc/error", { waitUntil: "domcontentloaded" });
 
       const back = page.getByRole("link", { name: /back to sign in/i });
       await expect(back).toBeVisible({ timeout: 30_000 });
+      await expect(back).toHaveAttribute("href", "/login");
       await back.click();
-      await expect(page).toHaveURL(/\/oidc\/login/, { timeout: 15_000 });
+      await expect(page).toHaveURL((url) => url.pathname === "/login", { timeout: 15_000 });
+      await expect(page.getByRole("button", { name: /log in to your account/i })).toBeVisible({
+        timeout: 30_000,
+      });
     });
   });
 });
