@@ -205,11 +205,12 @@ test.describe("OIDC error screen", () => {
     await test.step("[Positive] Without query params, shows the generic 'Access Blocked' card", async () => {
       await page.goto("/oidc/error", { waitUntil: "domcontentloaded" });
 
-      await expect(page.getByText(/access blocked/i)).toBeVisible({ timeout: 30_000 });
+      // The shell renders each heading word in its own span.
+      await expect(page.getByRole("heading", { name: /access\s*blocked/i })).toBeVisible({ timeout: 30_000 });
       await expect(
         page.getByText(/we couldn'?t sign you in at this time/i),
       ).toBeVisible();
-      await expect(page.getByRole("button", { name: /back to sign in/i })).toBeVisible();
+      await expect(page.getByRole("link", { name: /back to sign in/i })).toBeVisible();
     });
 
     await test.step("[Positive] With error_description, shows the 'Sign In Failed' card with the message", async () => {
@@ -218,17 +219,26 @@ test.describe("OIDC error screen", () => {
         { waitUntil: "domcontentloaded" },
       );
 
-      await expect(page.getByText(/sign in failed/i)).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("heading", { name: /sign\s*in\s*failed/i })).toBeVisible({ timeout: 30_000 });
       await expect(page.getByText(/signups are disabled for this tenant/i)).toBeVisible();
 
       // Error code is humanized from snake_case.
       await expect(page.getByText("Signup Disabled For Tenant")).toBeVisible();
     });
 
+    await test.step("[Positive] An expired sign-in is explained in plain words", async () => {
+      await page.goto("/oidc/error?error=invalid_state&error_description=Invalid+or+expired+OIDC+state", {
+        waitUntil: "domcontentloaded",
+      });
+
+      await expect(page.getByRole("heading", { name: /sign-in\s*expired/i })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText(/invalid or expired oidc state/i)).toHaveCount(0);
+    });
+
     await test.step("[Positive] 'Back to Sign In' link returns to /oidc/login", async () => {
       await page.goto("/oidc/error", { waitUntil: "domcontentloaded" });
 
-      const back = page.getByRole("button", { name: /back to sign in/i });
+      const back = page.getByRole("link", { name: /back to sign in/i });
       await expect(back).toBeVisible({ timeout: 30_000 });
       await back.click();
       await expect(page).toHaveURL(/\/oidc\/login/, { timeout: 15_000 });

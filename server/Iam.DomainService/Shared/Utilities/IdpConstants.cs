@@ -164,6 +164,14 @@ namespace Iam.DomainService.Utilities
         public const int OidcStateCacheTtlSeconds = 300;
         public const int IdpFlowCacheTtlSeconds = 600;
 
+        // Same lifetime as the oidc_context it points at: a shorter one expired the social state
+        // while the user was still at the provider (MFA, account picker), ending on invalid_state.
+        public const int OidcSocialStateCacheTtlSeconds = OidcAuthorizationCodeCacheTtlSeconds;
+
+        // How long a finished social callback is remembered, so opening it again (Back, refresh)
+        // gets "already completed" rather than "invalid or expired".
+        public const int OidcSocialStateUsedCacheTtlSeconds = 600;
+
         #endregion
 
         #region Signup link password step

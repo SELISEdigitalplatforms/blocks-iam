@@ -4,6 +4,40 @@ import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { SSOSigninCard } from "@blocks-idp/authentication/components/sso-signin-card";
 import { SOCIAL_AUTH_PROVIDERS_CONFIG } from "@blocks-idp/authentication/constants/sso-providers.constant";
 import { useSsoActivation } from "@blocks-idp/authentication/hooks/use-sso-activation";
+import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
+import { useMemo } from "react";
+import { useParams } from "react-router";
+
+type OidcSsoContext = NonNullable<SsoSigninProps["oidcContext"]>;
+
+/**
+ * Social sign-in only works inside an OIDC request (the provider returns to /oidc/.../callback,
+ * which resolves the request it belongs to). Pages such as signup carry that request in their URL
+ * without passing it down, so read it from there when the caller gave none.
+ */
+const useOidcSsoContext = (given: SsoSigninProps["oidcContext"]): OidcSsoContext | undefined => {
+  const { tenantId: routeTenantId } = useParams<{ tenantId?: string }>();
+
+  return useMemo(() => {
+    if (given?.clientId) return given;
+
+    const url = extractOIDCParams();
+    if (!url.clientId) return undefined;
+
+    const search = new URLSearchParams(window.location.search);
+    return {
+      clientId: url.clientId,
+      redirectUri: url.redirectUri,
+      scope: url.scope,
+      state: url.state,
+      nonce: url.nonce,
+      code_challenge: search.get("code_challenge") || undefined,
+      code_challenge_method: search.get("code_challenge_method") || undefined,
+      tenantId: given?.tenantId || url.tenantId || routeTenantId,
+      returnUrl: url.returnUrl,
+    };
+  }, [given, routeTenantId]);
+};
 
 type SsoSigninProps = {
   loginOption: LoginOption;
@@ -38,6 +72,7 @@ export const SsoSignin = ({
   oidcContext,
 }: SsoSigninProps) => {
   const { isPending } = useSsoActivation();
+  const ssoContext = useOidcSsoContext(oidcContext);
 
   const providers = Object.values(SOCIAL_AUTH_PROVIDERS_CONFIG)
     .map((config) => {
@@ -65,8 +100,8 @@ export const SsoSignin = ({
             providerConfig={item}
             key={item.provider}
             labelMode={providers.length === 1 ? "full" : "short"}
-            mode={mode}
-            oidcContext={oidcContext}
+            mode={ssoContext ? "oidc" : mode}
+            oidcContext={ssoContext}
           />
         ))}
       </div>

@@ -12,11 +12,12 @@ const h = vi.hoisted(() => ({
   urlTenant: undefined as string | undefined,
   oidcUiConfig: undefined as unknown,
   animCtx: null as Record<string, ReturnType<typeof vi.fn>> | null,
+  returnUrl: "",
 }));
 
 vi.mock("react-router", () => ({ useNavigate: () => h.navigateMock }));
 vi.mock("nuqs", () => ({
-  useQueryStates: () => [{ mfa_id: "mfa-1", mfa_type: 2 }],
+  useQueryStates: () => [{ mfa_id: "mfa-1", mfa_type: 2, returnUrl: h.returnUrl }],
   parseAsString: { withDefault: () => ({}) },
   parseAsInteger: { withDefault: () => ({}) },
 }));
@@ -49,6 +50,7 @@ beforeEach(() => {
   h.envTenant = "root-project-key";
   h.urlTenant = undefined;
   h.animCtx = null;
+  h.returnUrl = "";
   h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
@@ -140,6 +142,40 @@ describe("MfaCheckFrom", () => {
     await submitCode(container);
     await waitFor(() => expect(h.setAuthenticated).toHaveBeenCalled());
     expect(h.navigateMock).toHaveBeenCalledWith("/app/profile");
+    vi.unstubAllGlobals();
+  });
+
+  it("returns a device-flow login to its same-origin returnUrl", async () => {
+    h.returnUrl = "/device/t1?user_code=ABCD-1234";
+    const location = { href: "", origin: "https://iam.example.com" };
+    Object.defineProperty(globalThis, "location", { value: location, configurable: true });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => "application/json" },
+      json: async () => ({ success: true }),
+    }));
+    const { container } = render(<MfaCheckFrom />);
+    await submitCode(container);
+    await waitFor(() => expect(location.href).toBe("https://iam.example.com/device/t1?user_code=ABCD-1234"));
+    expect(h.navigateMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  // Bug: an http returnUrl (TLS proxy) was refused on the https page and the user landed on the console.
+  it("shows an error instead of the console when the device-flow returnUrl is refused", async () => {
+    h.returnUrl = "http://iam.example.com/device/t1?user_code=ABCD-1234";
+    const location = { href: "", origin: "https://iam.example.com" };
+    Object.defineProperty(globalThis, "location", { value: location, configurable: true });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => "application/json" },
+      json: async () => ({ success: true }),
+    }));
+    const { container } = render(<MfaCheckFrom />);
+    await submitCode(container);
+    expect(await screen.findByText(/return address is not valid/)).toBeInTheDocument();
+    expect(h.navigateMock).not.toHaveBeenCalled();
+    expect(location.href).toBe("");
     vi.unstubAllGlobals();
   });
 

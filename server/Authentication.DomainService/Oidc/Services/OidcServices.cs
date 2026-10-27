@@ -248,6 +248,8 @@ public sealed class OidcSigningKeyMaterial
             {
                 jwtClaims.Add(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
             }
+
+            AddVersionClaims(jwtClaims, claims);
         }
 
         var token = new JwtSecurityToken(
@@ -259,6 +261,19 @@ public sealed class OidcSigningKeyMaterial
             signingCredentials: signingCredentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    // Same names and values as JwtAccessTokenProvider, so Genesis can attach a delegation grant
+    // for work queued from an OIDC-authenticated request. Both or neither.
+    private static void AddVersionClaims(List<Claim> jwtClaims, Contracts.OidcClaims claims)
+    {
+        if (claims.TokenVersion is not { } tokenVersion)
+        {
+            return;
+        }
+
+        jwtClaims.Add(new Claim("token_version", tokenVersion.ToString(), ClaimValueTypes.Integer32));
+        jwtClaims.Add(new Claim("security_stamp", claims.SecurityStamp ?? string.Empty));
     }
 
     private static string ExtractUserId(string subject)

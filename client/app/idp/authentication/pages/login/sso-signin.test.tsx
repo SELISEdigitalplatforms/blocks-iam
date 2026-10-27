@@ -14,8 +14,23 @@ vi.mock("@blocks-idp/authentication/constants/sso-providers.constant", () => ({
   },
 }));
 vi.mock("@blocks-idp/authentication/components/sso-signin-card", () => ({
-  SSOSigninCard: ({ providerConfig }: { providerConfig: { provider: string } }) => (
-    <div data-testid="sso-card">{providerConfig.provider}</div>
+  SSOSigninCard: ({
+    providerConfig,
+    mode,
+    oidcContext,
+  }: {
+    providerConfig: { provider: string };
+    mode?: string;
+    oidcContext?: { clientId?: string; state?: string };
+  }) => (
+    <div
+      data-testid="sso-card"
+      data-mode={mode}
+      data-client={oidcContext?.clientId ?? ""}
+      data-state={oidcContext?.state ?? ""}
+    >
+      {providerConfig.provider}
+    </div>
   ),
 }));
 vi.mock("@/components/loader-spinner/loader-spinner", () => ({
@@ -31,6 +46,7 @@ const loginOption = {
 beforeEach(() => {
   vi.clearAllMocks();
   h.isPending = false;
+  window.history.replaceState(null, "", "/");
 });
 
 describe("SsoSignin", () => {
@@ -51,5 +67,23 @@ describe("SsoSignin", () => {
     h.isPending = true;
     render(<SsoSignin loginOption={loginOption} />);
     expect(screen.getByTestId("spinner")).toBeInTheDocument();
+  });
+
+  it("reads the OIDC request from the URL when the page passes none (signup)", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/oidc/signup/t1?clientId=app-1&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcb&state=s1",
+    );
+    render(<SsoSignin loginOption={loginOption} />);
+    const card = screen.getByTestId("sso-card");
+    expect(card).toHaveAttribute("data-mode", "oidc");
+    expect(card).toHaveAttribute("data-client", "app-1");
+    expect(card).toHaveAttribute("data-state", "s1");
+  });
+
+  it("keeps the default mode when neither the page nor the URL has a client", () => {
+    render(<SsoSignin loginOption={loginOption} />);
+    expect(screen.getByTestId("sso-card")).toHaveAttribute("data-mode", "default");
   });
 });

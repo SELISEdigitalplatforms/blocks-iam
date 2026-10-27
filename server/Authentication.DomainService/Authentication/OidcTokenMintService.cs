@@ -122,7 +122,9 @@ namespace Authentication.DomainService.Authentication
                 UserName = request.User.UserName,
                 Amr = request.Amr is { Count: > 0 } ? request.Amr : ["pwd"],
                 Roles = resolvedClaims.Roles,
-                Permissions = resolvedClaims.Permissions
+                Permissions = resolvedClaims.Permissions,
+                TokenVersion = request.User.TokenVersion,
+                SecurityStamp = request.User.SecurityStamp
             };
 
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();

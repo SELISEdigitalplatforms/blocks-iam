@@ -54,6 +54,8 @@ namespace XUnitTest.Auth.Shared
             IdpConstants.OidcAuthorizationCodeCacheTtlSeconds.Should().Be(600);
             IdpConstants.OidcStateCacheTtlSeconds.Should().Be(300);
             IdpConstants.IdpFlowCacheTtlSeconds.Should().Be(600);
+            IdpConstants.OidcSocialStateCacheTtlSeconds.Should().Be(IdpConstants.OidcAuthorizationCodeCacheTtlSeconds);
+            IdpConstants.OidcSocialStateUsedCacheTtlSeconds.Should().Be(600);
         }
 
         [Fact]

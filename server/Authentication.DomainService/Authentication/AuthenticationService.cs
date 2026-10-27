@@ -730,7 +730,7 @@ namespace Authentication.DomainService.Authentication
                     Provider = identityProvider.Provider,
                     CreatedAt = DateTime.UtcNow
                 });
-                await _cacheClient.AddStringValueAsync(stateKey, stateValue, IdpConstants.OidcStateCacheTtlSeconds); // 5 minute TTL
+                await _cacheClient.AddStringValueAsync(stateKey, stateValue, IdpConstants.OidcSocialStateCacheTtlSeconds);
 
                 // Build authorization URL for social provider
                 // Callback should redirect to /oidc/callback with provider and state
