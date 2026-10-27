@@ -530,6 +530,80 @@ namespace XUnitTest.Auth
             _session.Verify(s => s.RevokeRefreshToken(It.IsAny<string>()), Times.Never);
         }
 
+        // A stop whose answer never reached the client: the session record says stopped, the presented
+        // impersonated token resolves onto the root token that stop issued, and the client still holds the
+        // project's cookie. Retrying must finish the stop rather than strand the client in the project.
+
+        private void StopAlreadyFinished(RefreshTokenCache resolved, string status = "ended_by_admin_stop")
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant());
+            _repo.Setup(r => r.GetImpersonationSessionByIdAsync("imp-1"))
+                .ReturnsAsync(new ImpersonationSession { Id = "imp-1", Status = status, ClientId = "c1", OrganizationId = "org", RootTenantId = TenantId, TargetTenantId = TargetTenantId });
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("imp-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(resolved);
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
+            _repo.Setup(r => r.GetUserByIdAsync(ActorId)).ReturnsAsync(new User { ItemId = ActorId });
+            _session.Setup(s => s.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "root-at", RefreshToken = "root-rt3", TokenType = "Bearer" });
+        }
+
+        private static RefreshTokenCache RootSuccessor(string tokenId = "root-rt2", string userId = ActorId) =>
+            new() { RefreshToken = tokenId, Impersonated = false, ClientId = "c1", UserId = userId };
+
+        [Fact]
+        public async Task ExecuteStop_RetryOfAStopThatAlreadyFinished_IssuesTheRootSessionAgain()
+        {
+            StopAlreadyFinished(RootSuccessor());
+            var req = new StopImpersonationRequest { ImpersonationId = "imp-1", RefreshToken = "imp-rt" };
+
+            var result = await Create().ExecuteStopImpersonationAsync(req, HttpContext().Request, HttpContext().Response);
+
+            result.Should().BeOfType<OkObjectResult>();
+            // Rotates away from the root token the first attempt issued, not from the replaced project token.
+            _session.Verify(s => s.ManageTokenAsync(
+                It.Is<TokenRequest>(t => t.RefreshToken == "root-rt2" && !t.IsImpersonation), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
+            // Recorded and audited by the attempt whose answer was lost.
+            _repo.Verify(r => r.UpdateImpersonationSessionAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteStop_RootSuccessorWhileTheImpersonationIsStillActive_IsRefused()
+        {
+            // Nothing this caller asked for put the lineage in root.
+            StopAlreadyFinished(RootSuccessor(), status: "active");
+            var req = new StopImpersonationRequest { ImpersonationId = "imp-1", RefreshToken = "imp-rt" };
+
+            var result = await Create().ExecuteStopImpersonationAsync(req, HttpContext().Request, HttpContext().Response);
+
+            result.Should().BeOfType<UnauthorizedObjectResult>();
+            ErrorOf(result).Should().Be("invalid_refresh_token");
+            _session.Verify(s => s.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteStop_RootTokenPresentedDirectly_IsRefused()
+        {
+            // Not a replay: the presented token itself is root, so there is no lost stop to finish.
+            StopAlreadyFinished(RootSuccessor(tokenId: "imp-rt"));
+            var req = new StopImpersonationRequest { ImpersonationId = "imp-1", RefreshToken = "imp-rt" };
+
+            var result = await Create().ExecuteStopImpersonationAsync(req, HttpContext().Request, HttpContext().Response);
+
+            result.Should().BeOfType<UnauthorizedObjectResult>();
+            _session.Verify(s => s.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteStop_RootSuccessorOfAnotherUser_IsRefused()
+        {
+            StopAlreadyFinished(RootSuccessor(userId: "someone-else"));
+            var req = new StopImpersonationRequest { ImpersonationId = "imp-1", RefreshToken = "imp-rt" };
+
+            var result = await Create().ExecuteStopImpersonationAsync(req, HttpContext().Request, HttpContext().Response);
+
+            result.Should().BeOfType<UnauthorizedObjectResult>();
+            _session.Verify(s => s.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
         // ============ CookieToken ============
 
         [Fact]

@@ -30,7 +30,18 @@ namespace Authentication.DomainService.Shared
     public sealed class UnifiedTokenSessionService
     {
         internal const string SupersededByRotationReason = "superseded_by_rotation";
+        internal const string SupersededByImpersonationReason = "superseded_by_impersonation";
         internal const string SupersededByLoginReason = "superseded_by_login";
+
+        /// <summary>
+        /// Why a rotation replaced its predecessor. Impersonation start, stop and switch move the lineage
+        /// to another tenant or organization, so they are recorded apart from a plain refresh: a refresh
+        /// replaying the predecessor must not be handed the moved session (see RefreshSessionResolver).
+        /// </summary>
+        private static string SupersededReasonFor(TokenRequest tokenRequest)
+            => string.Equals(tokenRequest.GrantType, GrantTypes.ImpersonationCloud, StringComparison.Ordinal)
+                ? SupersededByImpersonationReason
+                : SupersededByRotationReason;
 
         /// <summary>A lost claim can arrive before the winner has stored its successor: up to ~200 ms of short waits.</summary>
         private const int LostClaimSuccessorChecks = 5;
@@ -212,7 +223,7 @@ namespace Authentication.DomainService.Shared
             };
 
             // One atomic claim decides which concurrent rotation may mint, so the lineage cannot fork.
-            if (isRotation && !await _refreshTokenRepository.TryClaimForRotationAsync(oldRefreshToken!, refreshTokenId, SupersededByRotationReason))
+            if (isRotation && !await _refreshTokenRepository.TryClaimForRotationAsync(oldRefreshToken!, refreshTokenId, SupersededReasonFor(tokenRequest)))
             {
                 return await ResolveLostRotationClaimAsync(oldRefreshToken!, tokenRequest, authenticationConfiguration);
             }
@@ -286,11 +297,17 @@ namespace Authentication.DomainService.Shared
             // Revoked now, so its cache entry must not answer for it again.
             await _cacheClient.RemoveKeyAsync(presentedToken);
 
-            var successor = await ResolveAfterLostClaimAsync(presentedToken, configuration);
+            var resolution = await ResolveAfterLostClaimAsync(presentedToken, configuration);
+            var successor = resolution.Session;
             var handBack = successor != null
                            && !string.IsNullOrWhiteSpace(successor.RefreshToken)
                            && !string.Equals(successor.RefreshToken, presentedToken, StringComparison.Ordinal)
                            && string.Equals(tokenRequest.GrantType, GrantTypes.RefreshToken, StringComparison.Ordinal);
+
+            // A refresh that lost to an impersonation change: the winner moved the session, so there is
+            // nothing in this caller's tenant to hand back. Reported as such rather than as an invalid token,
+            // so the client can look at its cookie before signing the user out.
+            tokenRequest.SessionChanged = resolution.SessionChanged;
 
             _logger.LogInformation(
                 "Refresh token rotation lost the claim on its predecessor. reason=rotation_claim_lost tokenFingerprint={TokenFingerprint} grantType={GrantType} successorReturned={SuccessorReturned}",
@@ -306,15 +323,15 @@ namespace Authentication.DomainService.Shared
             return (successor!.RefreshToken!, successor.ExpiresUtc, successor.AbsoluteExpiresUtc, successor.RefreshTokenSessionId ?? string.Empty);
         }
 
-        private async Task<RefreshTokenCache?> ResolveAfterLostClaimAsync(string presentedToken, IdentityConfiguration configuration)
+        private async Task<RefreshSessionResolution> ResolveAfterLostClaimAsync(string presentedToken, IdentityConfiguration configuration)
         {
             if (_refreshSessionResolver == null)
             {
-                return null;
+                return RefreshSessionResolution.None;
             }
 
             await WaitForWinningSuccessorAsync(presentedToken);
-            return await _refreshSessionResolver.TryResolveRefreshSessionAsync(presentedToken, configuration);
+            return await _refreshSessionResolver.ResolveRefreshSessionAsync(presentedToken, configuration, followImpersonationTransitions: false);
         }
 
         /// <summary>Waits for the winner's successor so the grace chain reaches it and reuse handling revokes it too.</summary>
@@ -563,7 +580,7 @@ namespace Authentication.DomainService.Shared
                         { "grantType", tokenRequest.GrantType ?? string.Empty },
                         { "tokenId", oldRefreshTokenCache.RefreshToken ?? string.Empty },
                         { "impersonated", impersoanted ? "true" : "false" },
-                        { "reason", "superseded_by_rotation" }
+                        { "reason", SupersededReasonFor(tokenRequest) }
                     }
                 });
             }

@@ -565,7 +565,14 @@ namespace Authentication.DomainService.Authentication
             // One shared check decides validity: unrevoked, inside the sliding window and inside the
             // absolute cap. A cache miss is not evidence of replay, and a token rotated away moments ago
             // resolves to its successor rather than failing.
-            var tokenCache = await _refreshSessionResolver.TryResolveRefreshSessionAsync(refreshToken, configuration);
+            var resolution = await _refreshSessionResolver.ResolveRefreshSessionAsync(refreshToken, configuration, followImpersonationTransitions: false);
+            var tokenCache = resolution.Session;
+
+            if (resolution.SessionChanged)
+            {
+                // Not cleared: the cookie may already hold the token the impersonation change issued.
+                return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = OAuthError.SessionChanged });
+            }
 
             if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
             {

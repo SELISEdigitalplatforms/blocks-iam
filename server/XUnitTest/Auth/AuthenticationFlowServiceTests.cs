@@ -53,6 +53,13 @@ namespace XUnitTest.Auth
 
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
+
+            // /auth/refresh asks the resolver through ResolveRefreshSessionAsync. Routing it through the
+            // TryResolveRefreshSessionAsync setups lets each test state its session once.
+            _sessionResolver
+                .Setup(r => r.ResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>(), It.IsAny<bool>()))
+                .Returns(async (string token, IdentityConfiguration configuration, bool _) =>
+                    new RefreshSessionResolution(await _sessionResolver.Object.TryResolveRefreshSessionAsync(token, configuration), false));
             _authDomain.Setup(d => d.GetDeviceInfo(It.IsAny<string>())).Returns((DeviceInformation)null!);
 
             _auditWriter = new OidcLoginAuditWriter(_authDomain.Object, _activity.Object, NullLogger<OidcLoginAuditWriter>.Instance);
@@ -690,6 +697,26 @@ namespace XUnitTest.Auth
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error").Should().Be(OAuthError.InvalidRefreshToken);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Refresh_TokenReplacedByAnImpersonationChange_SaysSoAndLeavesTheCookiesAlone()
+        {
+            // The cookie may already hold the token the impersonation change issued -- set by another tab --
+            // so clearing it would sign that tab out too.
+            _sessionResolver
+                .Setup(r => r.ResolveRefreshSessionAsync("rt", It.IsAny<IdentityConfiguration>(), false))
+                .ReturnsAsync(RefreshSessionResolution.Changed);
+            var ctx = new DefaultHttpContext();
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be(OAuthError.InvalidRefreshToken);
+            Prop(bad.Value, "error_description").Should().Be(OAuthError.SessionChanged);
+            // ClearSessionCookies resolves the tenant's cookie domain first; it never got that far.
+            _refresher.Verify(r => r.GetTenantByIDAsync(It.IsAny<string>()), Times.Never);
             _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
         }
 
