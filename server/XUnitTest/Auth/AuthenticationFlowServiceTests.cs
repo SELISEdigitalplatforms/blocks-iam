@@ -797,6 +797,29 @@ namespace XUnitTest.Auth
             _refreshRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
+        [Theory] // The lineage's organization is only a hint; a blank one must not become "default"
+        [InlineData("org-a", "org-a")]
+        [InlineData("default", "default")]
+        [InlineData("", "")]
+        [InlineData(null, "")]
+        public async Task Refresh_PassesTheLineageOrganizationThrough_WithoutCollapsingBlankToDefault(string? stored, string expected)
+        {
+            var session = Session();
+            session.OrganizationId = stored;
+            Resolves(session);
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
+            var ctx = new DefaultHttpContext();
+
+            await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            _refresher.Verify(r => r.AuthenticateAsync(
+                It.Is<TokenRequest>(t => t.OrganizationId == expected),
+                It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
+        }
+
         [Fact]
         public async Task Refresh_GraceWindowReplay_PassesSuccessorThroughWithoutRotating()
         {

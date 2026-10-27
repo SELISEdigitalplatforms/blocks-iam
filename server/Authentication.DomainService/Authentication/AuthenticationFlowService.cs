@@ -647,7 +647,11 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.RefreshToken,
-                OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
+                // A hint, re-resolved against current membership at mint, as on /oidc/token. A blank
+                // stays blank: collapsing it to "default" would move a lineage that lost its
+                // organization into the tenant-wide scope for any user who holds "default", now that
+                // a requested "default" is honoured for its members.
+                OrganizationId = tokenCache.OrganizationId ?? string.Empty,
                 // Keep the lineage's OIDC client on the successor (empty stays empty: nothing is repaired).
                 ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,

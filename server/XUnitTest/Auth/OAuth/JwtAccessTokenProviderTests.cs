@@ -295,6 +295,31 @@ namespace XUnitTest.Auth.OAuth
             token.Claims.Should().Contain(c => c.Type == BlocksContext.ROLES_CLAIM && c.Value == "admin");
         }
 
+        [Theory] // switch-org into "default" on a multi-org project, by a user who holds it
+        [InlineData(true, "default")]
+        [InlineData(false, "org1")]
+        public async Task GetJwtAccessToken_SwitchToDefault_MintsDefaultOnlyForAUserWhoHoldsIt(bool holdsDefault, string expectedOrganization)
+        {
+            _cacheDb.Setup(d => d.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).ReturnsAsync(GenerateCertificate());
+            _resourceRepository.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new Iam.DomainService.Shared.Entities.IamTenantConfiguration { IsMultiOrgEnabled = true });
+            _claimsResolver.Setup(r => r.ResolveAsync(It.IsAny<User>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>()))
+                .ReturnsAsync(new ResolvedAuthorizationClaims());
+
+            // The session is in org1 and org1 is remembered, so only the request can produce "default".
+            var user = MakeUser();
+            user.LastUsedOrganizationId = "org1";
+            if (holdsDefault) user.OrganizationIds.Add(IdpConstants.DefaultOrganizationId);
+
+            var token = await Sut().GetJwtAccessToken(Config(), MakeTenant(), user,
+                new TokenRequest { GrantType = GrantTypes.SwitchOrganization, OrganizationId = IdpConstants.DefaultOrganizationId });
+
+            token.Claims.Should().ContainSingle(c => c.Type == BlocksContext.ORGANIZATION_ID_CLAIM)
+                .Which.Value.Should().Be(expectedOrganization);
+            // Roles and permissions are read from the same organization the claim names.
+            _claimsResolver.Verify(r => r.ResolveAsync(user, expectedOrganization, It.IsAny<string?>(), It.IsAny<bool>()), Times.Once);
+        }
+
         [Fact]
         public async Task GetJwtAccessToken_ParallelTenantsOnOneInstance_EachTokenIsSignedWithItsOwnTenantsCertificate()
         {

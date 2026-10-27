@@ -14,7 +14,8 @@ namespace Authentication.DomainService.Utilities
     /// (<see cref="HasOrganizationAccess"/>) and keeps the call shapes the sign-in legs already use.
     ///
     /// Selection rules (see <see cref="OrganizationScopeResolver.Resolve"/> for the authoritative order):
-    ///   1. The requested organization, if the user belongs to it and it is not a scope sentinel.
+    ///   1. The requested organization, if the user belongs to it. "no-org" is never honoured;
+    ///      "default" only when the user literally holds it.
     ///   2. LastUsedOrganizationId, if the user still belongs to it.
     ///   3. The first organization id, falling back to the first role key, then the first
     ///      permission key.

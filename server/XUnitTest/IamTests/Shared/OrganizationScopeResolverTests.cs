@@ -119,7 +119,66 @@ namespace XUnitTest.IamTests.Shared
         [Fact] // C3 -- but an explicitly granted "default" is still honoured
         public void Default_IsHonoured_WhenItIsLiterallyAMembership()
         {
-            var user = new User { OrganizationIds = [IdpConstants.DefaultOrganizationId, "org-a"] };
+            // "default" is listed last and the user was last in org-a, so neither R3 nor R4 can
+            // produce it: only honouring the request can. This test used to list "default" first,
+            // which let R4 pass it while the request itself was being discarded.
+            var user = new User
+            {
+                OrganizationIds = ["org-a", IdpConstants.DefaultOrganizationId],
+                LastUsedOrganizationId = "org-a"
+            };
+
+            var scope = Resolve(isMultiOrgEnabled: true, user, requested: IdpConstants.DefaultOrganizationId);
+
+            scope.Kind.Should().Be(OrganizationScopeKind.TenantWide);
+            scope.ClaimValue.Should().Be(IdpConstants.DefaultOrganizationId);
+        }
+
+        [Fact] // C3 + C4 of SPEC9 -- "default" granted only through a role key is a membership too
+        public void Default_IsHonoured_WhenGrantedThroughRolesOnly()
+        {
+            var user = new User
+            {
+                OrganizationIds = ["org-a"],
+                LastUsedOrganizationId = "org-a",
+                Roles = new Dictionary<string, List<string>> { [IdpConstants.DefaultOrganizationId] = ["admin"] }
+            };
+
+            Resolve(isMultiOrgEnabled: true, user, requested: IdpConstants.DefaultOrganizationId)
+                .ClaimValue.Should().Be(IdpConstants.DefaultOrganizationId);
+        }
+
+        [Fact] // ...and only through a permission key
+        public void Default_IsHonoured_WhenGrantedThroughPermissionsOnly()
+        {
+            var user = new User
+            {
+                OrganizationIds = ["org-a"],
+                LastUsedOrganizationId = "org-a",
+                Permissions = new Dictionary<string, List<string>> { [IdpConstants.DefaultOrganizationId] = ["read"] }
+            };
+
+            Resolve(isMultiOrgEnabled: true, user, requested: IdpConstants.DefaultOrganizationId)
+                .ClaimValue.Should().Be(IdpConstants.DefaultOrganizationId);
+        }
+
+        [Fact] // C2 -- "no-org" stays unrequestable even if it was somehow stored as a membership
+        public void RequestedNoOrgSentinel_IsDiscarded_EvenWhenStoredAsAMembership()
+        {
+            var user = new User { OrganizationIds = ["org-a", IdpConstants.NoOrganizationId] };
+
+            Resolve(isMultiOrgEnabled: true, user, requested: IdpConstants.NoOrganizationId)
+                .ClaimValue.Should().Be("org-a");
+        }
+
+        [Fact] // A refresh of a "default" session re-requests "default"; it must not drift to the remembered org
+        public void RefreshOfADefaultSession_StaysInDefault_WhenLastUsedIsAnotherOrganization()
+        {
+            var user = new User
+            {
+                OrganizationIds = ["org-a", IdpConstants.DefaultOrganizationId],
+                LastUsedOrganizationId = "org-a"
+            };
 
             Resolve(isMultiOrgEnabled: true, user, requested: IdpConstants.DefaultOrganizationId)
                 .ClaimValue.Should().Be(IdpConstants.DefaultOrganizationId);
