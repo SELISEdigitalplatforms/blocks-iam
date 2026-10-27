@@ -8,6 +8,8 @@ export type SignupLinkContext =
       firstName: string;
       maskedEmail: string;
       applicationName: string;
+      /** An Embedded link belongs to the app's own join page and must not be redeemed here. */
+      mode?: "Oidc" | "Embedded";
     }
   | { valid: false };
 

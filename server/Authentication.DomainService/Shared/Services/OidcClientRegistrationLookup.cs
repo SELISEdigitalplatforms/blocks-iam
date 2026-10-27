@@ -1,3 +1,4 @@
+using Blocks.Genesis.Entities.Iam;
 using Iam.DomainService.Services;
 
 namespace Authentication.DomainService.Services;
@@ -27,10 +28,24 @@ public sealed class OidcClientRegistrationLookup : IOidcClientRegistrationLookup
             return null;
         }
 
+        // Looked up by the id the caller asked about, as redemption does, so both answer alike.
+        var provider = await _repository.GetIdentityProviderByClientIdAsync(clientId);
+
         return new OidcClientRegistrationInfo(
             client.ClientId ?? client.ItemId,
             client.RedirectUris ?? [],
             client.IsActive,
-            client.ClientName);
+            client.ClientName,
+            ToProviderState(provider));
+    }
+
+    private static OidcIdentityProviderState ToProviderState(IdentityProvider? provider)
+    {
+        if (provider == null)
+        {
+            return OidcIdentityProviderState.None;
+        }
+
+        return provider.IsActive ? OidcIdentityProviderState.Active : OidcIdentityProviderState.Inactive;
     }
 }
