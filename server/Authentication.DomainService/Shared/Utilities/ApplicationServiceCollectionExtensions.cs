@@ -1,3 +1,4 @@
+using Blocks.Genesis.Notifications;
 using Blocks.Genesis.DataAccess;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth;
@@ -180,8 +181,9 @@ namespace Authentication.DomainService.Utilities
             #endregion
 
             #region IAM
-            // Built-in notifications to the Notifier (blocks-logic). Best effort; both hosts use it.
+            // Built-in notifications go through the Genesis publisher. Best effort; both hosts use it.
             serviceCollection.AddHttpClient();
+            serviceCollection.AddBlocksNotifications();
             serviceCollection.AddSingleton<Iam.DomainService.Notifications.IBuiltInNotificationSender, Iam.DomainService.Notifications.BuiltInNotificationSender>();
 
             serviceCollection.AddSingleton<IUserManagementMutationService, UserManagementMutationService>();

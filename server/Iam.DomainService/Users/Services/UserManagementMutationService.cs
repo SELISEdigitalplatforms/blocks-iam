@@ -728,10 +728,12 @@ namespace Iam.DomainService.Users
 
             WarnOnRetiredFields(command.UnmappedFields, command.ItemId);
 
-            ApplyProfileFields(user, new ProfilePatch(
+            var patch = new ProfilePatch(
                 command.Salutation, command.FirstName, command.LastName, command.PhoneNumber,
                 command.Language, command.ProfileImageUrl, command.ProfileImageId,
-                command.Tags, command.Attributes));
+                command.Tags, command.Attributes);
+            var changedFields = ChangedProfileFields(user, patch);
+            ApplyProfileFields(user, patch);
 
             user.LastUpdatedDate = DateTime.UtcNow;
             user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
@@ -750,11 +752,76 @@ namespace Iam.DomainService.Users
 
             _logger.LogInformation("User update end -- Success");
 
+            await NotifyUserUpdatedAsync(user, blocksContext, changedFields);
+
             return new BaseMutationResponse
             {
                 IsSuccess = true,
                 ItemId = user.ItemId
             };
+        }
+
+        /// <summary>
+        /// Tells a user an admin changed their profile. Only the field names go out, never the
+        /// values. Not sent when nothing changed or the actor is the user. Best effort.
+        /// </summary>
+        private Task NotifyUserUpdatedAsync(User user, BlocksContext? blocksContext, IReadOnlyList<string> changedFields)
+        {
+            if (changedFields.Count == 0 || string.Equals(user.ItemId, blocksContext?.UserId, StringComparison.Ordinal))
+            {
+                return Task.CompletedTask;
+            }
+
+            return _notificationSender.TrySendAsync(new BuiltInNotification(
+                blocksContext?.TenantId,
+                BuiltInNotificationNames.UserUpdated,
+                BuiltInNotificationSender.Recipients(user.ItemId),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.UserUpdated,
+                    "Your profile was updated",
+                    "An admin updated your profile.",
+                    fields: new Dictionary<string, object?>
+                    {
+                        ["userId"] = user.ItemId,
+                        ["changedFields"] = changedFields
+                    }),
+                blocksContext?.OrganizationId,
+                IncludeImpersonatedActor: false));
+        }
+
+        /// <summary>The names (never the values) of the fields the patch really changes.</summary>
+        private static List<string> ChangedProfileFields(User user, ProfilePatch patch)
+        {
+            var changed = new List<string>();
+            AddIfChanged(changed, "salutation", patch.Salutation, user.Salutation);
+            AddIfChanged(changed, "firstName", patch.FirstName, user.FirstName);
+            AddIfChanged(changed, "lastName", patch.LastName, user.LastName);
+            AddIfChanged(changed, "phoneNumber", patch.PhoneNumber, user.PhoneNumber);
+            AddIfChanged(changed, "language", patch.Language, user.Language);
+            AddIfChanged(changed, "profileImageUrl", patch.ProfileImageUrl, user.ProfileImageUrl);
+            AddIfChanged(changed, "profileImageId", patch.ProfileImageId, user.ProfileImageId);
+
+            if (patch.Tags is not null && !patch.Tags.SequenceEqual(user.Tags ?? new List<string>(), StringComparer.Ordinal))
+            {
+                changed.Add("tags");
+            }
+
+            if (patch.Attributes is not null
+                && JsonSerializer.Serialize(AttributeNormalizer.Normalize(patch.Attributes, AttributePolicy.Internal))
+                   != JsonSerializer.Serialize(user.Attributes))
+            {
+                changed.Add("attributes");
+            }
+
+            return changed;
+        }
+
+        private static void AddIfChanged(List<string> changed, string name, string? incoming, string? current)
+        {
+            if (incoming is not null && !string.Equals(incoming, current, StringComparison.Ordinal))
+            {
+                changed.Add(name);
+            }
         }
 
         /// <summary>
@@ -941,7 +1008,8 @@ namespace Iam.DomainService.Users
                         BuiltInNotificationNames.UserDeactivated,
                         "Account deactivated",
                         "An admin deactivated your account.",
-                        fields: new Dictionary<string, object?> { ["userId"] = user.ItemId })));
+                        fields: new Dictionary<string, object?> { ["userId"] = user.ItemId }),
+                    BlocksContext.GetContext()?.OrganizationId));
             }
 
             return new BaseResponse { IsSuccess = true };
@@ -2289,7 +2357,8 @@ namespace Iam.DomainService.Users
                             [OrganizationIdKey] = command.OrganizationId,
                             ["change"] = "updated",
                             ["batchId"] = command.BatchId
-                        })));
+                        }),
+                    command.OrganizationId));
             }
 
             if (string.IsNullOrWhiteSpace(command.RequestedBy))
@@ -2320,7 +2389,8 @@ namespace Iam.DomainService.Users
                         ["applied"] = applied.Count,
                         ["unchanged"] = unchanged,
                         ["failed"] = failed
-                    })));
+                    }),
+                command.OrganizationId));
         }
 
         /// <summary>
@@ -2349,7 +2419,8 @@ namespace Iam.DomainService.Users
                         ["userId"] = userId,
                         [OrganizationIdKey] = organizationId,
                         ["change"] = change
-                    })));
+                    }),
+                organizationId));
         }
 
         /// <summary>

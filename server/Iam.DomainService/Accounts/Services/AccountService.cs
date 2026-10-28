@@ -7,6 +7,7 @@ using FluentValidation;
 using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Notifications;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
@@ -75,6 +76,7 @@ namespace Iam.DomainService.Accounts
         private readonly IOrganizationNameResolver? _organizationNameResolver;
         private readonly IConfiguration? _configuration;
         private readonly ISignupOrganizationResolver _signupOrganizationResolver;
+        private readonly IBuiltInNotificationSender? _notificationSender;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -101,8 +103,10 @@ namespace Iam.DomainService.Accounts
             IConfiguration? configuration = null,
             IUserSessionTerminator? userSessionTerminator = null,
             IFailedLoginTracker? failedLoginTracker = null,
-            IAccessGrantService? accessGrant = null)
+            IAccessGrantService? accessGrant = null,
+            IBuiltInNotificationSender? notificationSender = null)
         {
+            _notificationSender = notificationSender;
             _logger = logger;
             _repository = repository;
             _identityAccessManagementService = identityAccessManagementService;
@@ -1674,6 +1678,18 @@ namespace Iam.DomainService.Accounts
             {
                 _logger.LogWarning(ex, "Failed to send account locked notification for user: {UserId}", user.ItemId);
             }
+
+            await SendAccountNotificationAsync(
+                user,
+                BuiltInNotificationNames.AccountLocked,
+                "Account locked",
+                "Your account was locked after too many failed sign-in attempts.",
+                new Dictionary<string, object?>
+                {
+                    ["userId"] = user.ItemId,
+                    ["lockoutUntilUtc"] = lockoutUntilUtc,
+                    ["reason"] = "too_many_failed_attempts"
+                });
         }
 
         /// <summary>
@@ -1709,6 +1725,41 @@ namespace Iam.DomainService.Accounts
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to send account unlocked notification for user: {UserId}", user.ItemId);
+            }
+
+            await SendAccountNotificationAsync(
+                user,
+                BuiltInNotificationNames.AccountUnlocked,
+                "Account unlocked",
+                "Your account was unlocked.",
+                new Dictionary<string, object?> { ["userId"] = user.ItemId });
+        }
+
+        /// <summary>
+        /// Lock and unlock often run without a signed-in user (failed login), so there may be no context
+        /// organization: then one notice goes out per organization the account belongs to.
+        /// </summary>
+        private async Task SendAccountNotificationAsync(
+            User user, string configurationName, string title, string description, Dictionary<string, object?> fields)
+        {
+            var bc = BlocksContext.GetContext();
+            var organizationIds = string.IsNullOrWhiteSpace(bc?.OrganizationId)
+                ? (user.OrganizationIds ?? new List<string>()).Where(o => !string.IsNullOrWhiteSpace(o)).Distinct().ToList()
+                : new List<string> { bc!.OrganizationId };
+            if (organizationIds.Count == 0)
+            {
+                organizationIds.Add(string.Empty);
+            }
+
+            foreach (var organizationId in organizationIds)
+            {
+                await _notificationSender.TrySendAsync(new BuiltInNotification(
+                    bc?.TenantId,
+                    configurationName,
+                    BuiltInNotificationSender.Recipients(user.ItemId),
+                    BuiltInNotificationSender.Payload(configurationName, title, description, fields: fields),
+                    organizationId,
+                    IncludeImpersonatedActor: false));
             }
         }
 

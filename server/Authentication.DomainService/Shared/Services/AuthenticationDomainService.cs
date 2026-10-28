@@ -296,7 +296,8 @@ namespace Authentication.DomainService.Services
                         ["change"] = change,
                         ["clientId"] = clientId,
                         ["organizationId"] = organizationId
-                    })));
+                    }),
+                organizationId));
         }
 
         /// <summary>

@@ -18,5 +18,8 @@ namespace Iam.DomainService.Notifications
         public const string PermissionPropagationFailed = "iam-permission-propagation-failed";
         public const string OrganizationSetupFinished = "iam-organization-setup-finished";
         public const string SessionRevoked = "iam-session-revoked";
+        public const string UserUpdated = "iam-user-updated";
+        public const string AccountLocked = "iam-account-locked";
+        public const string AccountUnlocked = "iam-account-unlocked";
     }
 }

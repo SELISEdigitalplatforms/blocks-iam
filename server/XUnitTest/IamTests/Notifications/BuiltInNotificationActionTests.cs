@@ -269,6 +269,111 @@ namespace XUnitTest.IamTests.Notifications
         }
     }
 
+    public class UserProfileUpdateNotificationTests : IDisposable
+    {
+        private readonly Mock<IUserRepository> _userRepo = new();
+        private readonly Mock<IValidator<UpdateUserRequest>> _validator = new();
+        private readonly RecordingSender _sender = new();
+
+        public UserProfileUpdateNotificationTests()
+        {
+            TestContext.Install(orgId: "org-1");
+            _validator.Setup(v => v.Validate(It.IsAny<UpdateUserRequest>())).Returns(new FluentValidation.Results.ValidationResult());
+            _userRepo.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
+        }
+
+        public void Dispose() => TestContext.Clear();
+
+        private UserManagementMutationService Create() =>
+            new(NullLogger<UserManagementMutationService>.Instance,
+                new Mock<IValidator<CreateUserRequest>>().Object,
+                _validator.Object,
+                new Mock<IValidator<UpdateMyAccountRequest>>().Object,
+                new Mock<IIdentityAccessManagementService>().Object, _userRepo.Object, new Mock<IMessageClient>().Object,
+                new Mock<ICacheClient>().Object, new Mock<ITenants>().Object, new Mock<IUserActivityDispatcher>().Object,
+                null, new Mock<IResourceRepository>().Object, null, null, null, null, _sender);
+
+        private void UserExists(string id, params string[] orgs) =>
+            _userRepo.Setup(r => r.GetUserByIdAsync(id)).ReturnsAsync(new User
+            {
+                ItemId = id,
+                Active = true,
+                FirstName = "OldFirst",
+                LastName = "SameLast",
+                PhoneNumber = "+4100000",
+                OrganizationIds = orgs.ToList()
+            });
+
+        [Fact]
+        public async Task AdminUpdate_NotifiesThatUser_WithFieldNamesOnly()
+        {
+            UserExists("u1", "org-1");
+
+            var result = await Create().UpdateUserAsync(new UpdateUserRequest
+            {
+                ItemId = "u1",
+                OrganizationId = "org-1",
+                FirstName = "NewFirst",
+                LastName = "SameLast",
+                PhoneNumber = "+4199999"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            var sent = _sender.Sent.Should().ContainSingle().Subject;
+            sent.ConfigurationName.Should().Be("iam-user-updated");
+            sent.UserIds.Should().Equal("u1");
+            sent.TenantId.Should().Be("tenant-1");
+            sent.OrganizationId.Should().Be("org-1");
+            var json = RecordingSender.PayloadJson(sent);
+            json.Should().Contain("\"changedFields\":[\"firstName\",\"phoneNumber\"]");
+            json.Should().NotContain("OldFirst").And.NotContain("NewFirst").And.NotContain("+41");
+        }
+
+        [Fact]
+        public async Task AdminUpdate_OfOwnAccount_NoNotification()
+        {
+            TestContext.Install(userId: "u1", orgId: "org-1");
+            UserExists("u1", "org-1");
+
+            var result = await Create().UpdateUserAsync(new UpdateUserRequest { ItemId = "u1", OrganizationId = "org-1", FirstName = "NewFirst" });
+
+            result.IsSuccess.Should().BeTrue();
+            _sender.Sent.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task AdminUpdate_NothingChanged_NoNotification()
+        {
+            UserExists("u1", "org-1");
+
+            await Create().UpdateUserAsync(new UpdateUserRequest { ItemId = "u1", OrganizationId = "org-1", FirstName = "OldFirst" });
+
+            _sender.Sent.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task AdminUpdate_WriteFails_NoNotification()
+        {
+            UserExists("u1", "org-1");
+            _userRepo.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(false);
+
+            await Create().UpdateUserAsync(new UpdateUserRequest { ItemId = "u1", OrganizationId = "org-1", FirstName = "NewFirst" });
+
+            _sender.Sent.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task AdminUpdate_NotifierFails_UpdateStillSucceeds()
+        {
+            UserExists("u1", "org-1");
+            _sender.Throw = true;
+
+            var result = await Create().UpdateUserAsync(new UpdateUserRequest { ItemId = "u1", OrganizationId = "org-1", FirstName = "NewFirst" });
+
+            result.IsSuccess.Should().BeTrue();
+        }
+    }
+
     public class OidcLoginAuditWriterNotificationTests
     {
         private static async Task<UserActivityEvent?> Write(User user, string eventType)
