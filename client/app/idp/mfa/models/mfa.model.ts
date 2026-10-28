@@ -76,7 +76,9 @@ export interface IResendMfaOtpResponse {
   userId: string;
 }
 export interface IDisableMFAPayload {
-  userId: string;
+  password: string;
+  mfaId: string;
+  verificationCode: string;
 }
 export interface IDisableMFAResponse {
   errors: unknown;

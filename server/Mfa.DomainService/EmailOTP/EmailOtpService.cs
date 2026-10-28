@@ -179,9 +179,11 @@ namespace Mfa.DomainService.OTP.Services
                 return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { MessageKey, InvalidTwoFactorIdError } } };
             }
 
-            if (CodesMatch(mfaContext.MfaCode, request.VerificationCode))
+            // Single use: of parallel submits with the right code, only the one that really
+            // deleted the challenge passes.
+            if (CodesMatch(mfaContext.MfaCode, request.VerificationCode)
+                && await _cacheClient.RemoveKeyAsync(request.MfaId ?? string.Empty))
             {
-                await _cacheClient.RemoveKeyAsync(request.MfaId ?? string.Empty);
                 return new OtpVerificationResponse { IsSuccess = true, IsValid = true, UserId = mfaContext.UserId };
             }
 

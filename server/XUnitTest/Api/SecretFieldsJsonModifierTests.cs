@@ -59,7 +59,8 @@ namespace XUnitTest.ApiTests
             // The controller returns new { data = providers, isSuccess = true }.
             var json = Write(new { data = new List<IdentityProvider> { Idp() }, isSuccess = true }).ToJsonString();
 
-            json.Should().NotContain("clientSecret").And.NotContain("privateKey")
+            // The *Reference fields carry a secret's name, never its value, so only the exact keys are checked.
+            json.Should().NotContain("\"clientSecret\"").And.NotContain("\"privateKey\"")
                 .And.NotContain("idp-secret").And.NotContain("apple-key")
                 .And.Contain("\"clientId\":\"cid\"");
         }

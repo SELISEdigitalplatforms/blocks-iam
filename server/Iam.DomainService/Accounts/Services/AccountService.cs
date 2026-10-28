@@ -1075,11 +1075,12 @@ namespace Iam.DomainService.Accounts
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
                 ItemId = Guid.NewGuid().ToString(),
-                Key = key,
+                // Only the hash: the code and the link that carries it are never stored.
+                Key = AccountCodes.Stored(AccountCodes.Reset, key),
                 UserId = user.ItemId,
                 IssueDate = DateTime.Now,
                 ExpireDate = DateTime.Now.AddMinutes(config.RecoverAccountUrlLifetimeInMinutes),
-                Value = recoverAccountUrl,
+                Value = string.Empty,
                 MailPurpose = emailPurpose
             });
 
@@ -1146,7 +1147,7 @@ namespace Iam.DomainService.Accounts
 
             // Spend the code before the password changes, in one conditional write: of two requests
             // carrying the same code, only one gets past this line. A code that is lost here stays spent.
-            if (!await _repository.TryConsumeUserKeyMapAsync(resetPasswordRequest.Code, userId, DateTime.UtcNow))
+            if (!await _repository.TryConsumeUserKeyMapAsync(AccountCodes.Stored(AccountCodes.Reset, resetPasswordRequest.Code), userId, DateTime.UtcNow))
             {
                 _logger.LogWarning("Password reset refused for user {UserId}: the code is already used or expired", userId);
                 return false;
@@ -1231,11 +1232,12 @@ namespace Iam.DomainService.Accounts
 
             var tenantId = bc?.TenantId;
             var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
-            var passwordMatched = _identityAccessManagementService.VerifyPassword(changePasswordRequest.OldPassword, user.Password, tenant?.TenantSalt);
-            if (!passwordMatched)
+            var attempt = await CheckOldPasswordAsync(user, changePasswordRequest.OldPassword, tenant?.TenantSalt);
+            if (!attempt.IsValid)
             {
-                _logger.LogError("Password not matched");
-                return (false, await RecordWrongOldPasswordAsync(user));
+                _logger.LogError("Password not matched or account locked");
+                await NotifyLockedNowAsync(attempt.LockedNow);
+                return (false, attempt.IsLocked);
             }
 
             ApplyPasswordRotation(user, changePasswordRequest.NewPassword);
@@ -1265,30 +1267,35 @@ namespace Iam.DomainService.Accounts
         /// Counts a wrong old password on the login counter (same threshold and lock time).
         /// True when this attempt locked the account.
         /// </summary>
-        private async Task<bool> RecordWrongOldPasswordAsync(User user)
+        // Counted before it is checked, like a login password, so parallel guesses at the old
+        // password get no more checks than the lock threshold.
+        private async Task<GuardedAttempt> CheckOldPasswordAsync(User user, string oldPassword, string? tenantSalt)
         {
+            bool IsCorrect() => _identityAccessManagementService.VerifyPassword(oldPassword, user.Password, tenantSalt);
+
             if (_failedLoginTracker == null)
             {
-                return false;
+                return new GuardedAttempt(IsCorrect() ? GuardedAttemptResult.Valid : GuardedAttemptResult.Invalid);
             }
 
-            var updated = await _failedLoginTracker.RecordFailedAttemptAsync(user.ItemId);
-            var lockoutUntilUtc = updated?.LockoutUntilUtc;
-            if (!lockoutUntilUtc.HasValue || updated == null)
+            return await _failedLoginTracker.CheckPasswordAsync(user.ItemId, IsCorrect);
+        }
+
+        private async Task NotifyLockedNowAsync(User? lockedUser)
+        {
+            if (lockedUser?.LockoutUntilUtc == null)
             {
-                return false;
+                return;
             }
 
             try
             {
-                await SendAccountLockedNotificationAsync(updated, lockoutUntilUtc.Value);
+                await SendAccountLockedNotificationAsync(lockedUser, lockedUser.LockoutUntilUtc.Value);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to send account locked notification after failed password change for user: {UserId}", user.ItemId);
+                _logger.LogWarning(ex, "Failed to send account locked notification after failed password change for user: {UserId}", lockedUser.ItemId);
             }
-
-            return true;
         }
 
         // Inline, so the sessions are dead before the response goes out; the logout-all queue is

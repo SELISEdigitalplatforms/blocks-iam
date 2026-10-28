@@ -16,19 +16,18 @@ namespace Authentication.DomainService.Services
             _repository = repository;
         }
 
-        public async Task<User?> RecordFailedAttemptAsync(string userId)
+        public async Task<GuardedAttempt> CheckPasswordAsync(string userId, Func<bool> isCorrect)
         {
-            var configuration = await _repository.GetAuthenticationConfigurationAsync();
-            if (configuration == null)
-            {
-                return null;
-            }
+            var configuration = await _repository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
+            var threshold = configuration.GetNumberOfWrongAttemptsToLockTheAccount;
 
-            return await _repository.IncrementFailedLoginAndApplyLockoutAsync(
-                userId,
-                configuration.GetNumberOfWrongAttemptsToLockTheAccount,
-                configuration.AccountLockDurationInMinutes,
-                DateTime.UtcNow);
+            return await GuardedAttemptRunner.RunAsync(
+                threshold,
+                () => _repository.TryReserveLoginAttemptAsync(userId, threshold, DateTime.UtcNow),
+                () => Task.FromResult(isCorrect()),
+                () => _repository.ReleaseLoginAttemptAsync(userId, DateTime.UtcNow),
+                user => user.FailedLoginCount,
+                () => _repository.LockAccountIfLoginThresholdReachedAsync(userId, threshold, configuration.AccountLockDurationInMinutes, DateTime.UtcNow));
         }
     }
 }

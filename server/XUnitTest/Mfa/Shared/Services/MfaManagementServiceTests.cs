@@ -259,6 +259,20 @@ namespace XUnitTest.Mfa.Shared.Services
         }
 
         [Fact]
+        public async Task DisableUserMfa_DeletesTheStoredTotpSecret()
+        {
+            // An old authenticator must not keep working after MFA is turned off.
+            var service = CreateService(out _, out var repo, out _, out _, out _);
+            repo.Setup(r => r.UpdatePartialAsync<UserMfaInfo>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()))
+                .Returns(Task.CompletedTask);
+
+            var result = await service.DisableUserMfa(new DisableUserMfaRequest { UserId = "target", AdminActorUserId = "admin-1" });
+
+            result.IsSuccess.Should().BeTrue();
+            repo.Verify(r => r.DeleteItemsAsync(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>()), Times.Once);
+        }
+
+        [Fact]
         public async Task ResendOtpAsync_WhenKeyMissing_ReturnsError()
         {
             var service = CreateService(out _, out _, out _, out var cache, out _);

@@ -45,6 +45,10 @@ namespace XUnitTest.Auth
 
         public OidcLoginOrchestratorTests()
         {
+            // A free MFA slot, given back when the code is right.
+            _repo.Setup(r => r.TryReserveMfaAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync((string id, int _, DateTime _) => new User { ItemId = id, FailedMfaCount = 1 });
+            _repo.Setup(r => r.ReleaseMfaAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>())).ReturnsAsync(true);
             BlocksContext.IsTestMode = true;
             BlocksContext.SetContext(BlocksContext.Create(
                 tenantId: TenantId, roles: null, userId: "actor-1", impersonated: false,
@@ -480,8 +484,8 @@ namespace XUnitTest.Auth
             _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(MfaContextJson());
             _repo.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _repo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
-                .ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = null });
+            _repo.Setup(r => r.TryReserveMfaAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "user-1", FailedMfaCount = 1 });
             var otp = new Mock<IOtpService>();
             otp.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>())).ReturnsAsync(new OtpVerificationResponse { IsValid = false });
             _mfaIssuer.Setup(m => m.GetOtpServiceAsync(It.IsAny<User>())).ReturnsAsync(otp.Object);
@@ -499,7 +503,9 @@ namespace XUnitTest.Auth
             _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(MfaContextJson());
             _repo.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _repo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+            _repo.Setup(r => r.TryReserveMfaAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "user-1", FailedMfaCount = 100 });
+            _repo.Setup(r => r.LockAccountIfMfaThresholdReachedAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
                 .ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(20) });
             var otp = new Mock<IOtpService>();
             otp.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>())).ReturnsAsync(new OtpVerificationResponse { IsValid = false });

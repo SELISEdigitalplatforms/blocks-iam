@@ -1,4 +1,4 @@
-using Authentication.DomainService.Dtos;
+﻿using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
@@ -619,17 +619,8 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
             }
 
-            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
-            {
-                return new ObjectResult(new
-                {
-                    error = OAuthError.AccountLocked,
-                    error_description = "Account is temporarily locked due to failed authentication attempts"
-                })
-                {
-                    StatusCode = StatusCodes.Status423Locked
-                };
-            }
+            // A lock stops new sign-ins (password guessing), not sessions that already exist: otherwise
+            // anyone who knows an email could sign that user out everywhere with a few wrong passwords.
 
             // A deactivated or suspended account must not mint new tokens from a refresh token it
             // obtained while still active (same guard as /oidc/token).

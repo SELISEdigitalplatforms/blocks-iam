@@ -1,4 +1,4 @@
-using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
@@ -125,7 +125,7 @@ namespace XUnitTest.Auth
             Checked(results).Should().Be(Threshold);
             Locked(results).Should().Be(40 - Threshold);
             var db = await DbUserAsync();
-            db.FailedLoginCount.Should().Be(Threshold);
+            db.FailedLoginCount.Should().Be(0, "a lock starts the next round from zero");
             db.LockoutCount.Should().Be(1);
             db.LockoutUntilUtc.Should().BeCloseTo(DateTime.UtcNow.AddMinutes(BaseMinutes), TimeSpan.FromSeconds(30));
 
@@ -232,7 +232,7 @@ namespace XUnitTest.Auth
             unauthorized.Should().Be(Threshold - 1);
             locked.Should().Be(40 - (Threshold - 1));
             var db = await DbUserAsync();
-            db.FailedLoginCount.Should().Be(Threshold, "exactly threshold password checks ran");
+            db.FailedLoginCount.Should().Be(0, "a lock starts the next round from zero");
             db.LockoutCount.Should().Be(1);
             db.LockoutUntilUtc.Should().BeAfter(DateTime.UtcNow);
 
@@ -254,7 +254,7 @@ namespace XUnitTest.Auth
             results.Count(r => r.Error == OAuthError.InValidUseNamePassword).Should().Be(Threshold);
             results.Count(r => r.StatusCode == StatusCodes.Status423Locked).Should().Be(40 - Threshold);
             results.Count(r => r.AccountLockedNow).Should().Be(1);
-            (await DbUserAsync()).FailedLoginCount.Should().Be(Threshold);
+            (await DbUserAsync()).FailedLoginCount.Should().Be(0, "a lock starts the next round from zero");
 
             var after = await verifier.VerifyAsync(user, Right, null, null, null);
             after.Succeeded.Should().BeFalse();
@@ -278,7 +278,7 @@ namespace XUnitTest.Auth
             });
 
             var db = await DbUserAsync();
-            db.FailedLoginCount.Should().Be(Threshold);
+            db.FailedLoginCount.Should().Be(0, "a lock starts the next round from zero");
             db.LockoutCount.Should().Be(1);
             db.LockoutUntilUtc.Should().BeAfter(DateTime.UtcNow);
         }
@@ -366,7 +366,7 @@ namespace XUnitTest.Auth
         }
 
         [RealMongoFact]
-        public async Task Sequential_Escalation_x1_x3_x12_x288_ThenSuccessResets()
+        public async Task Sequential_EachLockAddsTheBaseTime_UpToFourHours_ThenSuccessResets()
         {
             await SeedAsync();
             var sut = Login();
@@ -378,12 +378,16 @@ namespace XUnitTest.Auth
             await AssertLockedForAsync(BaseMinutes, lockoutCount: 1);
             (await LoginAsync(sut, Right)).StatusCode.Should().Be(StatusCodes.Status423Locked);
 
-            // After each lock expires, ONE wrong password locks again, longer each time (as before).
-            foreach (var (factor, count) in new[] { (3, 2), (12, 3), (288, 4), (288, 5) })
+            // 15, 30, 45 … 240 minutes, then it stays at 4 hours.
+            for (var count = 2; count <= 18; count++)
             {
                 await ExpireLockAsync();
-                (await LoginAsync(sut, "again")).StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
-                await AssertLockedForAsync(BaseMinutes * factor, count);
+                await AssertOneMoreWrongDoesNotLockAsync(sut);
+                for (var i = 1; i < Threshold; i++)
+                {
+                    await LoginAsync(sut, "again" + i);
+                }
+                await AssertLockedForAsync(Math.Min(BaseMinutes * count, AuthenticationRepository.MaxLockoutDurationInMinutes), count);
             }
 
             await ExpireLockAsync();
@@ -394,8 +398,14 @@ namespace XUnitTest.Auth
             db.LockoutUntilUtc.Should().BeNull();
         }
 
+        private async Task AssertOneMoreWrongDoesNotLockAsync(PasswordAuthenticationService sut)
+        {
+            (await LoginAsync(sut, "again0")).StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+            (await DbUserAsync()).LockoutUntilUtc.Should().BeBefore(DateTime.UtcNow, "a lock that ended needs a full new round of wrong attempts");
+        }
+
         [RealMongoFact]
-        public async Task Escalation_ResetsAfterSevenDays()
+        public async Task Escalation_StartsAgainAfterSevenQuietDays()
         {
             await SeedAsync(u =>
             {
@@ -406,11 +416,11 @@ namespace XUnitTest.Auth
 
             (await LoginAsync(Login(), "wrong")).StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
 
-            await AssertLockedForAsync(BaseMinutes, lockoutCount: 4);
+            await AssertLockedForAsync(BaseMinutes, lockoutCount: 1);
         }
 
         [RealMongoFact]
-        public async Task AfterLockExpires_ParallelBurst_GetsExactlyOneCheck_AndEscalates()
+        public async Task AfterLockExpires_ParallelBurst_GetsAFullNewRound_AndLocksOneStepLonger()
         {
             await SeedAsync();
             var sut = Login();
@@ -419,9 +429,9 @@ namespace XUnitTest.Auth
 
             var results = await Burst(20, i => LoginAsync(sut, "next" + i));
 
-            Checked(results).Should().Be(1);
-            Locked(results).Should().Be(19);
-            await AssertLockedForAsync(BaseMinutes * 3, lockoutCount: 2);
+            Checked(results).Should().Be(Threshold);
+            Locked(results).Should().Be(20 - Threshold);
+            await AssertLockedForAsync(BaseMinutes * 2, lockoutCount: 2);
         }
 
         [RealMongoFact]
@@ -465,6 +475,63 @@ namespace XUnitTest.Auth
             db.LockoutCount.Should().Be(lockoutCount);
             db.LockoutUntilUtc.Should().NotBeNull();
             (db.LockoutUntilUtc!.Value - db.LastLockoutUtc!.Value).TotalMinutes.Should().BeApproximately(minutes, 0.01);
+        }
+
+        // ---------- MFA codes and change password: counted before the check ----------
+
+        [RealMongoFact]
+        public async Task MfaCode_40ParallelWrong_ExactlyThresholdChecks_RestLocked()
+        {
+            await SeedAsync();
+            var gate = new MfaAttemptGate(_repo);
+            var checks = 0;
+
+            var results = await Burst(40, _ => gate.CheckAsync(UserId, _config, async () =>
+            {
+                Interlocked.Increment(ref checks);
+                await Task.Delay(20);
+                return false;
+            }));
+
+            checks.Should().Be(Threshold);
+            results.Count(r => r.Result == GuardedAttemptResult.Locked).Should().Be(40 - Threshold);
+            results.Count(r => r.LockedNow != null).Should().Be(1);
+            (await DbUserAsync()).LockoutUntilUtc.Should().BeAfter(DateTime.UtcNow);
+        }
+
+        [RealMongoFact]
+        public async Task MfaCode_RightCodes_GiveTheirSlotBack()
+        {
+            await SeedAsync();
+            var gate = new MfaAttemptGate(_repo);
+
+            for (var i = 0; i < Threshold * 2; i++)
+            {
+                (await gate.CheckAsync(UserId, _config, () => Task.FromResult(true))).IsValid.Should().BeTrue();
+            }
+
+            var user = await DbUserAsync();
+            user.FailedMfaCount.Should().Be(0);
+            user.LockoutUntilUtc.Should().BeNull();
+        }
+
+        [RealMongoFact]
+        public async Task ChangePassword_40ParallelWrongOldPasswords_ExactlyThresholdChecks_RestLocked()
+        {
+            await SeedAsync();
+            var tracker = new FailedLoginTracker(_repo);
+            var hash = (await DbUserAsync()).Password;
+            var checks = 0;
+
+            var results = await Burst(40, _ => tracker.CheckPasswordAsync(UserId, () =>
+            {
+                Interlocked.Increment(ref checks);
+                return BCrypt.Net.BCrypt.Verify("Wrong#Pass1", hash);
+            }));
+
+            checks.Should().Be(Threshold);
+            results.Count(r => r.IsLocked).Should().Be(40 - Threshold + 1);
+            (await DbUserAsync()).LockoutUntilUtc.Should().BeAfter(DateTime.UtcNow);
         }
     }
 }

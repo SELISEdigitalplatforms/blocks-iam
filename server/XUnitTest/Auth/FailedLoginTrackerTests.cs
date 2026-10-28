@@ -1,36 +1,57 @@
 using Authentication.DomainService.Services;
 using Blocks.Genesis.Entities.Iam;
 using FluentAssertions;
+using Iam.DomainService.Services;
 using Moq;
 
 namespace XUnitTest.Auth
 {
     public class FailedLoginTrackerTests
     {
-        [Fact]
-        public async Task RecordFailedAttempt_UsesLoginThresholdAndDurationFromConfiguration()
+        private readonly Mock<IAuthenticationRepository> _repo = new();
+
+        public FailedLoginTrackerTests()
         {
-            var repo = new Mock<IAuthenticationRepository>();
-            repo.Setup(r => r.GetAuthenticationConfigurationAsync())
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync())
                 .ReturnsAsync(new IdentityConfiguration { GetNumberOfWrongAttemptsToLockTheAccount = 4, AccountLockDurationInMinutes = 9 });
-            var user = new User { ItemId = "u1" };
-            repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync("u1", 4, 9, It.IsAny<DateTime>())).ReturnsAsync(user);
-
-            var result = await new FailedLoginTracker(repo.Object).RecordFailedAttemptAsync("u1");
-
-            result.Should().BeSameAs(user);
         }
 
         [Fact]
-        public async Task RecordFailedAttempt_NoConfiguration_ReturnsNull_AndDoesNotCount()
+        public async Task NoFreeSlot_IsLocked_AndThePasswordIsNotChecked()
         {
-            var repo = new Mock<IAuthenticationRepository>();
-            repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            var checkedPassword = false;
 
-            var result = await new FailedLoginTracker(repo.Object).RecordFailedAttemptAsync("u1");
+            var result = await new FailedLoginTracker(_repo.Object).CheckPasswordAsync("u1", () => checkedPassword = true);
 
-            result.Should().BeNull();
-            repo.Verify(r => r.IncrementFailedLoginAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+            result.Result.Should().Be(GuardedAttemptResult.Locked);
+            checkedPassword.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task RightPassword_GivesTheSlotBack()
+        {
+            _repo.Setup(r => r.TryReserveLoginAttemptAsync("u1", 4, It.IsAny<DateTime>())).ReturnsAsync(new User { ItemId = "u1", FailedLoginCount = 1 });
+            _repo.Setup(r => r.ReleaseLoginAttemptAsync("u1", It.IsAny<DateTime>())).ReturnsAsync(true);
+
+            var result = await new FailedLoginTracker(_repo.Object).CheckPasswordAsync("u1", () => true);
+
+            result.IsValid.Should().BeTrue();
+            _repo.Verify(r => r.ReleaseLoginAttemptAsync("u1", It.IsAny<DateTime>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task WrongPassword_ThatTookTheLastSlot_Locks_WithTheTenantSettings()
+        {
+            var locked = new User { ItemId = "u1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(9) };
+            _repo.Setup(r => r.TryReserveLoginAttemptAsync("u1", 4, It.IsAny<DateTime>())).ReturnsAsync(new User { ItemId = "u1", FailedLoginCount = 4 });
+            _repo.Setup(r => r.LockAccountIfLoginThresholdReachedAsync("u1", 4, 9, It.IsAny<DateTime>())).ReturnsAsync(locked);
+
+            var result = await new FailedLoginTracker(_repo.Object).CheckPasswordAsync("u1", () => false);
+
+            result.Result.Should().Be(GuardedAttemptResult.Invalid);
+            result.LockedNow.Should().BeSameAs(locked);
+            result.IsLocked.Should().BeTrue();
+            _repo.Verify(r => r.ReleaseLoginAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
         }
     }
 }

@@ -1,4 +1,4 @@
-using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.OAuth;
@@ -882,16 +882,18 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task Refresh_UserLocked_Returns423()
+        public async Task Refresh_UserLocked_StillRefreshes_SoALockCannotSignSomeoneOut()
         {
             Resolves(Session());
-            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1", Active = true, IsVerified = true, LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) });
+            var locked = new User { ItemId = "user-1", Active = true, IsVerified = true, LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) };
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(locked);
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { Error = "invalid_grant", StatusCode = 400 });
             var ctx = new DefaultHttpContext();
 
-            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+            await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
 
-            var obj = result.Should().BeOfType<ObjectResult>().Subject;
-            obj.StatusCode.Should().Be(StatusCodes.Status423Locked);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), locked), Times.Once);
         }
 
         [Fact]

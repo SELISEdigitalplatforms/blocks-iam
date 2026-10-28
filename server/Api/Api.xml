@@ -581,13 +581,16 @@
         <member name="F:Api.Security.ContentSecurityPolicy.FormActionOriginKeys">
             <summary>Where a login POST may be sent: the identity host and the portal.</summary>
         </member>
-        <member name="F:Api.Security.ContentSecurityPolicy.CaptchaScriptOrigins">
+        <member name="F:Api.Security.ContentSecurityPolicy.CaptchaScriptSources">
             <summary>
             reCAPTCHA is loaded by <c>client/app/components/captcha/reCaptcha.tsx</c>, which
             injects <c>https://www.google.com/recaptcha/api.js</c> and renders the widget in an
-            iframe. These are fixed Google origins, identical in every environment, so they stay
+            iframe. These are fixed Google sources, identical in every environment, so they stay
             in code rather than in per-environment configuration. Without them the previous
             policy blocked captcha on login and signup in every environment.
+            They are limited to the /recaptcha/ path: a whole Google host would also allow its
+            other endpoints, some of which return script built from the request.
+            They skip <see cref="M:Api.Security.ContentSecurityPolicy.Normalize(System.Collections.Generic.IEnumerable{System.String})"/>, which would cut the path off.
             </summary>
         </member>
         <member name="F:Api.Security.ContentSecurityPolicy.StyleNoncePlaceholder">

@@ -59,6 +59,10 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
 
     public SignupLinkExistingUserPasswordTests()
     {
+        // A free MFA slot, given back when the code is right.
+        _authentication.Setup(a => a.TryReserveMfaAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+            .ReturnsAsync((string id, int _, DateTime _) => new User { ItemId = id, FailedMfaCount = 1 });
+        _authentication.Setup(a => a.ReleaseMfaAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>())).ReturnsAsync(true);
         BlocksContext.IsTestMode = true;
         BlocksContext.SetContext(BlocksContext.Create(
             tenantId: "t1", roles: null, userId: "x", impersonated: false,
@@ -1150,7 +1154,9 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
 
         Prop(result, "error").Should().Be(string.IsNullOrWhiteSpace(code) ? "invalid_request" : "invalid_mfa_code");
         var expected = string.IsNullOrWhiteSpace(code) ? Times.Never() : Times.Once();
-        _authentication.Verify(a => a.IncrementFailedMfaAndApplyLockoutAsync(user.ItemId, 6, 13, It.IsAny<DateTime>()), expected);
+        // Counted before the check, with the tenant's threshold, and not given back.
+        _authentication.Verify(a => a.TryReserveMfaAttemptAsync(user.ItemId, 6, It.IsAny<DateTime>()), expected);
+        _authentication.Verify(a => a.ReleaseMfaAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
     }
 
     [Fact]
@@ -1160,7 +1166,8 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
 
         await sut.CompleteRedeemMfaAsync("mfa-c2", "123456", Http().Request, Http().Response);
 
-        _authentication.Verify(a => a.IncrementFailedMfaAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+        _authentication.Verify(a => a.ReleaseMfaAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Once);
+        _authentication.Verify(a => a.LockAccountIfMfaThresholdReachedAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
     }
 
     [Fact]
@@ -1173,7 +1180,7 @@ public class SignupLinkExistingUserPasswordTests : IDisposable
 
         result.Should().NotBeOfType<OkObjectResult>();
         _mfa.Verify(m => m.GetOtpServiceAsync(It.IsAny<User>()), Times.Once);   // only the earlier challenge, no verify
-        _authentication.Verify(a => a.IncrementFailedMfaAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+        _authentication.Verify(a => a.TryReserveMfaAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
     }
 
     [Fact]

@@ -301,6 +301,7 @@ namespace XUnitTest.Mfa.EmailOTP
 
             // The cache now holds the new context: the old code no longer verifies.
             cache.Setup(c => c.GetStringValueAsync("m1")).ReturnsAsync(storedValue!);
+            cache.Setup(c => c.RemoveKeyAsync("m1")).ReturnsAsync(true);
             var oldAttempt = await service.VerifyAsync(new VerifyOtpRequest { MfaId = "m1", VerificationCode = oldCode });
             oldAttempt.IsValid.Should().BeFalse();
             var newAttempt = await service.VerifyAsync(new VerifyOtpRequest { MfaId = "m1", VerificationCode = updated.MfaCode });
@@ -406,6 +407,23 @@ namespace XUnitTest.Mfa.EmailOTP
 
             result.IsValid.Should().BeFalse();
             result.Errors["message"].Should().Be("invalid_two_factor_id");
+        }
+
+        [Fact]
+        public async Task VerifyAsync_RightCode_WhoseChallengeWasAlreadyDeleted_IsRefused()
+        {
+            // Two parallel requests with the right code: only the one that really deletes the challenge passes.
+            var service = CreateService(out var cache, out _, out _);
+            var context = MfaAuthenticationContext.Create("m1", "u1", UserMfaType.Email);
+            cache.Setup(c => c.KeyExistsAsync("m1")).ReturnsAsync(true);
+            cache.Setup(c => c.GetStringValueAsync("m1")).ReturnsAsync(context.Sterilize());
+            cache.SetupSequence(c => c.RemoveKeyAsync("m1")).ReturnsAsync(true).ReturnsAsync(false);
+
+            var first = await service.VerifyAsync(new VerifyOtpRequest { MfaId = "m1", VerificationCode = context.MfaCode });
+            var second = await service.VerifyAsync(new VerifyOtpRequest { MfaId = "m1", VerificationCode = context.MfaCode });
+
+            first.IsValid.Should().BeTrue();
+            second.IsValid.Should().BeFalse();
         }
     }
 }

@@ -98,6 +98,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<PasswordAuthenticationService>();
             serviceCollection.AddSingleton<MfaAuthorizationService>();
             serviceCollection.AddSingleton<IMfaPolicyService, MfaPolicyService>();
+            serviceCollection.AddSingleton<IMfaDisableService, MfaDisableService>();
+            serviceCollection.AddSingleton<IMfaAttemptGate, MfaAttemptGate>();
             serviceCollection.AddSingleton<IMfaAuditService, MfaAuditService>();
             serviceCollection.AddSingleton<RefreshTokenAuthenticationService>();
             serviceCollection.AddSingleton<SocialAuthorizationService>();

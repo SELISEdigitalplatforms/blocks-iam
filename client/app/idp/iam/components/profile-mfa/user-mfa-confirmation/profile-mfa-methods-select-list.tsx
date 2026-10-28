@@ -87,7 +87,7 @@ export const ProfileMfaMethodSelectList = () => {
 
   const userMfaType = userData?.data.userMfaType;
   const isMfaEnabled = !!userData?.data.mfaEnabled;
-  const activeType = userMfaType !== undefined ? userMfaType.toString() : "";
+  const activeType = userMfaType === undefined ? "" : userMfaType.toString();
 
   const enableHandler = (methodType: number) => {
     showVerifyModal(methodType);
@@ -95,12 +95,7 @@ export const ProfileMfaMethodSelectList = () => {
 
   return (
     <>
-      {!projectEnabled ? (
-        <div className="rounded-sm border p-4 py-6 text-sm text-muted-foreground">
-          Multi-factor Authentication is disabled for your project. Contact your project admin to
-          activate it.
-        </div>
-      ) : (
+      {projectEnabled ? (
         <div className="rounded-sm border">
           {availableMFaMethod.map((item) => (
             <MethodsOption
@@ -128,10 +123,15 @@ export const ProfileMfaMethodSelectList = () => {
             hideButton={!isMfaEnabled}
           />
         </div>
+      ) : (
+        <div className="rounded-sm border p-4 py-6 text-sm text-muted-foreground">
+          Multi-factor Authentication is disabled for your project. Contact your project admin to
+          activate it.
+        </div>
       )}
 
       <ProfileMFAVerify />
-      <UserMFAConfirmationDisable />
+      <UserMFAConfirmationDisable mfaType={userMfaType ?? 0} />
     </>
   );
 };

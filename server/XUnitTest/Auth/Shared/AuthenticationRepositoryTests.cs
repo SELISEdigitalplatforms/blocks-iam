@@ -99,67 +99,6 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
-        public async Task IncrementFailedLoginAsync_ReturnsNull_WhenUserMissing()
-        {
-            var col = Register<User>();
-            MongoMock.SetupFindOneAndUpdate(col, (User?)null);
-            (await Sut().IncrementFailedLoginAndApplyLockoutAsync("u1", 5, 5, DateTime.UtcNow)).Should().BeNull();
-        }
-
-        [Fact]
-        public async Task IncrementFailedLoginAsync_BelowThreshold_ReturnsUser_NoLock()
-        {
-            var col = Register<User>();
-            var user = new User { ItemId = "u1", FailedLoginCount = 2 };
-            MongoMock.SetupFindOneAndUpdate(col, user);
-            var result = await Sut().IncrementFailedLoginAndApplyLockoutAsync("u1", 5, 5, DateTime.UtcNow);
-            result!.LockoutUntilUtc.Should().BeNull();
-        }
-
-        [Fact]
-        public async Task IncrementFailedLoginAsync_AlreadyLocked_ReturnsUser()
-        {
-            var now = DateTime.UtcNow;
-            var col = Register<User>();
-            var user = new User { ItemId = "u1", FailedLoginCount = 5, LockoutUntilUtc = now.AddMinutes(10) };
-            MongoMock.SetupFindOneAndUpdate(col, user);
-            var result = await Sut().IncrementFailedLoginAndApplyLockoutAsync("u1", 5, 5, now);
-            result!.LockoutUntilUtc.Should().Be(now.AddMinutes(10));
-        }
-
-        [Fact]
-        public async Task IncrementFailedLoginAsync_AtThreshold_AppliesLockout()
-        {
-            var now = DateTime.UtcNow;
-            var col = Register<User>();
-            var afterIncrement = new User { ItemId = "u1", FailedLoginCount = 5, LockoutCount = 0 };
-            var afterLock = new User { ItemId = "u1", FailedLoginCount = 5, LockoutUntilUtc = now.AddMinutes(5) };
-            MongoMock.SetupFindOneAndUpdate(col, afterIncrement, afterLock);
-            var result = await Sut().IncrementFailedLoginAndApplyLockoutAsync("u1", 5, 5, now);
-            result!.LockoutUntilUtc.Should().Be(now.AddMinutes(5));
-        }
-
-        [Fact]
-        public async Task IncrementFailedMfaAsync_AtThreshold_AppliesLockout()
-        {
-            var now = DateTime.UtcNow;
-            var col = Register<User>();
-            var afterIncrement = new User { ItemId = "u1", FailedMfaCount = 5, LockoutCount = 1 };
-            var afterLock = new User { ItemId = "u1", FailedMfaCount = 5, LockoutUntilUtc = now.AddMinutes(15) };
-            MongoMock.SetupFindOneAndUpdate(col, afterIncrement, afterLock);
-            var result = await Sut().IncrementFailedMfaAndApplyLockoutAsync("u1", 5, 5, now);
-            result!.LockoutUntilUtc.Should().Be(now.AddMinutes(15));
-        }
-
-        [Fact]
-        public async Task IncrementFailedMfaAsync_ReturnsNull_WhenUserMissing()
-        {
-            var col = Register<User>();
-            MongoMock.SetupFindOneAndUpdate(col, (User?)null);
-            (await Sut().IncrementFailedMfaAndApplyLockoutAsync("u1", 5, 5, DateTime.UtcNow)).Should().BeNull();
-        }
-
-        [Fact]
         public async Task GetIdentityProvidersAsync_ReturnsList()
         {
             Register(new[] { Idp() });

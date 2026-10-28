@@ -1,7 +1,9 @@
-using Iam.DomainService.Dtos;
+﻿using Iam.DomainService.Dtos;
 using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 
 namespace Iam.DomainService.Utilities
@@ -38,19 +40,45 @@ namespace Iam.DomainService.Utilities
             return TryGetBaseUrl(configured ?? string.Empty) ?? string.Empty;
         }
 
-        public static string GetOriginOrRefererBaseUrl(IHttpContextAccessor? httpContextAccessor)
+        /// <summary>
+        /// The caller's Origin as a link base, only when it is one of the tenant's registered
+        /// application domains over https (localhost only in Development). Referer is never used:
+        /// browsers always send Origin on the POSTs that build these links, and a header the caller
+        /// controls must not decide where a reset or activation link points.
+        /// </summary>
+        public static string GetTrustedOriginBaseUrl(IHttpContextAccessor? httpContextAccessor)
         {
-            var request = httpContextAccessor?.HttpContext?.Request;
-
-            if (request == null)
+            var context = httpContextAccessor?.HttpContext;
+            var origin = context?.Request.Headers.Origin.ToString();
+            if (context == null || !Uri.TryCreate(origin, UriKind.Absolute, out var uri))
             {
                 return string.Empty;
             }
 
-            return TryGetBaseUrl(request.Headers["Origin"].ToString())
-                   ?? TryGetBaseUrl(request.Headers["Referer"].ToString())
-                   ?? string.Empty;
+            if (uri.IsLoopback)
+            {
+                return IsDevelopment(context) ? TryGetBaseUrl(origin) ?? string.Empty : string.Empty;
+            }
+
+            var tenantId = BlocksContext.GetContext()?.TenantId;
+            var tenant = string.IsNullOrWhiteSpace(tenantId)
+                ? null
+                : (context.RequestServices?.GetService(typeof(ITenants)) as ITenants)?.GetTenantByID(tenantId);
+
+            return tenant != null
+                && string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                && IsTenantDomain(uri.Host, tenant)
+                ? TryGetBaseUrl(origin) ?? string.Empty
+                : string.Empty;
         }
+
+        private static bool IsTenantDomain(string host, Tenant tenant) =>
+            tenant.Applications?.Any(a => !string.IsNullOrWhiteSpace(a.Domain)
+                && string.Equals(BlocksContext.NormalizeDomain(a.Domain), BlocksContext.NormalizeDomain(host), StringComparison.OrdinalIgnoreCase)) == true;
+
+        private static bool IsDevelopment(HttpContext context) =>
+            context.RequestServices?.GetService(typeof(IHostEnvironment)) is IHostEnvironment environment
+            && environment.IsDevelopment();
 
         /// <summary>
         /// Appends the originating application's OIDC context to an activation or recovery
@@ -164,11 +192,11 @@ namespace Iam.DomainService.Utilities
                 return config.AccountActionBaseUrl;
             }
 
-            var originOrRefererBaseUrl = GetOriginOrRefererBaseUrl(httpContextAccessor);
+            var originBaseUrl = GetTrustedOriginBaseUrl(httpContextAccessor);
 
-            if (!string.IsNullOrWhiteSpace(originOrRefererBaseUrl))
+            if (!string.IsNullOrWhiteSpace(originBaseUrl))
             {
-                return originOrRefererBaseUrl;
+                return originBaseUrl;
             }
 
             return config.AccountActionBaseUrl;

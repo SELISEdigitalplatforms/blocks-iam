@@ -713,24 +713,24 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return new ObjectResult(new { error = ServerError }) { StatusCode = 500 };
         }
 
-        var verification = await otpService.VerifyAsync(new VerifyOtpRequest
-        {
-            AuthType = user.UserMfaType,
-            MfaId = mfaId,
-            VerificationCode = mfaCode
-        });
+        // Counted toward the account's lockout before it is checked, with the same settings the
+        // login mfa step uses, so parallel codes get no more checks than the lock threshold.
+        var authConfiguration = await _authentication.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
+        var attempt = await new MfaAttemptGate(_authentication).CheckAsync(user.ItemId, authConfiguration, async () =>
+            (await otpService.VerifyAsync(new VerifyOtpRequest
+            {
+                AuthType = user.UserMfaType,
+                MfaId = mfaId,
+                VerificationCode = mfaCode
+            })).IsValid);
 
-        if (!verification.IsValid)
+        if (attempt.Result == GuardedAttemptResult.Locked)
         {
-            // Count the wrong code toward the account's lockout, with the same settings the login
-            // mfa step uses. A locked account is refused above, before any code is checked.
-            var authConfiguration = await _authentication.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
-            await _authentication.IncrementFailedMfaAndApplyLockoutAsync(
-                user.ItemId,
-                authConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
-                authConfiguration.AccountLockDurationInMinutes,
-                DateTime.UtcNow);
+            return new ObjectResult(new { error = RejectionAccountLocked }) { StatusCode = StatusCodes.Status423Locked };
+        }
 
+        if (!attempt.IsValid)
+        {
             return new BadRequestObjectResult(new { error = "invalid_mfa_code", error_description = "Invalid mfa code" });
         }
 

@@ -51,6 +51,8 @@ namespace Authentication.DomainService.Authentication
         private readonly ILogger<OidcLoginOrchestrator> _logger;
         private readonly IUnknownUserLoginGuard _unknownUserLoginGuard;
 
+        private readonly IMfaAttemptGate _mfaAttemptGate;
+
         public OidcLoginOrchestrator(
             IAuthenticationRepository authenticationRepository,
             IMfaChallengeIssuer mfaChallengeIssuer,
@@ -63,9 +65,11 @@ namespace Authentication.DomainService.Authentication
             OidcCaptchaEvaluator captchaEvaluator,
             OidcAuthorizationEndpoint authorizationEndpoint,
             ILogger<OidcLoginOrchestrator> logger,
-            IUnknownUserLoginGuard unknownUserLoginGuard)
+            IUnknownUserLoginGuard unknownUserLoginGuard,
+            IMfaAttemptGate? mfaAttemptGate = null)
         {
             _authenticationRepository = authenticationRepository;
+            _mfaAttemptGate = mfaAttemptGate ?? new MfaAttemptGate(authenticationRepository);
             _mfaChallengeIssuer = mfaChallengeIssuer;
             _authenticationService = authenticationService;
             _tenants = tenants;
@@ -401,25 +405,21 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            var verificationResponse = await otpService.VerifyAsync(new VerifyOtpRequest
-            {
-                AuthType = user.UserMfaType,
-                MfaId = request.MfaId,
-                VerificationCode = request.MfaCode
-            });
+            // Counted before it is checked, so parallel codes get no more checks than the lock threshold.
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
+            var attempt = await _mfaAttemptGate.CheckAsync(user.ItemId, authConfiguration, async () =>
+                (await otpService.VerifyAsync(new VerifyOtpRequest
+                {
+                    AuthType = user.UserMfaType,
+                    MfaId = request.MfaId,
+                    VerificationCode = request.MfaCode
+                })).IsValid);
 
-            if (!verificationResponse.IsValid)
+            if (!attempt.IsValid)
             {
-                var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
-                var updatedUser = await _authenticationRepository.IncrementFailedMfaAndApplyLockoutAsync(
-                    user.ItemId,
-                    authConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
-                    authConfiguration.AccountLockDurationInMinutes,
-                    DateTime.UtcNow);
-
                 await _mfaChallengeIssuer.WriteAuditAsync(new MfaAuditEvent
                 {
-                    EventType = updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow
+                    EventType = attempt.IsLocked
                         ? LoginAuditEvents.MfaAccountLocked
                         : LoginAuditEvents.MfaVerificationFailure,
                     UserId = user.ItemId,
@@ -429,7 +429,7 @@ namespace Authentication.DomainService.Authentication
                     Status = IdpConstants.StatusFailure
                 });
 
-                if (updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow)
+                if (attempt.IsLocked)
                 {
                     return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
                 }
