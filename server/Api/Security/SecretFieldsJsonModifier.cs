@@ -16,7 +16,13 @@ public static class SecretFieldsJsonModifier
     {
         [typeof(ClientCredential)] = [nameof(ClientCredential.ClientSecret)],
         [typeof(OidcClientRegistration)] = [nameof(OidcClientRegistration.ClientSecret)],
-        [typeof(IdentityProvider)] = [nameof(IdentityProvider.ClientSecret), nameof(IdentityProvider.PrivateKey)],
+        [typeof(IdentityProvider)] =
+        [
+            nameof(IdentityProvider.ClientSecret),
+            nameof(IdentityProvider.PrivateKey),
+            nameof(IdentityProvider.ClientSecretReference),
+            nameof(IdentityProvider.PrivateKeyReference),
+        ],
     };
 
     public static void Apply(JsonTypeInfo typeInfo)

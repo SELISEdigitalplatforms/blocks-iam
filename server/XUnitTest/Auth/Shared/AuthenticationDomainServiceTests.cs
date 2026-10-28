@@ -3,10 +3,13 @@ using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.OAuth;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.Extensions.Logging;
 using Moq;
 using System.Net.Http;
 using Blocks.Genesis.Entities.Iam;
@@ -22,6 +25,7 @@ namespace XUnitTest.Auth.Shared
         private readonly Mock<IValidator<SaveIdentityProviderRequest>> _saveIdpValidator = new();
         private readonly Mock<IValidator<UpdateIdentityProviderRequest>> _updateIdpValidator = new();
         private readonly Mock<IHttpClientFactory> _httpFactory = new();
+        private readonly Mock<ISecretService> _secrets = new(MockBehavior.Strict);
 
         public AuthenticationDomainServiceTests()
         {
@@ -56,7 +60,7 @@ namespace XUnitTest.Auth.Shared
         private AuthenticationDomainService Create() =>
             new(_message.Object, _repo.Object,
                 new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                    _updateIdpValidator.Object), _httpFactory.Object);
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets));
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
         {
@@ -233,15 +237,25 @@ namespace XUnitTest.Auth.Shared
                 PrivateKey = "pk",
                 AppleAudience = "aud"
             };
+            // #649: a supplied private key goes to Blocks Secrets (legacy provider: a new secret).
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Name == "identity-provider-private-key" && r.Value == "pk"), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("pk-ref");
 
             var result = await Create().UpdateIdentityProviderAsync("idp-1", request);
 
             result.IsSuccess.Should().BeTrue();
+            existing.PrivateKey.Should().BeNull();
+            existing.PrivateKeyReference.Should().Be("pk-ref");
+            existing.ClientSecret.Should().Be("secret", "no client secret was supplied");
+            existing.ClientSecretReference.Should().BeNull();
             existing.Issuer.Should().Be("https://issuer");
             existing.WellKnownUrl.Should().Be("https://new.example/.well-known/openid-configuration");
             existing.RequirePkce.Should().BeTrue();
             existing.AppleAudience.Should().Be("aud");
             existing.InitialRoles.Should().Contain("role-1");
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
         }
 
         // ---------- DeleteIdentityProviderAsync ----------
@@ -736,12 +750,18 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task UpdateIdp_NewSecret_ReplacesStoredSecret()
         {
+            // #649 (H9): the new secret goes to Blocks Secrets and the plaintext field is blanked.
             var existing = Idp();
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
             _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Value == "new-secret"), It.IsAny<CancellationToken>())).ReturnsAsync("ref-new");
             var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-secret" });
             result.IsSuccess.Should().BeTrue();
-            existing.ClientSecret.Should().Be("new-secret");
+            existing.ClientSecret.Should().BeEmpty();
+            existing.ClientSecretReference.Should().Be("ref-new");
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
         }
 
         [Theory]
@@ -781,9 +801,15 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
             _repo.Setup(r => r.GetOidcClientRegistrationAsync("cid")).ReturnsAsync((OidcClientRegistration)null!);
             _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Value == "new-secret"), It.IsAny<CancellationToken>())).ReturnsAsync("ref-new");
             var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-secret" });
             result.IsSuccess.Should().BeTrue();
-            existing.ClientSecret.Should().Be("new-secret");
+            // #649: not a mirror, so the secret is stored in Blocks Secrets like any other provider's.
+            existing.ClientSecret.Should().BeEmpty();
+            existing.ClientSecretReference.Should().Be("ref-new");
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
         }
 
         // ---------- GetClientCredentialsAsync ----------
@@ -1004,6 +1030,826 @@ namespace XUnitTest.Auth.Shared
 
             result.Errors.Should().ContainKey("not_found");
             _repo.Verify(r => r.DeleteClientCredentialAsync(It.IsAny<DeleteClientCredentialRequest>()), Times.Never);
+        }
+
+        // ---------- #649: identity-provider secrets in Blocks Secrets ----------
+
+        private const string StoreUnavailable = "The secret store is unavailable. Try again later.";
+        private const string ValueRejected = "The value cannot be stored in the secret store.";
+
+        private AuthenticationDomainService CreateWithResolverLogger(ILogger<IdentityProviderSecretResolver> logger) =>
+            new(_message.Object, _repo.Object,
+                new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets, logger));
+
+        private AuthenticationDomainService CreateWithLogger(ILogger<AuthenticationDomainService> logger) =>
+            new(_message.Object, _repo.Object,
+                new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets), logger);
+
+        private const string RotationNotUndone = "cannot be undone";
+
+        private void NoDuplicates()
+        {
+            _repo.Setup(r => r.GetIdentityProviderAsync("google")).ReturnsAsync((IdentityProvider)null!);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync((IdentityProvider)null!);
+        }
+
+        private static IdentityProvider Referenced(string? clientSecretRef = "cs-ref", string? privateKeyRef = null)
+        {
+            var p = Idp();
+            p.ClientSecret = string.Empty;
+            p.ClientSecretReference = clientSecretRef;
+            p.PrivateKeyReference = privateKeyRef;
+            return p;
+        }
+
+        [Fact]
+        public async Task CreateIdp_WithClientSecret_StoresServiceSecretAndPersistsReferenceOnly()
+        {
+            // H2, E1, C13 (one SetAsync)
+            NoDuplicates();
+            IdentityProvider? inserted = null;
+            _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>())).Callback<IdentityProvider>(p => inserted = p).ReturnsAsync(Idp());
+            SetSecretRequest? stored = null;
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<SetSecretRequest, CancellationToken>((r, _) => stored = r).ReturnsAsync("cs-ref");
+            var req = SaveReq();
+            req.ClientSecret = "g-secret";
+
+            var result = await Create().CreateIdentityProviderAsync(req);
+
+            result.IsSuccess.Should().BeTrue();
+            stored!.Name.Should().Be("identity-provider-client-secret");
+            stored.Type.Should().Be(SecretTypes.Service);
+            stored.Value.Should().Be("g-secret");
+            stored.Description.Should().Be("Identity provider google (tenant tenant-1): client secret");
+            inserted!.ClientSecret.Should().BeEmpty();
+            inserted.ClientSecretReference.Should().Be("cs-ref");
+            inserted.PrivateKeyReference.Should().BeNull();
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task CreateIdp_WithPrivateKey_StoresPrivateKeySecret()
+        {
+            // H3
+            NoDuplicates();
+            IdentityProvider? inserted = null;
+            _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>())).Callback<IdentityProvider>(p => inserted = p).ReturnsAsync(Idp());
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r =>
+                    r.Name == "identity-provider-private-key" && r.Type == "service" && r.Value == "PEM"
+                    && r.Description == "Identity provider google (tenant tenant-1): private key"), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("pk-ref");
+            var req = SaveReq();
+            req.PrivateKey = "PEM";
+
+            var result = await Create().CreateIdentityProviderAsync(req);
+
+            result.IsSuccess.Should().BeTrue();
+            inserted!.PrivateKey.Should().BeNull();
+            inserted.PrivateKeyReference.Should().Be("pk-ref");
+            inserted.ClientSecretReference.Should().BeNull();
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task CreateIdp_WithBothValues_UsesOneAllOrNothingBatch()
+        {
+            // H2, H3, C6, C13 (at most one write call)
+            NoDuplicates();
+            IdentityProvider? inserted = null;
+            _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>())).Callback<IdentityProvider>(p => inserted = p).ReturnsAsync(Idp());
+            IReadOnlyCollection<SetSecretRequest>? batch = null;
+            _secrets.Setup(s => s.SetManyAsync(It.IsAny<IReadOnlyCollection<SetSecretRequest>>(), It.IsAny<CancellationToken>()))
+                .Callback<IReadOnlyCollection<SetSecretRequest>, CancellationToken>((r, _) => batch = r)
+                .ReturnsAsync(new Dictionary<string, string> { ["identity-provider-client-secret"] = "cs-ref", ["identity-provider-private-key"] = "pk-ref" });
+            var req = SaveReq();
+            req.ClientSecret = "s";
+            req.PrivateKey = "PEM";
+
+            var result = await Create().CreateIdentityProviderAsync(req);
+
+            result.IsSuccess.Should().BeTrue();
+            batch!.Select(b => b.Name).Should().BeEquivalentTo("identity-provider-client-secret", "identity-provider-private-key");
+            batch.Should().OnlyContain(b => b.Type == "service");
+            inserted!.ClientSecretReference.Should().Be("cs-ref");
+            inserted.PrivateKeyReference.Should().Be("pk-ref");
+            inserted.ClientSecret.Should().BeEmpty();
+            inserted.PrivateKey.Should().BeNull();
+            _secrets.Verify(s => s.SetManyAsync(It.IsAny<IReadOnlyCollection<SetSecretRequest>>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task CreateIdp_BothValues_BatchFails_StoresNeitherAndCreatesNoDocument()
+        {
+            // C6, C1
+            NoDuplicates();
+            _secrets.Setup(s => s.SetManyAsync(It.IsAny<IReadOnlyCollection<SetSecretRequest>>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new SecretVaultException("down", "set", "x"));
+            var req = SaveReq();
+            req.ClientSecret = "s";
+            req.PrivateKey = "PEM";
+
+            var result = await Create().CreateIdentityProviderAsync(req);
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().Equal(new Dictionary<string, string> { ["secret_store_unavailable"] = StoreUnavailable });
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+            _secrets.Verify(s => s.SetManyAsync(It.IsAny<IReadOnlyCollection<SetSecretRequest>>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task CreateIdp_VaultUnavailable_ReturnsSecretStoreUnavailable_AndInsertsNothing()
+        {
+            // C1, E6
+            NoDuplicates();
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(new SecretVaultException("down", "set", "x"));
+            var req = SaveReq();
+            req.ClientSecret = "g-secret";
+
+            var result = await Create().CreateIdentityProviderAsync(req);
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().Equal(new Dictionary<string, string> { ["secret_store_unavailable"] = StoreUnavailable });
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Theory]
+        [InlineData("ClientSecret")]
+        [InlineData("PrivateKey")]
+        public async Task CreateIdp_ValueRejected_ReturnsPerFieldError_AndInsertsNothing(string field)
+        {
+            // C1 (SecretValidationException -> per-field error)
+            NoDuplicates();
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(new SecretValidationException("too large"));
+            var req = SaveReq();
+            if (field == "ClientSecret") req.ClientSecret = "x"; else req.PrivateKey = "x";
+
+            var result = await Create().CreateIdentityProviderAsync(req);
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().Equal(new Dictionary<string, string> { [field] = ValueRejected });
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task CreateIdp_BothValuesRejected_ReportsBothFields_AndInsertsNothing()
+        {
+            // C1: the batch is all-or-nothing and does not say which value was refused.
+            NoDuplicates();
+            _secrets.Setup(s => s.SetManyAsync(It.IsAny<IReadOnlyCollection<SetSecretRequest>>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new SecretValidationException("too large"));
+            var req = SaveReq();
+            req.ClientSecret = "s";
+            req.PrivateKey = "PEM";
+
+            var result = await Create().CreateIdentityProviderAsync(req);
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().Equal(new Dictionary<string, string> { ["ClientSecret"] = ValueRejected, ["PrivateKey"] = ValueRejected });
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+            _secrets.Verify(s => s.SetManyAsync(It.IsAny<IReadOnlyCollection<SetSecretRequest>>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task CreateIdp_OtherSecretFailure_Propagates_AndInsertsNothing()
+        {
+            NoDuplicates();
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(new SecretAccessDeniedException("denied"));
+            var req = SaveReq();
+            req.ClientSecret = "x";
+
+            var act = () => Create().CreateIdentityProviderAsync(req);
+
+            await act.Should().ThrowAsync<SecretAccessDeniedException>();
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task CreateIdp_InsertFails_RetiresTheSecretsCreated_AndRethrows()
+        {
+            // C5
+            NoDuplicates();
+            _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ThrowsAsync(new InvalidOperationException("mongo down"));
+            _secrets.Setup(s => s.SetManyAsync(It.IsAny<IReadOnlyCollection<SetSecretRequest>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Dictionary<string, string> { ["identity-provider-client-secret"] = "cs-ref", ["identity-provider-private-key"] = "pk-ref" });
+            _secrets.Setup(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            var req = SaveReq();
+            req.ClientSecret = "s";
+            req.PrivateKey = "PEM";
+
+            var act = () => Create().CreateIdentityProviderAsync(req);
+
+            await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("mongo down");
+            _secrets.Verify(s => s.SetManyAsync(It.IsAny<IReadOnlyCollection<SetSecretRequest>>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync("pk-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task CreateIdp_InsertThrowsButCommitted_KeepsTheSecretsTheDocumentPointsAt()
+        {
+            // M2: a timeout after the write; the stored document references the new secrets.
+            NoDuplicates();
+            _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ThrowsAsync(new TimeoutException("timeout"));
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync(It.IsAny<string>())).ReturnsAsync(Referenced("cs-ref"));
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync("cs-ref");
+            var req = SaveReq();
+            req.ClientSecret = "s";
+
+            var act = () => Create().CreateIdentityProviderAsync(req);
+
+            await act.Should().ThrowAsync<TimeoutException>();
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task CreateIdp_InsertThrows_AndTheReReadFails_KeepsTheSecrets_AndLogsTheTypeOnly()
+        {
+            // M2: fail safe, an orphan over a dangling reference.
+            NoDuplicates();
+            _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ThrowsAsync(new TimeoutException("timeout"));
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync(It.IsAny<string>())).ThrowsAsync(new InvalidOperationException("read failed cs-ref"));
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync("cs-ref");
+            var logger = new TestDoubles.CapturingLogger<AuthenticationDomainService>();
+            var req = SaveReq();
+            req.ClientSecret = "g-secret";
+
+            var act = () => CreateWithLogger(logger).CreateIdentityProviderAsync(req);
+
+            await act.Should().ThrowAsync<TimeoutException>();
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+            var warning = logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning).Subject;
+            warning.AllText.Should().Contain("google").And.Contain(nameof(InvalidOperationException))
+                .And.NotContain("cs-ref").And.NotContain("g-secret").And.NotContain("read failed");
+        }
+
+        [Fact]
+        public async Task CreateIdp_NoSecretSupplied_MakesNoSecretCall()
+        {
+            // C13, H7 (an empty value leaves the field as today)
+            NoDuplicates();
+            IdentityProvider? inserted = null;
+            _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>())).Callback<IdentityProvider>(p => inserted = p).ReturnsAsync(Idp());
+            var req = SaveReq();
+            req.ClientSecret = "";
+
+            (await Create().CreateIdentityProviderAsync(req)).IsSuccess.Should().BeTrue();
+
+            inserted!.ClientSecretReference.Should().BeNull();
+            inserted.PrivateKeyReference.Should().BeNull();
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task UpdateIdp_ReferencedProvider_RotatesInPlace_KeepingTheReference()
+        {
+            // H8, C13 (one RotateAsync)
+            var existing = Referenced();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            _secrets.Setup(s => s.RotateAsync("cs-ref", It.Is<RotateSecretRequest>(r => r.Value == "new-s"), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s" });
+
+            result.IsSuccess.Should().BeTrue();
+            existing.ClientSecretReference.Should().Be("cs-ref");
+            existing.ClientSecret.Should().BeEmpty();
+            _secrets.Verify(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+            _repo.Verify(r => r.UpdateIdentityProviderAsync(existing), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateIdp_LegacyProvider_StoresNewSecret_SetsReference_BlanksPlaintext()
+        {
+            // H9, E4
+            var existing = Idp();
+            existing.ClientSecret = "old-s";
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Name == "identity-provider-client-secret" && r.Type == "service" && r.Value == "new-s"), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("new-ref");
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s" });
+
+            result.IsSuccess.Should().BeTrue();
+            existing.ClientSecret.Should().BeEmpty();
+            existing.ClientSecretReference.Should().Be("new-ref");
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        public static TheoryData<Exception> UnusableReference => new()
+        {
+            new SecretNotFoundException("cs-ref"),
+            new SecretStateException("deleted", "rotate"),
+        };
+
+        [Theory]
+        [MemberData(nameof(UnusableReference))]
+        public async Task UpdateIdp_RotationOfUnusableReference_StoresNewSecretAndRepoints(Exception rotateFailure)
+        {
+            // C7: the old secret is left as it is (no delete).
+            var existing = Referenced();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            _secrets.Setup(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(rotateFailure);
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Value == "new-s"), It.IsAny<CancellationToken>())).ReturnsAsync("new-ref");
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s" });
+
+            result.IsSuccess.Should().BeTrue();
+            existing.ClientSecretReference.Should().Be("new-ref");
+            existing.ClientSecret.Should().BeEmpty();
+            // Budget: one failed rotate plus one set.
+            _secrets.Verify(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task UpdateIdp_BothSecretsReferenced_RotatesBothInPlace()
+        {
+            // H8 for both credentials: two rotations, references unchanged, plaintext blanked.
+            var existing = Referenced(privateKeyRef: "pk-ref");
+            existing.PrivateKey = "stale-pem";
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            _secrets.Setup(s => s.RotateAsync("cs-ref", It.Is<RotateSecretRequest>(r => r.Value == "new-s"), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _secrets.Setup(s => s.RotateAsync("pk-ref", It.Is<RotateSecretRequest>(r => r.Value == "new-pem"), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s", PrivateKey = "new-pem" });
+
+            result.IsSuccess.Should().BeTrue();
+            existing.ClientSecretReference.Should().Be("cs-ref");
+            existing.PrivateKeyReference.Should().Be("pk-ref");
+            existing.ClientSecret.Should().BeEmpty();
+            existing.PrivateKey.Should().BeNull();
+            _secrets.Verify(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.RotateAsync("pk-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+            _repo.Verify(r => r.UpdateIdentityProviderAsync(existing), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateIdp_ReferencedProvider_NoSecretSupplied_ChangesOtherFieldsWithNoSecretCall()
+        {
+            // H10, E5, C13
+            var existing = Referenced(privateKeyRef: "pk-ref");
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "", PrivateKey = null, DisplayName = "X" });
+
+            result.IsSuccess.Should().BeTrue();
+            existing.DisplayName.Should().Be("X");
+            existing.ClientSecretReference.Should().Be("cs-ref");
+            existing.PrivateKeyReference.Should().Be("pk-ref");
+            _secrets.VerifyNoOtherCalls();
+            _repo.Verify(r => r.GetIdentityProviderByIdAsync("idp-1"), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateIdp_VaultUnavailable_ReturnsSecretStoreUnavailable_AndWritesNoDocument()
+        {
+            // C1
+            var existing = Referenced();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _secrets.Setup(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(new SecretVaultException("down", "rotate", "cs-ref"));
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s", DisplayName = "X" });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().Equal(new Dictionary<string, string> { ["secret_store_unavailable"] = StoreUnavailable });
+            _repo.Verify(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+            _secrets.Verify(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task UpdateIdp_StoreFailsAfterARotation_ReportsUnavailable_AndLogsThatTheRotationCannotBeUndone()
+        {
+            // The client secret rotated, then storing the private key failed: no document write.
+            var existing = Referenced();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _secrets.Setup(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ThrowsAsync(new SecretVaultException("down", "set", "x"));
+            var logger = new TestDoubles.CapturingLogger<AuthenticationDomainService>();
+
+            var result = await CreateWithLogger(logger).UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s", PrivateKey = "PEM" });
+
+            result.Errors.Should().Equal(new Dictionary<string, string> { ["secret_store_unavailable"] = StoreUnavailable });
+            _repo.Verify(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+            _secrets.Verify(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+            logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning)
+                .Which.AllText.Should().Contain(RotationNotUndone).And.NotContain("cs-ref").And.NotContain("new-s");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_OtherSecretFailure_Propagates_AndRetiresTheSecretCreatedFirst()
+        {
+            // Any SecretException other than vault or validation goes to the global handler; no new orphan.
+            var existing = Idp();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Name == "identity-provider-client-secret"), It.IsAny<CancellationToken>())).ReturnsAsync("cs-new");
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Name == "identity-provider-private-key"), It.IsAny<CancellationToken>())).ThrowsAsync(new SecretAccessDeniedException("denied"));
+            _secrets.Setup(s => s.DeleteAsync("cs-new", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var act = () => Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "s", PrivateKey = "PEM" });
+
+            await act.Should().ThrowAsync<SecretAccessDeniedException>();
+            _repo.Verify(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+            _secrets.Verify(s => s.DeleteAsync("cs-new", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task UpdateIdp_PrivateKeyRejected_ReturnsPerFieldError_AndRetiresTheClientSecretCreatedFirst()
+        {
+            // C1 (per-field error), C5 (no new orphan)
+            var existing = Idp();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Name == "identity-provider-client-secret"), It.IsAny<CancellationToken>())).ReturnsAsync("cs-new");
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Name == "identity-provider-private-key"), It.IsAny<CancellationToken>())).ThrowsAsync(new SecretValidationException("too large"));
+            _secrets.Setup(s => s.DeleteAsync("cs-new", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "s", PrivateKey = "PEM" });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().Equal(new Dictionary<string, string> { ["PrivateKey"] = ValueRejected });
+            _secrets.Verify(s => s.DeleteAsync("cs-new", It.IsAny<CancellationToken>()), Times.Once);
+            _repo.Verify(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task UpdateIdp_DocumentWriteFails_RetiresTheNewSecret_AndRethrows()
+        {
+            // C5
+            // The re-read finds the stored document still legacy: the write did not land.
+            var existing = Idp();
+            _repo.SetupSequence(r => r.GetIdentityProviderByIdAsync("idp-1"))
+                .ReturnsAsync(existing)
+                .ReturnsAsync(Idp());
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ThrowsAsync(new InvalidOperationException("mongo down"));
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync("new-ref");
+            _secrets.Setup(s => s.DeleteAsync("new-ref", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var act = () => Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s" });
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync("new-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task UpdateIdp_DocumentWriteThrowsButCommitted_KeepsTheNewSecret()
+        {
+            // M2: a timeout after the replace; the stored document points at the new secret.
+            var existing = Idp();
+            var committed = Idp();
+            committed.ClientSecret = string.Empty;
+            committed.ClientSecretReference = "new-ref";
+            _repo.SetupSequence(r => r.GetIdentityProviderByIdAsync("idp-1"))
+                .ReturnsAsync(existing)
+                .ReturnsAsync(committed);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ThrowsAsync(new TimeoutException("timeout"));
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync("new-ref");
+
+            var act = () => Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s" });
+
+            await act.Should().ThrowAsync<TimeoutException>();
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task UpdateIdp_DocumentWriteThrows_AndTheReReadFails_KeepsTheNewSecret_AndLogsTheTypeOnly()
+        {
+            // M2: fail safe, an orphan over a dangling reference.
+            var existing = Idp();
+            _repo.SetupSequence(r => r.GetIdentityProviderByIdAsync("idp-1"))
+                .ReturnsAsync(existing)
+                .ThrowsAsync(new InvalidOperationException("read failed new-ref"));
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ThrowsAsync(new TimeoutException("timeout"));
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync("new-ref");
+            var logger = new TestDoubles.CapturingLogger<AuthenticationDomainService>();
+
+            var act = () => CreateWithLogger(logger).UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s" });
+
+            await act.Should().ThrowAsync<TimeoutException>();
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+            var warning = logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning).Subject;
+            warning.AllText.Should().Contain("google").And.Contain(nameof(InvalidOperationException))
+                .And.NotContain("new-ref").And.NotContain("new-s").And.NotContain("read failed");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_DocumentWriteFails_AfterRotation_LeavesTheSecretInPlace()
+        {
+            // C5: a rotation cannot be undone; the reference secret is never deleted.
+            var existing = Referenced();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ThrowsAsync(new InvalidOperationException("mongo down"));
+            _secrets.Setup(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var act = () => Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s" });
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+            _secrets.Verify(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task UpdateIdp_DocumentWriteFails_AfterRotation_LogsThatTheRotationCannotBeUndone()
+        {
+            // M4 / spec section 6: a rotation cannot be undone, so it is logged (no value or reference id).
+            var existing = Referenced();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ThrowsAsync(new InvalidOperationException("mongo down"));
+            _secrets.Setup(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            var logger = new TestDoubles.CapturingLogger<AuthenticationDomainService>();
+
+            var act = () => CreateWithLogger(logger).UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s" });
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+            var warning = logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning).Subject;
+            warning.AllText.Should().Contain("google").And.Contain(RotationNotUndone).And.NotContain("cs-ref").And.NotContain("new-s");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_DeniedWrite_RetiresTheNewSecret_AndReportsAsToday()
+        {
+            // A data-access denial makes the replace a silent no-op; the stored provider is still legacy.
+            var existing = Idp();
+            _repo.SetupSequence(r => r.GetIdentityProviderByIdAsync("idp-1"))
+                .ReturnsAsync(existing)
+                .ReturnsAsync(Idp());
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync("new-ref");
+            _secrets.Setup(s => s.DeleteAsync("new-ref", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s" });
+
+            result.IsSuccess.Should().BeTrue();
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync("new-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task UpdateIdp_DeniedWrite_WithARotation_LogsThatTheRotationCannotBeUndone()
+        {
+            // M4: the client secret rotates and a new private key is stored; the write is denied.
+            var existing = Referenced();
+            _repo.SetupSequence(r => r.GetIdentityProviderByIdAsync("idp-1"))
+                .ReturnsAsync(existing)
+                .ReturnsAsync(Referenced());
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            _secrets.Setup(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Name == "identity-provider-private-key"), It.IsAny<CancellationToken>())).ReturnsAsync("pk-new");
+            _secrets.Setup(s => s.DeleteAsync("pk-new", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            var logger = new TestDoubles.CapturingLogger<AuthenticationDomainService>();
+
+            var result = await CreateWithLogger(logger).UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s", PrivateKey = "PEM" });
+
+            result.IsSuccess.Should().BeTrue();
+            _secrets.Verify(s => s.RotateAsync("cs-ref", It.IsAny<RotateSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync("pk-new", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+            var warning = logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning).Subject;
+            warning.AllText.Should().Contain("google").And.Contain(RotationNotUndone)
+                .And.NotContain("cs-ref").And.NotContain("pk-new").And.NotContain("new-s").And.NotContain("PEM");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_ReReadFindsNoDocument_KeepsTheNewSecret()
+        {
+            // M1: a read rule on a field the update changed can hide the document; never retire then.
+            var existing = Idp();
+            _repo.SetupSequence(r => r.GetIdentityProviderByIdAsync("idp-1"))
+                .ReturnsAsync(existing)
+                .ReturnsAsync((IdentityProvider)null!);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync("new-ref");
+            var logger = new TestDoubles.CapturingLogger<AuthenticationDomainService>();
+
+            var result = await CreateWithLogger(logger).UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s", IsActive = false });
+
+            result.IsSuccess.Should().BeTrue();
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+            logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning).Which.AllText.Should().Contain("google").And.NotContain("new-ref");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_ReReadFails_StillSucceeds_AndKeepsTheNewSecret()
+        {
+            // M5: the update is committed; a failing check must not turn it into an error.
+            var existing = Idp();
+            _repo.SetupSequence(r => r.GetIdentityProviderByIdAsync("idp-1"))
+                .ReturnsAsync(existing)
+                .ThrowsAsync(new InvalidOperationException("read failed"));
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            _secrets.Setup(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync("new-ref");
+            var logger = new TestDoubles.CapturingLogger<AuthenticationDomainService>();
+
+            var result = await CreateWithLogger(logger).UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-s" });
+
+            result.IsSuccess.Should().BeTrue();
+            _secrets.Verify(s => s.SetAsync(It.IsAny<SetSecretRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+            logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning)
+                .Which.AllText.Should().Contain(nameof(InvalidOperationException)).And.NotContain("read failed").And.NotContain("new-ref");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_MirrorOfLocalOidcClient_RejectsSecret_WithNoSecretCall()
+        {
+            // C11
+            var existing = Idp();
+            existing.ProviderType = "blocks-oidc";
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("cid")).ReturnsAsync(new OidcClientRegistration { ItemId = "cid", ClientId = "cid", RegisterAsIdentityProvider = true });
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ClientSecret = "new-secret" });
+
+            result.Errors.Should().ContainKey("immutable_field");
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        private void DeletableProvider(IdentityProvider existing, List<string> order)
+        {
+            _repo.SetupSequence(r => r.GetIdentityProviderByIdAsync("idp-1"))
+                .ReturnsAsync(existing)
+                .ReturnsAsync((IdentityProvider)null!);
+            _repo.Setup(r => r.DeleteIdentityProviderAsync("idp-1")).Callback(() => order.Add("document")).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("cid")).ReturnsAsync((OidcClientRegistration)null!);
+        }
+
+        [Fact]
+        public async Task DeleteIdp_WithReferences_RetiresEachSecretAfterTheDocumentDelete()
+        {
+            // H11, C13 (one DeleteAsync per reference)
+            var order = new List<string>();
+            DeletableProvider(Referenced(privateKeyRef: "pk-ref"), order);
+            _secrets.Setup(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Callback<string, CancellationToken>((id, _) => order.Add(id)).Returns(Task.CompletedTask);
+
+            var result = await Create().DeleteIdentityProviderAsync("idp-1");
+
+            result.IsSuccess.Should().BeTrue();
+            order.Should().Equal("document", "cs-ref", "pk-ref");
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        }
+
+        [Fact]
+        public async Task DeleteIdp_LegacyProvider_MakesNoSecretCall()
+        {
+            var order = new List<string>();
+            DeletableProvider(Idp(), order);
+
+            (await Create().DeleteIdentityProviderAsync("idp-1")).IsSuccess.Should().BeTrue();
+
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Theory]
+        [MemberData(nameof(UnusableReference))]
+        public async Task DeleteIdp_SecretAlreadyGone_IsIgnored(Exception failure)
+        {
+            // C12
+            DeletableProvider(Referenced(), new List<string>());
+            _secrets.Setup(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>())).ThrowsAsync(failure);
+            var logger = new TestDoubles.CapturingLogger<IdentityProviderSecretResolver>();
+
+            var result = await CreateWithResolverLogger(logger).DeleteIdentityProviderAsync("idp-1");
+
+            result.IsSuccess.Should().BeTrue();
+            logger.Entries.Should().NotContain(e => e.Level >= LogLevel.Warning);
+            _secrets.Verify(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task DeleteIdp_RetireFailsOtherwise_LogsAWarning_AndStillSucceeds()
+        {
+            // C12, C8 (no reference id in the log)
+            DeletableProvider(Referenced(), new List<string>());
+            _secrets.Setup(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>())).ThrowsAsync(new SecretVaultException("down cs-ref", "delete", "cs-ref"));
+            var logger = new TestDoubles.CapturingLogger<IdentityProviderSecretResolver>();
+
+            var result = await CreateWithResolverLogger(logger).DeleteIdentityProviderAsync("idp-1");
+
+            result.IsSuccess.Should().BeTrue();
+            var warning = logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning).Subject;
+            warning.AllText.Should().Contain("google").And.Contain(nameof(SecretVaultException)).And.NotContain("cs-ref");
+            _secrets.Verify(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task DeleteIdp_DeniedDelete_KeepsTheSecretsOfTheStillExistingProvider()
+        {
+            // A denied delete is a silent no-op: the provider still exists, so its secrets stay.
+            var existing = Referenced();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.DeleteIdentityProviderAsync("idp-1")).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("cid")).ReturnsAsync((OidcClientRegistration)null!);
+
+            (await Create().DeleteIdentityProviderAsync("idp-1")).IsSuccess.Should().BeTrue();
+
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task DeleteIdp_ReReadFails_StillSucceeds_KeepsTheSecrets_AndDeletesTheRelatedOidcClient()
+        {
+            // M5: the delete completed; a failing check neither fails it nor skips the OIDC cleanup.
+            var existing = Referenced(privateKeyRef: "pk-ref");
+            _repo.SetupSequence(r => r.GetIdentityProviderByIdAsync("idp-1"))
+                .ReturnsAsync(existing)
+                .ThrowsAsync(new InvalidOperationException("read failed cs-ref"));
+            _repo.Setup(r => r.DeleteIdentityProviderAsync("idp-1")).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("cid")).ReturnsAsync(new OidcClientRegistration { ItemId = "cid", ClientId = "cid" });
+            _repo.Setup(r => r.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>())).Returns(Task.CompletedTask);
+            var logger = new TestDoubles.CapturingLogger<AuthenticationDomainService>();
+
+            var result = await CreateWithLogger(logger).DeleteIdentityProviderAsync("idp-1");
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.DeleteOidcClientAsync(It.Is<DeleteOIDCClientRequest>(d => d.ItemId == "cid")), Times.Once);
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+            logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning)
+                .Which.AllText.Should().Contain("google").And.Contain(nameof(InvalidOperationException))
+                .And.NotContain("cs-ref").And.NotContain("pk-ref").And.NotContain("read failed");
+        }
+
+        [Fact]
+        public async Task DeleteOidcClient_RelatedProviderWithReference_RetiresItsSecret()
+        {
+            // H11 at the OIDC-client delete site (shared helper)
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(new OidcClientRegistration { ItemId = "c1", ClientId = "cid" });
+            _repo.Setup(r => r.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProvidersAsync()).ReturnsAsync(new List<IdentityProvider> { Referenced() });
+            _repo.Setup(r => r.DeleteIdentityProviderAsync("idp-1")).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync((IdentityProvider)null!);
+            _secrets.Setup(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            (await Create().DeleteOidcClientAsync(new DeleteOIDCClientRequest { ItemId = "c1" })).IsSuccess.Should().BeTrue();
+
+            _secrets.Verify(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task GetIdentityProviders_NeverReturnReferences()
+        {
+            // H12 (domain side; JSON side in SecretFieldsJsonModifierTests)
+            _repo.Setup(r => r.GetIdentityProvidersForViewAsync()).ReturnsAsync(new List<IdentityProvider> { Referenced(privateKeyRef: "pk-ref") });
+            _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(Referenced(privateKeyRef: "pk-ref"));
+
+            var all = await Create().GetAllIdentityProvidersAsync();
+            var one = await Create().GetIdentityProviderByIdAsync("idp-1");
+
+            all.Should().OnlyContain(p => p.ClientSecretReference == null && p.PrivateKeyReference == null);
+            one!.ClientSecretReference.Should().BeNull();
+            one.PrivateKeyReference.Should().BeNull();
+            _secrets.VerifyNoOtherCalls();
         }
 
         private sealed class FakeHandler : HttpMessageHandler

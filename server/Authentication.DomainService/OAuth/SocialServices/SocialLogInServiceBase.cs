@@ -16,6 +16,7 @@ namespace Authentication.DomainService.OAuth
         protected readonly IAuthenticationRepository _authenticationRepository;
         protected readonly ICacheClient _cacheClient;
         protected readonly IHttpService _httpService;
+        protected readonly IIdentityProviderSecretResolver _secretResolver;
         private const string GoogleProvider = "google";
         private const string MicrosoftProvider = "microsoft";
 
@@ -30,12 +31,14 @@ namespace Authentication.DomainService.OAuth
         protected SocialLogInServiceBase(
             ILogger logger,
             IAuthenticationRepository authenticationRepository,
-            IHttpService httpService
+            IHttpService httpService,
+            IIdentityProviderSecretResolver secretResolver
         )
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
             _httpService = httpService;
+            _secretResolver = secretResolver;
         }
 
         public virtual async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
@@ -48,11 +51,18 @@ namespace Authentication.DomainService.OAuth
                 return new SocialCallbackResult { ExternalUserData = CreateEmptyUserData() };
             }
 
+            // False when a referenced secret cannot be read (the resolver logs it): fail without calling the provider.
+            var (resolved, clientSecret) = await _secretResolver.TryGetClientSecretAsync(identityProvider);
+            if (!resolved)
+            {
+                return new SocialCallbackResult { ExternalUserData = CreateEmptyUserData() };
+            }
+
             var postData = new Dictionary<string, string>
             {
                 { "code", stateInfo.Code ?? string.Empty },
                 { "client_id", identityProvider.ClientId ?? string.Empty },
-                { "client_secret", identityProvider.ClientSecret ?? string.Empty },
+                { "client_secret", clientSecret ?? string.Empty },
                 { "redirect_uri", stateInfo.RedirectUri ?? string.Empty },
                 { "grant_type", GrantTypes.AuthCode },
                 { "scope", IdpConstants.OpenIdProfileEmailScope }

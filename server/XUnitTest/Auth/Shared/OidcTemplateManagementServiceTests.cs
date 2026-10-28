@@ -45,7 +45,8 @@ namespace XUnitTest.Auth.Shared
                 _templateValidator.Object,
                 _saveIdpValidator.Object,
                 _updateIdpValidator.Object),
-            _httpClientFactory.Object);
+            _httpClientFactory.Object,
+            TestDoubles.IdentityProviderSecretTestDoubles.Resolver());
 
         [Fact]
         public async Task ManagementGet_WithoutSavedTemplate_ReturnsNull()
@@ -188,7 +189,8 @@ namespace XUnitTest.Auth.Shared
                 _tenants.Object,
                 Mock.Of<ICaptchaConfigurationRepository>(),
                 Mock.Of<IIdentityAccessManagementRepository>(),
-                NullLogger<IdpService>.Instance);
+                NullLogger<IdpService>.Instance,
+                TestDoubles.IdentityProviderSecretTestDoubles.Resolver());
             var publicResult = await idpService.GetUiConfigAsync();
             var publicConfig = ((OkObjectResult)publicResult).Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
 

@@ -7,6 +7,7 @@ using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Services;
@@ -31,6 +32,7 @@ namespace XUnitTest.Auth
         private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<ICaptchaConfigurationRepository> _captchaRepo = new();
         private readonly Mock<IIdentityAccessManagementRepository> _iamRepo = new();
+        private readonly Mock<ISecretService> _secrets = new(MockBehavior.Strict);
         private readonly IdpTokenExchangeClient _tokenExchange;
 
         private const string TenantId = "tenant-1";
@@ -58,7 +60,7 @@ namespace XUnitTest.Auth
         private IdpService Create() =>
             new(_authRepo.Object, _authCodeRepo.Object, _flowService.Object, _cache.Object,
                 _tokenExchange, _tenants.Object, _captchaRepo.Object, _iamRepo.Object,
-                NullLogger<IdpService>.Instance);
+                NullLogger<IdpService>.Instance, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets));
 
         private static object? Prop(object? value, string name) =>
             value?.GetType().GetProperty(name)?.GetValue(value);
@@ -858,6 +860,76 @@ namespace XUnitTest.Auth
         {
             SetupFlowContext("st", new { provider = "google", tenantId = TenantId, redirectUri = "https://app.example.com/callback", codeVerifier = (string?)null });
             _authRepo.Setup(r => r.GetIdentityProviderAsync("google")).ReturnsAsync(ActiveProvider());
+        }
+
+        // ---------- #649: OIDC federation client secret through Blocks Secrets ----------
+
+        private Func<Dictionary<string, string>?> CaptureTokenForm()
+        {
+            Dictionary<string, string>? form = null;
+            _httpService.Setup(h => h.SendFormUrlEncoded<OidcTokenEndpointResponse>(
+                    It.IsAny<HttpMethod>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(),
+                    It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()))
+                .Callback<HttpMethod, Dictionary<string, string>, string, Dictionary<string, string>, CancellationToken, int?>((_, f, _, _, _, _) => form = f)
+                .ReturnsAsync(((OidcTokenEndpointResponse)null!, "stop"));
+            return () => form;
+        }
+
+        private void SetupReferencedProvider()
+        {
+            SetupFlowContext("st", new { provider = "google", tenantId = TenantId, redirectUri = "https://app.example.com/callback", codeVerifier = (string?)null });
+            var provider = ActiveProvider();
+            provider.ClientSecret = "stale-plaintext";
+            provider.ClientSecretReference = "cs-ref";
+            _authRepo.Setup(r => r.GetIdentityProviderAsync("google")).ReturnsAsync(provider);
+        }
+
+        [Fact]
+        public async Task HandleCallback_ReferencedProvider_SendsTheResolvedSecret_WithOneRead()
+        {
+            // H5, C4, C13
+            var (req, res) = HttpPair();
+            SetupReferencedProvider();
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ReturnsAsync("vault-s");
+            var form = CaptureTokenForm();
+
+            await Create().HandleCallbackAsync("code-1", "st", null, null, req, res);
+
+            form()!["client_secret"].Should().Be("vault-s");
+            _secrets.Verify(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task HandleCallback_LegacyProvider_SendsThePlaintext_WithNoSecretCall()
+        {
+            // H7, C13
+            var (req, res) = HttpPair();
+            SetupValidCallbackPrerequisites();
+            var form = CaptureTokenForm();
+
+            await Create().HandleCallbackAsync("code-1", "st", null, null, req, res);
+
+            form()!["client_secret"].Should().Be("secret-1");
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task HandleCallback_ReferencedSecretUnavailable_ReturnsInvalidGrant_WithoutCallingTheIdp()
+        {
+            // C2, C3, C4
+            var (req, res) = HttpPair();
+            SetupReferencedProvider();
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ThrowsAsync(new SecretNotFoundException("cs-ref"));
+
+            var result = await Create().HandleCallbackAsync("code-1", "st", null, null, req, res);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_grant");
+            _httpService.VerifyNoOtherCalls();
+            // Exactly one read: a failed read is not retried.
+            _secrets.Verify(s => s.GetValueAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
 
         [Fact]

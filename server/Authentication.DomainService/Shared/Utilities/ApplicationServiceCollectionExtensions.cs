@@ -275,6 +275,8 @@ namespace Authentication.DomainService.Utilities
             // TryAdd throughout, so calling it here is idempotent.
             serviceCollection.AddBlocksSecrets();
             serviceCollection.RegisterBlocksCaptchaService();
+            // Singleton over IServiceScopeFactory: ISecretService is scoped, so it is resolved per call.
+            serviceCollection.AddSingleton<IIdentityProviderSecretResolver, IdentityProviderSecretResolver>();
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
             serviceCollection.AddSingleton<IRefreshSessionResolver, RefreshSessionResolver>();

@@ -4,6 +4,7 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -26,6 +27,7 @@ namespace XUnitTest.Auth.Shared
         private readonly Mock<IValidator<SaveIdentityProviderRequest>> _saveIdpValidator = new();
         private readonly Mock<IValidator<UpdateIdentityProviderRequest>> _updateIdpValidator = new();
         private readonly Mock<IHttpClientFactory> _httpFactory = new();
+        private readonly Mock<ISecretService> _secrets = new(MockBehavior.Strict);
 
         public AuthenticationDomainServiceExtraTests()
         {
@@ -49,7 +51,7 @@ namespace XUnitTest.Auth.Shared
         private AuthenticationDomainService Create() =>
             new(_message.Object, _repo.Object,
                 new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                    _updateIdpValidator.Object), _httpFactory.Object);
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets));
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
         {
@@ -285,6 +287,126 @@ namespace XUnitTest.Auth.Shared
 
             result.IsSuccess.Should().BeTrue();
             _repo.Verify(r => r.DeleteIdentityProviderAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        // ---------- #649 C10: a mirrored plaintext secret supersedes a reference ----------
+
+        [Fact]
+        public async Task SaveOIDCClient_SyncOntoProviderWithReference_ClearsReferenceAndRetiresItsSecret()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            var existing = Idp(id: "idp-existing");
+            existing.ClientSecret = string.Empty;
+            existing.ClientSecretReference = "cs-ref";
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(existing);
+            string? referenceAtWrite = "unset";
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>()))
+                .Callback<IdentityProvider>(p => referenceAtWrite = p.ClientSecretReference)
+                .ReturnsAsync(existing);
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-existing")).ReturnsAsync(existing);
+            _secrets.Setup(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                RedirectUris = new() { "https://app/cb" },
+                AllowedScopes = new() { "openid" },
+                ClientType = "confidential",
+                ClientDisplayName = "My Portal App",
+                RegisterAsIdentityProvider = true
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            referenceAtWrite.Should().BeNull();
+            existing.ClientSecret.Should().NotBeNullOrEmpty("the mirrored OIDC client secret is now authoritative");
+            _secrets.Verify(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task RotateOidcClientSecret_LinkedProviderWithReference_ClearsReferenceAndRetiresItsSecret()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("item-1")).ReturnsAsync(RotatableClient(true));
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            var linked = Idp(clientId: "cid");
+            linked.ClientSecret = string.Empty;
+            linked.ClientSecretReference = "cs-ref";
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(linked);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(linked);
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(linked);
+            _secrets.Setup(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var result = await Create().RotateOidcClientSecretAsync("item-1");
+
+            result.IsSuccess.Should().BeTrue();
+            linked.ClientSecretReference.Should().BeNull();
+            linked.ClientSecret.Should().Be(result.ClientSecret);
+            _secrets.Verify(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task RotateOidcClientSecret_DeniedProviderWrite_KeepsTheReferencedSecret()
+        {
+            // A denied write is a silent no-op: the stored provider still points at the reference, so it is not retired.
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("item-1")).ReturnsAsync(RotatableClient(true));
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            var linked = Idp(clientId: "cid");
+            linked.ClientSecretReference = "cs-ref";
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(linked);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(linked);
+            var stillStored = Idp(clientId: "cid");
+            stillStored.ClientSecretReference = "cs-ref";
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(stillStored);
+
+            (await Create().RotateOidcClientSecretAsync("item-1")).IsSuccess.Should().BeTrue();
+
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task RotateOidcClientSecret_ReReadFails_StillSucceeds_AndKeepsTheReplacedSecret()
+        {
+            // The provider write completed; a failing check must not turn the rotation into an error.
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("item-1")).ReturnsAsync(RotatableClient(true));
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            var linked = Idp(clientId: "cid");
+            linked.ClientSecretReference = "cs-ref";
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(linked);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(linked);
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ThrowsAsync(new InvalidOperationException("read failed"));
+
+            (await Create().RotateOidcClientSecretAsync("item-1")).IsSuccess.Should().BeTrue();
+
+            linked.ClientSecretReference.Should().BeNull();
+            _secrets.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_UnregisterProviderWithReference_RetiresItsSecret()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            var existing = Idp(id: "idp-existing");
+            existing.ClientSecretReference = "cs-ref";
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(existing);
+            _repo.Setup(r => r.DeleteIdentityProviderAsync("idp-existing")).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-existing")).ReturnsAsync((IdentityProvider)null!);
+            _secrets.Setup(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                RedirectUris = new() { "https://app/cb" },
+                AllowedScopes = new() { "openid" },
+                ClientType = "public",
+                RegisterAsIdentityProvider = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _secrets.Verify(s => s.DeleteAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
 
         // ---------- RotateOidcClientSecretAsync provider secret sync ----------

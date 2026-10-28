@@ -108,6 +108,7 @@ namespace XUnitTest.Auth.Shared
                     new Mock<IValidator<SaveIdentityProviderRequest>>().Object,
                     new Mock<IValidator<UpdateIdentityProviderRequest>>().Object),
                 new Mock<IHttpClientFactory>().Object,
+                TestDoubles.IdentityProviderSecretTestDoubles.Resolver(),
                 NullLogger<AuthenticationDomainService>.Instance);
         }
 

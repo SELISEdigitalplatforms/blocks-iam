@@ -10,15 +10,18 @@ namespace Authentication.DomainService.OAuth.SocialServices
         private readonly ILogger<FaceBookLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IHttpService _httpService;
+        private readonly IIdentityProviderSecretResolver _secretResolver;
 
         public FaceBookLogInService(
             ILogger<FaceBookLogInService> logger,
             IAuthenticationRepository authenticationRepository,
-            IHttpService httpService)
+            IHttpService httpService,
+            IIdentityProviderSecretResolver secretResolver)
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
             _httpService = httpService;
+            _secretResolver = secretResolver;
         }
 
         public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
@@ -31,7 +34,14 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 return new SocialCallbackResult { ExternalUserData = new FaceBookUserData() };
             }
 
-            var faceBookGetAccessTokenUri = new Uri(string.Format("{0}?client_id={1}&redirect_uri={2}&client_secret={3}&code={4}", identityProvider.TokenUrl, identityProvider.ClientId, stateInfo.RedirectUri, identityProvider.ClientSecret, stateInfo.Code));
+            // False when a referenced secret cannot be read (the resolver logs it): fail without calling the provider.
+            var (resolved, clientSecret) = await _secretResolver.TryGetClientSecretAsync(identityProvider);
+            if (!resolved)
+            {
+                return new SocialCallbackResult { ExternalUserData = new FaceBookUserData() };
+            }
+
+            var faceBookGetAccessTokenUri = new Uri(string.Format("{0}?client_id={1}&redirect_uri={2}&client_secret={3}&code={4}", identityProvider.TokenUrl, identityProvider.ClientId, stateInfo.RedirectUri, clientSecret, stateInfo.Code));
             _logger.LogInformation("facebook access token host: {Host}", faceBookGetAccessTokenUri.Host);
             var (tokenResponse, error) = await _httpService.Get<SocialOauthAccessToken>(faceBookGetAccessTokenUri.ToString());
 
