@@ -1346,8 +1346,10 @@ namespace Iam.DomainService.Accounts
 
             // The mail is only queued here; the caller must not hear "sent" when nothing could be
             // queued (no address, or no activation link could be built).
-            if (!await SendReActivationAsync(user))
+            var failure = await TrySendReActivationAsync(user);
+            if (failure != null)
             {
+                await NotifyInvitationMailFailedAsync(user, failure);
                 return new BaseAccountResponse
                 {
                     Errors = new Dictionary<string, string> { { "ActivationMail", "ActivationMail_Not_Sent" } }
@@ -1362,12 +1364,32 @@ namespace Iam.DomainService.Accounts
                 ? Task.FromResult(true)
                 : _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckManageUser(scope, user));
 
-        public async Task<bool> SendReActivationAsync(User user, string? clientId = null, string? redirectUri = null)
+        public async Task<bool> SendReActivationAsync(User user, string? clientId = null, string? redirectUri = null) =>
+            await TrySendReActivationAsync(user, clientId, redirectUri) == null;
+
+        /// <summary>Tells the admin who pressed resend that the mail was not queued. Not for a user asking for their own.</summary>
+        private Task NotifyInvitationMailFailedAsync(User user, string reason)
+        {
+            var context = BlocksContext.GetContext();
+            if (string.Equals(user.ItemId, context?.UserId, StringComparison.Ordinal))
+            {
+                return Task.CompletedTask;
+            }
+
+            var organizationId = string.IsNullOrWhiteSpace(context?.OrganizationId)
+                ? user.OrganizationIds?.FirstOrDefault(o => !string.IsNullOrWhiteSpace(o))
+                : context.OrganizationId;
+            return _notificationSender.InvitationMailFailedAsync(
+                context?.TenantId, context?.UserId, organizationId, user.ItemId, reason);
+        }
+
+        /// <returns>Null when the mail was queued, otherwise the failure reason code.</returns>
+        private async Task<string?> TrySendReActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {
             if (string.IsNullOrWhiteSpace(user.Email))
             {
                 _logger.LogWarning("Activation not sent for user {UserId}: the account has no email address", user.ItemId);
-                return false;
+                return InvitationMailFailureReasons.NoEmailAddress;
             }
 
             var config = await _repository.GetIamConfigurationAsync();
@@ -1385,7 +1407,7 @@ namespace Iam.DomainService.Accounts
                     logger: _logger, appConfiguration: _configuration))
             {
                 _logger.LogWarning("Activation URL could not be built for user {UserId}", user.ItemId);
-                return false;
+                return InvitationMailFailureReasons.LinkNotBuilt;
             }
 
             await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Activation, key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
@@ -1395,7 +1417,7 @@ namespace Iam.DomainService.Accounts
             if (!result)
             {
                 _logger.LogWarning("Send ReActivation for {UsId} is not sent", user.ItemId);
-                return false;
+                return InvitationMailFailureReasons.NotQueued;
             }
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
@@ -1410,7 +1432,7 @@ namespace Iam.DomainService.Accounts
             });
 
             _logger.LogInformation("Send ReActivation for {UsId} is sent", user.ItemId);
-            return true;
+            return null;
         }
 
         public async Task<BaseAccountResponse> ActivateAndLinkSocialIdentityAsync(ActivateAndLinkSocialIdentityRequest request)

@@ -1347,6 +1347,38 @@ namespace XUnitTest.IamTests.Accounts.Services
             _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
 
+        [Theory]
+        [InlineData(false, 1)]
+        [InlineData(true, 0)]
+        public async Task Resend_ByAdmin_TellsTheAdminOnlyWhenTheMailIsNotQueued(bool queued, int expectedNotices)
+        {
+            var sender = new XUnitTest.IamTests.Notifications.RecordingSender();
+            XUnitTest.IamTests.Notifications.TestContext.Install(userId: "admin-1", orgId: "org-1");
+            var service = new AccountService(_loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
+                _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,
+                _userMutationMock.Object, _resourceMutationMock.Object, _captchaServiceMock.Object, _captchaConfigurationServiceMock.Object,
+                _userActivityDispatcherMock.Object, new SignupOrganizationResolver(_resourceRepositoryMock.Object),
+                notificationSender: sender);
+            var user = TestDataBuilder.CreateUser(active: false, isVerified: false);
+            _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
+            _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration());
+            _repositoryMock.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
+            _iamServiceMock.Setup(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(queued);
+
+            await service.ResendActivationAsync(new ResendActivationRequest { UserId = user.ItemId });
+
+            sender.Sent.Should().HaveCount(expectedNotices);
+            if (!queued)
+            {
+                var sent = sender.Sent.Single();
+                sent.ConfigurationName.Should().Be("iam-invitation-mail-failed");
+                sent.UserIds.Should().Equal("admin-1");
+                sent.OrganizationId.Should().Be("org-1");
+                XUnitTest.IamTests.Notifications.RecordingSender.PayloadJson(sent).Should().NotContain(user.Email);
+            }
+        }
+
         private AccountService CreateServiceWithAccessGrant(Iam.DomainService.AccessGrant.IAccessGrantService accessGrant) =>
             new(_loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
                 _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,

@@ -174,7 +174,10 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            await SendEvent(itemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail);
+            var inviter = BlocksContext.GetContext();
+            await SendEvent(
+                itemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail,
+                inviter is { IsAuthenticated: true } ? inviter.UserId : null, organizationId);
             var bc = BlocksContext.GetContext();
 
             _logger.LogInformation("User creation end -- Success");
@@ -247,7 +250,9 @@ namespace Iam.DomainService.Users
             MutationEventType mutationEventType,
             string? clientId = null,
             string? redirectUri = null,
-            bool sendMail = true)
+            bool sendMail = true,
+            string? invitedBy = null,
+            string? organizationId = null)
         {
             _logger.LogInformation("User mutation event -- initiate");
             await _messageClient.SendToConsumerAsync(
@@ -262,7 +267,9 @@ namespace Iam.DomainService.Users
                         // so the originating app's OIDC context has to travel on the message.
                         ClientId = clientId,
                         RedirectUri = redirectUri,
-                        SendMail = sendMail
+                        SendMail = sendMail,
+                        InvitedBy = invitedBy,
+                        OrganizationId = organizationId
                     }
                 }
             );
@@ -1321,13 +1328,41 @@ namespace Iam.DomainService.Users
             // activity event below is published either way.
             if (command.Action == MutationEventType.Create && command.SendMail)
             {
-                await SendActivationAsync(user, command.ClientId, command.RedirectUri);
+                await SendInvitationMailAsync(user, command);
             }
 
             await PublishUserActivityAsync(user, command.Action);
         }
 
-        private async Task<bool> SendActivationAsync(User user, string? clientId = null, string? redirectUri = null)
+        /// <summary>
+        /// Sends the activation mail and, when it cannot be queued, tells the inviter. The notification is
+        /// fire-and-forget and never changes the outcome: a queue error still reaches the consumer's retry.
+        /// </summary>
+        private async Task SendInvitationMailAsync(User user, UserMutationEvent command)
+        {
+            string? failure;
+            try
+            {
+                failure = await SendActivationAsync(user, command.ClientId, command.RedirectUri);
+            }
+            catch
+            {
+                await NotifyInvitationMailFailedAsync(user, command, InvitationMailFailureReasons.QueueError);
+                throw;
+            }
+
+            if (failure != null)
+            {
+                await NotifyInvitationMailFailedAsync(user, command, failure);
+            }
+        }
+
+        private Task NotifyInvitationMailFailedAsync(User user, UserMutationEvent command, string reason) =>
+            _notificationSender.InvitationMailFailedAsync(
+                BlocksContext.GetContext()?.TenantId, command.InvitedBy, command.OrganizationId, user.ItemId, reason);
+
+        /// <returns>Null when the mail was queued, otherwise the failure reason code.</returns>
+        private async Task<string?> SendActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {
             _logger.LogInformation("Send Activation for {Id}", user.ItemId);
             var config = await _userRepository.GetIamConfigurationAsync();
@@ -1347,7 +1382,7 @@ namespace Iam.DomainService.Users
                     logger: _logger, appConfiguration: _configuration))
             {
                 _logger.LogWarning("Activation URL could not be built for user {Id}", user.ItemId);
-                return false;
+                return InvitationMailFailureReasons.LinkNotBuilt;
             }
 
             await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Activation, key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
@@ -1367,7 +1402,14 @@ namespace Iam.DomainService.Users
             });
 
             _logger.LogInformation("Send Activation for {Id} is {Send}", user.ItemId, result ? "sent" : "not sent");
-            return result;
+            if (result)
+            {
+                return null;
+            }
+
+            return string.IsNullOrWhiteSpace(user.Email)
+                ? InvitationMailFailureReasons.NoEmailAddress
+                : InvitationMailFailureReasons.NotQueued;
         }
 
         private async Task<bool> PublishUserActivityAsync(User user, MutationEventType mutationEventType)

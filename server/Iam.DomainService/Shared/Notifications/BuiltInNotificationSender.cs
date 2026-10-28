@@ -53,6 +53,50 @@ namespace Iam.DomainService.Notifications
                 // The sender itself never throws; this guards replacements of it.
             }
         }
+
+        /// <summary>
+        /// Tells the inviter that the invitation mail for <paramref name="invitedUserId"/> could not be queued.
+        /// Ids and a reason code only. No inviter (self signup, queue job without one) means nobody to tell.
+        /// </summary>
+        public static Task InvitationMailFailedAsync(
+            this IBuiltInNotificationSender? sender,
+            string? tenantId,
+            string? inviterUserId,
+            string? organizationId,
+            string invitedUserId,
+            string reason)
+        {
+            if (string.IsNullOrWhiteSpace(inviterUserId))
+            {
+                return Task.CompletedTask;
+            }
+
+            return sender.TrySendAsync(new BuiltInNotification(
+                tenantId,
+                BuiltInNotificationNames.InvitationMailFailed,
+                BuiltInNotificationSender.Recipients(inviterUserId),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.InvitationMailFailed,
+                    "Invitation not sent",
+                    "An invitation mail could not be sent.",
+                    isSuccess: false,
+                    fields: new Dictionary<string, object?>
+                    {
+                        ["invitedUserId"] = invitedUserId,
+                        ["reason"] = reason
+                    }),
+                organizationId,
+                IncludeImpersonatedActor: false));
+        }
+    }
+
+    /// <summary>Short reason codes for <c>iam-invitation-mail-failed</c>. Never exception text or an address.</summary>
+    public static class InvitationMailFailureReasons
+    {
+        public const string NoEmailAddress = "no_email_address";
+        public const string LinkNotBuilt = "link_not_built";
+        public const string NotQueued = "not_queued";
+        public const string QueueError = "queue_error";
     }
 
     /// <inheritdoc />
