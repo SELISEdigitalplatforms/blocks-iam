@@ -60,7 +60,7 @@ namespace XUnitTest.Auth.Shared
         private AuthenticationDomainService Create() =>
             new(_message.Object, _repo.Object,
                 new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets));
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets));
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
         {
@@ -370,6 +370,11 @@ namespace XUnitTest.Auth.Shared
 
         // ---------- SaveClientCredentialAsync ----------
 
+        /// <summary>The secret store takes a new client-credential secret and answers <paramref name="reference"/>.</summary>
+        private void ClientSecretStoreAccepts(string reference = "cs-ref-1") =>
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Name == ClientCredentialSecretResolver.SecretName), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(reference);
+
         [Fact]
         public async Task SaveClientCredential_EmptyName_ReturnsError()
         {
@@ -395,12 +400,16 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task SaveClientCredential_Create_HappyPath()
         {
+            ClientSecretStoreAccepts();
             _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>())).ReturnsAsync(new BaseResponse { IsSuccess = true });
             var result = await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest { Name = "svc", Roles = new() { "r" }, Permissions = new() { "p" } });
             result.IsSuccess.Should().BeTrue();
             result.ItemId.Should().NotBeNullOrEmpty();
             result.ClientSecret.Should().StartWith("blxk_");
-            _repo.Verify(r => r.SaveClientCredentialAsync(It.Is<ClientCredential>(c => c.Name == "svc")), Times.Once);
+            // The secret goes to the store; the document keeps the reference only.
+            _secrets.Verify(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Value == result.ClientSecret && r.Type == SecretTypes.Service), It.IsAny<CancellationToken>()), Times.Once);
+            _repo.Verify(r => r.SaveClientCredentialAsync(It.Is<ClientCredential>(c =>
+                c.Name == "svc" && c.ClientSecret == string.Empty && c.ClientSecretReference == "cs-ref-1")), Times.Once);
         }
 
         [Fact]
@@ -418,6 +427,7 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task RotateClientCredentialSecret_ReplacesAndReturnsTheSecret()
         {
+            ClientSecretStoreAccepts();
             var credential = new ClientCredential { ItemId = "cc-1", ClientSecret = "old", OrganizationId = "default" };
             _repo.Setup(r => r.GetClientCredentialByIdAsync("cc-1")).ReturnsAsync(credential);
             _repo.Setup(r => r.SaveClientCredentialAsync(credential)).ReturnsAsync(new BaseResponse { IsSuccess = true });
@@ -426,7 +436,10 @@ namespace XUnitTest.Auth.Shared
 
             result.IsSuccess.Should().BeTrue();
             result.ClientSecret.Should().StartWith("blxk_").And.NotBe("old");
-            credential.ClientSecret.Should().Be(result.ClientSecret);
+            // A credential still on plaintext gets a new secret in the store, which moves it there.
+            credential.ClientSecret.Should().BeEmpty();
+            credential.ClientSecretReference.Should().Be("cs-ref-1");
+            _secrets.Verify(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Value == result.ClientSecret), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]
@@ -866,6 +879,7 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task SaveClientCredential_TenantWideCaller_IssuesForRequestedOrganization()
         {
+            ClientSecretStoreAccepts();
             ClientCredential? saved = null;
             _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()))
                 .Callback<ClientCredential>(c => saved = c)
@@ -885,6 +899,7 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task SaveClientCredential_TenantWideCaller_WithNoOrganization_StaysTenantWide()
         {
+            ClientSecretStoreAccepts();
             ClientCredential? saved = null;
             _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()))
                 .Callback<ClientCredential>(c => saved = c)
@@ -898,6 +913,7 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task SaveClientCredential_OrganizationCaller_CannotIssueForAnotherOrganization()
         {
+            ClientSecretStoreAccepts();
             // The payload is discarded rather than rejected, so a caller that redundantly sends its
             // own id keeps working and one that sends someone else's gets its own instead.
             SetOrganization("org-a");
@@ -919,6 +935,7 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task SaveClientCredential_OrganizationCaller_CannotEscalateToTenantWide()
         {
+            ClientSecretStoreAccepts();
             SetOrganization("org-a");
             ClientCredential? saved = null;
             _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()))
@@ -965,6 +982,7 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task SaveClientCredential_HonoursRequestedInactiveStatus()
         {
+            ClientSecretStoreAccepts();
             ClientCredential? saved = null;
             _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()))
                 .Callback<ClientCredential>(c => saved = c)
@@ -1040,12 +1058,12 @@ namespace XUnitTest.Auth.Shared
         private AuthenticationDomainService CreateWithResolverLogger(ILogger<IdentityProviderSecretResolver> logger) =>
             new(_message.Object, _repo.Object,
                 new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets, logger));
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets, logger), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets));
 
         private AuthenticationDomainService CreateWithLogger(ILogger<AuthenticationDomainService> logger) =>
             new(_message.Object, _repo.Object,
                 new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets), logger);
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets), logger);
 
         private const string RotationNotUndone = "cannot be undone";
 

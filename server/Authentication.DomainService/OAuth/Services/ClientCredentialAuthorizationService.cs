@@ -11,6 +11,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis.Entities.Iam;
+using Microsoft.AspNetCore.Http;
 
 namespace Authentication.DomainService.OAuth.Services
 {
@@ -30,18 +31,21 @@ namespace Authentication.DomainService.OAuth.Services
         private readonly ICryptoService _cryptoService;
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
-        
+        private readonly IClientCredentialSecretResolver _secretResolver;
+
         public ClientCredentialAuthorizationService(IAuthenticationRepository authenticationRepository,
                                                     ICertificateProviderFactory certificateProviderFactory,
                                                     ICryptoService cryptoService,
                                                     ICacheClient cacheClient,
-                                                    ITenants tenants)
+                                                    ITenants tenants,
+                                                    IClientCredentialSecretResolver secretResolver)
         {
             _authenticationRepository = authenticationRepository;
             _certificateProviderFactory = certificateProviderFactory;
             _cryptoService = cryptoService;
             _cacheClient = cacheClient;
-            _tenants = tenants;    
+            _tenants = tenants;
+            _secretResolver = secretResolver;
         }
 
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
@@ -54,12 +58,37 @@ namespace Authentication.DomainService.OAuth.Services
                 };
 
             var client = await _authenticationRepository.GetClientCredentialByIdAsync(request.ClientId);
-            var validationResult = ValidateClient(client, request);
+            if (client == null)
+                return new TokenResponse
+                {
+                    Error = "invalid_client",
+                    ErrorDescription = "No client found"
+                };
+
+            // One secret-store read per token request when the secret is referenced; nothing is cached.
+            string? storedSecret;
+            try
+            {
+                storedSecret = await _secretResolver.GetSecretAsync(client);
+            }
+            catch (ClientCredentialSecretUnavailableException)
+            {
+                // Fails closed, but not as invalid_client: the caller's secret may well be right, and
+                // a 401 would tell it to stop retrying. The resolver has logged the failure class.
+                return new TokenResponse
+                {
+                    Error = "temporarily_unavailable",
+                    ErrorDescription = "The client secret cannot be checked right now. Try again later.",
+                    StatusCode = StatusCodes.Status503ServiceUnavailable
+                };
+            }
+
+            var validationResult = ValidateClient(client, request, storedSecret);
 
             if (validationResult != null)
                 return validationResult;
 
-            return await IssueForClientAsync(authenticationConfiguration, client!);
+            return await IssueForClientAsync(authenticationConfiguration, client);
         }
 
         /// <summary>
@@ -174,17 +203,11 @@ namespace Authentication.DomainService.OAuth.Services
             }
         }
 
-        private static TokenResponse? ValidateClient(ClientCredential? client, TokenRequest request)
+        private static TokenResponse? ValidateClient(ClientCredential client, TokenRequest request, string? storedSecret)
         {
             return client switch
             {
-                null => new TokenResponse
-                {
-                    Error = "invalid_client",
-                    ErrorDescription = "No client found"
-                },
-
-                _ when !SecretsMatch(request.ClientSecret, client.ClientSecret) => new TokenResponse
+                _ when !SecretsMatch(request.ClientSecret, storedSecret) => new TokenResponse
                 {
                     Error = "invalid_client",
                     ErrorDescription = "Client secret not match"

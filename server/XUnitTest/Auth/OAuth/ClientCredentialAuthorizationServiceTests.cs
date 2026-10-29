@@ -7,6 +7,7 @@ using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using Moq;
 using StackExchange.Redis;
@@ -21,9 +22,11 @@ namespace XUnitTest.Auth.OAuth
         private readonly Mock<ICryptoService> _crypto = new();
         private readonly Mock<ICacheClient> _cache = new();
         private readonly Mock<ITenants> _tenants = new();
+        private readonly Mock<ISecretService> _secrets = new(MockBehavior.Strict);
 
         private ClientCredentialAuthorizationService Create() =>
-            new(_authRepo.Object, _certFactory.Object, _crypto.Object, _cache.Object, _tenants.Object);
+            new(_authRepo.Object, _certFactory.Object, _crypto.Object, _cache.Object, _tenants.Object,
+                TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets));
 
         private static IdentityConfiguration Config() => new();
 
@@ -162,6 +165,83 @@ namespace XUnitTest.Auth.OAuth
                 new TokenRequest { ClientId = "c1", ClientSecret = null }, Config());
 
             result.Error.Should().Be("invalid_client");
+        }
+
+        // ---------- secret in Blocks Secrets ----------
+
+        private static ClientCredential ReferencedClient(string staleField = "") =>
+            new() { ItemId = "c1", OrganizationId = "default", ClientSecret = staleField, ClientSecretReference = "cs-ref", IsActive = true, AccessTokenValidForNumberMinutes = 15 };
+
+        [Fact]
+        public async Task Authenticate_ReferencedSecret_IsComparedWithTheStoreValue_AndIssuesTheToken()
+        {
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            WireCertInfrastructure();
+            _authRepo.Setup(r => r.GetClientCredentialByIdAsync("c1")).ReturnsAsync(ReferencedClient());
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ReturnsAsync("blxk_store");
+            _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(CertTenant());
+            _cacheDb.Setup(d => d.StringGet(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).Returns(GenerateCertificate());
+
+            var result = await Create().AuthenticateAsync(new TokenRequest { ClientId = "c1", ClientSecret = "blxk_store" }, Config());
+
+            result.Error.Should().BeNull();
+            result.AccessToken.Should().NotBeNullOrWhiteSpace();
+            _secrets.Verify(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Authenticate_ReferencedSecret_WrongSecret_ReturnsInvalidClient()
+        {
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            _authRepo.Setup(r => r.GetClientCredentialByIdAsync("c1")).ReturnsAsync(ReferencedClient());
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ReturnsAsync("blxk_store");
+
+            var result = await Create().AuthenticateAsync(new TokenRequest { ClientId = "c1", ClientSecret = "blxk_other" }, Config());
+
+            result.Error.Should().Be("invalid_client");
+            result.ErrorDescription.Should().Be("Client secret not match");
+        }
+
+        [Fact]
+        public async Task Authenticate_ReferencedSecret_DoesNotAcceptAPlaintextLeftInTheDocument()
+        {
+            // The reference is authoritative: a value still in ClientSecret is never compared.
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            _authRepo.Setup(r => r.GetClientCredentialByIdAsync("c1")).ReturnsAsync(ReferencedClient(staleField: "blxk_stale"));
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ReturnsAsync("blxk_store");
+
+            var result = await Create().AuthenticateAsync(new TokenRequest { ClientId = "c1", ClientSecret = "blxk_stale" }, Config());
+
+            result.Error.Should().Be("invalid_client");
+        }
+
+        [Fact]
+        public async Task Authenticate_ReferencedSecret_StoreUnavailable_Returns503_NotInvalidClient()
+        {
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            _authRepo.Setup(r => r.GetClientCredentialByIdAsync("c1")).ReturnsAsync(ReferencedClient(staleField: "blxk_stale"));
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ThrowsAsync(new SecretVaultException("down cs-ref", "get", "cs-ref"));
+
+            var result = await Create().AuthenticateAsync(new TokenRequest { ClientId = "c1", ClientSecret = "blxk_stale" }, Config());
+
+            result.Error.Should().Be("temporarily_unavailable");
+            result.StatusCode.Should().Be(503);
+            result.AccessToken.Should().BeNull();
+            result.ErrorDescription.Should().NotContain("cs-ref");
+        }
+
+        [Fact]
+        public async Task Authenticate_LegacyPlaintext_MakesNoSecretCall()
+        {
+            WireCertInfrastructure();
+            _authRepo.Setup(r => r.GetClientCredentialByIdAsync("c1")).ReturnsAsync(ActiveClient());
+            _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(CertTenant());
+            _cacheDb.Setup(d => d.StringGet(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).Returns(GenerateCertificate());
+
+            var result = await Create().AuthenticateAsync(new TokenRequest { ClientId = "c1", ClientSecret = "secret" }, Config());
+
+            result.Error.Should().BeNull();
+            _secrets.VerifyNoOtherCalls();
         }
 
         [Fact]

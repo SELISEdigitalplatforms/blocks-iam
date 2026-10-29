@@ -46,7 +46,7 @@ namespace XUnitTest.Auth.Shared
                 _saveIdpValidator.Object,
                 _updateIdpValidator.Object),
             _httpClientFactory.Object,
-            TestDoubles.IdentityProviderSecretTestDoubles.Resolver());
+            TestDoubles.IdentityProviderSecretTestDoubles.Resolver(), TestDoubles.ClientCredentialSecretTestDoubles.Resolver());
 
         [Fact]
         public async Task ManagementGet_WithoutSavedTemplate_ReturnsNull()

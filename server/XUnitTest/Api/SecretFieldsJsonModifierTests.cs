@@ -29,9 +29,11 @@ namespace XUnitTest.ApiTests
         [Fact]
         public void ClientCredential_HasNoSecretKey()
         {
-            var json = Write(new ClientCredential { ItemId = "cc-1", Name = "svc", ClientSecret = "cc-secret" }).AsObject();
+            var json = Write(new ClientCredential { ItemId = "cc-1", Name = "svc", ClientSecret = "cc-secret", ClientSecretReference = "cs-ref" }).AsObject();
 
             json.ContainsKey("clientSecret").Should().BeFalse();
+            json.ContainsKey("clientSecretReference").Should().BeFalse();
+            json.ToJsonString().Should().NotContain("cs-ref");
             json["itemId"]!.GetValue<string>().Should().Be("cc-1");
         }
 
