@@ -804,6 +804,13 @@
             Allows authorized clients to introspect tokens and get claims/metadata
             </summary>
         </member>
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.AuthenticateClientAsync(System.String,System.String)">
+            <summary>
+            The authenticated client id, or null when the client is unknown, inactive or presented the
+            wrong secret. <c>SecretUnavailable</c> is true when the client's secret cannot be read from
+            the secret store: the caller answers 503, never "wrong secret".
+            </summary>
+        </member>
         <member name="T:Program">
             <summary>
             Auto-generated public partial Program class for top-level statement apps.

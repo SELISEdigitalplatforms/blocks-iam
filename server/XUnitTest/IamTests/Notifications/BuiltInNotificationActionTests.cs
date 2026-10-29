@@ -707,7 +707,7 @@ namespace XUnitTest.IamTests.Notifications
                     new Mock<IValidator<SaveIdentityProviderRequest>>().Object,
                     new Mock<IValidator<UpdateIdentityProviderRequest>>().Object),
                 new Mock<IHttpClientFactory>().Object,
-                TestDoubles.IdentityProviderSecretTestDoubles.Resolver(), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets),
+                TestDoubles.IdentityProviderSecretTestDoubles.Resolver(), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets), TestDoubles.OidcClientSecretTestDoubles.Resolver(_secrets),
                 NullLogger<AuthenticationDomainService>.Instance, _sender);
 
         [Fact]

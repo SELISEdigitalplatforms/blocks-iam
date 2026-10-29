@@ -1,3 +1,5 @@
+using Blocks.Genesis;
+using Blocks.Secrets;
 using System.Security.Claims;
 using System.Text;
 using Authentication.DomainService.Entities;
@@ -23,6 +25,7 @@ namespace XUnitTest.ApiTests
     {
         private const string ClientId = "cid";
         private const string ClientSecret = "sec";
+        private readonly Mock<ISecretService> _oidcSecrets = new(MockBehavior.Strict);
 
         private readonly Mock<ITokenRevocationService> _revocation = new();
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
@@ -42,6 +45,7 @@ namespace XUnitTest.ApiTests
                 _revocation.Object,
                 _authRepo.Object,
                 _domainService.Object,
+                XUnitTest.TestDoubles.OidcClientSecretTestDoubles.Resolver(_oidcSecrets),
                 _dispatcher.Object,
                 NullLogger<TokenManagementController>.Instance);
 
@@ -179,6 +183,31 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().IntrospectToken("tok", null, ClientId, ClientSecret);
 
             result.Should().BeOfType<UnauthorizedObjectResult>();
+        }
+
+        [Fact]
+        public async Task IntrospectToken_UnreadableReferencedSecret_Returns503_WithoutIntrospecting()
+        {
+            _authRepo.Setup(r => r.GetOidcClientRegistrationAsync(ClientId))
+                .ReturnsAsync(new OidcClientRegistration { ClientId = ClientId, ClientSecret = string.Empty, ClientSecretReference = "oidc-ref", IsActive = true });
+            _oidcSecrets.Setup(s => s.GetValueAsync("oidc-ref", It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new SecretVaultException("down", "get", "oidc-ref"));
+
+            IActionResult result;
+            BlocksContext.IsTestMode = true;
+            try
+            {
+                BlocksContext.SetContext(XUnitTest.TestDoubles.IdentityProviderSecretTestDoubles.AnonymousContext("t1"), false);
+                result = await CreateController().IntrospectToken("tok", null, ClientId, ClientSecret);
+            }
+            finally
+            {
+                BlocksContext.SetContext(null, false);
+                BlocksContext.IsTestMode = false;
+            }
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+            _revocation.Verify(r => r.IntrospectTokenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

@@ -48,11 +48,11 @@ namespace XUnitTest.ApiTests
         [Fact]
         public void OidcClientResponses_HaveNoSecretKey()
         {
-            var one = Write(new GetOIDCClientResponse { IsSuccess = true, oIDCClientCredential = new OidcClientRegistration { ItemId = "c1", ClientId = "c1", ClientSecret = "oidc-secret" } });
-            var many = Write(new GetOIDCClientsResponse { IsSuccess = true, oIDCClientCredentials = [new() { ItemId = "c1", ClientId = "c1", ClientSecret = "oidc-secret" }] });
+            var one = Write(new GetOIDCClientResponse { IsSuccess = true, oIDCClientCredential = new OidcClientRegistration { ItemId = "c1", ClientId = "c1", ClientSecret = "oidc-secret", ClientSecretReference = "oidc-ref" } });
+            var many = Write(new GetOIDCClientsResponse { IsSuccess = true, oIDCClientCredentials = [new() { ItemId = "c1", ClientId = "c1", ClientSecret = "oidc-secret", ClientSecretReference = "oidc-ref" }] });
 
-            one.ToJsonString().Should().NotContain("clientSecret").And.NotContain("oidc-secret").And.Contain("\"clientId\":\"c1\"");
-            many.ToJsonString().Should().NotContain("clientSecret").And.NotContain("oidc-secret");
+            one.ToJsonString().Should().NotContain("clientSecret").And.NotContain("oidc-secret").And.NotContain("oidc-ref").And.Contain("\"clientId\":\"c1\"");
+            many.ToJsonString().Should().NotContain("clientSecret").And.NotContain("oidc-secret").And.NotContain("oidc-ref");
         }
 
         [Fact]

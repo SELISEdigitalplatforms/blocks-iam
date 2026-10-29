@@ -54,7 +54,7 @@ namespace XUnitTest.Auth.Shared
                     Mock.Of<IValidator<SaveOIDCClientRequest>>(), Mock.Of<IValidator<SaveOidcUiTemplateRequest>>(),
                     Mock.Of<IValidator<SaveIdentityProviderRequest>>(), Mock.Of<IValidator<UpdateIdentityProviderRequest>>()),
                 Mock.Of<IHttpClientFactory>(), IdentityProviderSecretTestDoubles.Resolver(),
-                ClientCredentialSecretTestDoubles.Resolver(_secrets), _logger);
+                ClientCredentialSecretTestDoubles.Resolver(_secrets), OidcClientSecretTestDoubles.Resolver(), _logger);
 
         private static SaveClientCredentialRequest NewCredential() => new() { Name = "svc", Roles = ["r"] };
 

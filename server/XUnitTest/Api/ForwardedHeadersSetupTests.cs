@@ -420,7 +420,7 @@ public class ForwardedHeadersSetupTests : IDisposable
         new AuthenticationRequestValidators(
             Mock.Of<IValidator<SaveOIDCClientRequest>>(), Mock.Of<IValidator<SaveOidcUiTemplateRequest>>(),
             Mock.Of<IValidator<SaveIdentityProviderRequest>>(), Mock.Of<IValidator<UpdateIdentityProviderRequest>>()),
-        Mock.Of<IHttpClientFactory>(), XUnitTest.TestDoubles.IdentityProviderSecretTestDoubles.Resolver(), XUnitTest.TestDoubles.ClientCredentialSecretTestDoubles.Resolver());
+        Mock.Of<IHttpClientFactory>(), XUnitTest.TestDoubles.IdentityProviderSecretTestDoubles.Resolver(), XUnitTest.TestDoubles.ClientCredentialSecretTestDoubles.Resolver(), XUnitTest.TestDoubles.OidcClientSecretTestDoubles.Resolver());
 
     [Fact]
     public async Task H12_GetVisitorsIpAddresses_ReturnsOnlyTheResolvedClient()

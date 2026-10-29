@@ -39,6 +39,7 @@ namespace Authentication.DomainService.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IIdentityProviderSecretResolver _secretResolver;
         private readonly IClientCredentialSecretResolver _clientSecretResolver;
+        private readonly IOidcClientSecretResolver _oidcSecretResolver;
         private readonly ILogger<AuthenticationDomainService>? _logger;
         private readonly IBuiltInNotificationSender? _notificationSender;
 
@@ -52,6 +53,7 @@ namespace Authentication.DomainService.Services
                                            IHttpClientFactory httpClientFactory,
                                            IIdentityProviderSecretResolver secretResolver,
                                            IClientCredentialSecretResolver clientSecretResolver,
+                                           IOidcClientSecretResolver oidcSecretResolver,
                                            ILogger<AuthenticationDomainService>? logger = null,
                                            IBuiltInNotificationSender? notificationSender = null)
         {
@@ -65,6 +67,7 @@ namespace Authentication.DomainService.Services
             _httpClientFactory = httpClientFactory;
             _secretResolver = secretResolver;
             _clientSecretResolver = clientSecretResolver;
+            _oidcSecretResolver = oidcSecretResolver;
             _logger = logger;
         }
 
@@ -180,7 +183,30 @@ namespace Authentication.DomainService.Services
             ApplyOidcClientOptions(credential, request);
             ApplyOidcClientTokenLifetimes(credential, request.TokenLifetimes, isNewClient);
 
-            await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
+            OidcClientSecretWrite secretWrite;
+            try
+            {
+                secretWrite = await PrepareOidcClientSecretAsync(credential, request.IsDeviceFlowClient);
+            }
+            catch (SecretVaultException)
+            {
+                return new SaveOIDCClientResponse { IsSuccess = false, Errors = SecretStoreUnavailable().Errors };
+            }
+
+            try
+            {
+                await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
+            }
+            catch
+            {
+                // The upsert may still have committed: the secret created here is retired only when
+                // the stored document does not point at it.
+                await RetireUnreferencedOidcClientSecretAsync(credential, secretWrite.CreatedReference, keepWhenMissing: !isNewClient);
+                throw;
+            }
+
+            // A client that became device-flow dropped its secret.
+            await RetireUnreferencedOidcClientSecretAsync(credential, secretWrite.DroppedReference, keepWhenMissing: true);
 
             // Sync the linked Blocks IdentityProvider with the OIDC client based on the
             // RegisterAsIdentityProvider flag. Handles all three transitions:
@@ -208,7 +234,10 @@ namespace Authentication.DomainService.Services
                             DisplayName = request.ClientDisplayName ?? credential.ClientId,
                             IsActive = credential.IsActive,
                             ClientId = credential.ClientId,
+                            // The provider shares its client's secret reference: it never holds the
+                            // plaintext, and a rotation of the client reaches it.
                             ClientSecret = credential.ClientSecret,
+                            ClientSecretReference = credential.ClientSecretReference,
                             WellKnownUrl = credential.ExternalDiscoveryEndpoint,
                             RedirectUris = credential.RedirectUris ?? new List<string>(),
                             Scope = credential.Scope,
@@ -228,10 +257,11 @@ namespace Authentication.DomainService.Services
                         existingProvider.ProviderType = IdpConstants.BlocksOidcProviderType;
                         existingProvider.Protocol = IdpConstants.OidcProtocol;
                         existingProvider.ClientId = credential.ClientId;
-                        // The mirrored plaintext becomes authoritative: drop any reference so it is used.
+                        // The provider shares its client's secret reference instead of a plaintext copy.
+                        // A secret of its own (or a legacy copy's) is retired once the update lands.
                         var replacedReference = existingProvider.ClientSecretReference;
                         existingProvider.ClientSecret = credential.ClientSecret;
-                        existingProvider.ClientSecretReference = null;
+                        existingProvider.ClientSecretReference = credential.ClientSecretReference;
                         existingProvider.DisplayName = request.ClientDisplayName ?? credential.ClientId;
                         existingProvider.RedirectUris = credential.RedirectUris ?? new List<string>();
                         existingProvider.Scope = credential.Scope;
@@ -240,13 +270,15 @@ namespace Authentication.DomainService.Services
                         existingProvider.TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod;
                         existingProvider.IsActive = credential.IsActive;
                         await _authenticationRepository.UpdateIdentityProviderAsync(existingProvider);
-                        await RetireReplacedSecretAsync(existingProvider, IdentityProviderSecretKind.ClientSecret, replacedReference);
+                        if (replacedReference != credential.ClientSecretReference)
+                            await RetireReplacedSecretAsync(existingProvider, IdentityProviderSecretKind.ClientSecret, replacedReference);
                     }
                 }
                 else if (existingProvider != null && !string.IsNullOrWhiteSpace(existingProvider.ItemId))
                 {
                     // Flag was turned off — remove the previously linked Blocks provider.
-                    // Mirrors DeleteOidcClientAsync which also cleans up by ClientId.
+                    // Mirrors DeleteOidcClientAsync which also cleans up by ClientId. The secret it
+                    // shared stays with the client (see IsLiveOidcClientSecretAsync).
                     await _authenticationRepository.DeleteIdentityProviderAsync(existingProvider.ItemId);
                     await RetireSecretsOfDeletedProviderAsync(existingProvider);
                 }
@@ -263,8 +295,46 @@ namespace Authentication.DomainService.Services
             {
                 IsSuccess = true,
                 ItemId = credential.ItemId,
-                ClientSecret = isNewClient ? credential.ClientSecret : null
+                ClientSecret = isNewClient ? secretWrite.Value : null
             };
+        }
+
+        /// <summary>The secret side of an OIDC client save, prepared before the document is written.</summary>
+        /// <param name="Value">The secret now in the store when this save created one (returned on create only).</param>
+        /// <param name="CreatedReference">A secret stored by this save, retired again if the save does not land.</param>
+        /// <param name="DroppedReference">A secret the client no longer uses (it became device-flow), retired after the save.</param>
+        private sealed record OidcClientSecretWrite(string? Value, string? CreatedReference, string? DroppedReference);
+
+        /// <summary>
+        /// Puts the client's secret in Blocks Secrets before the save; the document keeps the
+        /// reference only. Secret-store exceptions propagate.
+        /// </summary>
+        /// <remarks>
+        /// A client that already has a reference is left as it is. A client saved before Blocks
+        /// Secrets still holds its plaintext: the save moves the same value, so an application
+        /// holding it keeps working. A client without a secret (new, or no longer device-flow) gets
+        /// a new one, generated by the backend as before.
+        /// </remarks>
+        private async Task<OidcClientSecretWrite> PrepareOidcClientSecretAsync(OidcClientRegistration credential, bool isDeviceFlowClient)
+        {
+            if (isDeviceFlowClient)
+            {
+                // Device-flow clients are always public (TokenEndpointAuthMethod "none") and never
+                // authenticate with a secret; one left over from before is dropped.
+                var dropped = credential.ClientSecretReference;
+                credential.ClientSecret = null;
+                credential.ClientSecretReference = null;
+                return new OidcClientSecretWrite(null, null, dropped);
+            }
+
+            if (!string.IsNullOrEmpty(credential.ClientSecretReference))
+                return new OidcClientSecretWrite(null, null, null);
+
+            var value = string.IsNullOrWhiteSpace(credential.ClientSecret) ? GenerateClientSecret() : credential.ClientSecret;
+            var reference = await _oidcSecretResolver.StoreAsync(credential, value);
+            credential.ClientSecretReference = reference;
+            credential.ClientSecret = string.Empty;
+            return new OidcClientSecretWrite(value, reference, null);
         }
 
         private const string OidcClientKind = "oidc-client";
@@ -380,17 +450,7 @@ namespace Authentication.DomainService.Services
             credential.ItemId = clientId;
             credential.ClientId = clientId;
             // ClientSecret rule: BE-generated on create only; preserved (never overwritten) on update.
-            // Device-flow clients are always public (TokenEndpointAuthMethod "none") and never
-            // authenticate with a secret, so none is generated — and any secret left over from
-            // before the client became device-flow-only is cleared.
-            if (request.IsDeviceFlowClient)
-            {
-                credential.ClientSecret = null;
-            }
-            else if (string.IsNullOrWhiteSpace(credential.ClientSecret))
-            {
-                credential.ClientSecret = GenerateClientSecret();
-            }
+            // PrepareOidcClientSecretAsync applies it, in Blocks Secrets.
 
             return (credential, isNew);
         }
@@ -566,12 +626,16 @@ namespace Authentication.DomainService.Services
                 if (relatedProvider != null && !string.IsNullOrWhiteSpace(relatedProvider.ItemId))
                 {
                     await _authenticationRepository.DeleteIdentityProviderAsync(relatedProvider.ItemId);
+                    // A linked provider shares this client's secret, which is retired below with the client.
+                    if (relatedProvider.ClientSecretReference == credential.ClientSecretReference)
+                        relatedProvider.ClientSecretReference = null;
                     await RetireSecretsOfDeletedProviderAsync(relatedProvider);
                 }
             }
 
             if (credential != null)
             {
+                await RetireSecretOfDeletedOidcClientAsync(credential);
                 await NotifyClientCredentialChangedAsync(OidcClientKind, "deleted", credential.ClientId, credential.CreatedBy, null);
             }
 
@@ -964,6 +1028,94 @@ namespace Authentication.DomainService.Services
         private void LogClientCredentialReReadFailed(ClientCredential credential, Exception ex) =>
             _logger?.LogWarning("Client credential {ClientId} could not be re-read ({FailureClass}); its secret is kept.", credential.ItemId, ex.GetType().Name);
 
+        /// <summary>
+        /// Retires the secret of an OIDC client whose document delete was just requested. Data-access
+        /// denials make the delete a silent no-op, so the client is re-read first: the secret of a
+        /// client that still exists is never retired.
+        /// </summary>
+        private async Task RetireSecretOfDeletedOidcClientAsync(OidcClientRegistration client)
+        {
+            if (string.IsNullOrEmpty(client.ClientSecretReference))
+                return;
+
+            OidcClientRegistration? stored;
+            try
+            {
+                stored = await _authenticationRepository.GetOidcClientRegistrationAsync(client.ItemId);
+            }
+            catch (Exception ex)
+            {
+                // The delete itself completed: a failing check must not turn it into an error.
+                LogOidcClientReReadFailed(client, ex);
+                return;
+            }
+
+            if (stored != null)
+            {
+                _logger?.LogWarning("OIDC client {ClientId} was not deleted; its secret is kept.", client.ClientId);
+                return;
+            }
+
+            await _oidcSecretResolver.RetireAsync(client, client.ClientSecretReference, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// After an OIDC client write whose outcome is not known (it threw), or one that dropped a
+        /// secret, re-reads the client and retires <paramref name="reference"/> when the stored
+        /// document does not point at it.
+        /// </summary>
+        /// <remarks>
+        /// Fail safe, orphan over dangling, as for client credentials: nothing is retired when the
+        /// re-read fails, nor, with <paramref name="keepWhenMissing"/>, when it finds no document.
+        /// </remarks>
+        private async Task RetireUnreferencedOidcClientSecretAsync(OidcClientRegistration client, string? reference, bool keepWhenMissing)
+        {
+            if (string.IsNullOrEmpty(reference))
+                return;
+
+            OidcClientRegistration? stored;
+            try
+            {
+                stored = await _authenticationRepository.GetOidcClientRegistrationAsync(client.ItemId);
+            }
+            catch (Exception ex)
+            {
+                LogOidcClientReReadFailed(client, ex);
+                return;
+            }
+
+            if (stored == null && keepWhenMissing)
+            {
+                _logger?.LogWarning("OIDC client {ClientId} could not be read back after the update; its secret is kept.", client.ClientId);
+                return;
+            }
+
+            if (stored?.ClientSecretReference == reference)
+                return;
+
+            await _oidcSecretResolver.RetireAsync(client, reference, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// The client document was not written after a rotate: a secret created for it is retired
+        /// when the stored document does not point at it. A rotation in place cannot be undone (the
+        /// store already holds the new value), so it is only logged.
+        /// </summary>
+        private async Task UndoOidcClientSecretReplaceAsync(OidcClientRegistration client, string? createdReference)
+        {
+            if (createdReference != null)
+            {
+                await RetireUnreferencedOidcClientSecretAsync(client, createdReference, keepWhenMissing: true);
+                return;
+            }
+
+            _logger?.LogWarning("OIDC client {ClientId} was not updated, but its secret rotation cannot be undone.", client.ClientId);
+        }
+
+        // Type only: a repository exception message can carry document values.
+        private void LogOidcClientReReadFailed(OidcClientRegistration client, Exception ex) =>
+            _logger?.LogWarning("OIDC client {ClientId} could not be re-read ({FailureClass}); its secret is kept.", client.ClientId, ex.GetType().Name);
+
         public async Task<List<ClientCredential>> GetClientCredentialsAsync(GetAllClientCredentialsRequest request)
         {
             // Scoped so one organization's administrator cannot see another organization's credentials.
@@ -1138,8 +1290,39 @@ namespace Authentication.DomainService.Services
                 return;
             }
 
-            await _secretResolver.RetireAsync(provider, IdentityProviderSecretKind.ClientSecret, provider.ClientSecretReference, CancellationToken.None);
+            if (!await IsLiveOidcClientSecretAsync(provider, provider.ClientSecretReference))
+                await _secretResolver.RetireAsync(provider, IdentityProviderSecretKind.ClientSecret, provider.ClientSecretReference, CancellationToken.None);
             await _secretResolver.RetireAsync(provider, IdentityProviderSecretKind.PrivateKey, provider.PrivateKeyReference, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// True when <paramref name="reference"/> is the secret of the OIDC client this provider was
+        /// registered from ("register as identity provider"): the two share one secret, which belongs
+        /// to the client and is retired with it, never through the provider.
+        /// </summary>
+        /// <remarks>
+        /// Only Blocks-OIDC providers can be linked. When the client cannot be read the secret is
+        /// kept (orphan over dangling).
+        /// </remarks>
+        private async Task<bool> IsLiveOidcClientSecretAsync(IdentityProvider provider, string? reference)
+        {
+            if (string.IsNullOrEmpty(reference)
+                || string.IsNullOrWhiteSpace(provider.ClientId)
+                || !string.Equals(provider.ProviderType, IdpConstants.BlocksOidcProviderType, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            OidcClientRegistration? client;
+            try
+            {
+                client = await _authenticationRepository.GetOidcClientRegistrationAsync(provider.ClientId);
+            }
+            catch (Exception ex)
+            {
+                LogReReadFailed(provider, ex);
+                return true;
+            }
+
+            return client?.ClientSecretReference == reference;
         }
 
         /// <summary>
@@ -1168,6 +1351,9 @@ namespace Authentication.DomainService.Services
                 _logger?.LogWarning("Identity provider {Provider} was not updated; its {SecretKind} secret is kept.", IdentityProviderLog.Name(provider), kind);
                 return;
             }
+
+            if (kind == IdentityProviderSecretKind.ClientSecret && await IsLiveOidcClientSecretAsync(provider, reference))
+                return;
 
             await _secretResolver.RetireAsync(provider, kind, reference, CancellationToken.None);
         }
@@ -1262,7 +1448,9 @@ namespace Authentication.DomainService.Services
         // from a fresh "ForView" read and are never saved back, so clearing them changes nothing stored.
         private static void HideSecret(OidcClientRegistration? client)
         {
-            if (client != null) client.ClientSecret = null;
+            if (client == null) return;
+            client.ClientSecret = null;
+            client.ClientSecretReference = null;
         }
 
         private static void HideSecret(ClientCredential credential)
@@ -1471,6 +1659,7 @@ namespace Authentication.DomainService.Services
                     var deleteRequest = new DeleteOIDCClientRequest { ItemId = existing.ClientId };
                     // Call repository directly to avoid recursive sync logic
                     await _authenticationRepository.DeleteOidcClientAsync(deleteRequest);
+                    await RetireSecretOfDeletedOidcClientAsync(relatedCredential);
                 }
             }
 
@@ -1507,26 +1696,53 @@ namespace Authentication.DomainService.Services
 
             var blocksContext = BlocksContext.GetContext();
             var rotatedAt = DateTime.UtcNow;
-            credential.ClientSecret = GenerateClientSecret();
+
+            // Rotated in place when the client already has a secret in the store; a client still on
+            // plaintext gets a new secret, which moves it to the store.
+            var clientSecret = GenerateClientSecret();
+            string reference;
+            bool created;
+            try
+            {
+                (reference, created) = await _oidcSecretResolver.ReplaceAsync(credential, clientSecret);
+            }
+            catch (SecretVaultException)
+            {
+                return new RotateOidcClientSecretResponse { IsSuccess = false, Errors = SecretStoreUnavailable().Errors };
+            }
+
+            var createdReference = created ? reference : null;
+            credential.ClientSecretReference = reference;
+            credential.ClientSecret = string.Empty;
             credential.LastUpdatedBy = blocksContext?.UserId;
             credential.LastUpdatedDate = rotatedAt;
 
-            await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
+            try
+            {
+                await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
+            }
+            catch
+            {
+                await UndoOidcClientSecretReplaceAsync(credential, createdReference);
+                throw;
+            }
 
-            // The linked Blocks IdentityProvider keeps its own copy of the secret, so a rotation
-            // that only wrote OidcClientRegistrations would leave federation presenting the old
-            // one at the token endpoint. Keep the mirror current — same ClientId link the
-            // RegisterAsIdentityProvider sync in SaveOIDCClientAsync uses.
+            // The linked Blocks IdentityProvider shares the client's secret reference, so a rotation
+            // in place reaches it with no write. It is updated only when it points elsewhere: the
+            // rotation stored a new secret, or it still holds a plaintext copy from before Blocks
+            // Secrets. Same ClientId link the RegisterAsIdentityProvider sync in SaveOIDCClientAsync uses.
             if (credential.RegisterAsIdentityProvider && !string.IsNullOrWhiteSpace(credential.ClientId))
             {
                 var linkedProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(credential.ClientId);
-                if (linkedProvider != null && !string.IsNullOrWhiteSpace(linkedProvider.ItemId))
+                if (linkedProvider != null && !string.IsNullOrWhiteSpace(linkedProvider.ItemId)
+                    && (linkedProvider.ClientSecretReference != reference || !string.IsNullOrEmpty(linkedProvider.ClientSecret)))
                 {
                     var replacedReference = linkedProvider.ClientSecretReference;
-                    linkedProvider.ClientSecret = credential.ClientSecret;
-                    linkedProvider.ClientSecretReference = null;
+                    linkedProvider.ClientSecret = string.Empty;
+                    linkedProvider.ClientSecretReference = reference;
                     await _authenticationRepository.UpdateIdentityProviderAsync(linkedProvider);
-                    await RetireReplacedSecretAsync(linkedProvider, IdentityProviderSecretKind.ClientSecret, replacedReference);
+                    if (replacedReference != reference)
+                        await RetireReplacedSecretAsync(linkedProvider, IdentityProviderSecretKind.ClientSecret, replacedReference);
                 }
             }
 
@@ -1537,7 +1753,7 @@ namespace Authentication.DomainService.Services
                 IsSuccess = true,
                 ItemId = credential.ItemId,
                 ClientId = credential.ClientId,
-                ClientSecret = credential.ClientSecret,
+                ClientSecret = clientSecret,
                 RotatedAt = rotatedAt,
                 RotatedBy = blocksContext?.UserId,
             };

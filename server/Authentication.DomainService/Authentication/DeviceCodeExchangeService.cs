@@ -28,6 +28,7 @@ namespace Authentication.DomainService.Authentication
         private readonly DeviceCodeGenerator _codeGenerator;
         private readonly IOidcTokenMintService _mintService;
         private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IOidcClientSecretResolver _clientSecrets;
         private readonly IUserRepository _userRepository;
         private readonly IOptions<DeviceFlowOptions> _options;
         private readonly ILogger<DeviceCodeExchangeService> _logger;
@@ -37,6 +38,7 @@ namespace Authentication.DomainService.Authentication
             DeviceCodeGenerator codeGenerator,
             IOidcTokenMintService mintService,
             IAuthenticationRepository authenticationRepository,
+            IOidcClientSecretResolver clientSecrets,
             IUserRepository userRepository,
             IOptions<DeviceFlowOptions> options,
             ILogger<DeviceCodeExchangeService> logger)
@@ -45,6 +47,7 @@ namespace Authentication.DomainService.Authentication
             _codeGenerator = codeGenerator;
             _mintService = mintService;
             _authenticationRepository = authenticationRepository;
+            _clientSecrets = clientSecrets;
             _userRepository = userRepository;
             _options = options;
             _logger = logger;
@@ -131,9 +134,15 @@ namespace Authentication.DomainService.Authentication
                 return DeviceEndpointErrors.InvalidClient("client is not authorized for the device_code grant");
             }
 
-            if (OidcClientValidator.RequiresClientAuthentication(client) && !OidcClientValidator.SecretsMatch(clientSecret, client!.ClientSecret))
+            if (OidcClientValidator.RequiresClientAuthentication(client))
             {
-                return DeviceEndpointErrors.InvalidClient("invalid client authentication");
+                switch (await _clientSecrets.CheckSecretAsync(client!, clientSecret))
+                {
+                    case OidcClientSecretCheck.Unavailable:
+                        return DeviceEndpointErrors.TemporarilyUnavailable(OidcClientSecretResolverExtensions.UnavailableDescription);
+                    case OidcClientSecretCheck.DoesNotMatch:
+                        return DeviceEndpointErrors.InvalidClient("invalid client authentication");
+                }
             }
 
             var cookieTenantId = ResolveTenantIdFromRequest(request);

@@ -38,6 +38,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IUserRepository _userRepository;
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IOidcClientSecretResolver _clientSecrets;
         private readonly ITenants _tenants;
         private readonly ILogger<AuthorizationCodeExchangeService> _logger;
         private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
@@ -50,12 +51,14 @@ namespace Authentication.DomainService.Authentication
             IUserRepository userRepository,
             IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
+            IOidcClientSecretResolver clientSecrets,
             ITenants tenants,
             ITokenRevocationRepository tokenRevocationRepo,
             ICacheClient cacheClient,
             ILogger<AuthorizationCodeExchangeService> logger,
             IOidcClientTokenLifetimeService? clientTokenLifetimes = null)
         {
+            _clientSecrets = clientSecrets;
             _clientTokenLifetimes = clientTokenLifetimes;
             _authCodeRepo = authCodeRepo;
             _refreshTokenRepo = refreshTokenRepo;
@@ -392,10 +395,21 @@ namespace Authentication.DomainService.Authentication
 
             // A confidential client proves it is the client (RFC 6749 3.2.1); without this a leaked code
             // plus the public client_id and redirect_uri was enough. Same rule as the device flow.
-            if (OidcClientValidator.RequiresClientAuthentication(client) && !OidcClientValidator.SecretsMatch(clientSecret, client.ClientSecret))
+            if (OidcClientValidator.RequiresClientAuthentication(client))
             {
-                _logger.LogWarning("Client authentication failed for code exchange, client {ClientId}", clientId);
-                return OidcExchangeResult.FromError(new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client authentication failed" }));
+                switch (await _clientSecrets.CheckSecretAsync(client, clientSecret))
+                {
+                    case OidcClientSecretCheck.Unavailable:
+                        return OidcExchangeResult.FromError(new ObjectResult(new
+                        {
+                            error = OidcClientSecretResolverExtensions.UnavailableError,
+                            error_description = OidcClientSecretResolverExtensions.UnavailableDescription
+                        })
+                        { StatusCode = StatusCodes.Status503ServiceUnavailable });
+                    case OidcClientSecretCheck.DoesNotMatch:
+                        _logger.LogWarning("Client authentication failed for code exchange, client {ClientId}", clientId);
+                        return OidcExchangeResult.FromError(new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client authentication failed" }));
+                }
             }
 
             // A public client has no secret, so PKCE is its only proof (RFC 9700 2.1.1).

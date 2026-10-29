@@ -52,7 +52,7 @@ namespace XUnitTest.Auth.Shared
         private AuthenticationDomainService Create() =>
             new(_message.Object, _repo.Object,
                 new AuthenticationRequestValidators(new SaveOIDCClientRequestValidator(), _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(), TestDoubles.ClientCredentialSecretTestDoubles.Resolver());
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(), TestDoubles.OidcClientSecretTestDoubles.Resolver(XUnitTest.TestDoubles.OidcClientSecretTestDoubles.AcceptingStore()));
 
         private static SaveOIDCClientRequest AppClient() => new()
         {

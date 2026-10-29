@@ -108,7 +108,7 @@ namespace XUnitTest.Auth.Shared
                     new Mock<IValidator<SaveIdentityProviderRequest>>().Object,
                     new Mock<IValidator<UpdateIdentityProviderRequest>>().Object),
                 new Mock<IHttpClientFactory>().Object,
-                TestDoubles.IdentityProviderSecretTestDoubles.Resolver(), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(),
+                TestDoubles.IdentityProviderSecretTestDoubles.Resolver(), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(), TestDoubles.OidcClientSecretTestDoubles.Resolver(XUnitTest.TestDoubles.OidcClientSecretTestDoubles.AcceptingStore()),
                 NullLogger<AuthenticationDomainService>.Instance);
         }
 
@@ -615,7 +615,7 @@ namespace XUnitTest.Auth.Shared
 
             var exchange = new AuthorizationCodeExchangeService(
                 authCodes.Object, _refreshRepo.Object, tokenService.Object, new Mock<IPkceService>().Object, users.Object,
-                claims.Object, _repo.Object, tenants.Object, new Mock<ITokenRevocationRepository>().Object, _cache.Object,
+                claims.Object, _repo.Object, XUnitTest.TestDoubles.OidcClientSecretTestDoubles.Resolver(XUnitTest.TestDoubles.OidcClientSecretTestDoubles.AcceptingStore()), tenants.Object, new Mock<ITokenRevocationRepository>().Object, _cache.Object,
                 NullLogger<AuthorizationCodeExchangeService>.Instance, _lifetimes.Object);
 
             var context = new DefaultHttpContext();
