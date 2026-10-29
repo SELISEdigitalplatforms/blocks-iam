@@ -1,3 +1,4 @@
+using Authentication.DomainService.Authentication.LoginPolicies;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
@@ -39,6 +40,7 @@ namespace Authentication.DomainService.Authentication
         public ITenants Tenants { get; }
         public ICacheClient Cache { get; }
         public IResourceRepository Resources { get; }
+        public ILoginPolicyService LoginPolicy { get; }
 
         public OidcAuthorizationIdentityStores(
             IUserRepository users,
@@ -46,7 +48,8 @@ namespace Authentication.DomainService.Authentication
             IAuthenticationService authenticationService,
             ITenants tenants,
             ICacheClient cache,
-            IResourceRepository resources)
+            IResourceRepository resources,
+            ILoginPolicyService loginPolicy)
         {
             Users = users;
             Authentication = authentication;
@@ -54,6 +57,7 @@ namespace Authentication.DomainService.Authentication
             Tenants = tenants;
             Cache = cache;
             Resources = resources;
+            LoginPolicy = loginPolicy;
         }
     }
 }

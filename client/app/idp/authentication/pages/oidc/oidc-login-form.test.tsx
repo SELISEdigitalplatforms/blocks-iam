@@ -533,6 +533,35 @@ describe("OidcLoginForm", () => {
     expect(screen.getByText("or")).toBeInTheDocument();
   });
 
+  it("asks for the options of this application", async () => {
+    const { useGetLoginOptions } = await import("@blocks-idp/authentication/hooks/use-auth");
+    renderForm();
+    expect(useGetLoginOptions).toHaveBeenCalledWith(expect.anything(), true, expect.any(String));
+  });
+
+  it("hides the password form when the application allows social only", () => {
+    h.loginOption = { allowedGrantTypes: ["authorization_code", "social"], ssoInfo: [{ provider: "google" }] };
+    renderForm();
+    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+    expect(screen.getByTestId("sso-signin")).toBeInTheDocument();
+    expect(screen.queryByText("or")).not.toBeInTheDocument();
+  });
+
+  it("keeps the password form while the options have no grant list", () => {
+    h.loginOption = { ssoInfo: [] };
+    renderForm();
+    expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+  });
+
+  it("says so when no sign-in method is available", () => {
+    h.loginOption = { allowedGrantTypes: ["authorization_code"], ssoInfo: null };
+    renderForm();
+    expect(screen.getByTestId("no-sign-in-method")).toHaveTextContent(
+      "No sign-in method is available for this application.",
+    );
+    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+  });
+
   it("renders the sign-up link when self sign-up is enabled", () => {
     h.signUpSetting = { isSignUpEnable: true };
     renderForm();

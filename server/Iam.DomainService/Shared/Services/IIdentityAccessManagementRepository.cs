@@ -48,6 +48,7 @@ namespace Iam.DomainService.Services
         Task<string> GetUserIdFromKeyMapByKeyAsync(string key);
         Task<UserKeyMap?> GetUserKeyMapByKeyAsync(string key);
         Task SaveSignUpSettingAsync(TenantConfiguration tenantConfiguration);
+        Task SaveLoginPolicyAsync(TenantLoginPolicy loginPolicy, string? updatedBy);
         Task<IamTenantConfiguration> GetTenantConfigurationAsync();
         /// <summary>Removes a role slug from the tenant's signup default roles.</summary>
         Task<bool> PullSignUpDefaultRoleAsync(string slug);

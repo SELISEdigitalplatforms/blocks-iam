@@ -1,3 +1,4 @@
+using Authentication.DomainService.Authentication.LoginPolicies;
 using Authentication.DomainService.Entities;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
@@ -52,6 +53,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IUnknownUserLoginGuard _unknownUserLoginGuard;
 
         private readonly IMfaAttemptGate _mfaAttemptGate;
+        private readonly ILoginPolicyService _loginPolicy;
 
         public OidcLoginOrchestrator(
             IAuthenticationRepository authenticationRepository,
@@ -66,8 +68,10 @@ namespace Authentication.DomainService.Authentication
             OidcAuthorizationEndpoint authorizationEndpoint,
             ILogger<OidcLoginOrchestrator> logger,
             IUnknownUserLoginGuard unknownUserLoginGuard,
+            ILoginPolicyService loginPolicy,
             IMfaAttemptGate? mfaAttemptGate = null)
         {
+            _loginPolicy = loginPolicy;
             _authenticationRepository = authenticationRepository;
             _mfaAttemptGate = mfaAttemptGate ?? new MfaAttemptGate(authenticationRepository);
             _mfaChallengeIssuer = mfaChallengeIssuer;
@@ -189,7 +193,8 @@ namespace Authentication.DomainService.Authentication
                 httpRequest.HttpContext.Response,
                 user!.ItemId,
                 false,
-                mfaCompleted: false);
+                mfaCompleted: false,
+                loginMethod: LoginMethods.Password);
 
             await _auditWriter.WriteAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
 
@@ -225,6 +230,13 @@ namespace Authentication.DomainService.Authentication
             if (oidcClient == null || !oidcClient.IsActive)
             {
                 return (new BadRequestObjectResult(new { error = "invalid_client", error_description = $"OIDC client '{request.ClientId}' not found or not configured" }), null, null, null);
+            }
+
+            // Tenant login policy, before any user lookup or password check.
+            var policy = await _loginPolicy.CheckAsync(LoginChannel.Oidc, LoginMethods.Password, oidcClient);
+            if (!policy.IsAllowed)
+            {
+                return (LoginNotAllowed(policy), null, null, null);
             }
 
             var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
@@ -368,6 +380,9 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
+        private static ObjectResult LoginNotAllowed(LoginPolicyDecision decision) =>
+            new(new { error = LoginPolicyRules.Error, error_description = decision.Message }) { StatusCode = StatusCodes.Status403Forbidden };
+
         private async Task<IActionResult> CompleteMfaLoginAsync(OidcLoginRequest request, HttpRequest httpRequest, HttpResponse httpResponse)
         {
             if (string.IsNullOrWhiteSpace(request.MfaId) || string.IsNullOrWhiteSpace(request.MfaCode))
@@ -385,6 +400,16 @@ namespace Authentication.DomainService.Authentication
             if (mfaContext == null || string.IsNullOrWhiteSpace(mfaContext.UserId))
             {
                 return new BadRequestObjectResult(new { error = "invalid_mfa_session", error_description = "Mfa login session is invalid" });
+            }
+
+            // A method turned off between the password step and the code step stops here.
+            var mfaClient = string.IsNullOrWhiteSpace(mfaContext.ClientId)
+                ? null
+                : await _authenticationRepository.GetOidcClientRegistrationAsync(mfaContext.ClientId);
+            var policy = await _loginPolicy.CheckAsync(LoginChannel.Oidc, LoginMethods.Password, mfaClient);
+            if (!policy.IsAllowed)
+            {
+                return LoginNotAllowed(policy);
             }
 
             var user = await _authenticationRepository.GetUserByIdAsync(mfaContext.UserId);
@@ -466,7 +491,8 @@ namespace Authentication.DomainService.Authentication
                 httpResponse,
                 user.ItemId,
                 false,
-                mfaCompleted: true);
+                mfaCompleted: true,
+                loginMethod: LoginMethods.Password);
 
             await _auditWriter.WriteAsync(mfaContext.TenantId, mfaContext.ClientId, user, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
 

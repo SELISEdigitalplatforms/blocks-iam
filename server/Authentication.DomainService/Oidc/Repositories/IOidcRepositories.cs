@@ -98,6 +98,9 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<IdpSessionModel> GetBySessionIdAsync(string sessionId);
         Task<bool> AddAccountAsync(string sessionId, IdpSessionAccount account);
         Task<bool> RemoveAccountAsync(string sessionId, string userId, string tenantId);
+
+        /// <summary>Records how a session account last signed in (password or social).</summary>
+        Task<bool> SetAccountLoginMethodAsync(string sessionId, string userId, string tenantId, string loginMethod);
         Task<bool> UpdateActivityAsync(string sessionId);
         Task<bool> RevokeAsync(string sessionId);
         Task<bool> DeleteAsync(string sessionId);

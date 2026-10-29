@@ -71,6 +71,17 @@ namespace Authentication.DomainService.Oidc.Repositories
             return result?.ModifiedCount > 0;
         }
 
+        public async Task<bool> SetAccountLoginMethodAsync(string sessionId, string userId, string tenantId, string loginMethod)
+        {
+            var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
+            var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId)
+                & Builders<IdpSessionModel>.Filter.ElemMatch(s => s.Accounts, a => a.UserId == userId && a.TenantId == tenantId);
+            var update = Builders<IdpSessionModel>.Update.Set(
+                $"{nameof(IdpSessionModel.Accounts)}.$.{nameof(IdpSessionAccount.LoginMethod)}", loginMethod);
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.IdpSessionModel, filter, update, "IdpSessionRepository.SetAccountLoginMethodAsync");
+            return result?.ModifiedCount > 0;
+        }
+
         public async Task<bool> UpdateActivityAsync(string sessionId)
         {
             var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");

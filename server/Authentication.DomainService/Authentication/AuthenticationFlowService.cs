@@ -1,4 +1,5 @@
 ﻿using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Authentication.LoginPolicies;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
@@ -32,6 +33,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IRefreshSessionResolver _refreshSessionResolver;
         private readonly IUnknownUserLoginGuard _unknownUserLoginGuard;
+        private readonly ILoginPolicyService _loginPolicy;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
@@ -43,7 +45,8 @@ namespace Authentication.DomainService.Authentication
             ILogger<AuthenticationFlowService> logger,
             IRefreshTokenRepository refreshTokenRepository,
             IRefreshSessionResolver refreshSessionResolver,
-            IUnknownUserLoginGuard unknownUserLoginGuard)
+            IUnknownUserLoginGuard unknownUserLoginGuard,
+            ILoginPolicyService loginPolicy)
         {
             _authenticationRepository = authenticationRepository;
             _authStrategy = authStrategy;
@@ -55,6 +58,7 @@ namespace Authentication.DomainService.Authentication
             _refreshTokenRepository = refreshTokenRepository;
             _refreshSessionResolver = refreshSessionResolver;
             _unknownUserLoginGuard = unknownUserLoginGuard;
+            _loginPolicy = loginPolicy;
         }
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
@@ -67,6 +71,13 @@ namespace Authentication.DomainService.Authentication
                     StatusCode = StatusCodes.Status400BadRequest,
                     Error = OAuthError.AuthConfigMissing
                 };
+            }
+
+            // Checked before MFA completion too: a method turned off between the two steps stops here.
+            var policy = await _loginPolicy.CheckAsync(LoginChannel.Embedded, LoginMethods.Password);
+            if (!policy.IsAllowed)
+            {
+                return LoginNotAllowed(policy);
             }
 
             // MFA verification is identified solely by the mfa_id/mfa_code, and the account is
@@ -175,6 +186,12 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
+            var policy = await _loginPolicy.CheckAsync(LoginChannel.Embedded, LoginMethods.Social);
+            if (!policy.IsAllowed)
+            {
+                return LoginNotAllowed(policy);
+            }
+
             if (IsSocialMfaVerificationRequest(request))
             {
                 return await ExecuteMfaVerificationAsync(
@@ -228,6 +245,13 @@ namespace Authentication.DomainService.Authentication
                 TokenResponse = await _authStrategy.AuthenticateSocialAsync(tokenRequest, configuration)
             };
         }
+
+        private static AuthenticationFlowResult LoginNotAllowed(LoginPolicyDecision decision) => new()
+        {
+            StatusCode = StatusCodes.Status403Forbidden,
+            Error = LoginPolicyRules.Error,
+            ErrorDescription = decision.Message
+        };
 
         private static bool IsEmbeddedMfaVerificationRequest(EmbeddedLoginRequest request)
         {

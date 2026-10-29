@@ -98,6 +98,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<PasswordAuthenticationService>();
             serviceCollection.AddSingleton<MfaAuthorizationService>();
             serviceCollection.AddSingleton<IMfaPolicyService, MfaPolicyService>();
+            serviceCollection.AddSingleton<Authentication.LoginPolicies.ILoginPolicyService, Authentication.LoginPolicies.LoginPolicyService>();
             serviceCollection.AddSingleton<IMfaDisableService, MfaDisableService>();
             serviceCollection.AddSingleton<IMfaAttemptGate, MfaAttemptGate>();
             serviceCollection.AddSingleton<IMfaAuditService, MfaAuditService>();
@@ -208,6 +209,7 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<ISignupOrganizationResolver, SignupOrganizationResolver>();
             serviceCollection.AddSingleton<IAccountService, AccountService>();
+            serviceCollection.AddSingleton<ILoginPolicySettingsService, LoginPolicySettingsService>();
             serviceCollection.AddSingleton<IAdminPasswordResetService, AdminPasswordResetService>();
             serviceCollection.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();
             serviceCollection.AddSingleton<ISignupLinkConfigurationService, SignupLinkConfigurationService>();

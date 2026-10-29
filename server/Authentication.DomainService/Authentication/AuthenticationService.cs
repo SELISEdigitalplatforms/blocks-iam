@@ -1,4 +1,5 @@
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Authentication.LoginPolicies;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
@@ -41,6 +42,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ITenants _tenants;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
+        private readonly ILoginPolicyService _loginPolicy;
 
         private const string PublicCertCachePrefix = "tetocertpublic::";
 
@@ -52,7 +54,8 @@ namespace Authentication.DomainService.Authentication
             IAuthSessionFacade authSession,
             ITenants tenants,
             IUserActivityDispatcher userActivityDispatcher,
-            IRefreshTokenRepository refreshTokenRepository
+            IRefreshTokenRepository refreshTokenRepository,
+            ILoginPolicyService loginPolicy
         )
         {
             _logger = logger;
@@ -63,6 +66,7 @@ namespace Authentication.DomainService.Authentication
             _tenants = tenants;
             _userActivityDispatcher = userActivityDispatcher;
             _refreshTokenRepository = refreshTokenRepository;
+            _loginPolicy = loginPolicy;
         }
 
         public async Task<IActionResult> BuildFlowResultAsync(AuthenticationFlowResult result, HttpContext httpContext)
@@ -598,14 +602,19 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        public async Task<IActionResult> GetLoginOptionsAsync()
+        /// <summary>
+        /// What a login page may offer. With an OIDC client id, the IAM login page's options for that
+        /// client; without one, the embedded login's. Follows the tenant login policy.
+        /// </summary>
+        public async Task<IActionResult> GetLoginOptionsAsync(string? oidcClientId = null)
         {
-            var identityProviders = await _authenticationRepository.GetIdentityProvidersAsync();
+            var channel = string.IsNullOrWhiteSpace(oidcClientId) ? LoginChannel.Embedded : LoginChannel.Oidc;
+            var client = channel == LoginChannel.Oidc
+                ? await _authenticationRepository.GetOidcClientRegistrationAsync(oidcClientId!)
+                : null;
 
-            // Filter to only social providers that are active
-            var socialProviders = identityProviders
-                .Where(p => p.IsActive && p.ProviderType == "social")
-                .ToList();
+            var options = await _loginPolicy.GetOptionsAsync(channel, client);
+            var socialProviders = options.Providers;
 
             // Return only metadata, NOT authorization URLs
             var ssoInfo = socialProviders.Any()
@@ -624,6 +633,10 @@ namespace Authentication.DomainService.Authentication
                 GrantTypes.ClientCredential,
                 GrantTypes.RefreshToken
             };
+            if (options.Password)
+                gts.Add(GrantTypes.Password);
+            if (options.Social)
+                gts.Add(GrantTypes.Social);
 
             return new OkObjectResult(new
             {
@@ -653,6 +666,10 @@ namespace Authentication.DomainService.Authentication
 
                 if (identityProvider.ProviderType != "social")
                     return new BadRequestObjectResult(new { error = "invalid_provider_type", error_description = $"Provider '{clientId}' is not a social provider" });
+
+                var policy = await _loginPolicy.CheckAsync(LoginChannel.Embedded, LoginMethods.Social, provider: identityProvider);
+                if (!policy.IsAllowed)
+                    return LoginNotAllowed(policy);
 
                 var checkedRedirectUri = ResolveProviderRedirectUri(identityProvider, redirectUri);
                 if (checkedRedirectUri == null)
@@ -720,6 +737,15 @@ namespace Authentication.DomainService.Authentication
                 if (!identityProvider.IsActive)
                     return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider with client ID '{providerClientId}' is not active" });
 
+                // The OIDC request this social sign-in belongs to names the client whose policy applies.
+                var oidcClientId = JsonSerializer.Deserialize<OidcContext>(contextJson)?.ClientId;
+                var oidcClient = string.IsNullOrWhiteSpace(oidcClientId)
+                    ? null
+                    : await _authenticationRepository.GetOidcClientRegistrationAsync(oidcClientId);
+                var policy = await _loginPolicy.CheckAsync(LoginChannel.Oidc, LoginMethods.Social, oidcClient, identityProvider);
+                if (!policy.IsAllowed)
+                    return LoginNotAllowed(policy);
+
                 var checkedRedirectUri = ResolveProviderRedirectUri(identityProvider, providerRedirectUri);
                 if (checkedRedirectUri == null)
                     return InvalidProviderRedirectUri();
@@ -768,6 +794,9 @@ namespace Authentication.DomainService.Authentication
 
             return provider.RedirectUris.FirstOrDefault(u => string.Equals(u, requested, StringComparison.Ordinal));
         }
+
+        private static ObjectResult LoginNotAllowed(LoginPolicyDecision decision) =>
+            new(new { error = LoginPolicyRules.Error, error_description = decision.Message }) { StatusCode = StatusCodes.Status403Forbidden };
 
         private static BadRequestObjectResult InvalidProviderRedirectUri() =>
             new(new { error = "invalid_redirect_uri", error_description = "redirectUri is not registered for this provider" });

@@ -1,4 +1,6 @@
-﻿using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication.LoginPolicies;
+using XUnitTest.TestSupport;
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
@@ -34,6 +36,7 @@ namespace XUnitTest.Auth
         private readonly Mock<IAuthenticationDomainService> _authDomain = new();
         private readonly Mock<IUserActivityDispatcher> _activity = new();
         private readonly Mock<IUnknownUserLoginGuard> _guard = XUnitTest.TestSupport.UnknownLoginGuardStub.Create();
+        private readonly FakeLoginPolicy _loginPolicy = new();
 
         private readonly PasswordHasher _passwordHasher;
         private readonly OidcLoginAuditWriter _auditWriter;
@@ -80,7 +83,8 @@ namespace XUnitTest.Auth
                     _authService.Object,
                     _tenants.Object,
                     _cache.Object,
-                    new Mock<IResourceRepository>().Object),
+                    new Mock<IResourceRepository>().Object,
+                    _loginPolicy),
                 NullLogger<OidcAuthorizationEndpoint>.Instance);
         }
 
@@ -93,7 +97,7 @@ namespace XUnitTest.Auth
         private OidcLoginOrchestrator Create() =>
             new(_repo.Object, _mfaIssuer.Object, _authService.Object, _tenants.Object, _cache.Object,
                 _userRepo.Object, _passwordHasher, _auditWriter, _captchaEvaluator, _authorizationEndpoint,
-                NullLogger<OidcLoginOrchestrator>.Instance, _guard.Object);
+                NullLogger<OidcLoginOrchestrator>.Instance, _guard.Object, _loginPolicy);
 
         private static object? Prop(object? value, string name) =>
             value?.GetType().GetProperty(name)?.GetValue(value);
@@ -456,6 +460,33 @@ namespace XUnitTest.Auth
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error").Should().Be("invalid_mfa_session");
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_PasswordRefusedByLoginPolicy_Returns403_BeforeAnyUserLookup()
+        {
+            SetupOidcClientExists();
+            _loginPolicy.Decide = (_, _, _, _) => LoginPolicyDecision.Denied("Password sign-in is turned off for this application.");
+
+            var result = await Create().ExecuteAsync(PasswordRequest(), Req(), Res());
+
+            var refused = result.Should().BeOfType<ObjectResult>().Subject;
+            refused.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            Prop(refused.Value, "error").Should().Be(LoginPolicyRules.Error);
+            _loginPolicy.Checks.Should().Equal((LoginChannel.Oidc, LoginMethods.Password));
+            _repo.Verify(r => r.GetUserByUsernameAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_MfaCompletionRefusedByLoginPolicy_Returns403_BeforeTheCodeIsChecked()
+        {
+            _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(MfaContextJson());
+            _loginPolicy.Decide = (_, _, _, _) => LoginPolicyDecision.Denied("off");
+
+            var result = await Create().ExecuteAsync(MfaRequest(), Req(), Res());
+
+            result.Should().BeOfType<ObjectResult>().Subject.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            _repo.Verify(r => r.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

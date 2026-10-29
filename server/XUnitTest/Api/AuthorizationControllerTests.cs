@@ -186,7 +186,7 @@ namespace XUnitTest.ApiTests
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>(),
-                    It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>()))
+                    It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<string?>()))
                 .ReturnsAsync(sentinel);
 
             var result = await CreateController().HandleOidcCallbackGet("code", "state");
@@ -332,7 +332,7 @@ namespace XUnitTest.ApiTests
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>(),
-                    It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>()))
+                    It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<string?>()))
                 .ReturnsAsync(new OkObjectResult("authorized"));
         }
 
@@ -342,7 +342,7 @@ namespace XUnitTest.ApiTests
                     "client", "code", "com.klaxai.app://login/callback", It.IsAny<string>(),
                     "state-1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                     It.IsAny<string>(), "tenant-1", It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>(),
-                    It.IsAny<string>(), expected, It.IsAny<bool>()),
+                    It.IsAny<string>(), expected, It.IsAny<bool>(), "social"),
                 Times.Once);
         }
 
@@ -398,7 +398,7 @@ namespace XUnitTest.ApiTests
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<HttpRequest>(), It.IsAny<HttpResponse>(),
-                    It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>()),
+                    It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<string?>()),
                 Times.Never);
         }
     }

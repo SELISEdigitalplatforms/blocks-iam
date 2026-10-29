@@ -1,4 +1,6 @@
-﻿using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication.LoginPolicies;
+using XUnitTest.TestSupport;
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.OAuth;
@@ -37,6 +39,7 @@ namespace XUnitTest.Auth
         private readonly Mock<IAuthenticationDomainService> _authDomain = new();
         private readonly Mock<IUserActivityDispatcher> _activity = new();
         private readonly Mock<IUnknownUserLoginGuard> _guard = XUnitTest.TestSupport.UnknownLoginGuardStub.Create();
+        private FakeLoginPolicy LoginPolicy { get; } = new();
         private readonly OidcLoginAuditWriter _auditWriter;
 
         private const string TenantId = "tenant-1";
@@ -73,7 +76,7 @@ namespace XUnitTest.Auth
 
         private AuthenticationFlowService Create() =>
             new(_repo.Object, _strategy.Object, _refresher.Object, _authService.Object, _captcha.Object,
-                _auditWriter, NullLogger<AuthenticationFlowService>.Instance, _refreshRepo.Object, _sessionResolver.Object, _guard.Object);
+                _auditWriter, NullLogger<AuthenticationFlowService>.Instance, _refreshRepo.Object, _sessionResolver.Object, _guard.Object, LoginPolicy);
 
         private static HttpRequest Req() => new DefaultHttpContext().Request;
 
@@ -88,6 +91,47 @@ namespace XUnitTest.Auth
         }
 
         // ==================== ExecuteEmbeddedLoginAsync ====================
+
+        [Fact]
+        public async Task EmbeddedLogin_RefusedByLoginPolicy_Returns403_BeforeAnyUserLookup()
+        {
+            LoginPolicy.Decide = (_, _, _, _) => LoginPolicyDecision.Denied("Password sign-in is turned off for this project.");
+
+            var result = await Create().ExecuteEmbeddedLoginAsync(new EmbeddedLoginRequest { Username = "u", Password = "p" }, Req());
+
+            result.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            result.Error.Should().Be(LoginPolicyRules.Error);
+            result.ErrorDescription.Should().Be("Password sign-in is turned off for this project.");
+            LoginPolicy.Checks.Should().Equal((LoginChannel.Embedded, LoginMethods.Password));
+            _repo.Verify(r => r.GetUserByUsernameAsync(It.IsAny<string>()), Times.Never);
+            _strategy.Verify(s => s.AuthenticatePasswordAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task EmbeddedMfaCompletion_RefusedByLoginPolicy_Returns403()
+        {
+            LoginPolicy.Decide = (_, _, _, _) => LoginPolicyDecision.Denied("off");
+
+            var result = await Create().ExecuteEmbeddedLoginAsync(new EmbeddedLoginRequest { MfaId = "m", MfaCode = "123456" }, Req());
+
+            result.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            _strategy.Verify(s => s.AuthenticateMfaAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task EmbeddedSocialLogin_RefusedByLoginPolicy_Returns403_BeforeCodeExchange()
+        {
+            LoginPolicy.Decide = (_, method, _, _) => method == LoginMethods.Social
+                ? LoginPolicyDecision.Denied("Social sign-in is turned off for this project.")
+                : LoginPolicyDecision.Allowed;
+
+            var result = await Create().ExecuteSocialLoginAsync(new SocialLoginRequest { Code = "c", State = "s", Provider = "google" }, Req());
+
+            result.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            result.Error.Should().Be(LoginPolicyRules.Error);
+            LoginPolicy.Checks.Should().Equal((LoginChannel.Embedded, LoginMethods.Social));
+            _strategy.Verify(s => s.AuthenticateSocialAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>()), Times.Never);
+        }
 
         [Fact]
         public async Task EmbeddedLogin_ConfigMissing_Returns400()

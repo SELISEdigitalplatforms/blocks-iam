@@ -102,7 +102,8 @@ namespace Authentication.DomainService.Authentication
             HttpResponse response,
             string? blocksUserId = null,
             bool returnRedirectResponse = true,
-            bool mfaCompleted = false);
+            bool mfaCompleted = false,
+            string? loginMethod = null);
 
 
         Task<IActionResult> TokenAsync(string grantType, HttpRequest request);

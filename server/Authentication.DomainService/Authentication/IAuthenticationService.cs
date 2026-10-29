@@ -24,7 +24,7 @@ namespace Authentication.DomainService.Authentication
         bool DeleteCookie(HttpRequest request);
         bool DeleteAllCookies(HttpRequest request);
         Task AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null);
-        Task<IActionResult> GetLoginOptionsAsync();
+        Task<IActionResult> GetLoginOptionsAsync(string? oidcClientId = null);
         Task<IActionResult> GetSocialAuthorizationUrlAsync(string clientId, string redirectUri);
         Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string providerClientId, string oidcState, string providerRedirectUri);
         Task<OidcClientRegistration> GetClientCredentialAsync(string clientId);

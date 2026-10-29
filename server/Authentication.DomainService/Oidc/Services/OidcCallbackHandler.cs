@@ -1,4 +1,5 @@
 using Iam.DomainService.Utilities;
+using Authentication.DomainService.Authentication.LoginPolicies;
 using System.Text.Json;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
@@ -63,19 +64,22 @@ namespace Authentication.DomainService.Oidc.Services
         private readonly ICacheClient _cacheClient;
         private readonly ISocialLogInServiceProvider _socialLogInServiceProvider;
         private readonly ISsoUserProvisioningService _ssoUserProvisioningService;
+        private readonly ILoginPolicyService _loginPolicy;
 
         public OidcCallbackHandler(
             ILogger<OidcCallbackHandler> logger,
             IAuthenticationRepository authenticationRepository,
             ICacheClient cacheClient,
             ISocialLogInServiceProvider socialLogInServiceProvider,
-            ISsoUserProvisioningService ssoUserProvisioningService)
+            ISsoUserProvisioningService ssoUserProvisioningService,
+            ILoginPolicyService loginPolicy)
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
             _cacheClient = cacheClient;
             _socialLogInServiceProvider = socialLogInServiceProvider;
             _ssoUserProvisioningService = ssoUserProvisioningService;
+            _loginPolicy = loginPolicy;
         }
 
         private static string UsedStateKey(string state) => $"oidc_social_state_used:{state}";
@@ -265,6 +269,19 @@ namespace Authentication.DomainService.Oidc.Services
 
                 // From here on a failure can be shown on the login page the user started from.
                 recoveredContext = context;
+
+                // Checked again here: the policy may have changed while the user was at the provider.
+                // Before the code exchange, so a refused sign-in never provisions a user.
+                var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(context.ClientId);
+                var identityProvider = string.IsNullOrWhiteSpace(context.ProviderClientId)
+                    ? null
+                    : await _authenticationRepository.GetIdentityProviderByClientIdAsync(context.ProviderClientId);
+                var policy = await _loginPolicy.CheckAsync(LoginChannel.Oidc, LoginMethods.Social, oidcClient, identityProvider);
+                if (!policy.IsAllowed)
+                {
+                    _logger.LogInformation("OIDC social sign-in refused by the login policy for provider {Provider}", provider);
+                    return Failure(LoginPolicyRules.Error, policy.Message!);
+                }
 
                 // 3. Reuse social folder callback handling for provider token exchange + user extraction
                 var stateInfo = new StateInfo

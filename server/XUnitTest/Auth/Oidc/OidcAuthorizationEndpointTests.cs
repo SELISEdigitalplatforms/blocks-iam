@@ -1,4 +1,6 @@
-﻿using System.Security.Claims;
+﻿using Authentication.DomainService.Authentication.LoginPolicies;
+using XUnitTest.TestSupport;
+using System.Security.Claims;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Repositories;
@@ -37,6 +39,7 @@ namespace XUnitTest.Auth.Oidc
         private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<ICacheClient> _cache = new();
         private readonly Mock<IResourceRepository> _resourceRepo = new();
+        private readonly FakeLoginPolicy _loginPolicy = new();
         private readonly Mock<ILinkSessionRepository> _linkSessions = new();
 
         private readonly OidcAuthorizationEndpoint _endpoint;
@@ -77,7 +80,8 @@ namespace XUnitTest.Auth.Oidc
                     _authService.Object,
                     _tenants.Object,
                     _cache.Object,
-                    _resourceRepo.Object),
+                    _resourceRepo.Object,
+                    _loginPolicy),
                 NullLogger<OidcAuthorizationEndpoint>.Instance);
         }
 
@@ -116,13 +120,14 @@ namespace XUnitTest.Auth.Oidc
             HttpContext? ctx = null,
             string? blocksUserId = null,
             bool returnRedirectResponse = true,
-            bool mfaCompleted = false)
+            bool mfaCompleted = false,
+            string? loginMethod = null)
         {
             ctx ??= new DefaultHttpContext();
             return _endpoint.AuthorizeAsync(
                 client_id, response_type, redirect_uri, scope, state, nonce,
                 code_challenge, code_challenge_method, prompt, tenant_id,
-                ctx.Request, ctx.Response, blocksUserId, returnRedirectResponse, mfaCompleted);
+                ctx.Request, ctx.Response, blocksUserId, returnRedirectResponse, mfaCompleted, loginMethod);
         }
 
         // RequirePkce off by default here: these tests are about the rest of the flow and send no
@@ -430,6 +435,77 @@ namespace XUnitTest.Auth.Oidc
 
             result.Should().BeOfType<RedirectResult>();
             _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.UserId == "user-1")), Times.Once);
+        }
+
+        // ================= tenant login policy =================
+
+        [Fact]
+        public async Task AuthorizeAsync_OidcLoginTurnedOff_IsRefused_BeforeAnyUserOrSessionWork()
+        {
+            ClientExists();
+            _loginPolicy.ChannelDecision = LoginPolicyDecision.Denied("Signing in through the login page is turned off for this project.");
+
+            var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: false, loginMethod: LoginMethods.Password);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be(LoginPolicyRules.Error);
+            _userRepo.Verify(u => u.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+            _sessionRepo.Verify(s => s.CreateAsync(It.IsAny<IdpSessionModel>()), Times.Never);
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_JustVerifiedSignIn_WithAMethodTheClientRefuses_IsRefused()
+        {
+            ClientExists();
+            _loginPolicy.Decide = (_, method, _, _) => method == LoginMethods.Social
+                ? LoginPolicyDecision.Denied("Social sign-in is turned off for this application.")
+                : LoginPolicyDecision.Allowed;
+
+            var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: false, loginMethod: LoginMethods.Social);
+
+            Prop(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value, "error").Should().Be(LoginPolicyRules.Error);
+            _loginPolicy.Checks.Should().Equal((LoginChannel.Oidc, LoginMethods.Social));
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_SilentSignIn_WithAnAccountTheClientRefuses_GoesToTheLoginPage()
+        {
+            ClientExists();
+            _loginPolicy.SessionAccountAllowed = a => a.LoginMethod != LoginMethods.Social;
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "", LoginMethod = LoginMethods.Social }));
+
+            var result = await Authorize(ctx: Ctx("idp_session_id=SID"));
+
+            result.Should().BeOfType<RedirectResult>().Subject.Url.Should().StartWith("/oidc/login?");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_NewSession_RecordsHowTheUserSignedIn()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            await Authorize(blocksUserId: "user-1", loginMethod: LoginMethods.Password);
+
+            _sessionRepo.Verify(s => s.CreateAsync(It.Is<IdpSessionModel>(m =>
+                m.Accounts.Count == 1 && m.Accounts[0].LoginMethod == LoginMethods.Password)), Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_SameUserSignsInAgain_UpdatesTheRecordedMethod()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "t1", LoginMethod = LoginMethods.Social }));
+
+            await Authorize(ctx: Ctx("idp_session_id_t1=SID"), tenant_id: "t1", blocksUserId: "user-1", loginMethod: LoginMethods.Password);
+
+            _sessionRepo.Verify(s => s.SetAccountLoginMethodAsync("SID", "user-1", "t1", LoginMethods.Password), Times.Once);
         }
 
         [Fact]

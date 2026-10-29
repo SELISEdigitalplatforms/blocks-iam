@@ -1,4 +1,5 @@
-﻿using Authentication.DomainService.Authentication;
+﻿using XUnitTest.TestSupport;
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
@@ -53,7 +54,7 @@ namespace XUnitTest.Auth
             // Real OidcAuthorizationEndpoint; invalid inputs fail validation before any dependency is used.
             var authorizationEndpoint = new OidcAuthorizationEndpoint(
                 new OidcAuthorizationSessionStores(null!, null!, null!, null!, null!),
-                new OidcAuthorizationIdentityStores(null!, null!, null!, null!, null!, null!),
+                new OidcAuthorizationIdentityStores(null!, null!, null!, null!, null!, null!, null!),
                 NullLogger<OidcAuthorizationEndpoint>.Instance);
             var flow = new AuthorizationFlowService(null!, authorizationEndpoint, null!);
 
@@ -92,7 +93,7 @@ namespace XUnitTest.Auth
             // Real OidcLoginOrchestrator; the social path uses only the cache + auth service.
             var orchestrator = new OidcLoginOrchestrator(
                 null!, null!, authService.Object, null!, cache.Object, null!, null!, null!, null!, null!,
-                NullLogger<OidcLoginOrchestrator>.Instance, null!);
+                NullLogger<OidcLoginOrchestrator>.Instance, null!, new FakeLoginPolicy());
             var flow = new AuthorizationFlowService(orchestrator, null!, null!);
 
             var request = new OidcLoginRequest { ProviderClientId = "provider-1", ProviderRedirectUri = "https://cb" };

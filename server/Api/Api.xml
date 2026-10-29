@@ -23,7 +23,7 @@
             Issues access and refresh tokens on success
             </summary>
         </member>
-        <member name="M:Api.Controllers.AuthenticationController.RetrieveLoginOptions">
+        <member name="M:Api.Controllers.AuthenticationController.RetrieveLoginOptions(System.String)">
             <summary>
             Retrieve available login options (identity providers and their metadata)
             No authentication required - public discovery endpoint
@@ -435,6 +435,9 @@
         </member>
         <member name="T:Api.Controllers.PasswordCheckRequest">
             <summary>Body of <see cref="M:Api.Controllers.IdpController.PasswordCheck(Api.Controllers.PasswordCheckRequest)"/>.</summary>
+        </member>
+        <member name="T:Api.Controllers.LoginPolicyController">
+            <summary>The tenant's sign-in policy: where (embedded, OIDC) and how (password, social) users may sign in.</summary>
         </member>
         <member name="T:Api.Controllers.OidcClientsController">
             <summary>

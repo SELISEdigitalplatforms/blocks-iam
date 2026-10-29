@@ -178,10 +178,21 @@ namespace Authentication.DomainService.Services
                 };
             }
 
+            var loginPolicyErrors = await ValidateLoginPolicyAsync(request.LoginPolicy);
+            if (loginPolicyErrors != null)
+            {
+                return new SaveOIDCClientResponse
+                {
+                    IsSuccess = false,
+                    Errors = loginPolicyErrors
+                };
+            }
+
             var (credential, isNewClient) = await InitializeOidcClientCredentialAsync(request);
             ApplyOidcClientScopesAndRedirects(credential, request);
             ApplyOidcClientOptions(credential, request);
             ApplyOidcClientTokenLifetimes(credential, request.TokenLifetimes, isNewClient);
+            ApplyOidcClientLoginPolicy(credential, request.LoginPolicy);
 
             OidcClientSecretWrite secretWrite;
             try
@@ -433,6 +444,69 @@ namespace Authentication.DomainService.Services
             credential.TokenLifetimes = OidcClientTokenLifetimeService.OwnValues(requested);
         }
 
+        /// <summary>
+        /// Absent policy keeps what is stored, so a caller that does not know the field (an older form,
+        /// the CLI, the active toggle) never wipes it. Default providers keep no list.
+        /// </summary>
+        private static void ApplyOidcClientLoginPolicy(OidcClientRegistration credential, OidcClientLoginPolicy? requested)
+        {
+            if (requested == null)
+            {
+                return;
+            }
+
+            var selected = requested.Providers == OidcClientProviderModes.Selected;
+            credential.LoginPolicy = new OidcClientLoginPolicy
+            {
+                Method = requested.Method,
+                Providers = requested.Providers,
+                SelectedProviderIds = selected
+                    ? requested.SelectedProviderIds.Distinct(StringComparer.Ordinal).ToList()
+                    : []
+            };
+        }
+
+        private const string LoginPolicyField = nameof(SaveOIDCClientRequest.LoginPolicy);
+
+        private async Task<Dictionary<string, string>?> ValidateLoginPolicyAsync(OidcClientLoginPolicy? policy)
+        {
+            if (policy == null)
+            {
+                return null;
+            }
+
+            if (!OidcClientLoginMethods.IsKnown(policy.Method))
+            {
+                return new() { { $"{LoginPolicyField}.{nameof(OidcClientLoginPolicy.Method)}", "Method must be default, password or social." } };
+            }
+
+            if (!OidcClientProviderModes.IsKnown(policy.Providers))
+            {
+                return new() { { $"{LoginPolicyField}.{nameof(OidcClientLoginPolicy.Providers)}", "Providers must be default or selected." } };
+            }
+
+            if (policy.Providers != OidcClientProviderModes.Selected)
+            {
+                return null;
+            }
+
+            const string idsField = $"{LoginPolicyField}.{nameof(OidcClientLoginPolicy.SelectedProviderIds)}";
+            var ids = policy.SelectedProviderIds ?? [];
+            if (ids.Count == 0)
+            {
+                return new() { { idsField, "Select at least one provider, or choose default." } };
+            }
+
+            var socialProviderIds = (await _authenticationRepository.GetIdentityProvidersAsync())
+                .Where(p => p.ProviderType == "social")
+                .Select(p => p.ItemId)
+                .ToHashSet(StringComparer.Ordinal);
+
+            return ids.All(socialProviderIds.Contains)
+                ? null
+                : new() { { idsField, "Every selected provider must be a social identity provider of this project." } };
+        }
+
         private async Task<(OidcClientRegistration Credential, bool IsNew)> InitializeOidcClientCredentialAsync(SaveOIDCClientRequest request)
         {
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
@@ -534,14 +608,16 @@ namespace Authentication.DomainService.Services
             var client = await _authenticationRepository.GetOIDCCredentialByIdAsync(tenantId);
             // The view read projects only the schema's fields, and TokenLifetimes is not one of them: read the
             // client's own values from the full document, as token issue does.
-            var tokenLifetimes = client == null
+            var fullClient = client == null
                 ? null
-                : OidcClientTokenLifetimeService.OwnValues((await _authenticationRepository.GetOidcClientRegistrationAsync(client.ItemId))?.TokenLifetimes);
+                : await _authenticationRepository.GetOidcClientRegistrationAsync(client.ItemId);
+            var tokenLifetimes = OidcClientTokenLifetimeService.OwnValues(fullClient?.TokenLifetimes);
             HideSecret(client);
             return new GetOIDCClientResponse
             {
                 oIDCClientCredential = client,
                 TokenLifetimes = tokenLifetimes,
+                LoginPolicy = fullClient?.LoginPolicy,
                 IsSuccess = true,
             };
         }
@@ -551,9 +627,15 @@ namespace Authentication.DomainService.Services
             var clients = await _authenticationRepository.GetOIDCCredentialsByTenantForViewAsync();
             clients?.ForEach(HideSecret);
 
+            // The view read projects only the schema's fields; the sign-in policies come from the full documents.
+            var loginPolicies = (await _authenticationRepository.GetOIDCCredentialsByTenantAsync() ?? [])
+                .Where(c => c.LoginPolicy != null)
+                .ToDictionary(c => c.ItemId, c => c.LoginPolicy!, StringComparer.Ordinal);
+
             return new GetOIDCClientsResponse
             {
                 oIDCClientCredentials = clients ?? [],
+                LoginPolicies = loginPolicies,
                 IsSuccess = true
             };
         }

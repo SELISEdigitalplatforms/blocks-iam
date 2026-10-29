@@ -1,3 +1,4 @@
+using XUnitTest.TestSupport;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
@@ -73,7 +74,7 @@ namespace XUnitTest.Auth
 
         private AuthenticationService Create() =>
             new(NullLogger<AuthenticationService>.Instance, _cache.Object, _repo.Object, _domain.Object,
-                _session.Object, _tenants.Object, _activity.Object, _refresh.Object);
+                _session.Object, _tenants.Object, _activity.Object, _refresh.Object, new FakeLoginPolicy());
 
         // ---------------- helpers ----------------
 

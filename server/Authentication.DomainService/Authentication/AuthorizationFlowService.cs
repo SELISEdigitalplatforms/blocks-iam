@@ -49,7 +49,8 @@ namespace Authentication.DomainService.Authentication
             HttpResponse response,
             string? blocksUserId = null,
             bool returnRedirectResponse = true,
-            bool mfaCompleted = false)
+            bool mfaCompleted = false,
+            string? loginMethod = null)
         {
             return _authorizationEndpoint.AuthorizeAsync(
                 client_id,
@@ -66,7 +67,8 @@ namespace Authentication.DomainService.Authentication
                 response,
                 blocksUserId,
                 returnRedirectResponse,
-                mfaCompleted);
+                mfaCompleted,
+                loginMethod);
         }
 
         public Task<IActionResult> TokenAsync(string grantType, HttpRequest request)

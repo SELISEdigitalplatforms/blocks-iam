@@ -121,7 +121,7 @@ namespace XUnitTest.Auth
                 new Mock<IAuthenticationService>().Object, _captcha.Object,
                 new OidcLoginAuditWriter(authDomain.Object, new Mock<IUserActivityDispatcher>().Object, NullLogger<OidcLoginAuditWriter>.Instance),
                 NullLogger<AuthenticationFlowService>.Instance, new Mock<IRefreshTokenRepository>().Object,
-                new Mock<IRefreshSessionResolver>().Object, guard);
+                new Mock<IRefreshSessionResolver>().Object, guard, new FakeLoginPolicy());
         }
 
         /// <summary>Everything that reaches the client body and status.</summary>
@@ -236,7 +236,7 @@ namespace XUnitTest.Auth
                     new Mock<IPkceService>().Object,
                     new Mock<ILinkSessionRepository>().Object),
                 new OidcAuthorizationIdentityStores(userRepo.Object, repo.Object, authService.Object, tenants.Object, cache.Object,
-                    new Mock<IResourceRepository>().Object),
+                    new Mock<IResourceRepository>().Object, new FakeLoginPolicy()),
                 NullLogger<OidcAuthorizationEndpoint>.Instance);
             var authDomain = new Mock<IAuthenticationDomainService>();
             authDomain.Setup(d => d.GetDeviceInfo(It.IsAny<string>())).Returns((DeviceInformation)null!);
@@ -244,7 +244,7 @@ namespace XUnitTest.Auth
             return new OidcLoginOrchestrator(repo.Object, new Mock<IMfaChallengeIssuer>().Object, authService.Object, tenants.Object,
                 cache.Object, userRepo.Object, new PasswordHasher(NullLogger<PasswordHasher>.Instance),
                 new OidcLoginAuditWriter(authDomain.Object, new Mock<IUserActivityDispatcher>().Object, NullLogger<OidcLoginAuditWriter>.Instance),
-                new OidcCaptchaEvaluator(_captcha.Object), endpoint, NullLogger<OidcLoginOrchestrator>.Instance, Guard());
+                new OidcCaptchaEvaluator(_captcha.Object), endpoint, NullLogger<OidcLoginOrchestrator>.Instance, Guard(), new FakeLoginPolicy());
         }
 
         private static string Answer(IActionResult r) => r switch

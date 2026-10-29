@@ -33,6 +33,7 @@ namespace Iam.DomainService.Utilities
 
             services.AddSingleton<ISignupOrganizationResolver, SignupOrganizationResolver>();
             services.AddSingleton<IAccountService, AccountService>();
+            services.AddSingleton<ILoginPolicySettingsService, LoginPolicySettingsService>();
             services.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
 
             services.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();

@@ -90,9 +90,9 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpGet("login-options")]
     [AllowAnonymous]
-    public Task<IActionResult> RetrieveLoginOptions()
+    public Task<IActionResult> RetrieveLoginOptions([FromQuery(Name = "client_id")] string? clientId = null)
     {
-        return _authenticationService.GetLoginOptionsAsync();
+        return _authenticationService.GetLoginOptionsAsync(clientId);
     }
 
     /// <summary>

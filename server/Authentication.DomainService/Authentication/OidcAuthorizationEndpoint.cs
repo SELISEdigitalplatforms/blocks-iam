@@ -1,4 +1,5 @@
 ﻿using Authentication.DomainService.Utilities;
+using Authentication.DomainService.Authentication.LoginPolicies;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
@@ -41,6 +42,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ICacheClient _cacheClient;
         private readonly IResourceRepository _resourceRepository;
         private readonly ILinkSessionRepository _linkSessionRepo;
+        private readonly ILoginPolicyService _loginPolicy;
         private readonly ILogger<OidcAuthorizationEndpoint> _logger;
 
         public OidcAuthorizationEndpoint(
@@ -60,6 +62,7 @@ namespace Authentication.DomainService.Authentication
             _tenants = identityStores.Tenants;
             _cacheClient = identityStores.Cache;
             _resourceRepository = identityStores.Resources;
+            _loginPolicy = identityStores.LoginPolicy;
         }
 
         public async Task<IActionResult> AuthorizeAsync( // NOSONAR S3776 — OIDC authorize branches are intentional; tracked separately from signup-links
@@ -77,7 +80,8 @@ namespace Authentication.DomainService.Authentication
             HttpResponse response,
             string? blocksUserId = null,
             bool returnRedirectResponse = true,
-            bool mfaCompleted = false)
+            bool mfaCompleted = false,
+            string? loginMethod = null)
         {
             var canRedirectToClient = false;
 
@@ -157,6 +161,20 @@ namespace Authentication.DomainService.Authentication
                 {
                     _logger.LogWarning("Inactive client refused: {ClientId}", client_id);
                     return BuildBrowserError(ErrorInvalidClient, UnknownClientMessage);
+                }
+
+                // Tenant login policy: the IAM login page must be on, and a just-verified sign-in must
+                // use a method this client allows. Silent sign-in is filtered further below.
+                var policyDecision = await _loginPolicy.CheckChannelAsync(LoginChannel.Oidc);
+                if (policyDecision.IsAllowed && !string.IsNullOrWhiteSpace(blocksUserId) && !string.IsNullOrWhiteSpace(loginMethod))
+                {
+                    policyDecision = await _loginPolicy.CheckAsync(LoginChannel.Oidc, loginMethod, earlyClient);
+                }
+
+                if (!policyDecision.IsAllowed)
+                {
+                    _logger.LogInformation("Sign-in refused by the login policy for client {ClientId}", client_id);
+                    return BuildBrowserError(LoginPolicyRules.Error, policyDecision.Message!);
                 }
 
                 // Reject unregistered redirect_uri before the login hop or any later client
@@ -262,8 +280,10 @@ namespace Authentication.DomainService.Authentication
                         }
 
                         var filteredAccounts = sessionAccounts.ToList();
+                        var accountAllowed = await _loginPolicy.SessionAccountFilterAsync(earlyClient);
 
-                        if (filteredAccounts.Count == 1)
+                        // An account that signed in with a method this client does not allow signs in again.
+                        if (filteredAccounts.Count == 1 && accountAllowed(filteredAccounts[0]))
                         {
                             resolvedUserId = filteredAccounts[0].UserId;
                             await _sessionRepo.UpdateActivityAsync(effectiveSessionId);
@@ -286,7 +306,7 @@ namespace Authentication.DomainService.Authentication
                     return BuildBrowserError("account_locked", "Account is temporarily locked due to failed authentication attempts");
                 }
 
-                var idpSessionId = await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id, credentialsJustVerified);
+                var idpSessionId = await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id, credentialsJustVerified, loginMethod);
 
                 var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
                 if (client == null || !client.IsActive)
@@ -496,8 +516,11 @@ namespace Authentication.DomainService.Authentication
             return string.Join(' ', scopes);
         }
 
-        private async Task<string> EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, string? tenantId, bool credentialsJustVerified)
+        private async Task<string> EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, string? tenantId, bool credentialsJustVerified, string? loginMethod)
         {
+            // Recorded only for a sign-in that just happened, so a silent sign-in can follow a client's method.
+            var recordedLoginMethod = credentialsJustVerified ? loginMethod : null;
+
             var session = string.IsNullOrWhiteSpace(currentSessionId)
                 ? null
                 : await _sessionRepo.GetBySessionIdAsync(currentSessionId);
@@ -536,7 +559,8 @@ namespace Authentication.DomainService.Authentication
                             UserId = userId,
                             TenantId = tenantId,
                             DisplayName = userId,
-                            LoginAt = DateTime.UtcNow
+                            LoginAt = DateTime.UtcNow,
+                            LoginMethod = recordedLoginMethod
                         }
                     ],
                     IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request),
@@ -562,12 +586,17 @@ namespace Authentication.DomainService.Authentication
                     UserId = userId,
                     TenantId = tenantId,
                     DisplayName = userId,
-                    LoginAt = DateTime.UtcNow
+                    LoginAt = DateTime.UtcNow,
+                    LoginMethod = recordedLoginMethod
                 });
             }
             else
             {
                 await _sessionRepo.UpdateActivityAsync(session.SessionId);
+                if (!string.IsNullOrWhiteSpace(recordedLoginMethod))
+                {
+                    await _sessionRepo.SetAccountLoginMethodAsync(session.SessionId, userId, tenantId ?? string.Empty, recordedLoginMethod);
+                }
             }
 
             var resolvedSessionId = session.SessionId;
