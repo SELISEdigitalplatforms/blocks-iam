@@ -51,7 +51,7 @@ namespace XUnitTest.Auth.Shared
         private AuthenticationDomainService Create() =>
             new(_message.Object, _repo.Object,
                 new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets));
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets));
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
         {

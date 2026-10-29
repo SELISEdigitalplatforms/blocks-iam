@@ -38,6 +38,7 @@ namespace Authentication.DomainService.Services
         private readonly IValidator<UpdateIdentityProviderRequest> _updateIdpValidator;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IIdentityProviderSecretResolver _secretResolver;
+        private readonly IClientCredentialSecretResolver _clientSecretResolver;
         private readonly ILogger<AuthenticationDomainService>? _logger;
         private readonly IBuiltInNotificationSender? _notificationSender;
 
@@ -50,6 +51,7 @@ namespace Authentication.DomainService.Services
                                            AuthenticationRequestValidators validators,
                                            IHttpClientFactory httpClientFactory,
                                            IIdentityProviderSecretResolver secretResolver,
+                                           IClientCredentialSecretResolver clientSecretResolver,
                                            ILogger<AuthenticationDomainService>? logger = null,
                                            IBuiltInNotificationSender? notificationSender = null)
         {
@@ -62,6 +64,7 @@ namespace Authentication.DomainService.Services
             _updateIdpValidator = validators.UpdateIdentityProvider;
             _httpClientFactory = httpClientFactory;
             _secretResolver = secretResolver;
+            _clientSecretResolver = clientSecretResolver;
             _logger = logger;
         }
 
@@ -612,7 +615,41 @@ namespace Authentication.DomainService.Services
                 // OrganizationId is deliberately not updated. Re-scoping a live credential would
                 // change the reach of tokens that running services already hold, without those
                 // services ever asking for it.
-                var saveResult = await _authenticationRepository.SaveClientCredentialAsync(existing);
+
+                // A credential saved before Blocks Secrets still holds its plaintext: the edit moves
+                // the same value to the secret store, so a client already holding it keeps working.
+                string? movedReference = null;
+                if (string.IsNullOrEmpty(existing.ClientSecretReference) && !string.IsNullOrEmpty(existing.ClientSecret))
+                {
+                    try
+                    {
+                        movedReference = await _clientSecretResolver.StoreAsync(existing, existing.ClientSecret);
+                    }
+                    catch (SecretVaultException)
+                    {
+                        return ClientCredentialSaveFailure(ErrorSecretStoreUnavailable, SecretStoreUnavailableMessage);
+                    }
+
+                    existing.ClientSecretReference = movedReference;
+                    existing.ClientSecret = string.Empty;
+                }
+
+                BaseResponse saveResult;
+                try
+                {
+                    saveResult = await _authenticationRepository.SaveClientCredentialAsync(existing);
+                }
+                catch
+                {
+                    // The replace may still have committed: the moved secret is retired only when
+                    // the stored document does not point at it.
+                    await RetireUnreferencedClientSecretAsync(existing, movedReference, keepWhenMissing: true);
+                    throw;
+                }
+
+                if (!saveResult.IsSuccess)
+                    await RetireUnreferencedClientSecretAsync(existing, movedReference, keepWhenMissing: true);
+
                 return new SaveClientCredentialResponse
                 {
                     IsSuccess = saveResult.IsSuccess,
@@ -629,10 +666,11 @@ namespace Authentication.DomainService.Services
                     Errors = organizationError.Errors
                 };
 
+            var clientSecret = ClientSecretGenerator.Generate();
             var clientCredential = new ClientCredential
             {
                 ItemId = Guid.NewGuid().ToString(),
-                ClientSecret = ClientSecretGenerator.Generate(),
+                ClientSecret = string.Empty,
                 Name = request.Name,
                 CreatedBy = blocksContext?.UserId,
                 LastUpdatedBy = blocksContext?.UserId,
@@ -645,18 +683,45 @@ namespace Authentication.DomainService.Services
                 IsActive = request.IsActive
             };
 
-            var createResult = await _authenticationRepository.SaveClientCredentialAsync(clientCredential);
+            // The secret goes to Blocks Secrets before the insert; the document keeps the reference only.
+            try
+            {
+                clientCredential.ClientSecretReference = await _clientSecretResolver.StoreAsync(clientCredential, clientSecret);
+            }
+            catch (SecretVaultException)
+            {
+                return ClientCredentialSaveFailure(ErrorSecretStoreUnavailable, SecretStoreUnavailableMessage);
+            }
+
+            BaseResponse createResult;
+            try
+            {
+                createResult = await _authenticationRepository.SaveClientCredentialAsync(clientCredential);
+            }
+            catch
+            {
+                // The insert may still have committed (a timeout after the write), so the secret is
+                // retired only when no stored document points at it.
+                await RetireUnreferencedClientSecretAsync(clientCredential, clientCredential.ClientSecretReference, keepWhenMissing: false);
+                throw;
+            }
+
             if (createResult.IsSuccess)
             {
                 // A client credential's item id is its client id.
                 await NotifyClientCredentialChangedAsync(ClientCredentialKind, "created", clientCredential.ItemId, clientCredential.CreatedBy, clientCredential.OrganizationId);
             }
+            else
+            {
+                await RetireUnreferencedClientSecretAsync(clientCredential, clientCredential.ClientSecretReference, keepWhenMissing: false);
+            }
+
             return new SaveClientCredentialResponse
             {
                 IsSuccess = createResult.IsSuccess,
                 Errors = createResult.Errors,
                 ItemId = clientCredential.ItemId,
-                ClientSecret = createResult.IsSuccess ? clientCredential.ClientSecret : null
+                ClientSecret = createResult.IsSuccess ? clientSecret : null
             };
         }
 
@@ -673,22 +738,68 @@ namespace Authentication.DomainService.Services
             if (credential == null || !scope.Allows(credential.OrganizationId))
                 return new RotateClientCredentialSecretResponse { IsSuccess = false, Errors = ClientCredentialNotFound(itemId).Errors };
 
-            credential.ClientSecret = ClientSecretGenerator.Generate();
+            // Rotated in place when the credential already has a secret in the store; a credential
+            // still on plaintext gets a new secret, which moves it to the store.
+            var clientSecret = ClientSecretGenerator.Generate();
+            string reference;
+            bool created;
+            try
+            {
+                (reference, created) = await _clientSecretResolver.ReplaceAsync(credential, clientSecret);
+            }
+            catch (SecretVaultException)
+            {
+                return new RotateClientCredentialSecretResponse { IsSuccess = false, Errors = SecretStoreUnavailable().Errors };
+            }
+
+            var createdReference = created ? reference : null;
+            credential.ClientSecretReference = reference;
+            credential.ClientSecret = string.Empty;
             credential.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             credential.LastUpdatedDate = DateTime.UtcNow;
 
-            var saveResult = await _authenticationRepository.SaveClientCredentialAsync(credential);
+            BaseResponse saveResult;
+            try
+            {
+                saveResult = await _authenticationRepository.SaveClientCredentialAsync(credential);
+            }
+            catch
+            {
+                await UndoClientSecretReplaceAsync(credential, createdReference);
+                throw;
+            }
+
             if (saveResult.IsSuccess)
             {
                 await NotifyClientCredentialChangedAsync(ClientCredentialKind, "secret-rotated", credential.ItemId, credential.CreatedBy, credential.OrganizationId);
+            }
+            else
+            {
+                await UndoClientSecretReplaceAsync(credential, createdReference);
             }
 
             return new RotateClientCredentialSecretResponse
             {
                 IsSuccess = saveResult.IsSuccess,
                 Errors = saveResult.Errors,
-                ClientSecret = saveResult.IsSuccess ? credential.ClientSecret : null
+                ClientSecret = saveResult.IsSuccess ? clientSecret : null
             };
+        }
+
+        /// <summary>
+        /// The credential document was not written after a rotate: a secret created for it is
+        /// retired when the stored document does not point at it. A rotation in place cannot be
+        /// undone (the store already holds the new value), so it is only logged.
+        /// </summary>
+        private async Task UndoClientSecretReplaceAsync(ClientCredential credential, string? createdReference)
+        {
+            if (createdReference != null)
+            {
+                await RetireUnreferencedClientSecretAsync(credential, createdReference, keepWhenMissing: true);
+                return;
+            }
+
+            _logger?.LogWarning("Client credential {ClientId} was not updated, but its secret rotation cannot be undone.", credential.ItemId);
         }
 
         /// <summary>
@@ -774,10 +885,84 @@ namespace Authentication.DomainService.Services
             if (existing == null || !scope.Allows(existing.OrganizationId))
                 return ClientCredentialNotFound(request.ItemId);
 
+            // Delete the credential, then its secret (a live credential never points at a deleted secret).
             await _authenticationRepository.DeleteClientCredentialAsync(request);
+            await RetireSecretOfDeletedClientCredentialAsync(existing);
             await NotifyClientCredentialChangedAsync(ClientCredentialKind, "deleted", existing.ItemId, existing.CreatedBy, existing.OrganizationId);
             return new BaseResponse { IsSuccess = true };
         }
+
+        /// <summary>
+        /// Retires the secret of a credential whose document delete was just requested. Data-access
+        /// denials make the delete a silent no-op, so the credential is re-read first: the secret
+        /// of a credential that still exists is never retired.
+        /// </summary>
+        private async Task RetireSecretOfDeletedClientCredentialAsync(ClientCredential credential)
+        {
+            if (string.IsNullOrEmpty(credential.ClientSecretReference))
+                return;
+
+            ClientCredential? stored;
+            try
+            {
+                stored = await _authenticationRepository.GetClientCredentialByIdAsync(credential.ItemId);
+            }
+            catch (Exception ex)
+            {
+                // The delete itself completed: a failing check must not turn it into an error.
+                LogClientCredentialReReadFailed(credential, ex);
+                return;
+            }
+
+            if (stored != null)
+            {
+                _logger?.LogWarning("Client credential {ClientId} was not deleted; its secret is kept.", credential.ItemId);
+                return;
+            }
+
+            await _clientSecretResolver.RetireAsync(credential, credential.ClientSecretReference, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// After a credential write whose outcome is not known (it threw, or it was not
+        /// acknowledged), re-reads the credential and retires <paramref name="reference"/>, a secret
+        /// created in this request, when the stored document does not point at it.
+        /// </summary>
+        /// <remarks>
+        /// Fail safe, orphan over dangling, as for identity providers: nothing is retired when the
+        /// re-read fails, nor, with <paramref name="keepWhenMissing"/>, when it finds no document.
+        /// </remarks>
+        private async Task RetireUnreferencedClientSecretAsync(ClientCredential credential, string? reference, bool keepWhenMissing)
+        {
+            if (string.IsNullOrEmpty(reference))
+                return;
+
+            ClientCredential? stored;
+            try
+            {
+                stored = await _authenticationRepository.GetClientCredentialByIdAsync(credential.ItemId);
+            }
+            catch (Exception ex)
+            {
+                LogClientCredentialReReadFailed(credential, ex);
+                return;
+            }
+
+            if (stored == null && keepWhenMissing)
+            {
+                _logger?.LogWarning("Client credential {ClientId} could not be read back after the update; the secret created by this request is kept.", credential.ItemId);
+                return;
+            }
+
+            if (stored?.ClientSecretReference == reference)
+                return;
+
+            await _clientSecretResolver.RetireAsync(credential, reference, CancellationToken.None);
+        }
+
+        // Type only: a repository exception message can carry document values.
+        private void LogClientCredentialReReadFailed(ClientCredential credential, Exception ex) =>
+            _logger?.LogWarning("Client credential {ClientId} could not be re-read ({FailureClass}); its secret is kept.", credential.ItemId, ex.GetType().Name);
 
         public async Task<List<ClientCredential>> GetClientCredentialsAsync(GetAllClientCredentialsRequest request)
         {
@@ -1080,7 +1265,11 @@ namespace Authentication.DomainService.Services
             if (client != null) client.ClientSecret = null;
         }
 
-        private static void HideSecret(ClientCredential credential) => credential.ClientSecret = null;
+        private static void HideSecret(ClientCredential credential)
+        {
+            credential.ClientSecret = null;
+            credential.ClientSecretReference = null;
+        }
 
         private static void HideSecret(IdentityProvider? provider)
         {

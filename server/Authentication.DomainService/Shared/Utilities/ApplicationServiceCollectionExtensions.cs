@@ -281,6 +281,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.RegisterBlocksCaptchaService();
             // Singleton over IServiceScopeFactory: ISecretService is scoped, so it is resolved per call.
             serviceCollection.AddSingleton<IIdentityProviderSecretResolver, IdentityProviderSecretResolver>();
+            serviceCollection.AddSingleton<IClientCredentialSecretResolver, ClientCredentialSecretResolver>();
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
             serviceCollection.AddSingleton<IRefreshSessionResolver, RefreshSessionResolver>();

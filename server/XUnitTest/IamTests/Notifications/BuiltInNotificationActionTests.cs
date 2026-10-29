@@ -689,10 +689,12 @@ namespace XUnitTest.IamTests.Notifications
     {
         private readonly Mock<IAuthenticationRepository> _repo = new();
         private readonly RecordingSender _sender = new();
+        private readonly Mock<Blocks.Secrets.ISecretService> _secrets = new();
 
         public ClientCredentialNotificationTests()
         {
             TestContext.Install(userId: "admin-1");
+            _secrets.Setup(s => s.SetAsync(It.IsAny<Blocks.Secrets.SetSecretRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync("cs-ref");
         }
 
         public void Dispose() => TestContext.Clear();
@@ -705,7 +707,7 @@ namespace XUnitTest.IamTests.Notifications
                     new Mock<IValidator<SaveIdentityProviderRequest>>().Object,
                     new Mock<IValidator<UpdateIdentityProviderRequest>>().Object),
                 new Mock<IHttpClientFactory>().Object,
-                TestDoubles.IdentityProviderSecretTestDoubles.Resolver(),
+                TestDoubles.IdentityProviderSecretTestDoubles.Resolver(), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets),
                 NullLogger<AuthenticationDomainService>.Instance, _sender);
 
         [Fact]
