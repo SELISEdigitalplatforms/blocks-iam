@@ -220,7 +220,9 @@ namespace Authentication.DomainService.Authentication
                 return (new BadRequestObjectResult(new { error = "invalid_request", error_description = "redirect_uri is required" }), null, null, null);
             }
 
-            if (oidcClient == null)
+            // An inactive client gets the same answer as an unknown one, before any user lookup,
+            // password check or session cookie.
+            if (oidcClient == null || !oidcClient.IsActive)
             {
                 return (new BadRequestObjectResult(new { error = "invalid_client", error_description = $"OIDC client '{request.ClientId}' not found or not configured" }), null, null, null);
             }

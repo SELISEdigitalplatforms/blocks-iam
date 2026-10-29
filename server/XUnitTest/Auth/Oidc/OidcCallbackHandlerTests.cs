@@ -191,6 +191,32 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
+        public async Task HandleCallbackAsync_ExchangesTheCode_WithTheRedirectUriCheckedAtStart()
+        {
+            var handler = Create(out _, out var cache, out var provisioning, out var social);
+            var socialState = JsonSerializer.Serialize(new OidcSocialStateContext
+            {
+                OidcState = "oidc-state-1", Provider = "google", ProviderRedirectUri = "https://iam/checked"
+            });
+            var context = JsonSerializer.Serialize(new OidcContext
+            {
+                ClientId = "client-1", RedirectUri = "https://redirect.com", ProviderRedirectUri = "https://request/raw"
+            });
+            cache.Setup(c => c.GetStringValueAsync("oidc_social_state:state-1")).ReturnsAsync(socialState);
+            cache.Setup(c => c.GetStringValueAsync("oidc_context:oidc-state-1")).ReturnsAsync(context);
+            StateInfo? sent = null;
+            social.Setup(s => s.HandleSocialLoginCallback(It.IsAny<StateInfo>()))
+                .Callback<StateInfo>(s => sent = s)
+                .ReturnsAsync(new SocialCallbackResult { ExternalUserData = new BYOSsoUserData { Email = "u@example.com" } });
+            provisioning.Setup(p => p.ResolveOrProvisionAsync(It.IsAny<IExternalUserData>(), It.IsAny<string>()))
+                .ReturnsAsync(SsoProvisioningResult.From(SsoProvisioningOutcome.ExistingUser, new User { ItemId = "u1", Active = true }));
+
+            await handler.HandleCallbackAsync("code-1", "state-1");
+
+            sent!.RedirectUri.Should().Be("https://iam/checked");
+        }
+
+        [Fact]
         public async Task HandleCallbackAsync_ReturnsSuccess_WhenUserProvisioned()
         {
             var created = new User { ItemId = "new-user", Email = "u@example.com", Active = true };

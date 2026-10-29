@@ -642,6 +642,27 @@ namespace XUnitTest.Auth.Oidc
             Prop(bad.Value, "error").Should().Be("invalid_client");
         }
 
+        [Theory]
+        [InlineData(null)]
+        [InlineData("user-1")]
+        public async Task AuthorizeAsync_InactiveClient_IsRefusedAsInvalidClient_BeforeAnyUserOrSessionWork(string? blocksUserId)
+        {
+            _authRepo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
+                .ReturnsAsync(new OidcClientRegistration
+                {
+                    ClientId = "client-1",
+                    RedirectUris = new List<string> { RedirectUri },
+                    RequirePkce = false,
+                    IsActive = false
+                });
+
+            var result = await Authorize(blocksUserId: blocksUserId, returnRedirectResponse: false);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_client");
+            _userRepo.Verify(u => u.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+        }
+
         [Fact]
         public async Task AuthorizeAsync_ReturnsInvalidRequest_WhenRedirectUriNotRegistered()
         {

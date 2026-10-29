@@ -6,6 +6,7 @@ using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Shared.Dtos;
 using Blocks.Genesis;
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
@@ -612,6 +613,19 @@ namespace XUnitTest.Auth
             result.Should().BeOfType<OkObjectResult>();
         }
 
+        [Fact]
+        public async Task GetLoginOptions_ReturnsClientId_ButNoRedirectUris()
+        {
+            _repo.Setup(r => r.GetIdentityProvidersAsync()).ReturnsAsync(new List<IdentityProvider> { SocialProvider() });
+
+            var result = await Create().GetLoginOptionsAsync();
+
+            var json = JsonSerializer.Serialize(result.Should().BeOfType<OkObjectResult>().Subject.Value);
+            json.Should().Contain("\"clientId\":\"cid\"");
+            json.Should().NotContain("redirectUris");
+            json.Should().NotContain("https://app/cb");
+        }
+
         // ---------- GetSocialAuthorizationUrlAsync ----------
 
         [Fact]
@@ -657,6 +671,66 @@ namespace XUnitTest.Auth
             _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Once);
         }
 
+        [Theory]
+        [InlineData("https://evil.example/cb")]
+        [InlineData("https://APP/cb")]
+        [InlineData("https://app/cb/")]
+        public async Task GetSocialAuthUrl_UnregisteredRedirectUri_IsRefused_AndNothingCached(string redirectUri)
+        {
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(SocialProvider());
+
+            var result = await Create().GetSocialAuthorizationUrlAsync("cid", redirectUri);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            JsonSerializer.Serialize(bad.Value).Should().Contain("invalid_redirect_uri");
+            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("https://app/cb")]
+        [InlineData("")]
+        public async Task GetSocialAuthUrl_CachesTheCheckedRegisteredRedirectUri(string redirectUri)
+        {
+            var provider = SocialProvider();
+            provider.RedirectUris = new List<string> { "https://app/cb", "https://other/cb" };
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(provider);
+            string? cached = null;
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()))
+                .Callback<string, string, long>((_, value, _) => cached = value)
+                .ReturnsAsync(true);
+
+            var result = await Create().GetSocialAuthorizationUrlAsync("cid", redirectUri);
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            JsonSerializer.Deserialize<StateInfo>(cached!)!.RedirectUri.Should().Be("https://app/cb");
+            JsonSerializer.Serialize(ok.Value).Should().Contain(Uri.EscapeDataString("https://app/cb"));
+        }
+
+        [Fact]
+        public async Task GetSocialAuthUrl_NoRegisteredRedirectUri_AndNoneGiven_IsRefused()
+        {
+            var provider = SocialProvider();
+            provider.RedirectUris = new List<string>();
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(provider);
+
+            var result = await Create().GetSocialAuthorizationUrlAsync("cid", "");
+
+            JsonSerializer.Serialize(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value)
+                .Should().Contain("invalid_redirect_uri");
+        }
+
+        [Fact]
+        public async Task GetSocialAuthUrl_Failure_DoesNotReturnTheExceptionMessage()
+        {
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ThrowsAsync(new InvalidOperationException("internal detail"));
+
+            var result = await Create().GetSocialAuthorizationUrlAsync("cid", "https://app/cb");
+
+            var json = JsonSerializer.Serialize(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value);
+            json.Should().Contain("authorization_url_generation_failed");
+            json.Should().NotContain("internal detail");
+        }
+
         // ---------- GetOidcSocialAuthorizationUrlAsync ----------
 
         [Fact]
@@ -691,6 +765,48 @@ namespace XUnitTest.Auth
             var result = await Create().GetOidcSocialAuthorizationUrlAsync("cid", "state", "https://app/cb");
 
             result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task GetOidcSocialAuthUrl_UnregisteredRedirectUri_IsRefused_AndNothingCached()
+        {
+            _cache.Setup(c => c.GetStringValueAsync("oidc_context:state")).ReturnsAsync("{}");
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(SocialProvider());
+
+            var result = await Create().GetOidcSocialAuthorizationUrlAsync("cid", "state", "https://evil.example/cb");
+
+            JsonSerializer.Serialize(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value)
+                .Should().Contain("invalid_redirect_uri");
+            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("https://app/cb")]
+        [InlineData("")]
+        public async Task GetOidcSocialAuthUrl_StoresTheCheckedRedirectUri_InTheSocialState(string redirectUri)
+        {
+            _cache.Setup(c => c.GetStringValueAsync("oidc_context:state")).ReturnsAsync("{}");
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(SocialProvider());
+            string? cached = null;
+            _cache.Setup(c => c.AddStringValueAsync(It.Is<string>(k => k.StartsWith("oidc_social_state:")), It.IsAny<string>(), It.IsAny<long>()))
+                .Callback<string, string, long>((_, value, _) => cached = value)
+                .ReturnsAsync(true);
+
+            var result = await Create().GetOidcSocialAuthorizationUrlAsync("cid", "state", redirectUri);
+
+            result.Should().BeOfType<OkObjectResult>();
+            JsonSerializer.Deserialize<OidcSocialStateContext>(cached!)!.ProviderRedirectUri.Should().Be("https://app/cb");
+        }
+
+        [Fact]
+        public async Task GetOidcSocialAuthUrl_Failure_DoesNotReturnTheExceptionMessage()
+        {
+            _cache.Setup(c => c.GetStringValueAsync("oidc_context:state")).ThrowsAsync(new InvalidOperationException("internal detail"));
+
+            var result = await Create().GetOidcSocialAuthorizationUrlAsync("cid", "state", "https://app/cb");
+
+            JsonSerializer.Serialize(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value)
+                .Should().NotContain("internal detail");
         }
 
         // ---------- TriggerBackchannelLogoutAllAsync ----------

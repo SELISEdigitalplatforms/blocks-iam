@@ -614,7 +614,6 @@ namespace Authentication.DomainService.Authentication
                               provider = provider.Provider,
                               displayName = provider.DisplayName,
                               icon = provider.Provider, // Can be URL or icon name
-                              redirectUris = provider.RedirectUris,
                               clientId = provider.ClientId,
                           }).ToList()
                           : null;
@@ -655,6 +654,10 @@ namespace Authentication.DomainService.Authentication
                 if (identityProvider.ProviderType != "social")
                     return new BadRequestObjectResult(new { error = "invalid_provider_type", error_description = $"Provider '{clientId}' is not a social provider" });
 
+                var checkedRedirectUri = ResolveProviderRedirectUri(identityProvider, redirectUri);
+                if (checkedRedirectUri == null)
+                    return InvalidProviderRedirectUri();
+
                 // Generate state for CSRF protection
                 var state = Guid.NewGuid().ToString("n");
                 var stateValue = JsonSerializer.Serialize(new StateInfo
@@ -662,15 +665,14 @@ namespace Authentication.DomainService.Authentication
                     ClientId = clientId,
                     Provider = identityProvider.Provider,
                     State = state,
-                    RedirectUri = redirectUri,
+                    RedirectUri = checkedRedirectUri,
                     Audience = clientId,
                 });
                 await _cacheClient.AddStringValueAsync(state, stateValue, IdpConstants.OidcStateCacheTtlSeconds); // 5 minutes in seconds
 
                 // Build authorization URL
                 var scope = identityProvider.Scope ?? IdpConstants.OpenIdProfileEmailScope;
-                redirectUri = string.IsNullOrWhiteSpace(redirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : redirectUri;
-                var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, redirectUri, scope);
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, checkedRedirectUri, scope);
 
                 return new OkObjectResult(new
                 {
@@ -681,7 +683,7 @@ namespace Authentication.DomainService.Authentication
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting social authorization URL for provider: {Provider}", clientId);
-                return new BadRequestObjectResult(new { error = "authorization_url_generation_failed", error_description = ex.Message });
+                return AuthorizationUrlFailed();
             }
         }
 
@@ -718,6 +720,10 @@ namespace Authentication.DomainService.Authentication
                 if (!identityProvider.IsActive)
                     return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider with client ID '{providerClientId}' is not active" });
 
+                var checkedRedirectUri = ResolveProviderRedirectUri(identityProvider, providerRedirectUri);
+                if (checkedRedirectUri == null)
+                    return InvalidProviderRedirectUri();
+
                 // Generate state for social provider (separate from OIDC state)
                 var socialState = Guid.NewGuid().ToString("n");
 
@@ -728,6 +734,7 @@ namespace Authentication.DomainService.Authentication
                 {
                     OidcState = oidcState,
                     Provider = identityProvider.Provider,
+                    ProviderRedirectUri = checkedRedirectUri,
                     CreatedAt = DateTime.UtcNow
                 });
                 await _cacheClient.AddStringValueAsync(stateKey, stateValue, IdpConstants.OidcSocialStateCacheTtlSeconds);
@@ -735,8 +742,7 @@ namespace Authentication.DomainService.Authentication
                 // Build authorization URL for social provider
                 // Callback should redirect to /oidc/callback with provider and state
                 var scope = identityProvider.Scope ?? IdpConstants.OpenIdProfileEmailScope;
-                providerRedirectUri = string.IsNullOrWhiteSpace(providerRedirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : providerRedirectUri;
-                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, providerRedirectUri, scope);
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, checkedRedirectUri, scope);
 
                 return new OkObjectResult(new
                 {
@@ -747,9 +753,27 @@ namespace Authentication.DomainService.Authentication
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting OIDC social authorization URL for provider: {ClientId}", providerClientId);
-                return new BadRequestObjectResult(new { error = "authorization_url_generation_failed", error_description = ex.Message });
+                return AuthorizationUrlFailed();
             }
         }
+
+        /// <summary>
+        /// The redirect URI sent to a social provider. A caller-given URI is used only when it exactly
+        /// matches one the provider registered; with none given, the first registered one. Null means refuse.
+        /// </summary>
+        internal static string? ResolveProviderRedirectUri(IdentityProvider provider, string? requested)
+        {
+            if (string.IsNullOrWhiteSpace(requested))
+                return provider.RedirectUris.FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+
+            return provider.RedirectUris.FirstOrDefault(u => string.Equals(u, requested, StringComparison.Ordinal));
+        }
+
+        private static BadRequestObjectResult InvalidProviderRedirectUri() =>
+            new(new { error = "invalid_redirect_uri", error_description = "redirectUri is not registered for this provider" });
+
+        private static BadRequestObjectResult AuthorizationUrlFailed() =>
+            new(new { error = "authorization_url_generation_failed", error_description = "Could not start sign-in with this provider" });
 
         /// <summary>
         /// Build authorization URL with proper OAuth 2.0 parameters

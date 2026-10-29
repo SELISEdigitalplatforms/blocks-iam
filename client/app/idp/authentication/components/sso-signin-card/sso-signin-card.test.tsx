@@ -188,4 +188,31 @@ describe("SSOSigninCard", () => {
     fireEvent.click(screen.getByRole("button"));
     await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "provider down" }));
   });
+
+  it("explains an unregistered provider redirect URI", async () => {
+    h.signinByOidcEmail.mockResolvedValue({ error: "invalid_redirect_uri" });
+    render(
+      <SSOSigninCard providerConfig={provider} mode="oidc" oidcContext={{ clientId: "c", tenantId: "t1" }} />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() =>
+      expect(h.showError).toHaveBeenCalledWith({
+        errors: "This sign-in option is not set up for this page. Contact your administrator.",
+      }),
+    );
+    expect(h.hrefSpy).not.toHaveBeenCalled();
+  });
+
+  it("explains an inactive application when the request is refused", async () => {
+    h.signinByOidcEmail.mockRejectedValue({ errors: { error: "invalid_client" } });
+    render(
+      <SSOSigninCard providerConfig={provider} mode="oidc" oidcContext={{ clientId: "c", tenantId: "t1" }} />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() =>
+      expect(h.showError).toHaveBeenCalledWith({
+        errors: "The application that sent you here is not recognised.",
+      }),
+    );
+  });
 });

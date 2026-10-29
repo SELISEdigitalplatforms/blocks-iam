@@ -188,6 +188,24 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task ExecuteAsync_InactiveClient_GetsTheNotFoundAnswer_BeforeAnyUserLookup()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
+                .ReturnsAsync((OidcClientRegistration)null!);
+            var notFound = await Create().ExecuteAsync(PasswordRequest(), Req(), Res());
+
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
+                .ReturnsAsync(new OidcClientRegistration { ClientId = "client-1", IsActive = false });
+            var inactive = await Create().ExecuteAsync(PasswordRequest(), Req(), Res());
+
+            var bad = inactive.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_client");
+            JsonSerializer.Serialize(bad.Value).Should().Be(JsonSerializer.Serialize(((BadRequestObjectResult)notFound).Value));
+            _repo.Verify(r => r.GetUserByUsernameAsync(It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.TryReserveLoginAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+        }
+
+        [Fact]
         public async Task ExecuteAsync_ReturnsUnauthorized_WhenUserNull()
         {
             SetupOidcClientExists();

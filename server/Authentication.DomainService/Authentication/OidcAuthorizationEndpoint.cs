@@ -27,6 +27,8 @@ namespace Authentication.DomainService.Authentication
     public sealed class OidcAuthorizationEndpoint
     {
         private const string ErrorInvalidRequest = "invalid_request";
+        private const string ErrorInvalidClient = "invalid_client";
+        private const string UnknownClientMessage = "The application that sent you here is not recognised.";
 
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IIdpSessionRepository _sessionRepo;
@@ -148,6 +150,13 @@ namespace Authentication.DomainService.Authentication
                     // how an attacker-controlled Location is produced. Same-origin login error
                     // page (or 400 for API callers) instead.
                     return BuildBrowserError(ErrorInvalidRequest, string.Join("; ", validationResult.Errors));
+                }
+
+                // An inactive client is refused like an unknown one, before the login hop or any session work.
+                if (earlyClient != null && !earlyClient.IsActive)
+                {
+                    _logger.LogWarning("Inactive client refused: {ClientId}", client_id);
+                    return BuildBrowserError(ErrorInvalidClient, UnknownClientMessage);
                 }
 
                 // Reject unregistered redirect_uri before the login hop or any later client
@@ -280,10 +289,10 @@ namespace Authentication.DomainService.Authentication
                 var idpSessionId = await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id, credentialsJustVerified);
 
                 var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
-                if (client == null)
+                if (client == null || !client.IsActive)
                 {
                     _logger.LogWarning("Unknown client: {ClientId}", client_id);
-                    return BuildBrowserError("invalid_client", "The application that sent you here is not recognised.");
+                    return BuildBrowserError(ErrorInvalidClient, UnknownClientMessage);
                 }
 
                 if (client.IsDeviceFlowClient)

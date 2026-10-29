@@ -273,7 +273,8 @@ namespace Authentication.DomainService.Oidc.Services
                     Provider = provider,
                     Code = code,
                     Audience = context.ProviderClientId,
-                    RedirectUri = context.ProviderRedirectUri,
+                    // The URI checked when the flow started, not one carried in from the request.
+                    RedirectUri = oidcSocialState.ProviderRedirectUri,
                     FlowType = SocialFlowType.Oidc
                 };
 
