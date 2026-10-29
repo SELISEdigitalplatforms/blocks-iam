@@ -208,6 +208,7 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<ISignupOrganizationResolver, SignupOrganizationResolver>();
             serviceCollection.AddSingleton<IAccountService, AccountService>();
+            serviceCollection.AddSingleton<IAdminPasswordResetService, AdminPasswordResetService>();
             serviceCollection.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();
             serviceCollection.AddSingleton<ISignupLinkConfigurationService, SignupLinkConfigurationService>();
             serviceCollection.AddSingleton<ISignupLinkRepository, SignupLinkRepository>();

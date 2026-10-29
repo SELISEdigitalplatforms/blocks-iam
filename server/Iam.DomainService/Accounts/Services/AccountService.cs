@@ -1087,7 +1087,7 @@ namespace Iam.DomainService.Accounts
             var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose);
 
             _logger.LogInformation("Send Activation for {UserId} is {Send}", user.ItemId, result ? "sent" : "not sent");
-            return true;
+            return result;
         }
 
         public async Task<bool> SendActivationToEmailAsync(User user, string recoverAccountUrl, string emailPurpose)

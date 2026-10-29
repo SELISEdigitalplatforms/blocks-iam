@@ -528,6 +528,12 @@
             A token with no user, such as a client credential, acts on no one.
             </summary>
         </member>
+        <member name="T:Api.Controllers.UserPasswordResetController">
+            <summary>
+            An administrator sends a user the password-reset mail. Protected by its own permission and
+            asks no captcha; the public forgot-password flow (auth/recover) keeps its captcha.
+            </summary>
+        </member>
         <member name="T:Api.Middleware.DataValidationExceptionFilter">
             <summary>
             A save refused by a system schema's validation rules (IIamDataAccess PrepareWriteAsync / CheckUpdateAsync)

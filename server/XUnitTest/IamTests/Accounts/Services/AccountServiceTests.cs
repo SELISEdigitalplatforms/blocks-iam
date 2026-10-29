@@ -1630,6 +1630,21 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
+        public async Task ProcessRecover_MailNotQueued_ReturnsFalse()
+        {
+            // The admin reset reports "not sent" from this result, so a failed queue must not read as sent.
+            var service = CreateService();
+            var user = TestDataBuilder.CreateUser();
+            _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration());
+            _repositoryMock.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
+            _iamServiceMock.Setup(s => s.SendEmailAsync(It.IsAny<SendMail>())).ReturnsAsync(false);
+
+            var result = await service.ProcessRecoverAccountAsync(user, "RecoverAccount");
+
+            result.Should().BeFalse();
+        }
+
+        [Fact]
         public async Task SendReActivation_UrlBuildFails_ReturnsFalse_AndDoesNotCache()
         {
             var service = CreateService();
