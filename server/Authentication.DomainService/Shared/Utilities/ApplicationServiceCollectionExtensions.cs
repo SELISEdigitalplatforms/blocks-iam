@@ -283,6 +283,7 @@ namespace Authentication.DomainService.Utilities
             // Singleton over IServiceScopeFactory: ISecretService is scoped, so it is resolved per call.
             serviceCollection.AddSingleton<IIdentityProviderSecretResolver, IdentityProviderSecretResolver>();
             serviceCollection.AddSingleton<IClientCredentialSecretResolver, ClientCredentialSecretResolver>();
+            serviceCollection.AddSingleton<IOidcClientSecretResolver, OidcClientSecretResolver>();
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
             serviceCollection.AddSingleton<IRefreshSessionResolver, RefreshSessionResolver>();

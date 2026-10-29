@@ -60,7 +60,7 @@ namespace XUnitTest.Auth.Shared
         private AuthenticationDomainService Create() =>
             new(_message.Object, _repo.Object,
                 new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets));
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets), TestDoubles.OidcClientSecretTestDoubles.Resolver(_secrets));
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
         {
@@ -362,11 +362,21 @@ namespace XUnitTest.Auth.Shared
             var cred = new OidcClientRegistration { ItemId = "c1", ClientId = "c1", ClientSecret = "old" };
             _repo.Setup(r => r.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(cred);
             _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            OidcSecretStoreAccepts();
             var result = await Create().RotateOidcClientSecretAsync("c1");
             result.IsSuccess.Should().BeTrue();
             result.ClientSecret.Should().NotBe("old");
             result.ClientSecret.Should().StartWith("blxsk_");
+            // A client still on plaintext gets a new secret in the store; the document keeps the reference only.
+            cred.ClientSecret.Should().BeEmpty();
+            cred.ClientSecretReference.Should().Be("oidc-ref-1");
+            _secrets.Verify(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Value == result.ClientSecret && r.Type == SecretTypes.Service), It.IsAny<CancellationToken>()), Times.Once);
         }
+
+        /// <summary>The secret store takes a new OIDC client secret and answers <paramref name="reference"/>.</summary>
+        private void OidcSecretStoreAccepts(string reference = "oidc-ref-1") =>
+            _secrets.Setup(s => s.SetAsync(It.Is<SetSecretRequest>(r => r.Name == OidcClientSecretResolver.SecretName), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(reference);
 
         // ---------- SaveClientCredentialAsync ----------
 
@@ -522,6 +532,7 @@ namespace XUnitTest.Auth.Shared
                 .Callback<OidcClientRegistration>(credential => saved = credential)
                 .Returns(Task.CompletedTask);
             _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+            OidcSecretStoreAccepts();
 
             var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
             {
@@ -637,6 +648,7 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
             _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
             _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(Idp());
+            OidcSecretStoreAccepts();
 
             var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
             {
@@ -650,8 +662,10 @@ namespace XUnitTest.Auth.Shared
             result.IsSuccess.Should().BeTrue();
             // Pin the classification, not just the call: "blocks-oidc" is the value the Identity
             // Provider gallery filters on, so a wrong type here hides the provider entirely.
+            // The provider shares the client's secret reference and holds no plaintext.
             _repo.Verify(r => r.CreateIdentityProviderAsync(It.Is<IdentityProvider>(p =>
-                p.Provider == "my-app" && p.ProviderType == "blocks-oidc")), Times.Once);
+                p.Provider == "my-app" && p.ProviderType == "blocks-oidc"
+                && p.ClientSecretReference == "oidc-ref-1" && p.ClientSecret == string.Empty)), Times.Once);
         }
 
         [Fact]
@@ -1058,12 +1072,12 @@ namespace XUnitTest.Auth.Shared
         private AuthenticationDomainService CreateWithResolverLogger(ILogger<IdentityProviderSecretResolver> logger) =>
             new(_message.Object, _repo.Object,
                 new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets, logger), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets));
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets, logger), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets), TestDoubles.OidcClientSecretTestDoubles.Resolver(_secrets));
 
         private AuthenticationDomainService CreateWithLogger(ILogger<AuthenticationDomainService> logger) =>
             new(_message.Object, _repo.Object,
                 new AuthenticationRequestValidators(_oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
-                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets), logger);
+                    _updateIdpValidator.Object), _httpFactory.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets), TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets), TestDoubles.OidcClientSecretTestDoubles.Resolver(_secrets), logger);
 
         private const string RotationNotUndone = "cannot be undone";
 

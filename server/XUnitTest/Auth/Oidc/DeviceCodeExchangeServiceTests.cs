@@ -1,3 +1,5 @@
+using Blocks.Genesis;
+using Blocks.Secrets;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Repositories;
@@ -20,7 +22,7 @@ namespace XUnitTest.Auth.Oidc
         private const string DeviceCode = "raw-device-code-1";
         private readonly DeviceCodeGenerator _generator = new();
 
-        private static (DeviceCodeExchangeService svc, Mock<IDeviceAuthorizationRepository> repo, Mock<IUserRepository> userRepo, Mock<IAuthenticationRepository> authRepo) Build()
+        private static (DeviceCodeExchangeService svc, Mock<IDeviceAuthorizationRepository> repo, Mock<IUserRepository> userRepo, Mock<IAuthenticationRepository> authRepo) Build(Mock<ISecretService>? oidcSecrets = null)
         {
             var repo = new Mock<IDeviceAuthorizationRepository>();
             var userRepo = new Mock<IUserRepository>();
@@ -34,6 +36,7 @@ namespace XUnitTest.Auth.Oidc
                 new DeviceCodeGenerator(),
                 mint.Object,
                 authRepo.Object,
+                XUnitTest.TestDoubles.OidcClientSecretTestDoubles.Resolver(oidcSecrets),
                 userRepo.Object,
                 Options.Create(new DeviceFlowOptions()),
                 NullLogger<DeviceCodeExchangeService>.Instance);
@@ -220,6 +223,46 @@ namespace XUnitTest.Auth.Oidc
 
             var obj = result.Should().BeOfType<ObjectResult>().Subject;
             obj.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+        }
+
+        [Fact]
+        public async Task ExchangeAsync_Returns503_WhenTheReferencedSecretCannotBeRead()
+        {
+            var secrets = new Mock<ISecretService>(MockBehavior.Strict);
+            secrets.Setup(s => s.GetValueAsync("oidc-ref", It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new SecretVaultException("down", "get", "oidc-ref"));
+            var (svc, repo, _, authRepo) = Build(secrets);
+            var hash = _generator.HashDeviceCode(DeviceCode);
+            var entity = new DeviceAuthorizationRequestModel
+            {
+                Id = "id1", DeviceCodeHash = hash, UserCode = "ABCD-EFGH", ClientId = "c1", TenantId = "t1",
+                Status = DeviceAuthorizationStatus.Pending,
+                LastPollAt = DateTime.UtcNow.AddSeconds(-10),
+                PollIntervalSeconds = 5,
+                ExpiresAt = DateTime.UtcNow.AddMinutes(5)
+            };
+            repo.Setup(r => r.GetByDeviceCodeHashAsync(hash, It.IsAny<CancellationToken>())).ReturnsAsync(entity);
+            var client = ConfidentialDeviceClient();
+            client.ClientSecret = string.Empty;
+            client.ClientSecretReference = "oidc-ref";
+            authRepo.Setup(a => a.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(client);
+
+            IActionResult result;
+            BlocksContext.IsTestMode = true;
+            try
+            {
+                BlocksContext.SetContext(XUnitTest.TestDoubles.IdentityProviderSecretTestDoubles.AnonymousContext("t1"), false);
+                result = await svc.ExchangeAsync(BuildRequest(DeviceCode, "c1", "secret-1"));
+            }
+            finally
+            {
+                BlocksContext.SetContext(null, false);
+                BlocksContext.IsTestMode = false;
+            }
+
+            var obj = result.Should().BeOfType<ObjectResult>().Subject;
+            obj.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+            obj.Value!.ToString().Should().Contain("temporarily_unavailable");
         }
 
         [Fact]
