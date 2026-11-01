@@ -298,38 +298,13 @@ test.describe("profile", () => {
       await expect(emailRow.or(authenticatorRow).first()).toBeVisible();
     });
 
-    await test.step("[Positive] 'None' row is always shown last, after the project-allowed methods", async () => {
-      const noneRow = page.getByText("None", { exact: true });
-      if (await noneRow.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await expect(page.getByText("No two-factor authentication.")).toBeVisible();
-      }
-    });
-
-    await test.step("[Positive] The 'None' row shows no action button when the user currently has no MFA method active", async () => {
-      // NOTE: assumes the current user has no MFA method enabled.
-      const noneRow = page
-        .getByText("None", { exact: true })
-        .locator("xpath=ancestor::div[contains(@class,'p-4')][1]");
-      if (await noneRow.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await expect(noneRow.getByRole("button")).toHaveCount(0);
-      }
-    });
-
-    await test.step("[Security] The 'None' row incorrectly shows an 'Active' badge while a real MFA method is active", async () => {
-      // Regression guard: 'None' should not show Active while a real method is active.
-      const emailRow = page
-        .getByText("Email", { exact: true })
-        .locator("xpath=ancestor::div[contains(@class,'p-4')][1]");
-      const emailActive = await emailRow
-        .getByText("Active")
-        .isVisible()
-        .catch(() => false);
-      if (emailActive) {
-        const noneRow = page
-          .getByText("None", { exact: true })
-          .locator("xpath=ancestor::div[contains(@class,'p-4')][1]");
-        await expect(noneRow.getByText("Active")).toHaveCount(0);
-      }
+    await test.step("[Positive] No 'None' row; at most one MFA method shows 'Active'", async () => {
+      await expect(page.getByText("No two-factor authentication.")).toHaveCount(0);
+      const activeMethods = page
+        .locator("div.p-4")
+        .filter({ has: page.getByText(/^(Email|Authenticator app)$/) })
+        .getByText("Active", { exact: true });
+      expect(await activeMethods.count()).toBeLessThanOrEqual(1);
     });
 
     await test.step("[Positive] Clicking 'Enable' on Email opens the verification dialog and triggers an OTP send", async () => {
