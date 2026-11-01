@@ -1,4 +1,6 @@
 import { useGetMe, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
+import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
+import { dateLocale } from "@blocks-idp/iam/security/utils/date-format";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { ProfileImageUploader } from "@blocks-idp/iam/components/profile-image-uploader";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
@@ -28,11 +30,11 @@ const InfoRow = ({ icon, label, value }: InfoRowProps) => (
   </div>
 );
 
-const formatLastLogin = (value?: string) => {
-  if (!value) return "Never";
+const formatLastLogin = (t: TFunction, value?: string) => {
+  if (!value) return t("USER_PROFILE_SIDEBAR.NEVER");
   const date = new Date(value);
-  if (Number.isNaN(date.getTime()) || date.getFullYear() <= 1) return "Never";
-  return date.toLocaleString(undefined, {
+  if (Number.isNaN(date.getTime()) || date.getFullYear() <= 1) return t("USER_PROFILE_SIDEBAR.NEVER");
+  return date.toLocaleString(dateLocale(), {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -42,6 +44,7 @@ const formatLastLogin = (value?: string) => {
 };
 
 export const UserProfileSidebar = ({ id, projectKey, own = false }: UserProfileSidebarProps) => {
+  const { t } = useT("iam.profile");
   const { data: userByIdData } = useGetUserById(
     { id, projectKey },
     { enabled: !own },
@@ -89,11 +92,11 @@ export const UserProfileSidebar = ({ id, projectKey, own = false }: UserProfileS
       {/* Account details */}
       <CardContent className="mt-4 flex-1 overflow-y-auto w-full rounded-sm border bg-card p-5 shadow-xs">
         <h3 className="mb-3 text-base font-semibold text-high-emphasis">
-          Account details
+          {t("USER_PROFILE_SIDEBAR.ACCOUNT_DETAILS")}
         </h3>
         <InfoRow
           icon={<Shield className="h-4 w-4 text-muted-foreground" />}
-          label="Status"
+          label={t("common:STATUS")}
           value={
             <span
               className={`mt-0.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
@@ -107,19 +110,19 @@ export const UserProfileSidebar = ({ id, projectKey, own = false }: UserProfileS
                   user?.active ? "bg-emerald-500" : "bg-red-500"
                 }`}
               />
-              {user?.active ? "Active" : "Inactive"}
+              {user?.active ? t("USER_PROFILE_SIDEBAR.ACTIVE") : t("USER_PROFILE_SIDEBAR.INACTIVE")}
             </span>
           }
         />
         <InfoRow
           icon={<Activity className="h-4 w-4 text-muted-foreground" />}
-          label="Total logins"
+          label={t("USER_PROFILE_SIDEBAR.TOTAL_LOGINS")}
           value={user?.logInCount ?? 0}
         />
         <InfoRow
           icon={<Calendar className="h-4 w-4 text-muted-foreground" />}
-          label="Last login"
-          value={formatLastLogin(user?.lastLoggedInTime)}
+          label={t("USER_PROFILE_SIDEBAR.LAST_LOGIN")}
+          value={formatLastLogin(t, user?.lastLoggedInTime)}
         />
       </CardContent>
     </Card>

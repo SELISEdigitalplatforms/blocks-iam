@@ -3,6 +3,7 @@ import { ProfileMFADetails } from "./profile-mfa-detail";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { Button } from "@/components/ui-kits/button/button";
 import { createContext, useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { ProfileMfaMethodSelectList } from "./user-mfa-confirmation/profile-mfa-methods-select-list";
 import { useGetMFAConfig } from "@blocks-idp/mfa/hooks/use-mfa-config";
 import { BLOCKS_OS_BASE_URL } from "@/constants/endpoint.constant";
@@ -14,10 +15,11 @@ type ProfileMFAProps = {
 };
 
 export const ProfileConfigMFA = () => {
+  const { t } = useT("iam.profile");
   return (
     <Card>
       <CardHeader className="mb-3">
-        <CardTitle>Multi-factor Authentication</CardTitle>
+        <CardTitle>{t("PROFILE_MFA.TITLE")}</CardTitle>
       </CardHeader>
       <CardContent>
         <ProfileMFADetails />
@@ -30,21 +32,20 @@ export const ProfileConfigMFA = () => {
 };
 
 export const ProjectMFA = () => {
+  const { t } = useT("iam.profile");
   return (
     <Card>
       <CardHeader className="mb-3">
         <div className="flex items-center justify-between">
-          <CardTitle>Multi-factor Authentication</CardTitle>
+          <CardTitle>{t("PROFILE_MFA.TITLE")}</CardTitle>
           <Button asChild variant="outline" size="sm">
-            <a href={`${BLOCKS_OS_BASE_URL}/services/secret-management?tab=mfa`}>Go to MFA Settings</a>
+            <a href={`${BLOCKS_OS_BASE_URL}/services/secret-management?tab=mfa`}>{t("PROFILE_MFA.GO_TO_SETTINGS")}</a>
           </Button>
         </div>
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground">
-          Multi-Factor Authentication (MFA) enhances your account security by requiring an
-          additional verification step. To enable MFA, you need to first activate it for your
-          project.
+          {t("PROFILE_MFA.PROJECT_DESCRIPTION")}
         </p>
       </CardContent>
     </Card>
@@ -52,11 +53,12 @@ export const ProjectMFA = () => {
 };
 
 const LoadingSkelton = () => {
+  const { t } = useT("iam.profile");
   return (
     <Card className="rounded shadow-none">
       <CardHeader className="mb-3">
         <div className="flex items-center justify-between">
-          <CardTitle>Multi-factor Authentication</CardTitle>
+          <CardTitle>{t("PROFILE_MFA.TITLE")}</CardTitle>
           <Skeleton className="h-6 w-1/6" />
         </div>
       </CardHeader>

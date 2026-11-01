@@ -7,6 +7,7 @@ import {
 } from "@/components/ui-kits/dialog/dialog";
 
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { ProfileMfaVerifyForm } from "./profile-mfa-verify-form";
 import { profileMfaContext } from "../../profile-mfa";
 import { ProfileMfaVerifyGuideLineTotp } from "./profile-mfa-verify-guideline-totp";
@@ -15,6 +16,7 @@ import { useGenerateUserMfaOTP } from "@blocks-idp/mfa/hooks/use-mfa-config";
 import { useQueryClient } from "@tanstack/react-query";
 
 export const ProfileMFAVerify = () => {
+  const { t } = useT("iam.profile");
   const { isVerifyModalOpen, setIsVerifyModalOpen, mfaMethodType, projectKey, userId } =
     useContext(profileMfaContext);
     const queryClient = useQueryClient();
@@ -56,9 +58,9 @@ export const ProfileMFAVerify = () => {
       >
         <DialogContent aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>{mfaMethodType === 1 && "Set up your authenticator app"}</DialogTitle>
+            <DialogTitle>{mfaMethodType === 1 && t("PROFILE_MFA_VERIFY.SET_UP_AUTHENTICATOR")}</DialogTitle>
             <DialogDescription>
-              {mfaMethodType === 1 && "Please follow the instructions below."}
+              {mfaMethodType === 1 && t("PROFILE_MFA_VERIFY.FOLLOW_INSTRUCTIONS")}
             </DialogDescription>
           </DialogHeader>
           <div className="text-sm font-normal text-high-emphasis">
