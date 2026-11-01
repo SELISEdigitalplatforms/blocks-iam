@@ -7,13 +7,14 @@ import {
   type OidcAnimPhase,
   type OidcPanelConfig,
 } from "./nodes-panel-oidc";
-import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
+import { AppearanceControls } from "@/components/appearance-controls/appearance-controls";
 import { Separator } from "@/components/ui-kits/separator/separator";
 import type {
   IOidcUiTemplate,
 } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import type { IOidcUiThemePalette } from "@blocks-idp/authentication/models/oidc-ui-template";
 import "./sci-fi-oidc.css";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 
 /* ── Animation context ──────────────────────────────────────── */
 export interface OidcAuthAnimContextValue {
@@ -88,10 +89,11 @@ export function OidcBrand({
   logoUrl,
   brandName,
 }: Readonly<{ logoUrl: string | null; brandName: string }>) {
+  const { t } = useT("iam.oidc");
   return (
     <div className="flex items-center gap-3">
       {logoUrl ? (
-        <img src={logoUrl} alt={`${brandName} logo`} className="h-7 w-auto max-w-28 object-contain" />
+        <img src={logoUrl} alt={t("OIDC_AUTH_SHELL.BRAND_LOGO_ALT", { brand: brandName })} className="h-7 w-auto max-w-28 object-contain" />
       ) : (
         <BlocksLogo />
       )}
@@ -289,7 +291,7 @@ export function OidcAuthShell({
                 {/* Topbar: logo + brand label + theme toggle */}
                 <div className="flex items-center justify-between mb-4">
                   <OidcBrand logoUrl={resolvedLogoUrl} brandName={brandName} />
-                  <ModeToggle />
+                  <AppearanceControls />
                 </div>
 
                 {/* Form / success body */}

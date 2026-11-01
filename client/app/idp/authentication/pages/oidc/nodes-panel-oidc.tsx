@@ -10,6 +10,7 @@ import {
   Code2,
   type LucideIcon,
 } from "lucide-react";
+import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
 
 export type OidcAnimPhase = "idle" | "submitting" | "succeeded" | "failed";
 
@@ -140,12 +141,23 @@ function ProgressBar({
 }
 
 /* ── Service node card ──────────────────────────────────────── */
+function getNodeBadgeText(
+  t: TFunction,
+  { isFailed, isDone, isActive }: { isFailed: boolean; isDone: boolean; isActive: boolean },
+) {
+  if (isFailed) return t("NODES_PANEL.BADGE_FAILED");
+  if (isDone) return t("NODES_PANEL.BADGE_COMPLETE");
+  if (isActive) return t("NODES_PANEL.BADGE_PROCESSING");
+  return t("NODES_PANEL.BADGE_STANDBY");
+}
+
 function NodeCard({
   node, state, floatIdx, indeterminate = false, showProgress = true, floating = true,
 }: {
   node: OidcServiceNode; state: NodeState; floatIdx: number;
   indeterminate?: boolean; showProgress?: boolean; floating?: boolean;
 }) {
+  const { t } = useT("iam.oidc");
   const isActive = state === "active";
   const isDone   = state === "complete";
   const isFailed = state === "failed";
@@ -158,10 +170,11 @@ function NodeCard({
     ? { background: "var(--accent-soft)",  color: "var(--accent2)" }
     : { background: "var(--node-divider)", color: "var(--fg)" };
 
-  const badgeText = isFailed ? "Failed" : isDone ? "Complete" : isActive ? "Processing" : "Standby";
+  const badgeText = getNodeBadgeText(t, { isFailed, isDone, isActive });
+  const stateLabel = isFailed ? t("NODES_PANEL.ABORTED") : t("NODES_PANEL.COMPLETE");
   const descColor = isFailed ? "var(--danger)" : isDone ? "var(--success)" : isActive ? "var(--accent2)" : "var(--muted)";
   const description = isFailed
-    ? (node.failLabel ?? "Step failed — see details below")
+    ? (node.failLabel ?? t("NODES_PANEL.STEP_FAILED"))
     : isDone   ? node.successLabel
     : node.activeLabel;
 
@@ -201,7 +214,7 @@ function NodeCard({
           failed={isFailed}
           completed={isDone}
           indeterminate={indeterminate}
-          label={isFailed ? "Aborted" : isDone ? "Complete" : node.activeLabel}
+          label={isFailed || isDone ? stateLabel : node.activeLabel}
         />
       )}
     </div>
@@ -453,6 +466,9 @@ function CascadeBody({
 }
 
 export function NodesPanelOidc({ config, phase, errorMessage, idleContent, instant }: Readonly<NodesPanelOidcProps>) {
+  // Subscribes the panel to the text of this module, so it redraws when German arrives. The
+  // labels are read from `config` as they are drawn.
+  useT("iam.oidc");
   const [visible, setVisible] = useState<VisibleNode[]>([]);
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([]);
   const terminalRef = useRef<HTMLDivElement>(null);

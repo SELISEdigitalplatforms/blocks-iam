@@ -9,6 +9,7 @@ import {
 import { AlertCircle, CheckCircle2, Clock, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router";
+import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
 import { OidcAuthShell, OidcFooter, useOidcAuthAnimation } from "./oidc-auth-shell";
 import { OIDC_ERROR_PANEL } from "./oidc-panel-config";
 
@@ -19,28 +20,6 @@ type ErrorCopy = {
   message: string;
   icon: LucideIcon;
   tone: Tone;
-};
-
-// Plain words for the codes a user can actually hit. Anything else shows the server's own text.
-const KNOWN_ERRORS: Record<string, ErrorCopy> = {
-  invalid_state: {
-    title: "Sign-in expired",
-    message: "Your sign-in took too long or was started in another tab. Please start again.",
-    icon: Clock,
-    tone: "warn",
-  },
-  oidc_flow_expired: {
-    title: "Sign-in expired",
-    message: "Your sign-in took too long. Please start again.",
-    icon: Clock,
-    tone: "warn",
-  },
-  state_already_used: {
-    title: "Already signed in",
-    message: "This sign-in was already completed. Go back to the application to continue.",
-    icon: CheckCircle2,
-    tone: "success",
-  },
 };
 
 const TONE_CLASSES: Record<Tone, { icon: string; ring: string }> = {
@@ -54,22 +33,50 @@ const formatErrorCode = (code: string): string =>
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
-const resolveCopy = (errorCode: string | null, errorDescription: string | null): ErrorCopy => {
-  if (errorCode && KNOWN_ERRORS[errorCode]) return KNOWN_ERRORS[errorCode];
+// Plain words for the codes a user can actually hit. Anything else shows the server's own text.
+const resolveCopy = (
+  t: TFunction,
+  errorCode: string | null,
+  errorDescription: string | null,
+): ErrorCopy => {
+  switch (errorCode) {
+    case "invalid_state":
+      return {
+        title: t("ERROR_SCREEN.SIGN_IN_EXPIRED_TITLE"),
+        message: t("ERROR_SCREEN.INVALID_STATE_MESSAGE"),
+        icon: Clock,
+        tone: "warn",
+      };
+    case "oidc_flow_expired":
+      return {
+        title: t("ERROR_SCREEN.SIGN_IN_EXPIRED_TITLE"),
+        message: t("ERROR_SCREEN.FLOW_EXPIRED_MESSAGE"),
+        icon: Clock,
+        tone: "warn",
+      };
+    case "state_already_used":
+      return {
+        title: t("ERROR_SCREEN.ALREADY_SIGNED_IN_TITLE"),
+        message: t("ERROR_SCREEN.STATE_ALREADY_USED_MESSAGE"),
+        icon: CheckCircle2,
+        tone: "success",
+      };
+    default:
+      break;
+  }
 
   if (errorCode || errorDescription) {
     return {
-      title: "Sign In Failed",
-      message: errorDescription || "Sign-in could not be completed. Please try again.",
+      title: t("ERROR_SCREEN.SIGN_IN_FAILED_TITLE"),
+      message: errorDescription || t("ERROR_SCREEN.SIGN_IN_FAILED_MESSAGE"),
       icon: AlertCircle,
       tone: "danger",
     };
   }
 
   return {
-    title: "Access Blocked",
-    message:
-      "We couldn't sign you in at this time. Please try again, or contact support if the problem persists.",
+    title: t("ERROR_SCREEN.ACCESS_BLOCKED_TITLE"),
+    message: t("ERROR_SCREEN.ACCESS_BLOCKED_MESSAGE"),
     icon: AlertCircle,
     tone: "danger",
   };
@@ -89,6 +96,7 @@ const PanelFailure = ({ message }: Readonly<{ message: string }>) => {
 };
 
 export const OIDCErrorScreen = () => {
+  const { t } = useT("iam.oidc");
   const { tenantId } = useOIDCContext();
   const [searchParams] = useSearchParams();
   // Falls back to the default template when the config call fails, so the error page always renders.
@@ -97,7 +105,7 @@ export const OIDCErrorScreen = () => {
 
   const errorCode = searchParams.get("error");
   const errorDescription = searchParams.get("error_description");
-  const copy = resolveCopy(errorCode, errorDescription);
+  const copy = resolveCopy(t, errorCode, errorDescription);
   const tone = TONE_CLASSES[copy.tone];
   const Icon = copy.icon;
 
@@ -137,14 +145,14 @@ export const OIDCErrorScreen = () => {
           fallbackRedirectUri={fallbackRedirectUri}
           className="oidc-sci-fi-btn flex w-full items-center justify-center"
         >
-          {returnsToApplication ? "Back to application" : "Back to Sign In"}
+          {returnsToApplication ? t("ERROR_SCREEN.BACK_TO_APPLICATION") : t("ERROR_SCREEN.BACK_TO_SIGN_IN")}
         </LoginReturnLink>
 
         <div className="flex flex-col items-center gap-1 text-xs text-(--muted)">
-          <p>If this keeps happening, contact your administrator.</p>
+          <p>{t("ERROR_SCREEN.CONTACT_ADMIN")}</p>
           {errorCode && (
             <p>
-              Error code: <span className="font-mono">{formatErrorCode(errorCode)}</span>
+              {t("ERROR_SCREEN.ERROR_CODE_LABEL")} <span className="font-mono">{formatErrorCode(errorCode)}</span>
             </p>
           )}
         </div>

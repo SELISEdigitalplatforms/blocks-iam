@@ -11,8 +11,10 @@ import { OidcLoginForm } from "./oidc-login-form";
 import { OidcAuthShell, OidcFooter } from "./oidc-auth-shell";
 import { OIDC_LOGIN_PANEL } from "./oidc-panel-config";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { tStatic, useT } from "@seliseblocks/genesis-os/i18n";
 
 export const OIDCSignin = () => {
+  const { t } = useT("iam.oidc");
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { setAuthenticated, setTokens } = useAuthStore();
@@ -96,7 +98,7 @@ export const OIDCSignin = () => {
         }
         navigate(`/oidc/permission?${params.toString()}`);
       } catch {
-        showErrorToast({ errors: "Social sign in failed. Please try again." });
+        showErrorToast({ errors: tStatic("iam.oidc", "OIDC_SIGNIN.SOCIAL_SIGN_IN_FAILED") });
       } finally {
         setIsActivatingSocial(false);
       }
@@ -155,8 +157,8 @@ export const OIDCSignin = () => {
         brandName={template.branding.brandName}
         heading={template.pages.login.heading}
         headingDimFirst={3}
-        successTitle="Access Granted"
-        successSubtitle="Redirecting to your application…"
+        successTitle={t("OIDC_SIGNIN.ACCESS_GRANTED")}
+        successSubtitle={t("OIDC_SIGNIN.REDIRECTING")}
         showCorners={false}
         footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
       >
