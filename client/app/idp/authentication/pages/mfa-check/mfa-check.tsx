@@ -9,9 +9,11 @@ import {
   useOidcResolvedTheme,
 } from "../oidc/oidc-auth-shell";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import "../oidc/sci-fi-oidc.css";
 
 export const MfaCheck = () => {
+  const { t } = useT("iam.mfa-check");
   const { data: oidcUiConfig } = useOidcUiConfig();
   const template = oidcUiConfig?.template;
   const resolvedTheme = useOidcResolvedTheme();
@@ -20,8 +22,8 @@ export const MfaCheck = () => {
   });
   const mfaTypeMessage =
     mfaType == 1
-      ? "Open your authenticator app and enter the verification code."
-      : "Check your email for the verification code and enter it here to continue.";
+      ? t("MFA_CHECK.MESSAGE_AUTHENTICATOR")
+      : t("MFA_CHECK.MESSAGE_EMAIL");
 
   if (!template) {
     return (

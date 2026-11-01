@@ -22,6 +22,7 @@ import { useNavigate } from "react-router";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { ArrowRight, Loader, RotateCcw } from "lucide-react";
 import { useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -40,6 +41,7 @@ const formSchema = z.object({
   code: z.string().min(6),
 });
 export const MfaCheckFrom = () => {
+  const { t } = useT("iam.mfa-check");
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const { data: oidcUiConfig } = useOidcUiConfig();
@@ -88,7 +90,7 @@ export const MfaCheckFrom = () => {
     }
     await animCtx?.succeedAnimation();
     if (!navigateToUrl(redirectUrl)) {
-      const msg = "Login succeeded but no redirect target was provided";
+      const msg = t("MFA_CHECK_FORM.NO_REDIRECT_TARGET");
       setServerError(msg);
       await animCtx?.failAnimation(msg);
     }
@@ -107,7 +109,7 @@ export const MfaCheckFrom = () => {
         await animCtx?.succeedAnimation();
         return;
       }
-      const msg = "Login succeeded but the return address is not valid. Open the device link again.";
+      const msg = t("MFA_CHECK_FORM.INVALID_RETURN_ADDRESS");
       setServerError(msg);
       await animCtx?.failAnimation(msg);
       return;
@@ -163,15 +165,14 @@ export const MfaCheckFrom = () => {
 
       const errorCode = data?.error;
       const errorMsg =
-        data?.error_description || data?.message || "Verification failed";
+        data?.error_description || data?.message || t("MFA_CHECK_FORM.VERIFICATION_FAILED");
 
       if (errorCode === "account_locked") {
-        const msg =
-          "Your account is locked. Please contact support or reset your password.";
+        const msg = t("MFA_CHECK_FORM.ACCOUNT_LOCKED");
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       } else if (errorCode === "invalid_mfa_code") {
-        const msg = "Invalid verification code. Please try again.";
+        const msg = t("MFA_CHECK_FORM.INVALID_CODE");
         setServerError(msg);
         await animCtx?.failAnimation(msg);
         form.reset();
@@ -182,10 +183,10 @@ export const MfaCheckFrom = () => {
     } catch (error) {
       if (isErrorWithErrors(error)) {
         showErrorToast({
-          errors: error.errors.error_description || "Something went wrong",
+          errors: error.errors.error_description || t("MFA_CHECK_FORM.SOMETHING_WENT_WRONG"),
         });
       } else {
-        showErrorToast({ errors: "Something went wrong" });
+        showErrorToast({ errors: t("MFA_CHECK_FORM.SOMETHING_WENT_WRONG") });
       }
     } finally {
       setIsLoading(false);
@@ -256,7 +257,7 @@ export const MfaCheckFrom = () => {
           {isAuthenticating ? (
             <>
               <Loader size={16} className="oidc-spin-slow" />
-              <span>{mfaCopy.submitButton === "Verify" ? "Verifying..." : `${mfaCopy.submitButton}...`}</span>
+              <span>{mfaCopy.submitButton === "Verify" ? t("MFA_CHECK_FORM.VERIFYING") : `${mfaCopy.submitButton}...`}</span>
             </>
           ) : (
             <>

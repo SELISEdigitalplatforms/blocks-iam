@@ -1,1 +1,11 @@
-{}
+{
+  "MFA_CHECK.MESSAGE_AUTHENTICATOR": "Open your authenticator app and enter the verification code.",
+  "MFA_CHECK.MESSAGE_EMAIL": "Check your email for the verification code and enter it here to continue.",
+  "MFA_CHECK_FORM.ACCOUNT_LOCKED": "Your account is locked. Please contact support or reset your password.",
+  "MFA_CHECK_FORM.INVALID_CODE": "Invalid verification code. Please try again.",
+  "MFA_CHECK_FORM.INVALID_RETURN_ADDRESS": "Login succeeded but the return address is not valid. Open the device link again.",
+  "MFA_CHECK_FORM.NO_REDIRECT_TARGET": "Login succeeded but no redirect target was provided",
+  "MFA_CHECK_FORM.SOMETHING_WENT_WRONG": "Something went wrong",
+  "MFA_CHECK_FORM.VERIFICATION_FAILED": "Verification failed",
+  "MFA_CHECK_FORM.VERIFYING": "Verifying..."
+}
