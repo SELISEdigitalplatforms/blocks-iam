@@ -56,5 +56,7 @@ export const usePasswordStrength = (
       getStrengthTextColor: () => getStrengthTextColor(strength),
       getStrengthLabel: () => getStrengthLabel(strength),
     };
+    // `t` is not read here; it is a dependency so the labels rebuild when the language changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [password, policy, t]);
 };

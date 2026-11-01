@@ -152,7 +152,7 @@ export function InvitationPage() {
         redeemedRef.current = false;
       },
     });
-  }, [contextQuery.data, code, redeemMutation]);
+  }, [contextQuery.data, code, redeemMutation, t]);
 
   if (!template) {
     return (
