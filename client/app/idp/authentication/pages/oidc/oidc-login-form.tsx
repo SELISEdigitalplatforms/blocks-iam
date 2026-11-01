@@ -33,6 +33,8 @@ import { OidcAppHandoff } from "./oidc-app-handoff";
 import { isAppRedirectUrl, navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
 import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
 
+const OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED = "OIDC_LOGIN_FORM.SELECT_ACCOUNT_FAILED";
+
 const base64UrlEncode = (bytes: Uint8Array) => {
   const binary = String.fromCharCode(...bytes);
   return btoa(binary)
@@ -76,7 +78,7 @@ const mapUserMfaToType = (channel: string | undefined): number => {
 
 const buildOidcLoginFormSchema = (t: TFunction) =>
   z.object({
-    username: z.string().email(t("OIDC_LOGIN_FORM.INVALID_EMAIL")),
+    username: z.email(t("OIDC_LOGIN_FORM.INVALID_EMAIL")),
     password: z.string().min(1, t("OIDC_LOGIN_FORM.PASSWORD_REQUIRED")),
   });
 
@@ -429,7 +431,7 @@ export const OidcLoginForm = ({
       if (response.redirect_url) {
         window.location.href = response.redirect_url;
       } else {
-        setServerError(t("OIDC_LOGIN_FORM.SELECT_ACCOUNT_FAILED"));
+        setServerError(t(OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED));
       }
     } catch (error: unknown) {
       if (isErrorWithErrors(error)) {
@@ -437,10 +439,10 @@ export const OidcLoginForm = ({
         const errorDesc = error.errors?.error_description;
         const message = Array.isArray(errorDesc)
           ? errorDesc[0]
-          : (errorDesc || errorCode || t("OIDC_LOGIN_FORM.SELECT_ACCOUNT_FAILED")) as string;
+          : (errorDesc || errorCode || t(OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED)) as string;
         setServerError(message);
       } else {
-        setServerError(t("OIDC_LOGIN_FORM.SELECT_ACCOUNT_FAILED"));
+        setServerError(t(OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED));
       }
     }
   };

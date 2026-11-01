@@ -29,6 +29,8 @@ import {
   FormMessage,
 } from "@/components/ui-kits/form/form";
 
+const OIDC_FORGOT_PASSWORD_FORM_SOMETHING_WENT_WRONG = "OIDC_FORGOT_PASSWORD_FORM.SOMETHING_WENT_WRONG";
+
 export const OIDCForgotPasswordForm = () => {
   const { t } = useT("iam.password");
   const navigate = useNavigate();
@@ -73,8 +75,8 @@ export const OIDCForgotPasswordForm = () => {
         const msg = Array.isArray(res.errors)
           ? res.errors[0]
           : res.errors && typeof res.errors === "object"
-          ? (Object.values(res.errors as Record<string, string>)[0] ?? t("OIDC_FORGOT_PASSWORD_FORM.SOMETHING_WENT_WRONG"))
-          : (res.errors as string) || t("OIDC_FORGOT_PASSWORD_FORM.SOMETHING_WENT_WRONG");
+          ? (Object.values(res.errors as Record<string, string>)[0] ?? t(OIDC_FORGOT_PASSWORD_FORM_SOMETHING_WENT_WRONG))
+          : (res.errors as string) || t(OIDC_FORGOT_PASSWORD_FORM_SOMETHING_WENT_WRONG);
         setServerError(msg);
         return;
       }
@@ -96,11 +98,11 @@ export const OIDCForgotPasswordForm = () => {
         const msg = Array.isArray(error.errors)
           ? (error.errors[0] as string)
           : error.errors && typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? t("OIDC_FORGOT_PASSWORD_FORM.SOMETHING_WENT_WRONG"))
-          : (error.errors as unknown as string) || t("OIDC_FORGOT_PASSWORD_FORM.SOMETHING_WENT_WRONG");
+          ? (Object.values(error.errors as Record<string, string>)[0] ?? t(OIDC_FORGOT_PASSWORD_FORM_SOMETHING_WENT_WRONG))
+          : (error.errors as unknown as string) || t(OIDC_FORGOT_PASSWORD_FORM_SOMETHING_WENT_WRONG);
         setServerError(msg);
       } else {
-        setServerError(t("OIDC_FORGOT_PASSWORD_FORM.SOMETHING_WENT_WRONG"));
+        setServerError(t(OIDC_FORGOT_PASSWORD_FORM_SOMETHING_WENT_WRONG));
       }
     }
   };

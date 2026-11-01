@@ -1,6 +1,8 @@
 import { tStatic } from "@seliseblocks/genesis-os/i18n";
 import type { OidcPanelConfig, OidcServiceNode } from "./nodes-panel-oidc";
 
+const OIDC_LOGIN_PANEL_IDLE_BADGE = "OIDC_LOGIN_PANEL.IDLE_BADGE";
+
 /* ──────────────────────────────────────────────────────────────
    OIDC LOGIN — real service flow:
      IAM Service validates credentials against POST /api/oidc/login →
@@ -12,7 +14,7 @@ export const OIDC_LOGIN_PANEL: OidcPanelConfig = {
   get heading() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.HEADING"); },
   get subtext() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.SUBTEXT"); },
 
-  get idleBadge() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.IDLE_BADGE"); },
+  get idleBadge() { return tStatic("iam.oidc", OIDC_LOGIN_PANEL_IDLE_BADGE); },
   get submittingBadge() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.SUBMITTING_BADGE"); },
   get successBadge() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.SUCCESS_BADGE"); },
   get failedBadge() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.FAILED_BADGE"); },
@@ -92,7 +94,7 @@ export const SIGNUP_PANEL: OidcPanelConfig = {
 
   idleNode: {
     icon:        "cursor",
-    get title() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.IDLE_BADGE"); },
+    get title() { return tStatic("iam.oidc", OIDC_LOGIN_PANEL_IDLE_BADGE); },
     get description() { return tStatic("iam.oidc", "SIGNUP_PANEL.IDLE_DESCRIPTION"); },
   },
 
@@ -149,14 +151,14 @@ export const RESET_PASSWORD_PANEL: OidcPanelConfig = {
   get heading() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.HEADING"); },
   get subtext() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.SUBTEXT"); },
 
-  get idleBadge() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.IDLE_BADGE"); },
+  get idleBadge() { return tStatic("iam.oidc", OIDC_LOGIN_PANEL_IDLE_BADGE); },
   get submittingBadge() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.SUBMITTING_BADGE"); },
   get successBadge() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.SUCCESS_BADGE"); },
   get failedBadge() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.FAILED_BADGE"); },
 
   idleNode: {
     icon:        "cursor",
-    get title() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.IDLE_BADGE"); },
+    get title() { return tStatic("iam.oidc", OIDC_LOGIN_PANEL_IDLE_BADGE); },
     get description() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.IDLE_DESCRIPTION"); },
   },
 
@@ -223,7 +225,7 @@ export const ACTIVATE_PANEL: OidcPanelConfig = {
   get heading() { return tStatic("iam.oidc", "ACTIVATE_PANEL.HEADING"); },
   get subtext() { return tStatic("iam.oidc", "ACTIVATE_PANEL.SUBTEXT"); },
 
-  get idleBadge() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.IDLE_BADGE"); },
+  get idleBadge() { return tStatic("iam.oidc", OIDC_LOGIN_PANEL_IDLE_BADGE); },
   get submittingBadge() { return tStatic("iam.oidc", "ACTIVATE_PANEL.SUBMITTING_BADGE"); },
   get successBadge() { return tStatic("iam.oidc", "ACTIVATE_PANEL.SUCCESS_BADGE"); },
   get failedBadge() { return tStatic("iam.oidc", "ACTIVATE_PANEL.FAILED_BADGE"); },

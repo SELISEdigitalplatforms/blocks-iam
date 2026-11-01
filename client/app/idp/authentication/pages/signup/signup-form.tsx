@@ -30,6 +30,8 @@ import {
 import { useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { buildOIDCNavigationUrl, extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 
+const SIGNUP_FORM_SOMETHING_WENT_WRONG = "SIGNUP_FORM.SOMETHING_WENT_WRONG";
+
 // Server-side org failures that belong on the organization field rather than in
 // the generic error banner.
 const ORG_ERROR_KEYS = new Set([
@@ -215,12 +217,12 @@ export const SignupForm = ({
         const msg = Array.isArray(error.errors)
           ? (error.errors[0] as string)
           : error.errors && typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? t("SIGNUP_FORM.SOMETHING_WENT_WRONG"))
-          : (error.errors as unknown as string) || t("SIGNUP_FORM.SOMETHING_WENT_WRONG");
+          ? (Object.values(error.errors as Record<string, string>)[0] ?? t(SIGNUP_FORM_SOMETHING_WENT_WRONG))
+          : (error.errors as unknown as string) || t(SIGNUP_FORM_SOMETHING_WENT_WRONG);
         const shown = surfaceServerError(error.errors, msg);
         await animCtx?.failAnimation(shown);
       } else {
-        const msg = t("SIGNUP_FORM.SOMETHING_WENT_WRONG");
+        const msg = t(SIGNUP_FORM_SOMETHING_WENT_WRONG);
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       }

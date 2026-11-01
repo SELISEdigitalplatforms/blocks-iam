@@ -22,6 +22,8 @@ import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
 import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 import { PASSWORD_MAX_INPUT_LENGTH } from "@blocks-idp/authentication/utils/password-policy.util";
 
+const RESET_PASSWORD_FORM_SOMETHING_WENT_WRONG = "RESET_PASSWORD_FORM.SOMETHING_WENT_WRONG";
+
 type ResetPasswordFormProps = { code: string; tenantId?: string };
 
 export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) => {
@@ -140,12 +142,12 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
         const msg = Array.isArray(error.errors)
           ? (error.errors[0] as string)
           : error.errors && typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? t("RESET_PASSWORD_FORM.SOMETHING_WENT_WRONG"))
-          : (error.errors as unknown as string) || t("RESET_PASSWORD_FORM.SOMETHING_WENT_WRONG");
+          ? (Object.values(error.errors as Record<string, string>)[0] ?? t(RESET_PASSWORD_FORM_SOMETHING_WENT_WRONG))
+          : (error.errors as unknown as string) || t(RESET_PASSWORD_FORM_SOMETHING_WENT_WRONG);
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       } else {
-        const msg = t("RESET_PASSWORD_FORM.SOMETHING_WENT_WRONG");
+        const msg = t(RESET_PASSWORD_FORM_SOMETHING_WENT_WRONG);
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       }

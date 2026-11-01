@@ -25,6 +25,8 @@ import type { RedeemSignupLinkResponse } from "@blocks-idp/authentication/servic
 import type { IAccountActivationResponse } from "@blocks-idp/iam/models/user";
 import { Activation } from "../activation";
 
+const IAM_INVITATION_MODULE = "iam.invitation";
+
 function readLinkCode(): string | null {
   if (globalThis.window === undefined) return null;
   const { location } = globalThis.window;
@@ -42,16 +44,16 @@ function clearLinkHash() {
   }
 }
 
-export const getConfirmStepTimedOut = () => tStatic("iam.invitation", "INVITATION.STEP_TIMED_OUT");
+export const getConfirmStepTimedOut = () => tStatic(IAM_INVITATION_MODULE, "INVITATION.STEP_TIMED_OUT");
 export const EMBEDDED_LINK_COPY = {
   get heading() {
-    return tStatic("iam.invitation", "INVITATION.EMBEDDED_HEADING");
+    return tStatic(IAM_INVITATION_MODULE, "INVITATION.EMBEDDED_HEADING");
   },
   get message() {
-    return tStatic("iam.invitation", "INVITATION.EMBEDDED_MESSAGE");
+    return tStatic(IAM_INVITATION_MODULE, "INVITATION.EMBEDDED_MESSAGE");
   },
 };
-export const getNoCredentialYetCopy = () => tStatic("iam.invitation", "INVITATION.NO_PASSWORD_YET");
+export const getNoCredentialYetCopy = () => tStatic(IAM_INVITATION_MODULE, "INVITATION.NO_PASSWORD_YET");
 
 type PasswordStep = { redemptionId: string; maskedEmail: string };
 
@@ -96,7 +98,7 @@ function followAuthorizeUrl(res: IAccountActivationResponse): boolean {
 }
 
 export function InvitationPage() {
-  const { t } = useT("iam.invitation");
+  const { t } = useT(IAM_INVITATION_MODULE);
   const { tenantId } = useParams<{ tenantId: string }>();
   // The link code is read from the URL hash once, on mount; the hash is then cleared so the
   // code never lingers in the address bar or history.

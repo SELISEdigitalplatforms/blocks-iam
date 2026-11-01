@@ -6,5 +6,5 @@ export const forgotPasswordFormDefaultValue = {
 };
 
 export const forgotPasswordFormSchema = z.object({
-  email: z.string().trim().email({ error: () => tStatic("iam.password", "FORGOT_PASSWORD_SCHEMA.INVALID_EMAIL") }),
+  email: z.string().trim().pipe(z.email({ error: () => tStatic("iam.password", "FORGOT_PASSWORD_SCHEMA.INVALID_EMAIL") })),
 });

@@ -19,6 +19,8 @@ import { OIDC_LOGIN_PANEL } from "@blocks-idp/authentication/pages/oidc/oidc-pan
 import "@blocks-idp/authentication/pages/oidc/sci-fi-oidc.css";
 import { tStatic, useT } from "@seliseblocks/genesis-os/i18n";
 
+const IAM_SHARED_MODULE = "iam.shared";
+
 const DEFAULT_CALLBACK_ERROR = "server_error";
 
 type CallbackErrorBody = { error?: unknown; error_description?: unknown } | null;
@@ -33,7 +35,7 @@ const navigateToCallbackError = (body: CallbackErrorBody, tenantId: string | und
   const description =
     typeof body?.error_description === "string" && body.error_description
       ? body.error_description
-      : tStatic("iam.shared", "SSO_CALLBACK.SIGN_IN_FAILED");
+      : tStatic(IAM_SHARED_MODULE, "SSO_CALLBACK.SIGN_IN_FAILED");
   navigateToSameOrigin(
     `/oidc/error?error=${encodeURIComponent(error)}` +
       `&error_description=${encodeURIComponent(description)}` +
@@ -46,7 +48,7 @@ function SsoCallbackAppHandoff({
   url,
   tenantId,
 }: Readonly<{ url: string; tenantId?: string }>) {
-  const { t } = useT("iam.shared");
+  const { t } = useT(IAM_SHARED_MODULE);
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
   const template = oidcUiConfig?.template;
 
@@ -83,7 +85,7 @@ export default function SSOCallbackPage() {
   const hasProcessed = useRef(false);
   const [appHandoffUrl, setAppHandoffUrl] = useState<string | null>(null);
   const { setAuthenticated } = useAuthStore();
-  const { t } = useT("iam.shared");
+  const { t } = useT(IAM_SHARED_MODULE);
 
   const code = searchParams.get("code");
   const state = searchParams.get("state");
@@ -158,13 +160,13 @@ export default function SSOCallbackPage() {
         const data = await response.json().catch(() => null);
         if (!response.ok) {
           showErrorToast({
-            errors: data?.error_description || tStatic("iam.shared", "SSO_CALLBACK.SOCIAL_SIGN_IN_FAILED"),
+            errors: data?.error_description || tStatic(IAM_SHARED_MODULE, "SSO_CALLBACK.SOCIAL_SIGN_IN_FAILED"),
           });
         }
         globalThis.location.href = data?.redirect_uri || deviceReturnUrl;
       })
       .catch(() => {
-        showErrorToast({ errors: tStatic("iam.shared", "SSO_CALLBACK.SOCIAL_SIGN_IN_FAILED") });
+        showErrorToast({ errors: tStatic(IAM_SHARED_MODULE, "SSO_CALLBACK.SOCIAL_SIGN_IN_FAILED") });
         globalThis.location.href = deviceReturnUrl;
       });
   }, [code, state, error, errorDescription, tenantId, setAuthenticated]);

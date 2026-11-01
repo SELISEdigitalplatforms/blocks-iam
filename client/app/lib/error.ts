@@ -1,11 +1,13 @@
 import { tStatic } from "@seliseblocks/genesis-os/i18n";
 
+const IAM_SHARED_MODULE = "iam.shared";
+
 export const getErrorMessage = (
   error: Record<string, string | string[]>,
   messageMap: Record<string, string> = {},
 ): string | string[] => {
   if (!error || Object.keys(error).length === 0) {
-    return tStatic("iam.shared", "ERROR.SOMETHING_WENT_WRONG");
+    return tStatic(IAM_SHARED_MODULE, "ERROR.SOMETHING_WENT_WRONG");
   }
 
   const messages: string[] = [];
@@ -25,7 +27,7 @@ export const getErrorMessage = (
     }
   }
 
-  return messages.length ? messages : tStatic("iam.shared", "ERROR.SOMETHING_WENT_WRONG");
+  return messages.length ? messages : tStatic(IAM_SHARED_MODULE, "ERROR.SOMETHING_WENT_WRONG");
 };
 
 export const isErrorWithErrors = (
@@ -49,5 +51,5 @@ export const handleErrorMessages = (
     return getErrorMessage(errors as Record<string, string | string[]>, customMessages);
   }
 
-  return tStatic("iam.shared", "ERROR.UNEXPECTED");
+  return tStatic(IAM_SHARED_MODULE, "ERROR.UNEXPECTED");
 };

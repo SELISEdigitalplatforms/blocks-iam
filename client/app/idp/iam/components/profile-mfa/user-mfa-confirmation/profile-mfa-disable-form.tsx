@@ -15,9 +15,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+const IAM_PROFILE_MODULE = "iam.profile";
+
 const FormSchema = z.object({
-  password: z.string().min(1, { error: () => tStatic("iam.profile", "PROFILE_MFA_DISABLE_FORM.ENTER_PASSWORD") }),
-  code: z.string().min(6, { error: () => tStatic("iam.profile", "PROFILE_MFA_DISABLE_FORM.ENTER_CODE") }),
+  password: z.string().min(1, { error: () => tStatic(IAM_PROFILE_MODULE, "PROFILE_MFA_DISABLE_FORM.ENTER_PASSWORD") }),
+  code: z.string().min(6, { error: () => tStatic(IAM_PROFILE_MODULE, "PROFILE_MFA_DISABLE_FORM.ENTER_CODE") }),
 });
 
 export type DisableMfaFormValues = z.infer<typeof FormSchema>;
@@ -30,7 +32,7 @@ type Props = {
 };
 
 export const ProfileMfaDisableForm = ({ isPending, isTotp, onSubmit, onCancel }: Props) => {
-  const { t } = useT("iam.profile");
+  const { t } = useT(IAM_PROFILE_MODULE);
   const form = useForm<DisableMfaFormValues>({
     resolver: zodResolver(FormSchema),
     defaultValues: { password: "", code: "" },

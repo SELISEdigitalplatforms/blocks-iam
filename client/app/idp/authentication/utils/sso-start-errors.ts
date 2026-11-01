@@ -1,25 +1,27 @@
 import { tStatic } from "@seliseblocks/genesis-os/i18n";
 
+const IAM_SHARED_MODULE = "iam.shared";
+
 const getKnownMessage = (code: string): string | undefined => {
   switch (code) {
     case "invalid_redirect_uri":
-      return tStatic("iam.shared", "SSO_START_ERRORS.INVALID_REDIRECT_URI");
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.INVALID_REDIRECT_URI");
     case "invalid_client":
-      return tStatic("iam.shared", "SSO_START_ERRORS.INVALID_CLIENT");
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.INVALID_CLIENT");
     case "provider_not_found":
-      return tStatic("iam.shared", "SSO_START_ERRORS.PROVIDER_NOT_FOUND");
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.PROVIDER_NOT_FOUND");
     case "provider_inactive":
-      return tStatic("iam.shared", "SSO_START_ERRORS.PROVIDER_INACTIVE");
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.PROVIDER_INACTIVE");
     case "invalid_oidc_state":
-      return tStatic("iam.shared", "SSO_START_ERRORS.INVALID_OIDC_STATE");
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.INVALID_OIDC_STATE");
     case "authorization_url_generation_failed":
-      return tStatic("iam.shared", "SSO_START_ERRORS.AUTHORIZATION_URL_GENERATION_FAILED");
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.AUTHORIZATION_URL_GENERATION_FAILED");
     default:
       return undefined;
   }
 };
 
-const getFallbackMessage = () => tStatic("iam.shared", "SSO_START_ERRORS.FALLBACK");
+const getFallbackMessage = () => tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.FALLBACK");
 
 const readCode = (body: unknown): string => {
   const error = (body as { error?: unknown } | null)?.error;

@@ -20,6 +20,8 @@ import { revokeResultMessage } from "../utils/revoke-message";
 import type { ISessionCardViewModel } from "../view-models/session.view-model";
 import { SessionDetailsDrawer } from "./session-details-drawer";
 
+const IAM_SECURITY_MODULE = "iam.security";
+
 const LoadingSkeleton = () => (
   <div className="grid gap-2">
     {Array.from({ length: 5 }).map((_, index) => (
@@ -29,7 +31,7 @@ const LoadingSkeleton = () => (
 );
 
 const EmptyState = () => {
-  const { t } = useT("iam.security");
+  const { t } = useT(IAM_SECURITY_MODULE);
   return (
   <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 py-10 text-center">
     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
@@ -56,7 +58,7 @@ const SignOutButton = ({
   mutateAsync: (vars: { sessionId: string; reason?: string }) => Promise<unknown>;
   isPending: boolean;
 }) => {
-  const { t } = useT("iam.security");
+  const { t } = useT(IAM_SECURITY_MODULE);
   const [open, setOpen] = useState(false);
 
   const handleConfirm = async () => {
@@ -118,7 +120,7 @@ type SessionListCardProps = {
 };
 
 export const SessionListCard = ({ showSignOut = true, userId }: SessionListCardProps) => {
-  const { t } = useT("iam.security");
+  const { t } = useT(IAM_SECURITY_MODULE);
   const { isLoading, isFetching, data, refetch } = useUserSessions(userId);
   const { mutateAsync, isPending } = useRevokeSession(userId);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);

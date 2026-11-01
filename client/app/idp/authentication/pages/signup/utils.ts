@@ -1,6 +1,8 @@
 import { tStatic } from "@seliseblocks/genesis-os/i18n";
 import { z } from "zod";
 
+const IAM_SIGNUP_MODULE = "iam.signup";
+
 export type SignupOrganizationChoice = "join" | "create";
 
 export const signupFormDefaultValue = {
@@ -13,9 +15,9 @@ export const signupFormDefaultValue = {
 };
 
 export const signupFormSchema = z.object({
-  firstName: z.string().trim().min(1, { error: () => tStatic("iam.signup", "UTILS.FIRST_NAME_REQUIRED") }),
-  lastName: z.string().trim().min(1, { error: () => tStatic("iam.signup", "UTILS.LAST_NAME_REQUIRED") }),
-  email: z.string().trim().email({ error: () => tStatic("iam.signup", "UTILS.EMAIL_INVALID") }),
+  firstName: z.string().trim().min(1, { error: () => tStatic(IAM_SIGNUP_MODULE, "UTILS.FIRST_NAME_REQUIRED") }),
+  lastName: z.string().trim().min(1, { error: () => tStatic(IAM_SIGNUP_MODULE, "UTILS.LAST_NAME_REQUIRED") }),
+  email: z.string().trim().pipe(z.email({ error: () => tStatic(IAM_SIGNUP_MODULE, "UTILS.EMAIL_INVALID") })),
   organizationName: z.string().trim().optional(),
   organizationChoice: z.enum(["join", "create"]).optional(),
 });
@@ -34,9 +36,9 @@ export const buildSignupFormSchema = (
     return signupFormSchema.superRefine((values, ctx) => {
       if (values.organizationChoice === "create" && !values.organizationName) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           path: ["organizationName"],
-          message: tStatic("iam.signup", "UTILS.ORGANIZATION_NAME_REQUIRED"),
+          message: tStatic(IAM_SIGNUP_MODULE, "UTILS.ORGANIZATION_NAME_REQUIRED"),
         });
       }
     });
@@ -46,7 +48,7 @@ export const buildSignupFormSchema = (
         organizationName: z
           .string()
           .trim()
-          .min(1, { error: () => tStatic("iam.signup", "UTILS.ORGANIZATION_NAME_REQUIRED") }),
+          .min(1, { error: () => tStatic(IAM_SIGNUP_MODULE, "UTILS.ORGANIZATION_NAME_REQUIRED") }),
       })
     : signupFormSchema;
 };

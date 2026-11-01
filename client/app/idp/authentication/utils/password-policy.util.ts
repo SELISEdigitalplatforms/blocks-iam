@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { tStatic } from "@seliseblocks/genesis-os/i18n";
 
+const IAM_SHARED_MODULE = "iam.shared";
+
 /**
  * The tenant's structured password rule, as published by `GET /api/idp/oidc-ui-config`
  * (server-side: SPEC16). Plain data -- no function, no RegExp, and no compile step exists for
@@ -97,20 +99,20 @@ export const buildPasswordPolicyRequirements = (
   if (hasValidBounds(policy)) {
     requirements.push({
       key: "length",
-      label: tStatic("iam.shared", "PASSWORD_POLICY.LENGTH_RANGE", { min: policy.minLength, max: policy.maxLength }),
+      label: tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.LENGTH_RANGE", { min: policy.minLength, max: policy.maxLength }),
     });
   }
   if (policy.requireUppercase) {
-    requirements.push({ key: "uppercase", label: tStatic("iam.shared", "PASSWORD_POLICY.UPPERCASE") });
+    requirements.push({ key: "uppercase", label: tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.UPPERCASE") });
   }
   if (policy.requireLowercase) {
-    requirements.push({ key: "lowercase", label: tStatic("iam.shared", "PASSWORD_POLICY.LOWERCASE") });
+    requirements.push({ key: "lowercase", label: tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.LOWERCASE") });
   }
   if (policy.requireNumbers) {
-    requirements.push({ key: "number", label: tStatic("iam.shared", "PASSWORD_POLICY.NUMBER") });
+    requirements.push({ key: "number", label: tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.NUMBER") });
   }
   if (policy.requireSpecialChars) {
-    requirements.push({ key: "special", label: tStatic("iam.shared", "PASSWORD_POLICY.SPECIAL") });
+    requirements.push({ key: "special", label: tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.SPECIAL") });
   }
   return requirements;
 };
@@ -150,13 +152,13 @@ export const applyPasswordPolicyToSchema = (
   let result = schema;
   if (hasValidBounds(resolved)) {
     result = result
-      .min(resolved.minLength, tStatic("iam.shared", "PASSWORD_POLICY.ERROR_MIN", { min: resolved.minLength }))
-      .max(resolved.maxLength, tStatic("iam.shared", "PASSWORD_POLICY.ERROR_MAX", { max: resolved.maxLength }));
+      .min(resolved.minLength, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_MIN", { min: resolved.minLength }))
+      .max(resolved.maxLength, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_MAX", { max: resolved.maxLength }));
   }
-  if (resolved.requireUppercase) result = result.regex(ASCII_UPPER, tStatic("iam.shared", "PASSWORD_POLICY.ERROR_UPPERCASE"));
-  if (resolved.requireLowercase) result = result.regex(ASCII_LOWER, tStatic("iam.shared", "PASSWORD_POLICY.ERROR_LOWERCASE"));
-  if (resolved.requireNumbers) result = result.regex(ASCII_DIGIT, tStatic("iam.shared", "PASSWORD_POLICY.ERROR_NUMBER"));
-  if (resolved.requireSpecialChars) result = result.regex(ASCII_SPECIAL, tStatic("iam.shared", "PASSWORD_POLICY.ERROR_SPECIAL"));
+  if (resolved.requireUppercase) result = result.regex(ASCII_UPPER, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_UPPERCASE"));
+  if (resolved.requireLowercase) result = result.regex(ASCII_LOWER, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_LOWERCASE"));
+  if (resolved.requireNumbers) result = result.regex(ASCII_DIGIT, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_NUMBER"));
+  if (resolved.requireSpecialChars) result = result.regex(ASCII_SPECIAL, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_SPECIAL"));
 
   // No client-side rule for a server-checked policy: the form must not pre-reject a password the
   // server would accept, and the server reports its own verdict on submit.

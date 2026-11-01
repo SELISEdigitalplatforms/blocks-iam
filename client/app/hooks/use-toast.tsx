@@ -3,6 +3,8 @@ import type { ToastActionElement, ToastProps } from "@/components/ui-kits/toaste
 import { handleErrorMessages } from "@/lib/error";
 import { tStatic } from "@seliseblocks/genesis-os/i18n";
 
+const IAM_SHARED_MODULE = "iam.shared";
+
 const TOAST_LIMIT = 1;
 const TOAST_REMOVE_DELAY = 1000000;
 
@@ -179,7 +181,7 @@ type ErrorToastOptions = {
   customMessages?: Record<string, string>;
 };
 
-export const showSuccessToast = ({ title = tStatic("iam.shared", "common:SUCCESS"), description }: SuccessToastOptions) => {
+export const showSuccessToast = ({ title = tStatic(IAM_SHARED_MODULE, "common:SUCCESS"), description }: SuccessToastOptions) => {
   toast({
     variant: "success",
     title,
@@ -187,7 +189,7 @@ export const showSuccessToast = ({ title = tStatic("iam.shared", "common:SUCCESS
   });
 };
 
-export const showInfoToast = ({ title = tStatic("iam.shared", "USE_TOAST.INFO"), description }: InfoToastOptions) => {
+export const showInfoToast = ({ title = tStatic(IAM_SHARED_MODULE, "USE_TOAST.INFO"), description }: InfoToastOptions) => {
   toast({
     variant: "info",
     title,
@@ -196,7 +198,7 @@ export const showInfoToast = ({ title = tStatic("iam.shared", "USE_TOAST.INFO"),
 };
 
 export const showErrorToast = ({
-  title = tStatic("iam.shared", "USE_TOAST.FAILED"),
+  title = tStatic(IAM_SHARED_MODULE, "USE_TOAST.FAILED"),
   errors,
   customMessages,
 }: ErrorToastOptions) => {

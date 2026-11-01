@@ -8,6 +8,9 @@ import { ProfileMfaMethodSelectList } from "./user-mfa-confirmation/profile-mfa-
 import { useGetMFAConfig } from "@blocks-idp/mfa/hooks/use-mfa-config";
 import { BLOCKS_OS_BASE_URL } from "@/constants/endpoint.constant";
 
+const IAM_PROFILE_MODULE = "iam.profile";
+const PROFILE_MFA_TITLE = "PROFILE_MFA.TITLE";
+
 type ProfileMFAProps = {
   userId: string;
   projectKey: string;
@@ -15,11 +18,11 @@ type ProfileMFAProps = {
 };
 
 export const ProfileConfigMFA = () => {
-  const { t } = useT("iam.profile");
+  const { t } = useT(IAM_PROFILE_MODULE);
   return (
     <Card>
       <CardHeader className="mb-3">
-        <CardTitle>{t("PROFILE_MFA.TITLE")}</CardTitle>
+        <CardTitle>{t(PROFILE_MFA_TITLE)}</CardTitle>
       </CardHeader>
       <CardContent>
         <ProfileMFADetails />
@@ -32,12 +35,12 @@ export const ProfileConfigMFA = () => {
 };
 
 export const ProjectMFA = () => {
-  const { t } = useT("iam.profile");
+  const { t } = useT(IAM_PROFILE_MODULE);
   return (
     <Card>
       <CardHeader className="mb-3">
         <div className="flex items-center justify-between">
-          <CardTitle>{t("PROFILE_MFA.TITLE")}</CardTitle>
+          <CardTitle>{t(PROFILE_MFA_TITLE)}</CardTitle>
           <Button asChild variant="outline" size="sm">
             <a href={`${BLOCKS_OS_BASE_URL}/services/secret-management?tab=mfa`}>{t("PROFILE_MFA.GO_TO_SETTINGS")}</a>
           </Button>
@@ -53,12 +56,12 @@ export const ProjectMFA = () => {
 };
 
 const LoadingSkelton = () => {
-  const { t } = useT("iam.profile");
+  const { t } = useT(IAM_PROFILE_MODULE);
   return (
     <Card className="rounded shadow-none">
       <CardHeader className="mb-3">
         <div className="flex items-center justify-between">
-          <CardTitle>{t("PROFILE_MFA.TITLE")}</CardTitle>
+          <CardTitle>{t(PROFILE_MFA_TITLE)}</CardTitle>
           <Skeleton className="h-6 w-1/6" />
         </div>
       </CardHeader>

@@ -22,27 +22,29 @@ import { useAuthenticateSignupLink } from "@blocks-idp/authentication/hooks/use-
 import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 import type { RedeemSignupLinkResponse } from "@blocks-idp/authentication/services/signup-link.service";
 
+const IAM_INVITATION_MODULE = "iam.invitation";
+
 export const CONFIRM_PASSWORD_COPY = {
   get heading() {
-    return tStatic("iam.invitation", "CONFIRM_PASSWORD.HEADING");
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.HEADING");
   },
   get body() {
-    return tStatic("iam.invitation", "CONFIRM_PASSWORD.BODY");
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.BODY");
   },
   get wrongCredential() {
-    return tStatic("iam.invitation", "CONFIRM_PASSWORD.WRONG_PASSWORD");
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.WRONG_PASSWORD");
   },
   get locked() {
-    return tStatic("iam.invitation", "CONFIRM_PASSWORD.LOCKED");
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.LOCKED");
   },
   get captchaRequired() {
-    return tStatic("iam.invitation", "CONFIRM_PASSWORD.CAPTCHA_REQUIRED");
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.CAPTCHA_REQUIRED");
   },
   get captchaInvalid() {
-    return tStatic("iam.invitation", "CONFIRM_PASSWORD.CAPTCHA_INVALID");
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.CAPTCHA_INVALID");
   },
   get generic() {
-    return tStatic("iam.invitation", "CONFIRM_PASSWORD.GENERIC");
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.GENERIC");
   },
 };
 
@@ -50,7 +52,7 @@ export const CONFIRM_PASSWORD_COPY = {
 export type ConfirmPasswordExit = "invalid_redemption" | "invalid_link";
 
 const schema = z.object({
-  password: z.string().min(1, { error: () => tStatic("iam.invitation", "CONFIRM_PASSWORD.ENTER_PASSWORD") }),
+  password: z.string().min(1, { error: () => tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.ENTER_PASSWORD") }),
 });
 
 type Values = z.infer<typeof schema>;
@@ -82,7 +84,7 @@ export function InvitationConfirmPassword({
   onSuccess,
   onExit,
 }: Props) {
-  const { t } = useT("iam.invitation");
+  const { t } = useT(IAM_INVITATION_MODULE);
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [rejected, setRejected] = useState(false);

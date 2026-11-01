@@ -20,12 +20,18 @@ import { Link } from "react-router";
 import { useT } from "@seliseblocks/genesis-os/i18n";
 import type { ReactNode } from "react";
 
+const SSO_ACTIVATE_SOMETHING_WENT_WRONG = "SSO_ACTIVATE.SOMETHING_WENT_WRONG";
+
 // Fills "{{name}}" slots of a translated sentence with elements, so word order stays translatable.
-const fillSlots = (text: string, slots: Record<string, ReactNode>): ReactNode[] =>
-  text.split(/(\{\{\w+\}\})/).map((part, index) => {
+const fillSlots = (text: string, slots: Record<string, ReactNode>): ReactNode[] => {
+  let offset = 0;
+  return text.split(/(\{\{\w+\}\})/).map((part) => {
+    const start = offset;
+    offset += part.length;
     const name = /^\{\{(\w+)\}\}$/.exec(part)?.[1];
-    return name && name in slots ? <span key={`${name}-${index}`}>{slots[name]}</span> : part;
+    return name && name in slots ? <span key={`${name}-${start}`}>{slots[name]}</span> : part;
   });
+};
 
 type SsoActivateProps = {
   oauthParams: { code: string; username: string };
@@ -53,7 +59,7 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
   const handleUseDifferentAccount = async () => {
     const audience = sessionStorage.getItem("clicked_sso_audience");
     if (!providerKey || !audience) {
-      return showErrorToast({ errors: t("SSO_ACTIVATE.SOMETHING_WENT_WRONG") });
+      return showErrorToast({ errors: t(SSO_ACTIVATE_SOMETHING_WENT_WRONG) });
     }
 
     try {
@@ -69,7 +75,7 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
       window.location.href = sanitizeProviderUrl(res.providerUrl);
     } catch (error) {
       if (isErrorWithErrors(error)) return showErrorToast({ errors: error.errors });
-      showErrorToast({ errors: t("SSO_ACTIVATE.SOMETHING_WENT_WRONG") });
+      showErrorToast({ errors: t(SSO_ACTIVATE_SOMETHING_WENT_WRONG) });
     }
   };
 
@@ -113,7 +119,7 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
         setAuthenticated();
         navigate("/app/profile");
       } else {
-        showErrorToast({ errors: data.errors || t("SSO_ACTIVATE.SOMETHING_WENT_WRONG") });
+        showErrorToast({ errors: data.errors || t(SSO_ACTIVATE_SOMETHING_WENT_WRONG) });
       }
     } catch (error) {
       if (JSON.stringify(error).includes("expire")) {
@@ -121,7 +127,7 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
       } else if (isErrorWithErrors(error)) {
         showErrorToast({ errors: error.errors });
       } else {
-        showErrorToast({ errors: t("SSO_ACTIVATE.SOMETHING_WENT_WRONG") });
+        showErrorToast({ errors: t(SSO_ACTIVATE_SOMETHING_WENT_WRONG) });
       }
     } finally {
       setIsPending(false);

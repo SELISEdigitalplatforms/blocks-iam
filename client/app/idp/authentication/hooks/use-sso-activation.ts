@@ -7,6 +7,8 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useEffect, useRef } from "react";
 import { tStatic } from "@seliseblocks/genesis-os/i18n";
 
+const IAM_SHARED_MODULE = "iam.shared";
+
 const SSO_GUARD_PREFIX = "sso_activated_";
 
 /** Returns true if this state has already been consumed. Sets the guard if not. */
@@ -38,15 +40,15 @@ function handleSsoError(error: unknown): void {
     const firstWord = description.split(" ")[0];
     const emailTarget = firstWord.includes("@") ? firstWord : "";
     const msg = emailTarget
-      ? tStatic("iam.shared", "USE_SSO_ACTIVATION.NO_ACCOUNT_WITH_EMAIL", { email: emailTarget })
-      : tStatic("iam.shared", "USE_SSO_ACTIVATION.NO_ACCOUNT");
+      ? tStatic(IAM_SHARED_MODULE, "USE_SSO_ACTIVATION.NO_ACCOUNT_WITH_EMAIL", { email: emailTarget })
+      : tStatic(IAM_SHARED_MODULE, "USE_SSO_ACTIVATION.NO_ACCOUNT");
     showErrorToast({ errors: msg });
   } else if (errorStr.includes("state_data_not_found")) {
-    showErrorToast({ errors: tStatic("iam.shared", "USE_SSO_ACTIVATION.SOMETHING_WENT_WRONG") });
+    showErrorToast({ errors: tStatic(IAM_SHARED_MODULE, "USE_SSO_ACTIVATION.SOMETHING_WENT_WRONG") });
   } else if (isErrorWithErrors(error)) {
     showErrorToast({ errors: error.errors });
   } else {
-    showErrorToast({ errors: tStatic("iam.shared", "USE_SSO_ACTIVATION.SOMETHING_WENT_WRONG") });
+    showErrorToast({ errors: tStatic(IAM_SHARED_MODULE, "USE_SSO_ACTIVATION.SOMETHING_WENT_WRONG") });
   }
 }
 

@@ -7,6 +7,9 @@ export const signinFormDefaultValue = {
 };
 
 export const signinFormSchema = z.object({
-  username: z.string().min(1, { error: () => tStatic("iam.login", "SIGNIN_SCHEMA.EMAIL_REQUIRED") }).email({ error: () => tStatic("iam.login", "SIGNIN_SCHEMA.EMAIL_INVALID") }),
+  username: z
+    .string()
+    .min(1, { error: () => tStatic("iam.login", "SIGNIN_SCHEMA.EMAIL_REQUIRED") })
+    .pipe(z.email({ error: () => tStatic("iam.login", "SIGNIN_SCHEMA.EMAIL_INVALID") })),
   password: z.string().min(1, { error: () => tStatic("iam.login", "SIGNIN_SCHEMA.PASSWORD_REQUIRED") }),
 });

@@ -12,10 +12,10 @@ export const SuccessConfirmationCardHeader = () => {
       alt="Blocks IAM"
       className="h-auto w-22 sm:w-27 md:w-29"
     />
-    <div className="shrink-0" role="group" aria-label={t("SUCCESS_CONFIRMATION_CARD_HEADER.THEME")}>
+    <fieldset className="m-0 min-w-0 shrink-0 border-0 p-0" aria-label={t("SUCCESS_CONFIRMATION_CARD_HEADER.THEME")}>
       <span className="sr-only">{t("SUCCESS_CONFIRMATION_CARD_HEADER.APPEARANCE")}</span>
       <AppearanceControls />
-    </div>
+    </fieldset>
   </div>
   )
 }

@@ -1,5 +1,7 @@
 import { tStatic } from "@seliseblocks/genesis-os/i18n";
 
+const IAM_SHARED_MODULE = "iam.shared";
+
 export const STRENGTH_THRESHOLDS = {
   WEAK: 25,
   MEDIUM: 50,
@@ -22,16 +24,16 @@ export const STRENGTH_TEXT_COLORS = {
 
 export const STRENGTH_LABELS = {
   get WEAK() {
-    return tStatic("iam.shared", "PASSWORD_STRENGTH.WEAK");
+    return tStatic(IAM_SHARED_MODULE, "PASSWORD_STRENGTH.WEAK");
   },
   get MEDIUM_WEAK() {
-    return tStatic("iam.shared", "PASSWORD_STRENGTH.FAIR");
+    return tStatic(IAM_SHARED_MODULE, "PASSWORD_STRENGTH.FAIR");
   },
   get MEDIUM_STRONG() {
-    return tStatic("iam.shared", "PASSWORD_STRENGTH.GOOD");
+    return tStatic(IAM_SHARED_MODULE, "PASSWORD_STRENGTH.GOOD");
   },
   get STRONG() {
-    return tStatic("iam.shared", "PASSWORD_STRENGTH.STRONG");
+    return tStatic(IAM_SHARED_MODULE, "PASSWORD_STRENGTH.STRONG");
   },
 };
 

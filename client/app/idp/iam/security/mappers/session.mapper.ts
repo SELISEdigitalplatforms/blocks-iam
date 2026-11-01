@@ -15,11 +15,13 @@ import type {
 } from "../view-models/session.view-model";
 import { formatAbsoluteWithSeconds, formatAbsoluteUtcWithSeconds, formatRelative } from "../utils/date-format";
 
+const IAM_SECURITY_MODULE = "iam.security";
+
 const statusLabel = (status: string): string => {
   const labels: Record<string, string> = {
-    Active: tStatic("iam.security", "SESSION_MAPPER.STATUS_ACTIVE"),
-    Expired: tStatic("iam.security", "SESSION_MAPPER.STATUS_EXPIRED"),
-    Revoked: tStatic("iam.security", "SESSION_MAPPER.STATUS_REVOKED"),
+    Active: tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.STATUS_ACTIVE"),
+    Expired: tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.STATUS_EXPIRED"),
+    Revoked: tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.STATUS_REVOKED"),
   };
   return labels[status] ?? status;
 };
@@ -28,9 +30,9 @@ export const toSessionCardViewModel = (api: IUserSessionApi): ISessionCardViewMo
   const extraApps = Math.max(0, api.applicationCount - 1);
   return {
     id: api.sessionId,
-    deviceName: api.primaryDeviceName ?? tStatic("iam.security", "SESSION_MAPPER.UNKNOWN_DEVICE"),
-    browser: api.primaryBrowser ?? tStatic("iam.security", "SESSION_MAPPER.UNKNOWN_BROWSER"),
-    operatingSystem: api.primaryOperatingSystem ?? tStatic("iam.security", "SESSION_MAPPER.UNKNOWN_OS"),
+    deviceName: api.primaryDeviceName ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_DEVICE"),
+    browser: api.primaryBrowser ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_BROWSER"),
+    operatingSystem: api.primaryOperatingSystem ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_OS"),
     ipAddress: api.primaryIpAddress ?? "—",
     lastActivityDisplay: formatRelative(api.lastActivityAt),
     expiresDisplay: formatAbsoluteWithSeconds(api.absoluteExpiry),
@@ -38,8 +40,8 @@ export const toSessionCardViewModel = (api: IUserSessionApi): ISessionCardViewMo
     isCurrent: api.isCurrent,
     applicationSummary:
       extraApps > 0
-        ? tStatic("iam.security", "SESSION_MAPPER.MORE_APPS", { count: extraApps })
-        : tStatic("iam.security", "SESSION_MAPPER.APPS", { count: api.applicationCount }),
+        ? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.MORE_APPS", { count: extraApps })
+        : tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.APPS", { count: api.applicationCount }),
   };
 };
 
@@ -48,9 +50,9 @@ export const toSessionOverviewViewModel = (
 ): ISessionOverviewViewModel => ({
   sessionId: api.sessionId,
   statusLabel: statusLabel(api.status),
-  deviceName: api.deviceName ?? tStatic("iam.security", "SESSION_MAPPER.UNKNOWN_DEVICE"),
-  browser: api.browser ?? tStatic("iam.security", "SESSION_MAPPER.UNKNOWN_BROWSER"),
-  operatingSystem: api.operatingSystem ?? tStatic("iam.security", "SESSION_MAPPER.UNKNOWN_OS"),
+  deviceName: api.deviceName ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_DEVICE"),
+  browser: api.browser ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_BROWSER"),
+  operatingSystem: api.operatingSystem ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_OS"),
   ipAddress: api.ipAddress ?? "—",
   startedAtDisplay: formatAbsoluteUtcWithSeconds(api.startedAt),
   lastActivityAtDisplay: formatRelative(api.lastActivityAt),
