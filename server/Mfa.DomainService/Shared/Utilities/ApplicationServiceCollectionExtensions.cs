@@ -20,6 +20,7 @@ namespace Mfa.DomainService.Utilities
             serviceCollection.AddSingleton<IMfaManagementRepository, MfaManagementRepository>();
             serviceCollection.AddSingleton<IMfaConfigurationService, MfaConfigurationService>();
             serviceCollection.AddSingleton<TotpService>();
+            serviceCollection.AddSingleton<ITotpSecretResolver, TotpSecretResolver>();
             serviceCollection.AddSingleton<EmailOtpService>();
             serviceCollection.AddHttpContextAccessor();
             #endregion

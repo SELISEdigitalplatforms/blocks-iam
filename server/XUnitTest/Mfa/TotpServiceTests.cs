@@ -29,10 +29,16 @@ namespace XUnitTest.Mfa
         private readonly Mock<ICacheClient> _cacheClient = new();
         private readonly Mock<IValidator<VerifyOtpRequest>> _validator = new();
         private readonly Mock<ITenants> _tenant = new();
+        private readonly Mock<ITotpSecretResolver> _secrets = new();
+
+        public TotpServiceTests()
+        {
+            _secrets.Setup(s => s.GetAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(ValidBase32Secret);
+        }
 
         private TotpService Sut() => new(
             _repository.Object, NullLogger<TotpService>.Instance, _httpContextAccessor.Object,
-            _configuration.Object, _cacheClient.Object, _validator.Object, _tenant.Object);
+            _configuration.Object, _cacheClient.Object, _validator.Object, _tenant.Object, _secrets.Object);
 
         [Fact]
         public async Task GenerateAsync_StoresUserAndReturnsMfaId()
@@ -85,7 +91,7 @@ namespace XUnitTest.Mfa
             _cacheClient.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
             _cacheClient.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync("u1");
             _repository.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<System.Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserTotpDetail { CreatedBy = "u1", Secret = ValidBase32Secret });
+                .ReturnsAsync(new UserTotpDetail { CreatedBy = "u1", SecretReference = "ref1" });
             var result = await Sut().VerifyAsync(new VerifyOtpRequest { MfaId = "mfa1", VerificationCode = "000000" });
             result.IsSuccess.Should().BeTrue();
             result.UserId.Should().Be("u1");
@@ -112,7 +118,7 @@ namespace XUnitTest.Mfa
         public async Task VerifyForUserAsync_SetUp_ReturnsVerificationResult()
         {
             _repository.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<System.Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserTotpDetail { CreatedBy = "u1", Secret = ValidBase32Secret });
+                .ReturnsAsync(new UserTotpDetail { CreatedBy = "u1", SecretReference = "ref1" });
             var result = await Sut().VerifyForUserAsync("u1", "000000");
             result.IsSuccess.Should().BeTrue();
             result.UserId.Should().Be("u1");
