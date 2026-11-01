@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
+import { tStatic, useT } from "@seliseblocks/genesis-os/i18n";
 import { Loader } from "lucide-react";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
@@ -41,14 +42,16 @@ function clearLinkHash() {
   }
 }
 
-export const CONFIRM_STEP_TIMED_OUT = "This step timed out. Open your invitation link again.";
+export const getConfirmStepTimedOut = () => tStatic("iam.invitation", "INVITATION.STEP_TIMED_OUT");
 export const EMBEDDED_LINK_COPY = {
-  heading: "This invitation opens in your application",
-  message:
-    "It can't be used on this page. Ask the person who invited you for the link to the application's own invitation page. Nothing has been used up, so the invitation still works there.",
+  get heading() {
+    return tStatic("iam.invitation", "INVITATION.EMBEDDED_HEADING");
+  },
+  get message() {
+    return tStatic("iam.invitation", "INVITATION.EMBEDDED_MESSAGE");
+  },
 };
-export const NO_CREDENTIAL_YET_COPY =
-  "This account has no password yet. Sign in normally first, then open your invitation again.";
+export const getNoCredentialYetCopy = () => tStatic("iam.invitation", "INVITATION.NO_PASSWORD_YET");
 
 type PasswordStep = { redemptionId: string; maskedEmail: string };
 
@@ -93,6 +96,7 @@ function followAuthorizeUrl(res: IAccountActivationResponse): boolean {
 }
 
 export function InvitationPage() {
+  const { t } = useT("iam.invitation");
   const { tenantId } = useParams<{ tenantId: string }>();
   // The link code is read from the URL hash once, on mount; the hash is then cleared so the
   // code never lingers in the address bar or history.
@@ -144,7 +148,7 @@ export function InvitationPage() {
           setPasswordNotSet(true);
           return;
         }
-        showErrorToast({ errors: "Something went wrong. Please try again." });
+        showErrorToast({ errors: t("INVITATION.SOMETHING_WENT_WRONG") });
         redeemedRef.current = false;
       },
     });
@@ -163,7 +167,7 @@ export function InvitationPage() {
   }
 
   if (passwordExit === "invalid_redemption") {
-    return <InvitationInvalid template={template} message={CONFIRM_STEP_TIMED_OUT} />;
+    return <InvitationInvalid template={template} message={getConfirmStepTimedOut()} />;
   }
 
   if (passwordExit === "invalid_link") {
@@ -182,7 +186,7 @@ export function InvitationPage() {
     brandName: template.branding.brandName,
     headingDimFirst: 0 as const,
     headingAlign: "left" as const,
-    successTitle: "You're in",
+    successTitle: t("INVITATION.YOU_RE_IN"),
     successSubtitle: "",
     showCorners: false,
     footerNote: <OidcFooter footerText={template.pages.shared.footerText} />,
@@ -200,13 +204,13 @@ export function InvitationPage() {
 
   if (passwordNotSet) {
     return (
-      <OidcAuthShell {...shellProps} heading="Sign in first">
+      <OidcAuthShell {...shellProps} heading={t("INVITATION.SIGN_IN_FIRST")}>
         <div className="flex flex-col items-center gap-4 py-6 text-center">
           <p className="text-sm" style={{ color: "var(--fg)" }}>
-            {NO_CREDENTIAL_YET_COPY}
+            {getNoCredentialYetCopy()}
           </p>
           <Button asChild variant="outline">
-            <LoginReturnLink preferOidcLogin>Sign in</LoginReturnLink>
+            <LoginReturnLink preferOidcLogin>{t("INVITATION.SIGN_IN")}</LoginReturnLink>
           </Button>
         </div>
       </OidcAuthShell>
@@ -229,7 +233,7 @@ export function InvitationPage() {
 
   if (mfaId) {
     return (
-      <OidcAuthShell {...shellProps} heading="Verify it's you">
+      <OidcAuthShell {...shellProps} heading={t("INVITATION.VERIFY_HEADING")}>
         <form
           className="flex flex-col gap-3 py-4"
           onSubmit={(e) => {
@@ -239,21 +243,23 @@ export function InvitationPage() {
               {
                 onSuccess: onRedeemResult,
                 onError: () =>
-                  showErrorToast({ errors: "Invalid verification code. Please try again." }),
+                  showErrorToast({ errors: t("INVITATION.INVALID_CODE") }),
               },
             );
           }}
         >
           <p className="text-sm" style={{ color: "var(--fg)" }}>
-            Enter the {userMfa ?? "MFA"} code to finish joining{" "}
-            {contextQuery.data.applicationName}.
+            {t("INVITATION.ENTER_MFA_CODE", {
+              type: userMfa ?? "MFA",
+              application: contextQuery.data.applicationName,
+            })}
           </p>
           <input
             className="rounded border px-3 py-2 text-sm"
             value={mfaCode}
             onChange={(e) => setMfaCode(e.target.value)}
             autoComplete="one-time-code"
-            aria-label="MFA code"
+            aria-label={t("INVITATION.MFA_CODE_ARIA")}
           />
           <button
             type="submit"
@@ -261,7 +267,7 @@ export function InvitationPage() {
             style={{ background: "var(--accent)", color: "var(--bg)" }}
             disabled={mfaMutation.isPending || !mfaCode}
           >
-            Continue
+            {t("common:CONTINUE")}
           </button>
         </form>
       </OidcAuthShell>
@@ -283,16 +289,18 @@ export function InvitationPage() {
 
   if (contextQuery.data.credentialMode === "PasswordRequired") {
     return (
-      <OidcAuthShell {...shellProps} heading={`Welcome, ${contextQuery.data.firstName}`}>
+      <OidcAuthShell {...shellProps} heading={t("INVITATION.WELCOME", { name: contextQuery.data.firstName })}>
         <div className="flex flex-col gap-3 py-4">
           <p className="text-sm" style={{ color: "var(--fg)" }}>
-            Continue into {contextQuery.data.applicationName} as{" "}
-            {contextQuery.data.maskedEmail}. Password setup is required for this invite.
+            {t("INVITATION.CONTINUE_INTO", {
+              application: contextQuery.data.applicationName,
+              email: contextQuery.data.maskedEmail,
+            })}
           </p>
           <div className="flex flex-col items-center gap-3 py-4">
             <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
             <p className="text-sm" style={{ color: "var(--muted)" }}>
-              Preparing your invite…
+              {t("INVITATION.PREPARING")}
             </p>
           </div>
         </div>
@@ -301,11 +309,11 @@ export function InvitationPage() {
   }
 
   return (
-    <OidcAuthShell {...shellProps} heading={`Welcome, ${contextQuery.data.firstName}`}>
+    <OidcAuthShell {...shellProps} heading={t("INVITATION.WELCOME", { name: contextQuery.data.firstName })}>
       <div className="flex flex-col items-center gap-3 py-8">
         <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
         <p className="text-sm" style={{ color: "var(--muted)" }}>
-          Signing you into {contextQuery.data.applicationName}…
+          {t("INVITATION.SIGNING_IN", { application: contextQuery.data.applicationName })}
         </p>
       </div>
     </OidcAuthShell>
