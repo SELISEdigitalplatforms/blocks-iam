@@ -121,12 +121,17 @@ describe("SsoActivate", () => {
     sessionStorage.setItem("clicked_sso_provider", "google");
     sessionStorage.setItem("clicked_sso_audience", "https://aud.test");
     h.getSocialLoginEndpoint.mockResolvedValue({ providerUrl: "https://google.test/auth" });
-    const replace = { href: "" };
+    const original = window.location;
+    const replace = { href: "", origin: original.origin };
     Object.defineProperty(window, "location", { value: replace, configurable: true });
-    renderComp();
-    const useDifferent = await screen.findByText(/Use a different Google account/);
-    fireEvent.click(useDifferent);
-    await waitFor(() => expect(h.getSocialLoginEndpoint).toHaveBeenCalled());
+    try {
+      renderComp();
+      const useDifferent = await screen.findByText(/Use a different Google account/);
+      fireEvent.click(useDifferent);
+      await waitFor(() => expect(h.getSocialLoginEndpoint).toHaveBeenCalled());
+    } finally {
+      Object.defineProperty(window, "location", { value: original, configurable: true });
+    }
   });
 
   it("errors when using a different account without an audience", async () => {
