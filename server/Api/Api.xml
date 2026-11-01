@@ -23,7 +23,7 @@
             Issues access and refresh tokens on success
             </summary>
         </member>
-        <member name="M:Api.Controllers.AuthenticationController.RetrieveLoginOptions">
+        <member name="M:Api.Controllers.AuthenticationController.RetrieveLoginOptions(System.String)">
             <summary>
             Retrieve available login options (identity providers and their metadata)
             No authentication required - public discovery endpoint
@@ -436,6 +436,9 @@
         <member name="T:Api.Controllers.PasswordCheckRequest">
             <summary>Body of <see cref="M:Api.Controllers.IdpController.PasswordCheck(Api.Controllers.PasswordCheckRequest)"/>.</summary>
         </member>
+        <member name="T:Api.Controllers.LoginPolicyController">
+            <summary>The tenant's sign-in policy: where (embedded, OIDC) and how (password, social) users may sign in.</summary>
+        </member>
         <member name="T:Api.Controllers.OidcClientsController">
             <summary>
             OIDC Client Management Controller
@@ -528,6 +531,12 @@
             A token with no user, such as a client credential, acts on no one.
             </summary>
         </member>
+        <member name="T:Api.Controllers.UserPasswordResetController">
+            <summary>
+            An administrator sends a user the password-reset mail. Protected by its own permission and
+            asks no captcha; the public forgot-password flow (auth/recover) keeps its captcha.
+            </summary>
+        </member>
         <member name="T:Api.Middleware.DataValidationExceptionFilter">
             <summary>
             A save refused by a system schema's validation rules (IIamDataAccess PrepareWriteAsync / CheckUpdateAsync)
@@ -581,13 +590,16 @@
         <member name="F:Api.Security.ContentSecurityPolicy.FormActionOriginKeys">
             <summary>Where a login POST may be sent: the identity host and the portal.</summary>
         </member>
-        <member name="F:Api.Security.ContentSecurityPolicy.CaptchaScriptOrigins">
+        <member name="F:Api.Security.ContentSecurityPolicy.CaptchaScriptSources">
             <summary>
             reCAPTCHA is loaded by <c>client/app/components/captcha/reCaptcha.tsx</c>, which
             injects <c>https://www.google.com/recaptcha/api.js</c> and renders the widget in an
-            iframe. These are fixed Google origins, identical in every environment, so they stay
+            iframe. These are fixed Google sources, identical in every environment, so they stay
             in code rather than in per-environment configuration. Without them the previous
             policy blocked captcha on login and signup in every environment.
+            They are limited to the /recaptcha/ path: a whole Google host would also allow its
+            other endpoints, some of which return script built from the request.
+            They skip <see cref="M:Api.Security.ContentSecurityPolicy.Normalize(System.Collections.Generic.IEnumerable{System.String})"/>, which would cut the path off.
             </summary>
         </member>
         <member name="F:Api.Security.ContentSecurityPolicy.StyleNoncePlaceholder">
@@ -793,6 +805,13 @@
             <summary>
             RFC 7662: Token Introspection Endpoint
             Allows authorized clients to introspect tokens and get claims/metadata
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.AuthenticateClientAsync(System.String,System.String)">
+            <summary>
+            The authenticated client id, or null when the client is unknown, inactive or presented the
+            wrong secret. <c>SecretUnavailable</c> is true when the client's secret cannot be read from
+            the secret store: the caller answers 503, never "wrong secret".
             </summary>
         </member>
         <member name="T:Program">

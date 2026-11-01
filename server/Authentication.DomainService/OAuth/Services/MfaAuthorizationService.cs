@@ -21,13 +21,19 @@ namespace Authentication.DomainService.OAuth.Services
         private readonly IOtpServiceFactory _tpServiceFactory;
         private readonly IAuthenticationRepository _oAuthRepository;
         private readonly IMfaAuditService _auditService;
+        private readonly IMfaManagementService _mfaManagementService;
+        private readonly IMfaAttemptGate _mfaAttemptGate;
 
         public MfaAuthorizationService(ILogger<MfaAuthorizationService> logger,
                                        IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
                                        IOtpServiceFactory tpServiceFactory,
                                        IAuthenticationRepository oAuthRepository,
-                                       IMfaAuditService auditService)
+                                       IMfaAuditService auditService,
+                                       IMfaManagementService mfaManagementService,
+                                       IMfaAttemptGate mfaAttemptGate)
         {
+            _mfaManagementService = mfaManagementService;
+            _mfaAttemptGate = mfaAttemptGate;
             _logger = logger;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
             _tpServiceFactory = tpServiceFactory;
@@ -51,9 +57,22 @@ namespace Authentication.DomainService.OAuth.Services
                 };
             }
 
-            var response = await otpService.VerifyAsync(new VerifyOtpRequest { AuthType = request.MfaType, MfaId = request.MfaId, VerificationCode = request.Code, IsFromTokenCall = true });
+            // The challenge owner is read first, so the code is counted against that account before
+            // it is checked: a burst of parallel codes gets no more checks than the lock threshold.
+            var owner = await _mfaManagementService.GetChallengeOwnerAsync(request.MfaId ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(owner))
+            {
+                return new TokenResponse { Error = OAuthError.MfaInvalidCode, ErrorDescription = "Mfa code is not valid", StatusCode = 401 };
+            }
 
-            if (response.IsValid)
+            OtpVerificationResponse? response = null;
+            var attempt = await _mfaAttemptGate.CheckAsync(owner, authenticationConfiguration, async () =>
+            {
+                response = await otpService.VerifyAsync(new VerifyOtpRequest { AuthType = request.MfaType, MfaId = request.MfaId, VerificationCode = request.Code, IsFromTokenCall = true });
+                return response.IsValid && string.Equals(response.UserId, owner, StringComparison.Ordinal);
+            });
+
+            if (attempt.IsValid && response != null)
             {
                 // The verified mfa_id is the only authoritative identity for this MFA session.
                 // A caller-supplied user (resolved upstream from a request-body username) must
@@ -153,15 +172,12 @@ namespace Authentication.DomainService.OAuth.Services
                 return tokenResponse;
             }
 
-            var updatedUser = await TrackFailedMfaAttemptAsync(response.UserId, authenticationConfiguration);
-
-            var justLocked = updatedUser?.LockoutUntilUtc.HasValue == true
-                && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow;
+            var justLocked = attempt.IsLocked;
 
             await _auditService.WriteAsync(new MfaAuditEvent
             {
                 EventType = justLocked ? LoginAuditEvents.MfaAccountLocked : LoginAuditEvents.MfaVerificationFailure,
-                UserId = response.UserId,
+                UserId = owner,
                 ClientId = request.ClientId,
                 MfaType = request.MfaType,
                 Status = IdpConstants.StatusFailure,
@@ -179,28 +195,6 @@ namespace Authentication.DomainService.OAuth.Services
             }
 
             return new TokenResponse { Error = OAuthError.MfaInvalidCode, ErrorDescription = "Mfa code is not valid", StatusCode = 401 };
-        }
-
-        private async Task<User?> TrackFailedMfaAttemptAsync(string? userId, IdentityConfiguration authenticationConfiguration)
-        {
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                return null;
-            }
-
-            try
-            {
-                return await _oAuthRepository.IncrementFailedMfaAndApplyLockoutAsync(
-                    userId,
-                    authenticationConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
-                    authenticationConfiguration.AccountLockDurationInMinutes,
-                    DateTime.UtcNow);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to track MFA failure for user {UserId}", userId);
-                return null;
-            }
         }
     }
 }

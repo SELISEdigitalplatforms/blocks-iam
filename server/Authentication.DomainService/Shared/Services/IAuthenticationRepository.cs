@@ -19,7 +19,6 @@ namespace Authentication.DomainService.Services
         Task<User> GetUserByUsernameAsync(string username, string? organizationId = null);
         Task<User> GetUserByIdAsync(string itemId);
         Task<T> GetUserByIdAsync<T>(string itemId);
-        Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
 
         /// <summary>
         /// Atomically reserves one password check BEFORE the password is verified: counts it as a failed
@@ -38,7 +37,7 @@ namespace Authentication.DomainService.Services
 
         /// <summary>
         /// Locks the account after a wrong password whose reservation reached the threshold (the attempt is already
-        /// counted). Same exponential backoff as <see cref="IncrementFailedLoginAndApplyLockoutAsync"/>. Returns the
+        /// counted). Each lock adds the base time, up to the cap. Returns the
         /// locked user when this call applied the lock, otherwise null.
         /// </summary>
         Task<User?> LockAccountIfLoginThresholdReachedAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
@@ -50,7 +49,18 @@ namespace Authentication.DomainService.Services
         /// a lock and never hands back the guesses of an attack running at the same time. Returns true when cleared.
         /// </summary>
         Task<bool> ResetFailureCountersAfterSuccessAsync(User snapshot, DateTime nowUtc);
-        Task<User?> IncrementFailedMfaAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
+
+        /// <summary>
+        /// Same as <see cref="TryReserveLoginAttemptAsync"/> for MFA codes: counts the code as wrong before it is
+        /// checked, so a burst of parallel codes gets no more checks than the lock threshold.
+        /// </summary>
+        Task<User?> TryReserveMfaAttemptAsync(string userId, int lockThreshold, DateTime nowUtc);
+
+        /// <summary>Gives back an MFA reservation whose code was right. False when the account is locked now.</summary>
+        Task<bool> ReleaseMfaAttemptAsync(string userId, DateTime nowUtc);
+
+        /// <summary>Locks the account after a wrong MFA code whose reservation reached the threshold. The locked user, or null.</summary>
+        Task<User?> LockAccountIfMfaThresholdReachedAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
         Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "");
         Task<List<IdentityProvider>> GetIdentityProvidersAsync();
         /// <summary>As the caller may see it: properties a View column rule hides are cleared. Never save it back.</summary>

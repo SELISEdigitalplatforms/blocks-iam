@@ -123,9 +123,25 @@ public class ContentSecurityPolicyTests
         // captcha on login and signup in every environment.
         var policy = ContentSecurityPolicy.Build(Config([]));
 
-        Directive(policy, "script-src").Should().Contain("https://www.google.com");
-        Directive(policy, "script-src").Should().Contain("https://www.gstatic.com");
-        Directive(policy, "frame-src").Should().Contain("https://www.google.com");
+        Directive(policy, "script-src").Should().Contain("https://www.google.com/recaptcha/");
+        Directive(policy, "script-src").Should().Contain("https://www.gstatic.com/recaptcha/");
+        Directive(policy, "frame-src").Should().Contain("https://www.google.com/recaptcha/");
+    }
+
+    [Theory]
+    [InlineData("script-src")]
+    [InlineData("frame-src")]
+    public void Build_AllowsGoogleOnlyOnTheCaptchaPath(string name)
+    {
+        // A whole Google host would also allow its other endpoints, some of which return
+        // script built from the request, so only the /recaptcha/ path is allowed.
+        var sources = Directive(ContentSecurityPolicy.Build(Config([])), name)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        sources.Where(s => s.Contains("google.com", StringComparison.OrdinalIgnoreCase)
+                           || s.Contains("gstatic.com", StringComparison.OrdinalIgnoreCase))
+            .Should().NotBeEmpty()
+            .And.OnlyContain(s => s.EndsWith("/recaptcha/", StringComparison.Ordinal));
     }
 
     [Fact]

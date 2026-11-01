@@ -144,7 +144,7 @@ public sealed class AuthorizationCodeReuseIntegrationTests : IDisposable
 
     private AuthorizationCodeExchangeService Exchange() =>
         new(_codes, _refresh, _tokens.Object, Mock.Of<IPkceService>(), _users.Object, _claims.Object,
-            _auth.Object, _tenants.Object, _revocations, _cache, NullLogger<AuthorizationCodeExchangeService>.Instance);
+            _auth.Object, XUnitTest.TestDoubles.OidcClientSecretTestDoubles.Resolver(), _tenants.Object, _revocations, _cache, NullLogger<AuthorizationCodeExchangeService>.Instance);
 
     private RefreshSessionResolver Resolver() => new(_cache, _refresh, NullLogger<RefreshSessionResolver>.Instance);
 

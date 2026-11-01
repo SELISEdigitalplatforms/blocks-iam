@@ -37,7 +37,8 @@ public sealed class BlocksCaptchaVerificationService : ICaptchaVerificationServi
         var hasCode = cacheKey.Length > CaptchaProcessor.VerificationCodeCacheKeyPrefix.Length;
 
         var savedHostName = hasCode ? await _cache.GetStringValueAsync(cacheKey) : null;
-        var verified = !string.IsNullOrWhiteSpace(savedHostName);
+        // Single use: of parallel requests with the same code, only the one that really deleted it passes.
+        var verified = !string.IsNullOrWhiteSpace(savedHostName) && await _cache.RemoveKeyAsync(cacheKey);
 
         if (!verified)
         {
@@ -50,8 +51,6 @@ public sealed class BlocksCaptchaVerificationService : ICaptchaVerificationServi
                 }
             };
         }
-
-        await _cache.RemoveKeyAsync(cacheKey);
 
         return new VerificationResult
         {

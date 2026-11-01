@@ -7,6 +7,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.SocialServices;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
@@ -20,11 +21,12 @@ namespace XUnitTest.Auth.OAuth
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
         private readonly Mock<ICacheClient> _cache = new();
         private readonly Mock<IHttpService> _http = new();
+        private readonly Mock<ISecretService> _secrets = new(MockBehavior.Strict);
 
         private static readonly string EcPrivateKeyPem = CreateEcPrivateKeyPem();
 
         private AppleLogInService Create() =>
-            new(NullLogger<AppleLogInService>.Instance, _authRepo.Object, _cache.Object, _http.Object);
+            new(NullLogger<AppleLogInService>.Instance, _authRepo.Object, _cache.Object, _http.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets));
 
         private static IdentityProvider Provider(bool withKey = true) => new()
         {
@@ -64,7 +66,8 @@ namespace XUnitTest.Auth.OAuth
         [Fact]
         public void GenerateClientSecret_ProducesSignedJwt_WithExpectedClaims()
         {
-            var secret = Create().GenerateClientSecret(Provider());
+            var provider = Provider();
+            var secret = Create().GenerateClientSecret(provider, provider.PrivateKey);
 
             var token = new JwtSecurityTokenHandler().ReadJwtToken(secret);
             token.Header.Alg.Should().Be(SecurityAlgorithms.EcdsaSha256);
@@ -151,6 +154,95 @@ namespace XUnitTest.Auth.OAuth
         {
             using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             return ecdsa.ExportECPrivateKeyPem();
+        }
+
+        // ---------- #649: private key resolved through Blocks Secrets ----------
+
+        [Fact]
+        public async Task ReferencedProvider_SignsTheAssertionWithTheResolvedKey_WithOneRead()
+        {
+            // H6, C4 (the stale legacy key is not used), C13
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            using var vaultKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var idp = Provider();
+            idp.PrivateKeyReference = "pk-ref";
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(idp);
+            _secrets.Setup(s => s.GetValueAsync("pk-ref", It.IsAny<CancellationToken>())).ReturnsAsync(vaultKey.ExportECPrivateKeyPem());
+            Dictionary<string, string>? form = null;
+            _http.Setup(h => h.SendFormUrlEncoded<SocialOauthAccessToken>(
+                    It.IsAny<HttpMethod>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(),
+                    It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()))
+                .Callback<HttpMethod, Dictionary<string, string>, string, Dictionary<string, string>, CancellationToken, int?>((_, f, _, _, _, _) => form = f)
+                .ReturnsAsync(((SocialOauthAccessToken)null!, "stop"));
+
+            await Create().HandleSocialLoginCallback(State());
+
+            var assertion = form!["client_secret"];
+            ValidatesWith(assertion, vaultKey).Should().BeTrue("the assertion must be signed with the key from the secret store");
+            using var legacyKey = ECDsa.Create();
+            legacyKey.ImportFromPem(EcPrivateKeyPem);
+            ValidatesWith(assertion, legacyKey).Should().BeFalse();
+            _secrets.Verify(s => s.GetValueAsync("pk-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task LegacyProvider_SignsWithThePlaintextKey_WithNoSecretCall()
+        {
+            // H7, C13
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(Provider());
+            Dictionary<string, string>? form = null;
+            _http.Setup(h => h.SendFormUrlEncoded<SocialOauthAccessToken>(
+                    It.IsAny<HttpMethod>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(),
+                    It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()))
+                .Callback<HttpMethod, Dictionary<string, string>, string, Dictionary<string, string>, CancellationToken, int?>((_, f, _, _, _, _) => form = f)
+                .ReturnsAsync(((SocialOauthAccessToken)null!, "stop"));
+
+            await Create().HandleSocialLoginCallback(State());
+
+            using var legacyKey = ECDsa.Create();
+            legacyKey.ImportFromPem(EcPrivateKeyPem);
+            ValidatesWith(form!["client_secret"], legacyKey).Should().BeTrue();
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task ReferencedKeyUnavailable_FailsTheSignIn_WithoutCallingApple()
+        {
+            // C2, C3, C4
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            var idp = Provider();
+            idp.PrivateKeyReference = "pk-ref";
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(idp);
+            _secrets.Setup(s => s.GetValueAsync("pk-ref", It.IsAny<CancellationToken>())).ThrowsAsync(new SecretAccessDeniedException("denied"));
+
+            var result = await Create().HandleSocialLoginCallback(State());
+
+            result.ExternalUserData.Should().BeOfType<AppleUserData>();
+            result.AccessToken.Should().BeNull();
+            _http.VerifyNoOtherCalls();
+            // Exactly one read: a failed read is not retried.
+            _secrets.Verify(s => s.GetValueAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        private static bool ValidatesWith(string jwt, ECDsa key)
+        {
+            var parameters = new TokenValidationParameters
+            {
+                ValidateIssuer = false,
+                ValidateAudience = false,
+                IssuerSigningKey = new ECDsaSecurityKey(ECDsa.Create(key.ExportParameters(false))),
+            };
+            try
+            {
+                new JwtSecurityTokenHandler().ValidateToken(jwt, parameters, out _);
+                return true;
+            }
+            catch (SecurityTokenException)
+            {
+                return false;
+            }
         }
     }
 }

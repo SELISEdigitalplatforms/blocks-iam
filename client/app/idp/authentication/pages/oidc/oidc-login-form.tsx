@@ -12,6 +12,7 @@ import { Link, useNavigate } from "react-router";
 import { z } from "zod";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
+import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import React, { useEffect, useRef, useState } from "react";
 import { Captcha } from "@/components/captcha";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
@@ -113,7 +114,7 @@ export const OidcLoginForm = ({
 }: OidcLoginFormProps) => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
-  const { data: loginOption } = useGetLoginOptions(tenantId, true);
+  const { data: loginOption } = useGetLoginOptions(tenantId, true, clientId);
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
   const { data: signUpSetting } = useGetSignUpSetting(tenantId);
   const isSignUpEnabled = signUpSetting?.isSignUpEnable ?? false;
@@ -459,8 +460,12 @@ export const OidcLoginForm = ({
     );
   }
 
-  const showPasswordLogin = true;
+  // The project and this application decide the methods. Until the options load (or if they
+  // fail to), the password form stays: the server still refuses a method that is turned off.
+  const allowedGrantTypes = loginOption?.allowedGrantTypes;
+  const showPasswordLogin = !allowedGrantTypes || allowedGrantTypes.includes(GRANT_TYPES.password);
   const showSocialLogin = !!loginOption?.ssoInfo?.length;
+  const noSignInMethod = !showPasswordLogin && !showSocialLogin;
 
   /**
    * Hands the user back to the application that sent them. Falls back to dismissing the modal
@@ -516,6 +521,12 @@ export const OidcLoginForm = ({
           actionLabel={loginCopy.backToLoginButton}
           onAction={leaveToApplication}
         />
+      )}
+
+      {noSignInMethod && (
+        <p className="text-sm" style={{ color: "var(--muted)" }} data-testid="no-sign-in-method">
+          No sign-in method is available for this application. Contact your administrator.
+        </p>
       )}
 
       {showPasswordLogin && (

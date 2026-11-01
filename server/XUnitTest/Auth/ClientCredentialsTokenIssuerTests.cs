@@ -4,6 +4,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -21,6 +22,7 @@ namespace XUnitTest.Auth
         private readonly Mock<ICryptoService> _crypto = new();
         private readonly Mock<ICacheClient> _cache = new();
         private readonly Mock<ITenants> _tenants = new();
+        private readonly Mock<ISecretService> _secrets = new(MockBehavior.Strict);
 
         public ClientCredentialsTokenIssuerTests()
         {
@@ -42,7 +44,8 @@ namespace XUnitTest.Auth
         private ClientCredentialsTokenIssuer Create()
         {
             var authService = new ClientCredentialAuthorizationService(
-                _authRepo.Object, _certFactory.Object, _crypto.Object, _cache.Object, _tenants.Object);
+                _authRepo.Object, _certFactory.Object, _crypto.Object, _cache.Object, _tenants.Object,
+                TestDoubles.ClientCredentialSecretTestDoubles.Resolver(_secrets));
             return new ClientCredentialsTokenIssuer(_authRepo.Object, authService);
         }
 
@@ -114,6 +117,22 @@ namespace XUnitTest.Auth
             var obj = result.Should().BeOfType<ObjectResult>().Subject;
             obj.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
             _authRepo.Verify(r => r.GetClientCredentialByIdAsync("basic-client"), Times.Once);
+        }
+
+        [Fact]
+        public async Task Issue_SecretStoreUnavailable_Returns503TemporarilyUnavailable()
+        {
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
+            _authRepo.Setup(r => r.GetClientCredentialByIdAsync("c1"))
+                .ReturnsAsync(new ClientCredential { ItemId = "c1", ClientSecret = string.Empty, ClientSecretReference = "cs-ref", IsActive = true });
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ThrowsAsync(new SecretVaultException("down cs-ref", "get", "cs-ref"));
+
+            var form = new Dictionary<string, string> { ["client_id"] = "c1", ["client_secret"] = "s1" };
+            var result = await Create().IssueAsync(MakeRequest(form));
+
+            var obj = result.Should().BeOfType<ObjectResult>().Subject;
+            obj.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+            obj.Value!.ToString().Should().Contain("temporarily_unavailable").And.NotContain("cs-ref");
         }
 
         [Fact]

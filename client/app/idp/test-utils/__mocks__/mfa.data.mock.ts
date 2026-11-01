@@ -97,5 +97,7 @@ export const mockResendOtpPayload: IResendMfaOtpPayload = {
 };
 
 export const mockDisableMfaPayload: IDisableMFAPayload = {
-  userId: MOCK_MFA_USER_ID,
+  password: "Passw0rd!",
+  mfaId: "mfa-1",
+  verificationCode: "123456",
 };

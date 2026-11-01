@@ -220,5 +220,15 @@ describe("AuthService", () => {
         { skipBlocksKey: true },
       );
     });
+
+    it("adds the OIDC client id when one is given", async () => {
+      vi.mocked(http.get).mockResolvedValue({ allowedGrantTypes: [] });
+      await service.getLoginOptions("tenant-7", "app 1");
+      expect(http.get).toHaveBeenCalledWith(
+        `${AUTH_ENDPOINTS.GET_LOGIN_OPTIONS}?tenantId=tenant-7&client_id=app+1`,
+        { "X-Blocks-Key": "tenant-7" },
+        { skipBlocksKey: true },
+      );
+    });
   });
 });

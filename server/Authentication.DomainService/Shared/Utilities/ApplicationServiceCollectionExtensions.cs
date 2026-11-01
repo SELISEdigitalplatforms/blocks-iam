@@ -1,3 +1,4 @@
+using Blocks.Genesis.Notifications;
 using Blocks.Genesis.DataAccess;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth;
@@ -97,6 +98,9 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<PasswordAuthenticationService>();
             serviceCollection.AddSingleton<MfaAuthorizationService>();
             serviceCollection.AddSingleton<IMfaPolicyService, MfaPolicyService>();
+            serviceCollection.AddSingleton<Authentication.LoginPolicies.ILoginPolicyService, Authentication.LoginPolicies.LoginPolicyService>();
+            serviceCollection.AddSingleton<IMfaDisableService, MfaDisableService>();
+            serviceCollection.AddSingleton<IMfaAttemptGate, MfaAttemptGate>();
             serviceCollection.AddSingleton<IMfaAuditService, MfaAuditService>();
             serviceCollection.AddSingleton<RefreshTokenAuthenticationService>();
             serviceCollection.AddSingleton<SocialAuthorizationService>();
@@ -180,8 +184,9 @@ namespace Authentication.DomainService.Utilities
             #endregion
 
             #region IAM
-            // Built-in notifications to the Notifier (blocks-logic). Best effort; both hosts use it.
+            // Built-in notifications go through the Genesis publisher. Best effort; both hosts use it.
             serviceCollection.AddHttpClient();
+            serviceCollection.AddBlocksNotifications();
             serviceCollection.AddSingleton<Iam.DomainService.Notifications.IBuiltInNotificationSender, Iam.DomainService.Notifications.BuiltInNotificationSender>();
 
             serviceCollection.AddSingleton<IUserManagementMutationService, UserManagementMutationService>();
@@ -204,6 +209,8 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<ISignupOrganizationResolver, SignupOrganizationResolver>();
             serviceCollection.AddSingleton<IAccountService, AccountService>();
+            serviceCollection.AddSingleton<ILoginPolicySettingsService, LoginPolicySettingsService>();
+            serviceCollection.AddSingleton<IAdminPasswordResetService, AdminPasswordResetService>();
             serviceCollection.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();
             serviceCollection.AddSingleton<ISignupLinkConfigurationService, SignupLinkConfigurationService>();
             serviceCollection.AddSingleton<ISignupLinkRepository, SignupLinkRepository>();
@@ -275,6 +282,10 @@ namespace Authentication.DomainService.Utilities
             // TryAdd throughout, so calling it here is idempotent.
             serviceCollection.AddBlocksSecrets();
             serviceCollection.RegisterBlocksCaptchaService();
+            // Singleton over IServiceScopeFactory: ISecretService is scoped, so it is resolved per call.
+            serviceCollection.AddSingleton<IIdentityProviderSecretResolver, IdentityProviderSecretResolver>();
+            serviceCollection.AddSingleton<IClientCredentialSecretResolver, ClientCredentialSecretResolver>();
+            serviceCollection.AddSingleton<IOidcClientSecretResolver, OidcClientSecretResolver>();
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
             serviceCollection.AddSingleton<IRefreshSessionResolver, RefreshSessionResolver>();

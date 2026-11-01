@@ -6,6 +6,7 @@ import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { useTheme } from "@/hooks/use-theme";
 import { useCallback, useMemo } from "react";
 import { sanitizeProviderUrl } from "@blocks-idp/authentication/utils/sanitize-provider-url.util";
+import { getSsoStartErrorMessage } from "@blocks-idp/authentication/utils/sso-start-errors";
 import {
   OIDC_APP_HANDOFF_STORAGE_KEY,
   OIDC_DEVICE_RETURN_URL_STORAGE_KEY,
@@ -90,7 +91,7 @@ export const SSOSigninCard = ({
           
         });
 
-        if (res.error) return showErrorToast({ errors: res.error });
+        if (res.error) return showErrorToast({ errors: getSsoStartErrorMessage(res) });
         if (!res.authorizationUrl)
           return showErrorToast({ errors: "No authorization URL provided." });
 
@@ -112,7 +113,7 @@ export const SSOSigninCard = ({
     } catch (error) {
       console.error("SSO Sign-in error:", error);
       if (isErrorWithErrors(error))
-        return showErrorToast({ errors: error.errors });
+        return showErrorToast({ errors: getSsoStartErrorMessage(error) });
       showErrorToast({ errors: "Something went wrong" });
     }
   }, [mode, providerConfig, oidcContext, iamBaseUrl]);

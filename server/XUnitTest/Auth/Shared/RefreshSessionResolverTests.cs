@@ -6,6 +6,7 @@ using Authentication.DomainService.Shared.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Blocks.Genesis.Entities.Iam;
@@ -431,6 +432,129 @@ namespace XUnitTest.Auth.Shared
         {
             (await Sut().TryResolveRefreshSessionAsync("", Config())).Should().BeNull();
             _repo.Verify(r => r.GetByTokenIdAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        // ==================== Impersonation changes are a session boundary ====================
+        //
+        // Impersonation start, stop and switch replace the token with one in another tenant or organization.
+        // A refresh replaying the replaced token was handed that token, so a page in one tenant carried on
+        // under another tenant's token behind an ordinary 200.
+
+        private const string Impersonation = "superseded_by_impersonation";
+
+        private RefreshSessionResolver SutWithSettings(Dictionary<string, string?> settings) =>
+            new(_cache.Object, _repo.Object, NullLogger<RefreshSessionResolver>.Instance,
+                appConfiguration: new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+
+        [Fact]
+        public async Task ReplacedByImpersonation_RefreshInsideGrace_IsRefusedAsSessionChangedAndRevokesNothing()
+        {
+            CacheMiss();
+            Persisted(
+                Token("A", isRevoked: true, revokeReason: Impersonation, revokedAt: DateTime.UtcNow.AddMinutes(-1), supersededBy: "B"),
+                Token("B"));
+
+            var result = await Sut().ResolveRefreshSessionAsync("A", Config(), followImpersonationTransitions: false);
+
+            result.Session.Should().BeNull();
+            result.SessionChanged.Should().BeTrue();
+            // Not theft: the client's cookie may already hold B, and the lineage must keep working.
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.GetByTokenIdAsync("B"), Times.Never);
+        }
+
+        [Fact]
+        public async Task ReplacedByImpersonation_TryResolve_IsRejected()
+        {
+            CacheMiss();
+            Persisted(
+                Token("A", isRevoked: true, revokeReason: Impersonation, revokedAt: DateTime.UtcNow.AddMinutes(-1), supersededBy: "B"),
+                Token("B"));
+
+            (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
+        }
+
+        [Fact]
+        public async Task ReplacedByImpersonation_ImpersonationCallers_ResolveToTheSuccessor()
+        {
+            // Start and stop move the session on purpose; a retry whose first answer was lost must reach
+            // the session that answer created.
+            CacheMiss();
+            Persisted(
+                Token("A", isRevoked: true, revokeReason: Impersonation, revokedAt: DateTime.UtcNow.AddMinutes(-1), supersededBy: "B"),
+                Token("B"));
+            _cache.Setup(c => c.AddStringValueAsync("B", It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+
+            var result = await Sut().ResolveRefreshSessionAsync("A", Config(), followImpersonationTransitions: true);
+
+            result.SessionChanged.Should().BeFalse();
+            result.Session!.RefreshToken.Should().Be("B");
+        }
+
+        [Fact]
+        public async Task RotationThenImpersonation_RefreshReplayOfTheFirstToken_StopsAtTheChange()
+        {
+            CacheMiss();
+            var justNow = DateTime.UtcNow.AddMinutes(-1);
+            Persisted(
+                Token("A", isRevoked: true, revokeReason: Rotation, revokedAt: justNow, supersededBy: "B"),
+                Token("B", isRevoked: true, revokeReason: Impersonation, revokedAt: justNow, supersededBy: "C"),
+                Token("C"));
+
+            var result = await Sut().ResolveRefreshSessionAsync("A", Config(), followImpersonationTransitions: false);
+
+            result.Session.Should().BeNull();
+            result.SessionChanged.Should().BeTrue();
+            _repo.Verify(r => r.GetByTokenIdAsync("C"), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ImpersonationThenRotation_ReplayOfTheTokenTheChangeIssued_StillResolves()
+        {
+            // B was issued by the impersonation change, then refreshed into C: same tenant, so a second tab
+            // replaying B is the ordinary grace-window case.
+            CacheMiss();
+            var justNow = DateTime.UtcNow.AddMinutes(-1);
+            Persisted(
+                Token("B", isRevoked: true, revokeReason: Rotation, revokedAt: justNow, supersededBy: "C"),
+                Token("C"));
+            _cache.Setup(c => c.AddStringValueAsync("C", It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+
+            var result = await Sut().ResolveRefreshSessionAsync("B", Config(), followImpersonationTransitions: false);
+
+            result.Session!.RefreshToken.Should().Be("C");
+        }
+
+        [Fact]
+        public async Task ReplacedByImpersonation_PastGrace_IsStillReuse()
+        {
+            CacheMiss();
+            Persisted(Token("A", isRevoked: true, revokeReason: Impersonation,
+                revokedAt: DateTime.UtcNow.AddMinutes(-6), supersededBy: "B"));
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(2);
+            _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
+
+            var result = await Sut().ResolveRefreshSessionAsync("A", Config(), followImpersonationTransitions: false);
+
+            result.Session.Should().BeNull();
+            result.SessionChanged.Should().BeFalse();
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ReplacedByImpersonation_OperatorSwitch_LetsARefreshFollowAsBefore()
+        {
+            CacheMiss();
+            Persisted(
+                Token("A", isRevoked: true, revokeReason: Impersonation, revokedAt: DateTime.UtcNow.AddMinutes(-1), supersededBy: "B"),
+                Token("B"));
+            _cache.Setup(c => c.AddStringValueAsync("B", It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+            var sut = SutWithSettings(new() { ["RefreshTokens:RefreshFollowsImpersonationTransitions"] = "true" });
+
+            var result = await sut.TryResolveRefreshSessionAsync("A", Config());
+
+            result!.RefreshToken.Should().Be("B");
         }
     }
 }

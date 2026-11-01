@@ -30,8 +30,8 @@ namespace XUnitTest.IamTests.Accounts.Validators
 
             // Defaults: code registered, no password regex, not blacklisted, empty secrets collection.
             // "valid-code" is user-1's latest reset code: the code key and the per-user pointer.
-            _cache.Setup(c => c.GetStringValueAsync("valid-code")).ReturnsAsync("user-1");
-            _cache.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, "user-1"))).ReturnsAsync("valid-code");
+            _cache.Setup(c => c.GetStringValueAsync(AccountCodes.CodeKey(AccountCodes.Reset, "valid-code"))).ReturnsAsync("user-1");
+            _cache.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, "user-1"))).ReturnsAsync(AccountCodes.Stored(AccountCodes.Reset, "valid-code"));
             _configRepo.Setup(c => c.GetConfigurationAsync())
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = string.Empty });
             _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))

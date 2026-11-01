@@ -11,6 +11,7 @@ namespace XUnitTest.Captcha
         private static BlocksCaptchaVerificationService CreateService(out Mock<ICacheClient> cache)
         {
             cache = new Mock<ICacheClient>();
+            cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>())).ReturnsAsync(true);
             return new BlocksCaptchaVerificationService(cache.Object);
         }
 
@@ -75,7 +76,18 @@ namespace XUnitTest.Captcha
             cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>()))
                 .ReturnsAsync((string k) => store.GetValueOrDefault(k));
             cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>()))
-                .Callback((string k) => store.Remove(k));
+                .ReturnsAsync((string k) => store.Remove(k));
+
+            (await service.VerifyAsync("abc")).Verified.Should().BeTrue();
+            (await service.VerifyAsync("abc")).Verified.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task VerifyAsync_ParallelUseOfOneCode_OnlyTheRequestThatDeletedItPasses()
+        {
+            var service = CreateService(out var cache);
+            cache.Setup(c => c.GetStringValueAsync("captcha:vc:abc")).ReturnsAsync("site.example.com");
+            cache.SetupSequence(c => c.RemoveKeyAsync("captcha:vc:abc")).ReturnsAsync(true).ReturnsAsync(false);
 
             (await service.VerifyAsync("abc")).Verified.Should().BeTrue();
             (await service.VerifyAsync("abc")).Verified.Should().BeFalse();

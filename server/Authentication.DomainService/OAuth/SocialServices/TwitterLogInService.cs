@@ -11,15 +11,18 @@ namespace Authentication.DomainService.OAuth.SocialServices
         private readonly ILogger<TwitterLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IHttpService _httpService;
+        private readonly IIdentityProviderSecretResolver _secretResolver;
 
         public TwitterLogInService(
             ILogger<TwitterLogInService> logger,
             IAuthenticationRepository authenticationRepository,
-            IHttpService httpService)
+            IHttpService httpService,
+            IIdentityProviderSecretResolver secretResolver)
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
             _httpService = httpService;
+            _secretResolver = secretResolver;
         }
 
         public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
@@ -50,11 +53,18 @@ namespace Authentication.DomainService.OAuth.SocialServices
 
             Dictionary<string, string>? headers = null;
 
+            // False when a referenced secret cannot be read (the resolver logs it): fail without calling the provider.
+            var (resolved, clientSecret) = await _secretResolver.TryGetClientSecretAsync(identityProvider);
+            if (!resolved)
+            {
+                return new SocialCallbackResult { ExternalUserData = new TwitterUserData() };
+            }
+
             // Detect confidential client (client_secret is available)
-            if (!string.IsNullOrWhiteSpace(identityProvider.ClientSecret))
+            if (!string.IsNullOrWhiteSpace(clientSecret))
             {
                 var authHeader = Convert.ToBase64String(
-                    Encoding.UTF8.GetBytes($"{identityProvider.ClientId}:{identityProvider.ClientSecret}")
+                    Encoding.UTF8.GetBytes($"{identityProvider.ClientId}:{clientSecret}")
                 );
 
                 headers = new Dictionary<string, string>

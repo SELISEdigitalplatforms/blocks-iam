@@ -3,6 +3,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.SocialServices;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -14,9 +15,10 @@ namespace XUnitTest.Auth.OAuth
     {
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
         private readonly Mock<IHttpService> _http = new();
+        private readonly Mock<ISecretService> _secrets = new(MockBehavior.Strict);
 
         private LinkedinLogInService Create() =>
-            new(NullLogger<LinkedinLogInService>.Instance, _authRepo.Object, _http.Object);
+            new(NullLogger<LinkedinLogInService>.Instance, _authRepo.Object, _http.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets));
 
         private static IdentityProvider Provider() => new()
         {
@@ -160,6 +162,71 @@ namespace XUnitTest.Auth.OAuth
 
             user.Should().BeOfType<LinkedinUserData>();
             user.ExternalProviderUserId.Should().Be("li-2");
+        }
+
+        // ---------- #649: client secret resolved through Blocks Secrets ----------
+
+        private IdentityProvider ReferencedProvider()
+        {
+            var idp = Provider();
+            idp.ClientSecret = "stale-plaintext";
+            idp.ClientSecretReference = "cs-ref";
+            return idp;
+        }
+
+        [Fact]
+        public async Task ReferencedProvider_SendsTheResolvedSecret_WithOneRead()
+        {
+            // H5, C4 (the reference wins over the legacy field), C13 (exactly one read)
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ReferencedProvider());
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ReturnsAsync("vault-s");
+            Dictionary<string, string>? form = null;
+            _http.Setup(h => h.SendFormUrlEncoded<SocialOauthAccessToken>(It.IsAny<HttpMethod>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()))
+                .Callback<HttpMethod, Dictionary<string, string>, string, Dictionary<string, string>, CancellationToken, int?>((_, f, _, _, _, _) => form = f)
+                .ReturnsAsync(((SocialOauthAccessToken)null!, "stop"));
+
+            await Create().HandleSocialLoginCallback(State());
+
+            form.Should().NotBeNull();
+            form!["client_secret"].Should().Be("vault-s");
+            _secrets.Verify(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task LegacyProvider_SendsThePlaintext_WithNoSecretCall()
+        {
+            // H7, C13
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(Provider());
+            Dictionary<string, string>? form = null;
+            _http.Setup(h => h.SendFormUrlEncoded<SocialOauthAccessToken>(It.IsAny<HttpMethod>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()))
+                .Callback<HttpMethod, Dictionary<string, string>, string, Dictionary<string, string>, CancellationToken, int?>((_, f, _, _, _, _) => form = f)
+                .ReturnsAsync(((SocialOauthAccessToken)null!, "stop"));
+
+            await Create().HandleSocialLoginCallback(State());
+
+            form!["client_secret"].Should().Be("secret-1");
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task ReferencedSecretUnavailable_FailsTheSignIn_WithoutCallingTheProvider()
+        {
+            // C2, C3, C4 (no fallback to the legacy field)
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ReferencedProvider());
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ThrowsAsync(new SecretStateException("locked", "read"));
+
+            var result = await Create().HandleSocialLoginCallback(State());
+
+            result.ExternalUserData.Should().BeOfType<LinkedinUserData>();
+            result.ExternalUserData.Email.Should().BeNullOrEmpty();
+            result.AccessToken.Should().BeNull();
+            _http.VerifyNoOtherCalls();
+            // Exactly one read: a failed read is not retried.
+            _secrets.Verify(s => s.GetValueAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
     }
 }

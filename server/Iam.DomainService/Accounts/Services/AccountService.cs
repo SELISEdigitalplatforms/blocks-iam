@@ -7,6 +7,7 @@ using FluentValidation;
 using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Notifications;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
@@ -75,6 +76,7 @@ namespace Iam.DomainService.Accounts
         private readonly IOrganizationNameResolver? _organizationNameResolver;
         private readonly IConfiguration? _configuration;
         private readonly ISignupOrganizationResolver _signupOrganizationResolver;
+        private readonly IBuiltInNotificationSender? _notificationSender;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -101,8 +103,10 @@ namespace Iam.DomainService.Accounts
             IConfiguration? configuration = null,
             IUserSessionTerminator? userSessionTerminator = null,
             IFailedLoginTracker? failedLoginTracker = null,
-            IAccessGrantService? accessGrant = null)
+            IAccessGrantService? accessGrant = null,
+            IBuiltInNotificationSender? notificationSender = null)
         {
+            _notificationSender = notificationSender;
             _logger = logger;
             _repository = repository;
             _identityAccessManagementService = identityAccessManagementService;
@@ -1071,18 +1075,19 @@ namespace Iam.DomainService.Accounts
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
                 ItemId = Guid.NewGuid().ToString(),
-                Key = key,
+                // Only the hash: the code and the link that carries it are never stored.
+                Key = AccountCodes.Stored(AccountCodes.Reset, key),
                 UserId = user.ItemId,
                 IssueDate = DateTime.Now,
                 ExpireDate = DateTime.Now.AddMinutes(config.RecoverAccountUrlLifetimeInMinutes),
-                Value = recoverAccountUrl,
+                Value = string.Empty,
                 MailPurpose = emailPurpose
             });
 
             var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose);
 
             _logger.LogInformation("Send Activation for {UserId} is {Send}", user.ItemId, result ? "sent" : "not sent");
-            return true;
+            return result;
         }
 
         public async Task<bool> SendActivationToEmailAsync(User user, string recoverAccountUrl, string emailPurpose)
@@ -1142,7 +1147,7 @@ namespace Iam.DomainService.Accounts
 
             // Spend the code before the password changes, in one conditional write: of two requests
             // carrying the same code, only one gets past this line. A code that is lost here stays spent.
-            if (!await _repository.TryConsumeUserKeyMapAsync(resetPasswordRequest.Code, userId, DateTime.UtcNow))
+            if (!await _repository.TryConsumeUserKeyMapAsync(AccountCodes.Stored(AccountCodes.Reset, resetPasswordRequest.Code), userId, DateTime.UtcNow))
             {
                 _logger.LogWarning("Password reset refused for user {UserId}: the code is already used or expired", userId);
                 return false;
@@ -1227,11 +1232,12 @@ namespace Iam.DomainService.Accounts
 
             var tenantId = bc?.TenantId;
             var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
-            var passwordMatched = _identityAccessManagementService.VerifyPassword(changePasswordRequest.OldPassword, user.Password, tenant?.TenantSalt);
-            if (!passwordMatched)
+            var attempt = await CheckOldPasswordAsync(user, changePasswordRequest.OldPassword, tenant?.TenantSalt);
+            if (!attempt.IsValid)
             {
-                _logger.LogError("Password not matched");
-                return (false, await RecordWrongOldPasswordAsync(user));
+                _logger.LogError("Password not matched or account locked");
+                await NotifyLockedNowAsync(attempt.LockedNow);
+                return (false, attempt.IsLocked);
             }
 
             ApplyPasswordRotation(user, changePasswordRequest.NewPassword);
@@ -1261,30 +1267,35 @@ namespace Iam.DomainService.Accounts
         /// Counts a wrong old password on the login counter (same threshold and lock time).
         /// True when this attempt locked the account.
         /// </summary>
-        private async Task<bool> RecordWrongOldPasswordAsync(User user)
+        // Counted before it is checked, like a login password, so parallel guesses at the old
+        // password get no more checks than the lock threshold.
+        private async Task<GuardedAttempt> CheckOldPasswordAsync(User user, string oldPassword, string? tenantSalt)
         {
+            bool IsCorrect() => _identityAccessManagementService.VerifyPassword(oldPassword, user.Password, tenantSalt);
+
             if (_failedLoginTracker == null)
             {
-                return false;
+                return new GuardedAttempt(IsCorrect() ? GuardedAttemptResult.Valid : GuardedAttemptResult.Invalid);
             }
 
-            var updated = await _failedLoginTracker.RecordFailedAttemptAsync(user.ItemId);
-            var lockoutUntilUtc = updated?.LockoutUntilUtc;
-            if (!lockoutUntilUtc.HasValue || updated == null)
+            return await _failedLoginTracker.CheckPasswordAsync(user.ItemId, IsCorrect);
+        }
+
+        private async Task NotifyLockedNowAsync(User? lockedUser)
+        {
+            if (lockedUser?.LockoutUntilUtc == null)
             {
-                return false;
+                return;
             }
 
             try
             {
-                await SendAccountLockedNotificationAsync(updated, lockoutUntilUtc.Value);
+                await SendAccountLockedNotificationAsync(lockedUser, lockedUser.LockoutUntilUtc.Value);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to send account locked notification after failed password change for user: {UserId}", user.ItemId);
+                _logger.LogWarning(ex, "Failed to send account locked notification after failed password change for user: {UserId}", lockedUser.ItemId);
             }
-
-            return true;
         }
 
         // Inline, so the sessions are dead before the response goes out; the logout-all queue is
@@ -1342,8 +1353,10 @@ namespace Iam.DomainService.Accounts
 
             // The mail is only queued here; the caller must not hear "sent" when nothing could be
             // queued (no address, or no activation link could be built).
-            if (!await SendReActivationAsync(user))
+            var failure = await TrySendReActivationAsync(user);
+            if (failure != null)
             {
+                await NotifyInvitationMailFailedAsync(user, failure);
                 return new BaseAccountResponse
                 {
                     Errors = new Dictionary<string, string> { { "ActivationMail", "ActivationMail_Not_Sent" } }
@@ -1358,12 +1371,32 @@ namespace Iam.DomainService.Accounts
                 ? Task.FromResult(true)
                 : _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckManageUser(scope, user));
 
-        public async Task<bool> SendReActivationAsync(User user, string? clientId = null, string? redirectUri = null)
+        public async Task<bool> SendReActivationAsync(User user, string? clientId = null, string? redirectUri = null) =>
+            await TrySendReActivationAsync(user, clientId, redirectUri) == null;
+
+        /// <summary>Tells the admin who pressed resend that the mail was not queued. Not for a user asking for their own.</summary>
+        private Task NotifyInvitationMailFailedAsync(User user, string reason)
+        {
+            var context = BlocksContext.GetContext();
+            if (string.Equals(user.ItemId, context?.UserId, StringComparison.Ordinal))
+            {
+                return Task.CompletedTask;
+            }
+
+            var organizationId = string.IsNullOrWhiteSpace(context?.OrganizationId)
+                ? user.OrganizationIds?.FirstOrDefault(o => !string.IsNullOrWhiteSpace(o))
+                : context.OrganizationId;
+            return _notificationSender.InvitationMailFailedAsync(
+                context?.TenantId, context?.UserId, organizationId, user.ItemId, reason);
+        }
+
+        /// <returns>Null when the mail was queued, otherwise the failure reason code.</returns>
+        private async Task<string?> TrySendReActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {
             if (string.IsNullOrWhiteSpace(user.Email))
             {
                 _logger.LogWarning("Activation not sent for user {UserId}: the account has no email address", user.ItemId);
-                return false;
+                return InvitationMailFailureReasons.NoEmailAddress;
             }
 
             var config = await _repository.GetIamConfigurationAsync();
@@ -1381,7 +1414,7 @@ namespace Iam.DomainService.Accounts
                     logger: _logger, appConfiguration: _configuration))
             {
                 _logger.LogWarning("Activation URL could not be built for user {UserId}", user.ItemId);
-                return false;
+                return InvitationMailFailureReasons.LinkNotBuilt;
             }
 
             await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Activation, key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
@@ -1391,7 +1424,7 @@ namespace Iam.DomainService.Accounts
             if (!result)
             {
                 _logger.LogWarning("Send ReActivation for {UsId} is not sent", user.ItemId);
-                return false;
+                return InvitationMailFailureReasons.NotQueued;
             }
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
@@ -1406,7 +1439,7 @@ namespace Iam.DomainService.Accounts
             });
 
             _logger.LogInformation("Send ReActivation for {UsId} is sent", user.ItemId);
-            return true;
+            return null;
         }
 
         public async Task<BaseAccountResponse> ActivateAndLinkSocialIdentityAsync(ActivateAndLinkSocialIdentityRequest request)
@@ -1674,6 +1707,18 @@ namespace Iam.DomainService.Accounts
             {
                 _logger.LogWarning(ex, "Failed to send account locked notification for user: {UserId}", user.ItemId);
             }
+
+            await SendAccountNotificationAsync(
+                user,
+                BuiltInNotificationNames.AccountLocked,
+                "Account locked",
+                "Your account was locked after too many failed sign-in attempts.",
+                new Dictionary<string, object?>
+                {
+                    ["userId"] = user.ItemId,
+                    ["lockoutUntilUtc"] = lockoutUntilUtc,
+                    ["reason"] = "too_many_failed_attempts"
+                });
         }
 
         /// <summary>
@@ -1709,6 +1754,41 @@ namespace Iam.DomainService.Accounts
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to send account unlocked notification for user: {UserId}", user.ItemId);
+            }
+
+            await SendAccountNotificationAsync(
+                user,
+                BuiltInNotificationNames.AccountUnlocked,
+                "Account unlocked",
+                "Your account was unlocked.",
+                new Dictionary<string, object?> { ["userId"] = user.ItemId });
+        }
+
+        /// <summary>
+        /// Lock and unlock often run without a signed-in user (failed login), so there may be no context
+        /// organization: then one notice goes out per organization the account belongs to.
+        /// </summary>
+        private async Task SendAccountNotificationAsync(
+            User user, string configurationName, string title, string description, Dictionary<string, object?> fields)
+        {
+            var bc = BlocksContext.GetContext();
+            var organizationIds = string.IsNullOrWhiteSpace(bc?.OrganizationId)
+                ? (user.OrganizationIds ?? new List<string>()).Where(o => !string.IsNullOrWhiteSpace(o)).Distinct().ToList()
+                : new List<string> { bc!.OrganizationId };
+            if (organizationIds.Count == 0)
+            {
+                organizationIds.Add(string.Empty);
+            }
+
+            foreach (var organizationId in organizationIds)
+            {
+                await _notificationSender.TrySendAsync(new BuiltInNotification(
+                    bc?.TenantId,
+                    configurationName,
+                    BuiltInNotificationSender.Recipients(user.ItemId),
+                    BuiltInNotificationSender.Payload(configurationName, title, description, fields: fields),
+                    organizationId,
+                    IncludeImpersonatedActor: false));
             }
         }
 

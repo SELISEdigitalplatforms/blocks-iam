@@ -1,3 +1,7 @@
+﻿using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Blocks.Genesis.Entities.Iam;
+using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Utilities;
@@ -87,38 +91,67 @@ namespace XUnitTest.IamTests.Shared
                 .Should().Be("https://example.com");
         }
 
-        [Fact]
-        public void GetOriginOrRefererBaseUrl_NullRequest_ReturnsEmpty()
+        private const string TenantId = "tenant-1";
+
+        /// <summary>A request from <paramref name="origin"/> to a tenant whose app is app.example.com.</summary>
+        private static HttpContext TenantRequest(string? origin, string? referer = null, bool development = false)
         {
-            IamHelper.GetOriginOrRefererBaseUrl(Accessor(null)).Should().BeEmpty();
+            var tenants = new Mock<ITenants>();
+            tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(new Tenant
+            {
+                DbConnectionString = "mongodb://x",
+                JwtTokenParameters = new JwtTokenParameters { IssueDate = DateTime.UtcNow, PrivateCertificatePassword = "p" },
+                Applications = new List<Applications> { new() { Domain = "https://app.example.com" } }
+            });
+            var environment = new Mock<IHostEnvironment>();
+            environment.Setup(e => e.EnvironmentName).Returns(development ? Environments.Development : Environments.Production);
+            var services = new ServiceCollection().AddSingleton(tenants.Object).AddSingleton(environment.Object).BuildServiceProvider();
+
+            var context = ContextWith(origin: origin, referer: referer);
+            context.RequestServices = services;
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: TenantId, roles: null, userId: string.Empty, isAuthenticated: false, requestUri: "https://iam.test",
+                organizationId: string.Empty, expireOn: DateTime.UtcNow.AddHours(1), email: string.Empty, permissions: null,
+                userName: string.Empty, phoneNumber: string.Empty, displayName: string.Empty, oauthToken: string.Empty,
+                originalTenantId: TenantId, impersonationSessionId: null, applicationDomain: string.Empty));
+            return context;
         }
 
         [Fact]
-        public void GetOriginOrRefererBaseUrl_UsesOrigin()
+        public void GetTrustedOriginBaseUrl_TenantDomainOverHttps_IsUsed()
         {
-            IamHelper.GetOriginOrRefererBaseUrl(Accessor(ContextWith(origin: "https://origin.test/path")))
-                .Should().Be("https://origin.test");
+            IamHelper.GetTrustedOriginBaseUrl(Accessor(TenantRequest("https://app.example.com")))
+                .Should().Be("https://app.example.com");
         }
 
         [Fact]
-        public void GetOriginOrRefererBaseUrl_FallsBackToReferer()
+        public void GetTrustedOriginBaseUrl_ForeignOrigin_IsRefused_EvenWithALocalhostReferer()
         {
-            IamHelper.GetOriginOrRefererBaseUrl(Accessor(ContextWith(referer: "http://referer.test/x")))
-                .Should().Be("http://referer.test");
-        }
-
-        [Fact]
-        public void GetOriginOrRefererBaseUrl_NonHttpScheme_ReturnsEmpty()
-        {
-            IamHelper.GetOriginOrRefererBaseUrl(Accessor(ContextWith(origin: "ftp://origin.test")))
+            // A reset link must never point at a domain the tenant does not own.
+            IamHelper.GetTrustedOriginBaseUrl(Accessor(TenantRequest("https://evil.example.net", referer: "http://localhost:3000")))
                 .Should().BeEmpty();
         }
 
         [Fact]
-        public void GetOriginOrRefererBaseUrl_InvalidUrl_ReturnsEmpty()
+        public void GetTrustedOriginBaseUrl_RefererAlone_IsNeverUsed()
         {
-            IamHelper.GetOriginOrRefererBaseUrl(Accessor(ContextWith(origin: "not-a-url")))
+            IamHelper.GetTrustedOriginBaseUrl(Accessor(TenantRequest(null, referer: "https://app.example.com/page")))
                 .Should().BeEmpty();
+        }
+
+        [Fact]
+        public void GetTrustedOriginBaseUrl_TenantDomainOverHttp_IsRefused()
+        {
+            IamHelper.GetTrustedOriginBaseUrl(Accessor(TenantRequest("http://app.example.com")))
+                .Should().BeEmpty();
+        }
+
+        [Fact]
+        public void GetTrustedOriginBaseUrl_Localhost_OnlyInDevelopment()
+        {
+            IamHelper.GetTrustedOriginBaseUrl(Accessor(TenantRequest("http://localhost:3000"))).Should().BeEmpty();
+            IamHelper.GetTrustedOriginBaseUrl(Accessor(TenantRequest("http://localhost:3000", development: true)))
+                .Should().Be("http://localhost:3000");
         }
 
         [Fact]

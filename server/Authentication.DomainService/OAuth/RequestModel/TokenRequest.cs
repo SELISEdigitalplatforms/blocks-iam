@@ -75,5 +75,11 @@ namespace Authentication.DomainService.OAuth.RequestModel
         /// the original issuance did.
         /// </summary>
         public DateTime? GraceReplayAbsoluteExpiry { get; set; }
+
+        /// <summary>
+        /// Set when a refresh lost its rotation to an impersonation start, stop or switch: the session
+        /// moved to another tenant or organization, so no token is issued and the refusal says why.
+        /// </summary>
+        public bool SessionChanged { get; set; }
     }
 }

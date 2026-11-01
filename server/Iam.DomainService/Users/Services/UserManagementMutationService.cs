@@ -174,7 +174,10 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            await SendEvent(itemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail);
+            var inviter = BlocksContext.GetContext();
+            await SendEvent(
+                itemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail,
+                inviter is { IsAuthenticated: true } ? inviter.UserId : null, organizationId);
             var bc = BlocksContext.GetContext();
 
             _logger.LogInformation("User creation end -- Success");
@@ -247,7 +250,9 @@ namespace Iam.DomainService.Users
             MutationEventType mutationEventType,
             string? clientId = null,
             string? redirectUri = null,
-            bool sendMail = true)
+            bool sendMail = true,
+            string? invitedBy = null,
+            string? organizationId = null)
         {
             _logger.LogInformation("User mutation event -- initiate");
             await _messageClient.SendToConsumerAsync(
@@ -262,7 +267,9 @@ namespace Iam.DomainService.Users
                         // so the originating app's OIDC context has to travel on the message.
                         ClientId = clientId,
                         RedirectUri = redirectUri,
-                        SendMail = sendMail
+                        SendMail = sendMail,
+                        InvitedBy = invitedBy,
+                        OrganizationId = organizationId
                     }
                 }
             );
@@ -728,10 +735,12 @@ namespace Iam.DomainService.Users
 
             WarnOnRetiredFields(command.UnmappedFields, command.ItemId);
 
-            ApplyProfileFields(user, new ProfilePatch(
+            var patch = new ProfilePatch(
                 command.Salutation, command.FirstName, command.LastName, command.PhoneNumber,
                 command.Language, command.ProfileImageUrl, command.ProfileImageId,
-                command.Tags, command.Attributes));
+                command.Tags, command.Attributes);
+            var changedFields = ChangedProfileFields(user, patch);
+            ApplyProfileFields(user, patch);
 
             user.LastUpdatedDate = DateTime.UtcNow;
             user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
@@ -750,11 +759,76 @@ namespace Iam.DomainService.Users
 
             _logger.LogInformation("User update end -- Success");
 
+            await NotifyUserUpdatedAsync(user, blocksContext, changedFields);
+
             return new BaseMutationResponse
             {
                 IsSuccess = true,
                 ItemId = user.ItemId
             };
+        }
+
+        /// <summary>
+        /// Tells a user an admin changed their profile. Only the field names go out, never the
+        /// values. Not sent when nothing changed or the actor is the user. Best effort.
+        /// </summary>
+        private Task NotifyUserUpdatedAsync(User user, BlocksContext? blocksContext, IReadOnlyList<string> changedFields)
+        {
+            if (changedFields.Count == 0 || string.Equals(user.ItemId, blocksContext?.UserId, StringComparison.Ordinal))
+            {
+                return Task.CompletedTask;
+            }
+
+            return _notificationSender.TrySendAsync(new BuiltInNotification(
+                blocksContext?.TenantId,
+                BuiltInNotificationNames.UserUpdated,
+                BuiltInNotificationSender.Recipients(user.ItemId),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.UserUpdated,
+                    "Your profile was updated",
+                    "An admin updated your profile.",
+                    fields: new Dictionary<string, object?>
+                    {
+                        ["userId"] = user.ItemId,
+                        ["changedFields"] = changedFields
+                    }),
+                blocksContext?.OrganizationId,
+                IncludeImpersonatedActor: false));
+        }
+
+        /// <summary>The names (never the values) of the fields the patch really changes.</summary>
+        private static List<string> ChangedProfileFields(User user, ProfilePatch patch)
+        {
+            var changed = new List<string>();
+            AddIfChanged(changed, "salutation", patch.Salutation, user.Salutation);
+            AddIfChanged(changed, "firstName", patch.FirstName, user.FirstName);
+            AddIfChanged(changed, "lastName", patch.LastName, user.LastName);
+            AddIfChanged(changed, "phoneNumber", patch.PhoneNumber, user.PhoneNumber);
+            AddIfChanged(changed, "language", patch.Language, user.Language);
+            AddIfChanged(changed, "profileImageUrl", patch.ProfileImageUrl, user.ProfileImageUrl);
+            AddIfChanged(changed, "profileImageId", patch.ProfileImageId, user.ProfileImageId);
+
+            if (patch.Tags is not null && !patch.Tags.SequenceEqual(user.Tags ?? new List<string>(), StringComparer.Ordinal))
+            {
+                changed.Add("tags");
+            }
+
+            if (patch.Attributes is not null
+                && JsonSerializer.Serialize(AttributeNormalizer.Normalize(patch.Attributes, AttributePolicy.Internal))
+                   != JsonSerializer.Serialize(user.Attributes))
+            {
+                changed.Add("attributes");
+            }
+
+            return changed;
+        }
+
+        private static void AddIfChanged(List<string> changed, string name, string? incoming, string? current)
+        {
+            if (incoming is not null && !string.Equals(incoming, current, StringComparison.Ordinal))
+            {
+                changed.Add(name);
+            }
         }
 
         /// <summary>
@@ -941,7 +1015,8 @@ namespace Iam.DomainService.Users
                         BuiltInNotificationNames.UserDeactivated,
                         "Account deactivated",
                         "An admin deactivated your account.",
-                        fields: new Dictionary<string, object?> { ["userId"] = user.ItemId })));
+                        fields: new Dictionary<string, object?> { ["userId"] = user.ItemId }),
+                    BlocksContext.GetContext()?.OrganizationId));
             }
 
             return new BaseResponse { IsSuccess = true };
@@ -1253,13 +1328,41 @@ namespace Iam.DomainService.Users
             // activity event below is published either way.
             if (command.Action == MutationEventType.Create && command.SendMail)
             {
-                await SendActivationAsync(user, command.ClientId, command.RedirectUri);
+                await SendInvitationMailAsync(user, command);
             }
 
             await PublishUserActivityAsync(user, command.Action);
         }
 
-        private async Task<bool> SendActivationAsync(User user, string? clientId = null, string? redirectUri = null)
+        /// <summary>
+        /// Sends the activation mail and, when it cannot be queued, tells the inviter. The notification is
+        /// fire-and-forget and never changes the outcome: a queue error still reaches the consumer's retry.
+        /// </summary>
+        private async Task SendInvitationMailAsync(User user, UserMutationEvent command)
+        {
+            string? failure;
+            try
+            {
+                failure = await SendActivationAsync(user, command.ClientId, command.RedirectUri);
+            }
+            catch
+            {
+                await NotifyInvitationMailFailedAsync(user, command, InvitationMailFailureReasons.QueueError);
+                throw;
+            }
+
+            if (failure != null)
+            {
+                await NotifyInvitationMailFailedAsync(user, command, failure);
+            }
+        }
+
+        private Task NotifyInvitationMailFailedAsync(User user, UserMutationEvent command, string reason) =>
+            _notificationSender.InvitationMailFailedAsync(
+                BlocksContext.GetContext()?.TenantId, command.InvitedBy, command.OrganizationId, user.ItemId, reason);
+
+        /// <returns>Null when the mail was queued, otherwise the failure reason code.</returns>
+        private async Task<string?> SendActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {
             _logger.LogInformation("Send Activation for {Id}", user.ItemId);
             var config = await _userRepository.GetIamConfigurationAsync();
@@ -1279,7 +1382,7 @@ namespace Iam.DomainService.Users
                     logger: _logger, appConfiguration: _configuration))
             {
                 _logger.LogWarning("Activation URL could not be built for user {Id}", user.ItemId);
-                return false;
+                return InvitationMailFailureReasons.LinkNotBuilt;
             }
 
             await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Activation, key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
@@ -1299,7 +1402,14 @@ namespace Iam.DomainService.Users
             });
 
             _logger.LogInformation("Send Activation for {Id} is {Send}", user.ItemId, result ? "sent" : "not sent");
-            return result;
+            if (result)
+            {
+                return null;
+            }
+
+            return string.IsNullOrWhiteSpace(user.Email)
+                ? InvitationMailFailureReasons.NoEmailAddress
+                : InvitationMailFailureReasons.NotQueued;
         }
 
         private async Task<bool> PublishUserActivityAsync(User user, MutationEventType mutationEventType)
@@ -2290,7 +2400,8 @@ namespace Iam.DomainService.Users
                             [OrganizationIdKey] = command.OrganizationId,
                             ["change"] = "updated",
                             ["batchId"] = command.BatchId
-                        })));
+                        }),
+                    command.OrganizationId));
             }
 
             if (string.IsNullOrWhiteSpace(command.RequestedBy))
@@ -2321,7 +2432,8 @@ namespace Iam.DomainService.Users
                         ["applied"] = applied.Count,
                         ["unchanged"] = unchanged,
                         ["failed"] = failed
-                    })));
+                    }),
+                command.OrganizationId));
         }
 
         /// <summary>
@@ -2350,7 +2462,8 @@ namespace Iam.DomainService.Users
                         ["userId"] = userId,
                         [OrganizationIdKey] = organizationId,
                         ["change"] = change
-                    })));
+                    }),
+                organizationId));
         }
 
         /// <summary>

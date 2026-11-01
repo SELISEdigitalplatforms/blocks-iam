@@ -40,7 +40,7 @@ vi.mock("@/components/loader-spinner/loader-spinner", () => ({
 import { SsoSignin } from "./sso-signin";
 
 const loginOption = {
-  ssoInfo: [{ provider: "google", clientId: "g-client", redirectUris: ["https://cb"] }],
+  ssoInfo: [{ provider: "google", clientId: "g-client" }],
 } as unknown as LoginOption;
 
 beforeEach(() => {

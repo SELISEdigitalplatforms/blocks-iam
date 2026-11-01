@@ -147,7 +147,9 @@ namespace XUnitTest.IamTests.Accounts.Services
         private async Task<string> IssueResetAsync(AccountService service, User user)
         {
             (await service.ProcessRecoverAccountAsync(user, "RecoverAccount")).Should().BeTrue();
-            return LatestCode(AccountCodes.Reset, user.ItemId);
+            // The stores hold only a hash, so the code comes from the mailed link, like a real user.
+            var query = new Uri(_sentMails[^1].BodyDataContext["EmailVerification.PageUrl"]).Query.TrimStart('?').Split('&');
+            return query.Single(p => p.StartsWith("code=", StringComparison.Ordinal))["code=".Length..];
         }
 
         private async Task<string> IssueActivationAsync(AccountService service, User user)
@@ -194,6 +196,24 @@ namespace XUnitTest.IamTests.Accounts.Services
 
             (await ResetAsync(service, code)).IsSuccess.Should().BeFalse();
             (await ActivateAsync(service, code)).IsSuccess.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task ResetCode_IsStoredOnlyAsAHash_InTheCacheAndTheKeyMap()
+        {
+            var service = CreateService();
+            var user = AddUser("u1", active: true, UserLifecycleStatus.Active);
+            var code = await IssueResetAsync(service, user);
+
+            _store.Keys.Should().NotContain(k => k.Contains(code));
+            _store.Values.Should().NotContain(v => v.Contains(code));
+            var row = _keyMaps.Single();
+            row.Key.Should().Be(AccountCodes.Stored(AccountCodes.Reset, code)).And.NotContain(code);
+            row.Value.Should().BeEmpty();
+
+            // Whoever reads the stores cannot use what is there.
+            ShouldBeRefused(await ResetAsync(service, row.Key));
+            (await ResetAsync(service, code)).IsSuccess.Should().BeTrue();
         }
 
         [Fact]
@@ -280,7 +300,7 @@ namespace XUnitTest.IamTests.Accounts.Services
             var bobCode = await IssueResetAsync(service, bob);
 
             // Repoint bob's code at alice: the value lookup says alice, alice's pointer says otherwise.
-            _store[bobCode] = "alice";
+            _store[AccountCodes.CodeKey(AccountCodes.Reset, bobCode)] = "alice";
             ShouldBeRefused(await ResetAsync(service, bobCode));
             _users["alice"].Password.Should().Be("hashed:old");
 
@@ -422,7 +442,7 @@ namespace XUnitTest.IamTests.Accounts.Services
             var service = CreateService();
             var user = AddUser("u1", active: true, UserLifecycleStatus.Active);
             var code = await IssueResetAsync(service, user);
-            _keyMaps.Single(r => r.Key == code).ExpireDate = DateTime.UtcNow.AddSeconds(-1);
+            _keyMaps.Single(r => r.Key == AccountCodes.Stored(AccountCodes.Reset, code)).ExpireDate = DateTime.UtcNow.AddSeconds(-1);
 
             ShouldNotReset(await ResetAsync(service, code));
             _users["u1"].Password.Should().Be("hashed:old");

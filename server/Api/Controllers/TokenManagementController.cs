@@ -1,3 +1,4 @@
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Dtos;
@@ -21,6 +22,7 @@ namespace Blocks.Api.Controllers
         private readonly ITokenRevocationService _revocationService;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
+        private readonly IOidcClientSecretResolver _clientSecrets;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly ILogger<TokenManagementController> _logger;
 
@@ -28,12 +30,14 @@ namespace Blocks.Api.Controllers
             ITokenRevocationService revocationService,
             IAuthenticationRepository authenticationRepository,
             IAuthenticationDomainService authenticationDomainService,
+            IOidcClientSecretResolver clientSecrets,
             IUserActivityDispatcher userActivityDispatcher,
             ILogger<TokenManagementController> logger)
         {
             _revocationService = revocationService;
             _authenticationRepository = authenticationRepository;
             _authenticationDomainService = authenticationDomainService;
+            _clientSecrets = clientSecrets;
             _userActivityDispatcher = userActivityDispatcher;
             _logger = logger;
         }
@@ -58,7 +62,12 @@ namespace Blocks.Api.Controllers
                     return BadRequest(new { error = "invalid_request", error_description = "token parameter is required" });
                 }
 
-                var authenticatedClientId = await AuthenticateClientAsync(client_id, client_secret);
+                var (authenticatedClientId, secretUnavailable) = await AuthenticateClientAsync(client_id, client_secret);
+                if (secretUnavailable)
+                {
+                    return SecretUnavailable();
+                }
+
                 if (string.IsNullOrWhiteSpace(authenticatedClientId))
                 {
                     return Unauthorized(new { error = "invalid_client", error_description = "Client authentication failed" });
@@ -121,7 +130,12 @@ namespace Blocks.Api.Controllers
                     return BadRequest(new { error = "invalid_request", error_description = "token parameter is required" });
                 }
 
-                var authenticatedClientId = await AuthenticateClientAsync(client_id, client_secret);
+                var (authenticatedClientId, secretUnavailable) = await AuthenticateClientAsync(client_id, client_secret);
+                if (secretUnavailable)
+                {
+                    return SecretUnavailable();
+                }
+
                 if (string.IsNullOrWhiteSpace(authenticatedClientId))
                 {
                     return Unauthorized(new { error = "invalid_client", error_description = "Client authentication failed" });
@@ -165,7 +179,19 @@ namespace Blocks.Api.Controllers
             }
         }
 
-        private async Task<string?> AuthenticateClientAsync(string? clientIdFromForm, string? clientSecretFromForm)
+        private ObjectResult SecretUnavailable() =>
+            StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                error = OidcClientSecretResolverExtensions.UnavailableError,
+                error_description = OidcClientSecretResolverExtensions.UnavailableDescription
+            });
+
+        /// <summary>
+        /// The authenticated client id, or null when the client is unknown, inactive or presented the
+        /// wrong secret. <c>SecretUnavailable</c> is true when the client's secret cannot be read from
+        /// the secret store: the caller answers 503, never "wrong secret".
+        /// </summary>
+        private async Task<(string? ClientId, bool SecretUnavailable)> AuthenticateClientAsync(string? clientIdFromForm, string? clientSecretFromForm)
         {
             string? basicClientId = null;
             string? basicClientSecret = null;
@@ -186,7 +212,7 @@ namespace Blocks.Api.Controllers
                 }
                 catch
                 {
-                    return null;
+                    return (null, false);
                 }
             }
 
@@ -195,28 +221,29 @@ namespace Blocks.Api.Controllers
 
             if (string.IsNullOrWhiteSpace(resolvedClientId) || string.IsNullOrWhiteSpace(resolvedClientSecret))
             {
-                return null;
+                return (null, false);
             }
 
             if (!string.IsNullOrWhiteSpace(basicClientId)
                 && !string.IsNullOrWhiteSpace(clientIdFromForm)
                 && !string.Equals(basicClientId, clientIdFromForm, StringComparison.Ordinal))
             {
-                return null;
+                return (null, false);
             }
 
             var registration = await _authenticationRepository.GetOidcClientRegistrationAsync(resolvedClientId);
-            if (registration == null || !registration.IsActive || string.IsNullOrWhiteSpace(registration.ClientSecret))
+            if (registration == null || !registration.IsActive)
             {
-                return null;
+                return (null, false);
             }
 
-            if (!string.Equals(registration.ClientSecret, resolvedClientSecret, StringComparison.Ordinal))
+            // A blank stored secret never matches, so a client without one cannot authenticate here.
+            return await _clientSecrets.CheckSecretAsync(registration, resolvedClientSecret) switch
             {
-                return null;
-            }
-
-            return resolvedClientId;
+                OidcClientSecretCheck.Matches => (resolvedClientId, false),
+                OidcClientSecretCheck.Unavailable => (null, true),
+                _ => (null, false),
+            };
         }
 
         private async Task PublishTimelineAsync(string userId, string eventName, string actionBy, string outcome, string? reasonCode, string? clientId, string? tokenTypeHint)

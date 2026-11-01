@@ -1,4 +1,4 @@
-﻿using Authentication.DomainService.Entities;
+﻿﻿using Authentication.DomainService.Entities;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -41,6 +41,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ICaptchaConfigurationRepository _captchaConfigurationRepository;
         private readonly IIdentityAccessManagementRepository _iamRepository;
         private readonly ILogger<IdpService> _logger;
+        private readonly IIdentityProviderSecretResolver _secretResolver;
 
         public IdpService(
             IAuthenticationRepository authenticationRepository,
@@ -51,8 +52,10 @@ namespace Authentication.DomainService.Authentication
             ITenants tenants,
             ICaptchaConfigurationRepository captchaConfigurationRepository,
             IIdentityAccessManagementRepository iamRepository,
-            ILogger<IdpService> logger)
+            ILogger<IdpService> logger,
+            IIdentityProviderSecretResolver secretResolver)
         {
+            _secretResolver = secretResolver;
             _authenticationRepository = authenticationRepository;
             _authCodeRepo = authCodeRepo;
             _authenticationFlowService = authenticationFlowService;
@@ -393,12 +396,19 @@ namespace Authentication.DomainService.Authentication
             FlowContext flowContext,
             HttpRequest httpRequest)
         {
+            // False when a referenced secret cannot be read (the resolver logs it): fail without calling the provider.
+            var (resolved, clientSecret) = await _secretResolver.TryGetClientSecretAsync(identityProvider, httpRequest.HttpContext.RequestAborted);
+            if (!resolved)
+            {
+                return (new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" }), null);
+            }
+
             var form = new Dictionary<string, string>
             {
                 { "grant_type", GrantTypes.AuthCode },
                 { "code", code },
                 { "client_id", identityProvider.ClientId ?? string.Empty },
-                { "client_secret", identityProvider.ClientSecret ?? string.Empty },
+                { "client_secret", clientSecret ?? string.Empty },
                 { "redirect_uri", flowContext.RedirectUri ?? string.Empty }
             };
 

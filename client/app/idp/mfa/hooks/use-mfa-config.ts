@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { mfaService } from "../services/mfa.service";
 
+const MFA_KEY = "mfa-config";
+const USER_BY_ID_KEY = "user-by-id";
+
 export const useGetMFAConfig = () => {
   return useQuery({
-    queryKey: ["mfa-config", "get"],
+    queryKey: [MFA_KEY, "get"],
     queryFn: () => mfaService.getConfigurations(),
   });
 };
@@ -11,10 +14,10 @@ export const useGetMFAConfig = () => {
 export const useSaveMFAConfig = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationKey: ["mfa-config", "save"],
+    mutationKey: [MFA_KEY, "save"],
     mutationFn: mfaService.saveMFAConfiguration,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mfa-config", "get"] });
+      queryClient.invalidateQueries({ queryKey: [MFA_KEY, "get"] });
     },
   });
 };
@@ -22,10 +25,10 @@ export const useSaveMFAConfig = () => {
 export const useConfigureUserMFA = (option: { id: string }) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationKey: ["mfa-config", "configure"],
+    mutationKey: [MFA_KEY, "configure"],
     mutationFn: mfaService.configureUserMFA,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-by-id", option] });
+      queryClient.invalidateQueries({ queryKey: [USER_BY_ID_KEY, option] });
       queryClient.invalidateQueries({ queryKey: ["user"] });
     },
   });
@@ -33,14 +36,18 @@ export const useConfigureUserMFA = (option: { id: string }) => {
 
 export const useGetTotp = (option: { id: string }) => {
   return useQuery({
-    queryKey: ["mfa-config", "setup-totp", option],
+    queryKey: [MFA_KEY, "setup-totp", option],
     queryFn: () => mfaService.setupUserTotp(option),
+    // A refetch would not change the secret but would flicker the QR while the user scans it.
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+    retry: false,
   });
 };
 
 export const useGenerateUserMfaOTP = () => {
   return useMutation({
-    mutationKey: ["mfa-config", "generate-otp"],
+    mutationKey: [MFA_KEY, "generate-otp"],
     mutationFn: mfaService.generateUserMfaOTP,
   });
 };
@@ -50,10 +57,10 @@ export const useVerifyMfaOTP = (option: { id: string; projectKey?: string; own?:
   // own is split off only to keep it out of the query key.
   const { own: _own, ...rest } = option;
   return useMutation({
-    mutationKey: ["mfa-config", "verify-otp"],
+    mutationKey: [MFA_KEY, "verify-otp"],
     mutationFn: mfaService.verifyOtp,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-by-id", rest] });
+      queryClient.invalidateQueries({ queryKey: [USER_BY_ID_KEY, rest] });
       queryClient.invalidateQueries({ queryKey: ["user"] });
     },
   });
@@ -61,17 +68,17 @@ export const useVerifyMfaOTP = (option: { id: string; projectKey?: string; own?:
 
 export const useResendMfaOTP = () => {
   return useMutation({
-    mutationKey: ["mfa-config", "resend-otp"],
+    mutationKey: [MFA_KEY, "resend-otp"],
     mutationFn: mfaService.resendOtp,
   });
 };
 export const useDisableMfa = (option: { id: string }) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationKey: ["mfa-config", "disable"],
+    mutationKey: [MFA_KEY, "disable"],
     mutationFn: mfaService.disableMFA,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-by-id", option] });
+      queryClient.invalidateQueries({ queryKey: [USER_BY_ID_KEY, option] });
       queryClient.invalidateQueries({ queryKey: ["user"] });
     },
   });
@@ -80,11 +87,11 @@ export const useDisableMfa = (option: { id: string }) => {
 export const useVerifyTotpSetup = (option: { id: string }) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationKey: ["mfa-config", "verify-totp-setup"],
+    mutationKey: [MFA_KEY, "verify-totp-setup"],
     mutationFn: ({ code }: { code: string }) =>
       mfaService.verifyTotpSetup({ code, userId: option.id }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-by-id", option] });
+      queryClient.invalidateQueries({ queryKey: [USER_BY_ID_KEY, option] });
       queryClient.invalidateQueries({ queryKey: ["user"] });
     },
   });

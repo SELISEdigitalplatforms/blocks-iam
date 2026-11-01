@@ -910,8 +910,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             var service = CreateService();
             _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
-            _cacheClientMock.Setup(c => c.GetStringValueAsync("x")).ReturnsAsync("u-gone");
-            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, "u-gone"))).ReturnsAsync("x");
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.CodeKey(AccountCodes.Reset, "x"))).ReturnsAsync("u-gone");
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, "u-gone"))).ReturnsAsync(AccountCodes.Stored(AccountCodes.Reset, "x"));
             _repositoryMock.Setup(r => r.GetUserByIdAsync("u-gone")).ReturnsAsync((User?)null);
 
             var result = await service.ResetAccountPasswordAsync(new ResetPasswordRequest { Code = "x", Password = "p", LogoutFromAllDevices = true });
@@ -927,8 +927,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             user.TokenVersion = 3;
             _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
-            _cacheClientMock.Setup(c => c.GetStringValueAsync("x")).ReturnsAsync(user.ItemId);
-            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, user.ItemId))).ReturnsAsync("x");
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.CodeKey(AccountCodes.Reset, "x"))).ReturnsAsync(user.ItemId);
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, user.ItemId))).ReturnsAsync(AccountCodes.Stored(AccountCodes.Reset, "x"));
             _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
             _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
 
@@ -943,7 +943,7 @@ namespace XUnitTest.IamTests.Accounts.Services
             _repositoryMock.Verify(r => r.UpdateUserAsync(It.Is<User>(u =>
                 u.Password == "h:NewP@ssw0rd" && u.TokenVersion == 4)),
                 Times.Once);
-            _cacheClientMock.Verify(c => c.RemoveKeyAsync("x"), Times.Once);
+            _cacheClientMock.Verify(c => c.RemoveKeyAsync(AccountCodes.CodeKey(AccountCodes.Reset, "x")), Times.Once);
             _userActivityDispatcherMock.Verify(d => d.SendUserActivityAsync(
                 It.Is<UserActivityEvent>(e => e.Event == "Reset_Password")),
                 Times.Once);
@@ -1005,7 +1005,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         public async Task Reset_CodeAlreadySpentInTheStore_ReturnsFalse_AndChangesNothing()
         {
             var user = SetupValidReset();
-            _repositoryMock.Setup(r => r.TryConsumeUserKeyMapAsync("x", user.ItemId, It.IsAny<DateTime>())).ReturnsAsync(false);
+            _repositoryMock.Setup(r => r.TryConsumeUserKeyMapAsync(AccountCodes.Stored(AccountCodes.Reset, "x"), user.ItemId, It.IsAny<DateTime>())).ReturnsAsync(false);
 
             var result = await CreateService(sessionTerminator: _sessionTerminatorMock.Object)
                 .ResetAccountPasswordAsync(new ResetPasswordRequest { Code = "x", Password = "NewP@ssw0rd" });
@@ -1021,7 +1021,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         {
             var user = SetupValidReset();
             var order = new List<string>();
-            _repositoryMock.Setup(r => r.TryConsumeUserKeyMapAsync("x", user.ItemId, It.IsAny<DateTime>()))
+            _repositoryMock.Setup(r => r.TryConsumeUserKeyMapAsync(AccountCodes.Stored(AccountCodes.Reset, "x"), user.ItemId, It.IsAny<DateTime>()))
                 .Callback(() => order.Add("consume"))
                 .ReturnsAsync(true);
             _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>()))
@@ -1038,8 +1038,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             var user = TestDataBuilder.CreateUser();
             _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
-            _cacheClientMock.Setup(c => c.GetStringValueAsync("x")).ReturnsAsync(user.ItemId);
-            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, user.ItemId))).ReturnsAsync("x");
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.CodeKey(AccountCodes.Reset, "x"))).ReturnsAsync(user.ItemId);
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Reset, user.ItemId))).ReturnsAsync(AccountCodes.Stored(AccountCodes.Reset, "x"));
             _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
             _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
             return user;
@@ -1170,15 +1170,23 @@ namespace XUnitTest.IamTests.Accounts.Services
                 _threshold = threshold;
             }
 
-            public Task<User?> RecordFailedAttemptAsync(string userId)
+            public Task<GuardedAttempt> CheckPasswordAsync(string userId, Func<bool> isCorrect)
             {
+                if (isCorrect())
+                {
+                    _user.FailedLoginCount = 0;
+                    return Task.FromResult(new GuardedAttempt(GuardedAttemptResult.Valid));
+                }
+
                 Calls++;
                 _user.FailedLoginCount++;
-                if (_user.FailedLoginCount >= _threshold)
+                if (_user.FailedLoginCount < _threshold)
                 {
-                    _user.LockoutUntilUtc = DateTime.UtcNow.AddMinutes(5);
+                    return Task.FromResult(new GuardedAttempt(GuardedAttemptResult.Invalid));
                 }
-                return Task.FromResult<User?>(_user);
+
+                _user.LockoutUntilUtc = DateTime.UtcNow.AddMinutes(5);
+                return Task.FromResult(new GuardedAttempt(GuardedAttemptResult.Invalid, _user));
             }
         }
 
@@ -1345,6 +1353,38 @@ namespace XUnitTest.IamTests.Accounts.Services
 
             result.IsSuccess.Should().BeTrue();
             _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+        }
+
+        [Theory]
+        [InlineData(false, 1)]
+        [InlineData(true, 0)]
+        public async Task Resend_ByAdmin_TellsTheAdminOnlyWhenTheMailIsNotQueued(bool queued, int expectedNotices)
+        {
+            var sender = new XUnitTest.IamTests.Notifications.RecordingSender();
+            XUnitTest.IamTests.Notifications.TestContext.Install(userId: "admin-1", orgId: "org-1");
+            var service = new AccountService(_loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
+                _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,
+                _userMutationMock.Object, _resourceMutationMock.Object, _captchaServiceMock.Object, _captchaConfigurationServiceMock.Object,
+                _userActivityDispatcherMock.Object, new SignupOrganizationResolver(_resourceRepositoryMock.Object),
+                notificationSender: sender);
+            var user = TestDataBuilder.CreateUser(active: false, isVerified: false);
+            _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
+            _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration());
+            _repositoryMock.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
+            _iamServiceMock.Setup(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(queued);
+
+            await service.ResendActivationAsync(new ResendActivationRequest { UserId = user.ItemId });
+
+            sender.Sent.Should().HaveCount(expectedNotices);
+            if (!queued)
+            {
+                var sent = sender.Sent.Single();
+                sent.ConfigurationName.Should().Be("iam-invitation-mail-failed");
+                sent.UserIds.Should().Equal("admin-1");
+                sent.OrganizationId.Should().Be("org-1");
+                XUnitTest.IamTests.Notifications.RecordingSender.PayloadJson(sent).Should().NotContain(user.Email);
+            }
         }
 
         private AccountService CreateServiceWithAccessGrant(Iam.DomainService.AccessGrant.IAccessGrantService accessGrant) =>
@@ -1587,6 +1627,21 @@ namespace XUnitTest.IamTests.Accounts.Services
             result.Should().BeFalse();
             _cacheClientMock.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
             _repositoryMock.Verify(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ProcessRecover_MailNotQueued_ReturnsFalse()
+        {
+            // The admin reset reports "not sent" from this result, so a failed queue must not read as sent.
+            var service = CreateService();
+            var user = TestDataBuilder.CreateUser();
+            _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration());
+            _repositoryMock.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
+            _iamServiceMock.Setup(s => s.SendEmailAsync(It.IsAny<SendMail>())).ReturnsAsync(false);
+
+            var result = await service.ProcessRecoverAccountAsync(user, "RecoverAccount");
+
+            result.Should().BeFalse();
         }
 
         [Fact]

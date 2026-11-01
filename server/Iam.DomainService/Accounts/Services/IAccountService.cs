@@ -20,5 +20,7 @@ namespace Iam.DomainService.Accounts
         Task<BaseAccountResponse> UnlockAccountAsync(string userId); // Admin method to unlock a locked account
         Task SendAccountLockedNotificationAsync(User user, DateTime lockoutUntilUtc); // Send email when account is locked
         Task<BaseAccountResponse> ActivateAndLinkSocialIdentityAsync(ActivateAndLinkSocialIdentityRequest request);
+        /// <summary>Issues a reset code and queues the reset mail; true only when the mail was queued.</summary>
+        Task<bool> ProcessRecoverAccountAsync(User user, string emailPurpose, string? clientId = null, string? redirectUri = null);
     }
 }

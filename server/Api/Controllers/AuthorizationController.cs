@@ -1,3 +1,4 @@
+using Authentication.DomainService.Authentication.LoginPolicies;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
@@ -183,7 +184,8 @@ namespace Blocks.Api.Controllers
                 Request,
                 Response,
                 result.BlocksUserId,
-                returnRedirectResponse);
+                returnRedirectResponse,
+                loginMethod: LoginMethods.Social);
         }
 
         /// <summary>

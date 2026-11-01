@@ -165,5 +165,12 @@ namespace Authentication.DomainService.Oidc.Contracts
             {
                 StatusCode = 401
             };
+
+        /// <summary>The client's secret cannot be checked right now (the secret store is unreachable).</summary>
+        public static IActionResult TemporarilyUnavailable(string description) =>
+            new ObjectResult(new { error = "temporarily_unavailable", error_description = description })
+            {
+                StatusCode = 503
+            };
     }
 }

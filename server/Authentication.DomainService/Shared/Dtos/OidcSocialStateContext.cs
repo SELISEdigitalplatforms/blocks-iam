@@ -14,6 +14,10 @@ namespace Authentication.DomainService.Shared.Dtos
         [JsonPropertyName("provider")]
         public string Provider { get; set; } = string.Empty;
 
+        /// <summary>The checked redirect URI sent to the provider; the code exchange must send the same one.</summary>
+        [JsonPropertyName("providerRedirectUri")]
+        public string ProviderRedirectUri { get; set; } = string.Empty;
+
         [JsonPropertyName("createdAt")]
         public DateTime CreatedAt { get; set; }
     }

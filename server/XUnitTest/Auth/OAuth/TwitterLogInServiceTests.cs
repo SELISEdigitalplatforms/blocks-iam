@@ -4,6 +4,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.SocialServices;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Blocks.Secrets;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -15,9 +16,10 @@ namespace XUnitTest.Auth.OAuth
     {
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
         private readonly Mock<IHttpService> _http = new();
+        private readonly Mock<ISecretService> _secrets = new(MockBehavior.Strict);
 
         private TwitterLogInService Create() =>
-            new(NullLogger<TwitterLogInService>.Instance, _authRepo.Object, _http.Object);
+            new(NullLogger<TwitterLogInService>.Instance, _authRepo.Object, _http.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver(_secrets));
 
         private static IdentityProvider Provider(string? clientSecret = "secret-1") => new()
         {
@@ -210,6 +212,68 @@ namespace XUnitTest.Auth.OAuth
             twitter.ExternalProviderUserId.Should().Be("tw-3");
             twitter.FirstName.Should().Be("A");
             twitter.LastName.Should().Be("C");
+        }
+
+        // ---------- #649: client secret resolved through Blocks Secrets ----------
+
+        private static IdentityProvider ReferencedProvider(string? legacy = "stale-plaintext")
+        {
+            var idp = Provider(legacy);
+            idp.ClientSecretReference = "cs-ref";
+            return idp;
+        }
+
+        [Fact]
+        public async Task ReferencedProvider_UsesTheResolvedSecretInTheBasicHeader_WithOneRead()
+        {
+            // H5, C4, C13: even with an empty legacy field the referenced provider is a confidential client.
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ReferencedProvider(legacy: ""));
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ReturnsAsync("vault-s");
+            Dictionary<string, string>? post = null;
+            Dictionary<string, string>? headers = null;
+            SetupToken(null, "stop", (p, h) => { post = p; headers = h; });
+
+            await Create().HandleSocialLoginCallback(State());
+
+            var expected = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("client-1:vault-s"));
+            headers.Should().NotBeNull();
+            headers!["Authorization"].Should().Be($"Basic {expected}");
+            post!.Should().NotContainKey("client_id");
+            _secrets.Verify(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task LegacyProvider_UsesThePlaintext_WithNoSecretCall()
+        {
+            // H7, C13
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(Provider());
+            Dictionary<string, string>? headers = null;
+            SetupToken(null, "stop", (_, h) => headers = h);
+
+            await Create().HandleSocialLoginCallback(State());
+
+            headers!["Authorization"].Should().Be($"Basic {Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("client-1:secret-1"))}");
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task ReferencedSecretUnavailable_FailsTheSignIn_WithoutCallingTheProvider()
+        {
+            // C2, C3, C4: no fallback to the legacy field and no public-client downgrade.
+            using var context = TestDoubles.IdentityProviderSecretTestDoubles.AnonymousTenant();
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ReferencedProvider());
+            _secrets.Setup(s => s.GetValueAsync("cs-ref", It.IsAny<CancellationToken>())).ThrowsAsync(new SecretVaultException("down", "get", "cs-ref"));
+
+            var result = await Create().HandleSocialLoginCallback(State());
+
+            result.ExternalUserData.Should().BeOfType<TwitterUserData>();
+            result.AccessToken.Should().BeNull();
+            _http.VerifyNoOtherCalls();
+            // Exactly one read: a failed read is not retried.
+            _secrets.Verify(s => s.GetValueAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.VerifyNoOtherCalls();
         }
     }
 }
