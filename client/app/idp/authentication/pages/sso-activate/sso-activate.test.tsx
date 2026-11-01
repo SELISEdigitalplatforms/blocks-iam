@@ -1,6 +1,8 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useI18nStore } from "@seliseblocks/genesis-os/i18n";
+import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 const h = vi.hoisted(() => ({
@@ -202,5 +204,21 @@ describe("SsoActivate", () => {
       expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "Something went wrong" }),
     );
     vi.unstubAllGlobals();
+  });
+});
+
+describe("SsoActivate language", () => {
+  afterEach(() => {
+    useAppSettingsStore.getState().setSettings({ language: "en" });
+    useI18nStore.setState({ remote: {} });
+  });
+
+  it("shows German text when the language is de", () => {
+    useI18nStore.getState().setRemote("de", "iam.sso", {
+      "SSO_ACTIVATE.TERMS_LINK": "Nutzungsbedingungen",
+    });
+    useAppSettingsStore.getState().setSettings({ language: "de" });
+    renderComp();
+    expect(screen.getByText("Nutzungsbedingungen")).toBeInTheDocument();
   });
 });
