@@ -7,6 +7,7 @@
  * real browser-like environments and per-test overrides keep working.
  */
 import "@testing-library/jest-dom/vitest";
+import "../i18n";
 import { beforeEach, vi } from "vitest";
 
 // Some third-party ESM deps (e.g. framer-motion's motion-utils, pulled in via

@@ -1,0 +1,26 @@
+import shared from "./iam.shared.en.json";
+import oidc from "./iam.oidc.en.json";
+import login from "./iam.login.en.json";
+import signup from "./iam.signup.en.json";
+import activation from "./iam.activation.en.json";
+import invitation from "./iam.invitation.en.json";
+import device from "./iam.device.en.json";
+import mfaCheck from "./iam.mfa-check.en.json";
+import password from "./iam.password.en.json";
+import sso from "./iam.sso.en.json";
+import profile from "./iam.profile.en.json";
+import security from "./iam.security.en.json";
+import { registerTranslations } from "@seliseblocks/genesis-os/i18n";
+
+registerTranslations("iam.shared", shared);
+registerTranslations("iam.oidc", oidc);
+registerTranslations("iam.login", login);
+registerTranslations("iam.signup", signup);
+registerTranslations("iam.activation", activation);
+registerTranslations("iam.invitation", invitation);
+registerTranslations("iam.device", device);
+registerTranslations("iam.mfa-check", mfaCheck);
+registerTranslations("iam.password", password);
+registerTranslations("iam.sso", sso);
+registerTranslations("iam.profile", profile);
+registerTranslations("iam.security", security);
