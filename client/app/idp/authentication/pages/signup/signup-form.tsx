@@ -18,6 +18,7 @@ import { Link, useNavigate } from "react-router";
 import React, { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { ArrowRight, Info, Loader } from "lucide-react";
 import { SsoSignin } from "../login/sso-signin";
 import {
@@ -65,6 +66,7 @@ export const SignupForm = ({
   /** New sign-ups join the project's organization. */
   signupAutoJoinEnabled?: boolean;
 }) => {
+  const { t } = useT("iam.signup");
   const [isChecked, setIsChecked] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   // Set when an unavailable auto-join organization ticked "create" for the user; the name field
@@ -192,8 +194,8 @@ export const SignupForm = ({
         const msg = Array.isArray(res.errors)
           ? res.errors[0]
           : res.errors && typeof res.errors === "object"
-          ? (Object.values(res.errors as Record<string, string>)[0] ?? "Registration failed")
-          : (res.errors as string) || "Registration failed";
+          ? (Object.values(res.errors as Record<string, string>)[0] ?? t("SIGNUP_FORM.REGISTRATION_FAILED"))
+          : (res.errors as string) || t("SIGNUP_FORM.REGISTRATION_FAILED");
         const shown = surfaceServerError(res.errors, msg);
         shake();
         await animCtx?.failAnimation(shown);
@@ -213,12 +215,12 @@ export const SignupForm = ({
         const msg = Array.isArray(error.errors)
           ? (error.errors[0] as string)
           : error.errors && typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
-          : (error.errors as unknown as string) || "Something went wrong";
+          ? (Object.values(error.errors as Record<string, string>)[0] ?? t("SIGNUP_FORM.SOMETHING_WENT_WRONG"))
+          : (error.errors as unknown as string) || t("SIGNUP_FORM.SOMETHING_WENT_WRONG");
         const shown = surfaceServerError(error.errors, msg);
         await animCtx?.failAnimation(shown);
       } else {
-        const msg = "Something went wrong";
+        const msg = t("SIGNUP_FORM.SOMETHING_WENT_WRONG");
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       }
@@ -256,7 +258,7 @@ export const SignupForm = ({
                 id="signup-organization-name"
                 type="text"
                 autoComplete="organization"
-                placeholder="Acme Inc."
+                placeholder={t("SIGNUP_FORM.ORGANIZATION_NAME_PLACEHOLDER")}
                 className="oidc-sci-fi-input"
                 aria-invalid={!!form.formState.errors.organizationName}
                 disabled={isAuthenticating}
@@ -300,7 +302,7 @@ export const SignupForm = ({
                           id="signup-first-name"
                           type="text"
                           autoComplete="given-name"
-                          placeholder="Jane"
+                          placeholder={t("SIGNUP_FORM.FIRST_NAME_PLACEHOLDER")}
                           className="oidc-sci-fi-input"
                           aria-invalid={!!form.formState.errors.firstName}
                           disabled={isAuthenticating}
@@ -326,7 +328,7 @@ export const SignupForm = ({
                           id="signup-last-name"
                           type="text"
                           autoComplete="family-name"
-                          placeholder="Doe"
+                          placeholder={t("SIGNUP_FORM.LAST_NAME_PLACEHOLDER")}
                           className="oidc-sci-fi-input"
                           aria-invalid={!!form.formState.errors.lastName}
                           disabled={isAuthenticating}
@@ -355,7 +357,7 @@ export const SignupForm = ({
                         id="signup-email"
                         type="email"
                         autoComplete="email"
-                        placeholder="name@company.com"
+                        placeholder={t("SIGNUP_FORM.EMAIL_PLACEHOLDER")}
                         className="oidc-sci-fi-input"
                         aria-invalid={!!form.formState.errors.email}
                         disabled={isAuthenticating}

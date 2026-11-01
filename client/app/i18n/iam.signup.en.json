@@ -1,1 +1,24 @@
-{}
+{
+  "SIGNUP_EMAIL_SENT.CHECK_SPAM": "Check your spam folder or resend the email.",
+  "SIGNUP_EMAIL_SENT.CONTACT_SUPPORT": "Contact support",
+  "SIGNUP_EMAIL_SENT.FOLLOW_LINK": ". Please follow the link in the email to continue your sign up.",
+  "SIGNUP_EMAIL_SENT.GO_TO_LOGIN": "Go to login",
+  "SIGNUP_EMAIL_SENT.HAVE_ACCOUNT": "Already have an account?",
+  "SIGNUP_EMAIL_SENT.NEED_HELP": "Need help?",
+  "SIGNUP_EMAIL_SENT.NOT_RECEIVED": "Didn't receive the email?",
+  "SIGNUP_EMAIL_SENT.RESEND": "Resend email",
+  "SIGNUP_EMAIL_SENT.RESEND_ARIA": "Resend sign up email",
+  "SIGNUP_EMAIL_SENT.SENT_TO": "An email has been sent to",
+  "SIGNUP_EMAIL_SENT.TITLE": "Email sent",
+  "SIGNUP_EMAIL_SENT.YOUR_EMAIL_ADDRESS": "your email address",
+  "SIGNUP_FORM.EMAIL_PLACEHOLDER": "name@company.com",
+  "SIGNUP_FORM.FIRST_NAME_PLACEHOLDER": "Jane",
+  "SIGNUP_FORM.LAST_NAME_PLACEHOLDER": "Doe",
+  "SIGNUP_FORM.ORGANIZATION_NAME_PLACEHOLDER": "Acme Inc.",
+  "SIGNUP_FORM.REGISTRATION_FAILED": "Registration failed",
+  "SIGNUP_FORM.SOMETHING_WENT_WRONG": "Something went wrong",
+  "UTILS.EMAIL_INVALID": "Invalid email",
+  "UTILS.FIRST_NAME_REQUIRED": "First name is required",
+  "UTILS.LAST_NAME_REQUIRED": "Last name is required",
+  "UTILS.ORGANIZATION_NAME_REQUIRED": "Organization name is required"
+}

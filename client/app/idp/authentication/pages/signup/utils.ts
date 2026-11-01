@@ -1,3 +1,4 @@
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
 import { z } from "zod";
 
 export type SignupOrganizationChoice = "join" | "create";
@@ -12,9 +13,9 @@ export const signupFormDefaultValue = {
 };
 
 export const signupFormSchema = z.object({
-  firstName: z.string().trim().min(1, { message: "First name is required" }),
-  lastName: z.string().trim().min(1, { message: "Last name is required" }),
-  email: z.string().trim().email({ message: "Invalid email" }),
+  firstName: z.string().trim().min(1, { error: () => tStatic("iam.signup", "UTILS.FIRST_NAME_REQUIRED") }),
+  lastName: z.string().trim().min(1, { error: () => tStatic("iam.signup", "UTILS.LAST_NAME_REQUIRED") }),
+  email: z.string().trim().email({ error: () => tStatic("iam.signup", "UTILS.EMAIL_INVALID") }),
   organizationName: z.string().trim().optional(),
   organizationChoice: z.enum(["join", "create"]).optional(),
 });
@@ -35,7 +36,7 @@ export const buildSignupFormSchema = (
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["organizationName"],
-          message: "Organization name is required",
+          message: tStatic("iam.signup", "UTILS.ORGANIZATION_NAME_REQUIRED"),
         });
       }
     });
@@ -45,7 +46,7 @@ export const buildSignupFormSchema = (
         organizationName: z
           .string()
           .trim()
-          .min(1, { message: "Organization name is required" }),
+          .min(1, { error: () => tStatic("iam.signup", "UTILS.ORGANIZATION_NAME_REQUIRED") }),
       })
     : signupFormSchema;
 };
