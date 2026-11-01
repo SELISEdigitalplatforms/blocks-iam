@@ -3,6 +3,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { activationFormDefaultValue, activationFormSchema, buildActivationFormSchema } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { Captcha } from "@/components/captcha";
 import { useNavigate } from "react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -111,6 +112,7 @@ export const ActivationForm = ({
   collectPassword = true,
   onActivated,
 }: ActivationFormProps) => {
+  const { t } = useT("iam.activation");
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const formRef = useRef<HTMLFormElement>(null);
@@ -185,7 +187,7 @@ export const ActivationForm = ({
             navigate(successUrl, { replace: true });
             return;
           }
-          const alreadyActive = "This account is already active. Please sign in to continue.";
+          const alreadyActive = t("ACTIVATION_FORM.ALREADY_ACTIVE");
           report(alreadyActive);
           await animCtx?.failAnimation(alreadyActive);
           return;
@@ -197,7 +199,7 @@ export const ActivationForm = ({
       report(message);
       await animCtx?.failAnimation(message);
     },
-    [revalidateCode, code, tenantId, collectPassword, animCtx, navigate, successUrl],
+    [revalidateCode, code, tenantId, collectPassword, animCtx, navigate, successUrl, t],
   );
 
   // Without a password there are no strength requirements to meet, and this guard would
@@ -283,7 +285,7 @@ export const ActivationForm = ({
         });
         if (!res.isSuccess) {
           onFailure?.();
-          await settleFailure(readErrorMessage(res.errors, "Activation failed"));
+          await settleFailure(readErrorMessage(res.errors, t("ACTIVATION_FORM.ACTIVATION_FAILED")));
           return;
         }
         await animCtx?.succeedAnimation();
@@ -296,12 +298,12 @@ export const ActivationForm = ({
         onFailure?.();
         await settleFailure(
           isErrorWithErrors(error)
-            ? readErrorMessage(error.errors, "Something went wrong")
-            : "Something went wrong",
+            ? readErrorMessage(error.errors, t("ACTIVATION_FORM.SOMETHING_WENT_WRONG"))
+            : t("ACTIVATION_FORM.SOMETHING_WENT_WRONG"),
         );
       }
     },
-    [animCtx, mutateAsync, code, captchaCode, tenantId, settleFailure, onActivated, navigate, successUrl],
+    [animCtx, mutateAsync, code, captchaCode, tenantId, settleFailure, onActivated, navigate, successUrl, t],
   );
 
   /**
@@ -369,7 +371,7 @@ export const ActivationForm = ({
         <label className="oidc-sci-fi-label">{activationCopy.firstNameLabel}</label>
         <input
           type="text"
-          placeholder="First name"
+          placeholder={t("ACTIVATION_FORM.FIRST_NAME_PLACEHOLDER")}
           autoComplete="given-name"
           className="oidc-sci-fi-input"
           aria-invalid={!!form.formState.errors.firstname}
@@ -387,7 +389,7 @@ export const ActivationForm = ({
         <label className="oidc-sci-fi-label">{activationCopy.lastNameLabel}</label>
         <input
           type="text"
-          placeholder="Last name"
+          placeholder={t("ACTIVATION_FORM.LAST_NAME_PLACEHOLDER")}
           autoComplete="family-name"
           className="oidc-sci-fi-input"
           aria-invalid={!!form.formState.errors.lastname}
@@ -423,7 +425,7 @@ export const ActivationForm = ({
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2"
                 style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-label={showPassword ? t("ACTIVATION_FORM.HIDE_PASSWORD") : t("ACTIVATION_FORM.SHOW_PASSWORD")}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -455,7 +457,7 @@ export const ActivationForm = ({
                 onClick={() => setShowConfirmPassword((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2"
                 style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                aria-label={showConfirmPassword ? t("ACTIVATION_FORM.HIDE_PASSWORD") : t("ACTIVATION_FORM.SHOW_PASSWORD")}
               >
                 {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>

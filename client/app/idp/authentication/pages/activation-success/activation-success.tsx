@@ -7,10 +7,12 @@ import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-co
 import { HelpCircle, LogIn } from "lucide-react"
 import { useLocation } from "react-router"
 import { OidcThemedConfirmation } from "../oidc/oidc-themed-confirmation"
+import { useT } from "@seliseblocks/genesis-os/i18n"
 
 const SUPPORT_URL = "https://docs.seliseblocks.com/"
 
 export const ActivationSuccess = () => {
+  const { t } = useT("iam.activation")
   // A tenant that turns off the activation password step has users who never set one, so
   // the copy must not send them looking for it.
   const { data: oidcUiConfig, collectPasswordOnActivation } = useOidcUiConfig()
@@ -41,13 +43,13 @@ export const ActivationSuccess = () => {
             <SuccessConfirmationIcon />
 
             <h1 className="mt-5 text-xl font-bold tracking-tight text-foreground sm:mt-6 sm:text-2xl md:mt-7 md:text-[1.75rem]">
-              Account activated
+              {t("ACTIVATION_SUCCESS.TITLE")}
             </h1>
 
             <p className="mt-3 w-full text-base leading-relaxed text-muted-foreground sm:mt-4 sm:text-lg">
               {collectPasswordOnActivation
-                ? "Your account has been successfully activated. Sign in with your password to continue and unlock the Blocks IAM platform."
-                : "Your account has been successfully activated. Sign in to continue and unlock the Blocks IAM platform."}
+                ? t("ACTIVATION_SUCCESS.MESSAGE_WITH_PASSWORD")
+                : t("ACTIVATION_SUCCESS.MESSAGE")}
             </p>
           </div>
 
@@ -61,12 +63,12 @@ export const ActivationSuccess = () => {
 
               <div className="min-w-0 flex-1 text-left">
                 <p className="text-sm font-semibold text-foreground sm:text-base">
-                  Ready to sign in?
+                  {t("ACTIVATION_SUCCESS.READY")}
                 </p>
                 <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
                   {collectPasswordOnActivation
-                    ? "Use your password to access your workspace."
-                    : "Sign in to access your workspace."}
+                    ? t("ACTIVATION_SUCCESS.READY_WITH_PASSWORD")
+                    : t("ACTIVATION_SUCCESS.READY_HINT")}
                 </p>
               </div>
             </div>
@@ -77,11 +79,11 @@ export const ActivationSuccess = () => {
               asChild
             >
               <LoginReturnLink
-                aria-label="Go to login"
+                aria-label={t("ACTIVATION_SUCCESS.GO_TO_LOGIN")}
                 className="inline-flex w-full items-center justify-center gap-2 md:w-auto"
               >
                 <LogIn className="h-4 w-4 shrink-0" aria-hidden />
-                Log in
+                {t("ACTIVATION_SUCCESS.LOG_IN")}
               </LoginReturnLink>
             </Button>
           </div>
@@ -91,7 +93,7 @@ export const ActivationSuccess = () => {
             <p className="flex flex-col items-center justify-center gap-1 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-1.5">
               <span className="inline-flex items-center gap-1.5">
                 <HelpCircle className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-                Need help?
+                {t("ACTIVATION_SUCCESS.NEED_HELP")}
               </span>
               <a
                 href={SUPPORT_URL}
@@ -99,7 +101,7 @@ export const ActivationSuccess = () => {
                 rel="noreferrer"
                 className="inline-flex min-h-11 items-center font-medium text-primary hover:text-primary/80 md:min-h-0"
               >
-                Contact support
+                {t("ACTIVATION_SUCCESS.CONTACT_SUPPORT")}
               </a>
             </p>
           </div>
