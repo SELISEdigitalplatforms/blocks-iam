@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { Button } from "@/components/ui-kits/button/button";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
@@ -27,19 +28,22 @@ const LoadingSkeleton = () => (
   </div>
 );
 
-const EmptyState = () => (
+const EmptyState = () => {
+  const { t } = useT("iam.security");
+  return (
   <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 py-10 text-center">
     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
       <Laptop className="h-7 w-7 text-muted-foreground" />
     </div>
     <div>
-      <p className="text-base font-semibold text-foreground">No sessions</p>
+      <p className="text-base font-semibold text-foreground">{t("SESSION_LIST_CARD.NO_SESSIONS")}</p>
       <p className="mt-1 text-sm text-muted-foreground">
-        You&apos;re not signed in on any other devices.
+        {t("SESSION_LIST_CARD.NO_OTHER_DEVICES")}
       </p>
     </div>
   </div>
-);
+  );
+};
 
 const SignOutButton = ({
   card,
@@ -52,6 +56,7 @@ const SignOutButton = ({
   mutateAsync: (vars: { sessionId: string; reason?: string }) => Promise<unknown>;
   isPending: boolean;
 }) => {
+  const { t } = useT("iam.security");
   const [open, setOpen] = useState(false);
 
   const handleConfirm = async () => {
@@ -65,7 +70,7 @@ const SignOutButton = ({
         errors:
           typeof error === "object" && error !== null && "errors" in error
             ? (error as { errors: unknown }).errors
-            : "Something went wrong",
+            : t("SESSION_LIST_CARD.SOMETHING_WENT_WRONG"),
       });
     }
   };
@@ -84,21 +89,21 @@ const SignOutButton = ({
           setOpen(true);
         }}
       >
-        Sign out
+        {t("SESSION_LIST_CARD.SIGN_OUT")}
       </Button>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
-          <DialogTitle>Sign out of this device?</DialogTitle>
+          <DialogTitle>{t("SESSION_LIST_CARD.SIGN_OUT_TITLE")}</DialogTitle>
           <DialogDescription>
-            This will immediately end the session on {card.deviceName || "this device"}.
+            {t("SESSION_LIST_CARD.END_SESSION_ON", { device: card.deviceName || t("SESSION_LIST_CARD.THIS_DEVICE_FALLBACK") })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t("common:CANCEL")}
           </Button>
           <Button variant="destructive" onClick={handleConfirm} disabled={isPending}>
-            {isPending ? "Signing out..." : "Sign out"}
+            {isPending ? t("SESSION_LIST_CARD.SIGNING_OUT") : t("SESSION_LIST_CARD.SIGN_OUT")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -113,6 +118,7 @@ type SessionListCardProps = {
 };
 
 export const SessionListCard = ({ showSignOut = true, userId }: SessionListCardProps) => {
+  const { t } = useT("iam.security");
   const { isLoading, isFetching, data, refetch } = useUserSessions(userId);
   const { mutateAsync, isPending } = useRevokeSession(userId);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -149,17 +155,17 @@ export const SessionListCard = ({ showSignOut = true, userId }: SessionListCardP
                         {card.deviceName}
                       </span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {card.browser} on {card.operatingSystem} · {card.applicationSummary}
+                        {t("SESSION_LIST_CARD.BROWSER_ON_OS", { browser: card.browser, os: card.operatingSystem, apps: card.applicationSummary })}
                       </span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {card.ipAddress} · last active {card.lastActivityDisplay}
+                        {t("SESSION_LIST_CARD.IP_LAST_ACTIVE", { ip: card.ipAddress, time: card.lastActivityDisplay })}
                       </span>
                     </span>
                   </button>
                   <div className="flex shrink-0 items-center gap-2 py-3 pr-4">
                     {card.isCurrent ? (
                       <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
-                        This device
+                        {t("SESSION_LIST_CARD.THIS_DEVICE")}
                       </span>
                     ) : null}
                     {showSignOut ? (
