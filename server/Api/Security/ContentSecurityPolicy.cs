@@ -56,20 +56,16 @@ public static class ContentSecurityPolicy
     /// <summary>
     /// reCAPTCHA is loaded by <c>client/app/components/captcha/reCaptcha.tsx</c>, which
     /// injects <c>https://www.google.com/recaptcha/api.js</c> and renders the widget in an
-    /// iframe. These are fixed Google origins, identical in every environment, so they stay
+    /// iframe. These are fixed Google sources, identical in every environment, so they stay
     /// in code rather than in per-environment configuration. Without them the previous
     /// policy blocked captcha on login and signup in every environment.
+    /// They are limited to the /recaptcha/ path: a whole Google host would also allow its
+    /// other endpoints, some of which return script built from the request.
+    /// They skip <see cref="Normalize"/>, which would cut the path off.
     /// </summary>
-    private static readonly string[] CaptchaScriptOrigins =
-    [
-        "https://www.google.com",
-        "https://www.gstatic.com",
-    ];
+    private const string CaptchaScriptSources = "https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/";
 
-    private static readonly string[] CaptchaFrameOrigins =
-    [
-        "https://www.google.com",
-    ];
+    private const string CaptchaFrameSources = "https://www.google.com/recaptcha/";
 
     /// <summary>
     /// Stands in for the style nonce (see <see cref="StyleNonce"/>): in the policy built at
@@ -106,8 +102,8 @@ public static class ContentSecurityPolicy
                 .Concat(Split(csp["ExtraConnectSrc"])),
             imgSrc: Split(csp["ExtraImgSrc"]),
             formAction: Origins(runtime, FormActionOriginKeys).Concat(Split(csp["ExtraFormAction"])),
-            scriptSrc: CaptchaScriptOrigins.Concat(Split(csp["ExtraScriptSrc"])),
-            frameSrc: CaptchaFrameOrigins.Concat(Split(csp["ExtraFrameSrc"])));
+            scriptSrc: Split(csp["ExtraScriptSrc"]),
+            frameSrc: Split(csp["ExtraFrameSrc"]));
     }
 
     /// <summary>
@@ -130,7 +126,7 @@ public static class ContentSecurityPolicy
         return string.Join(
             " ",
             "default-src 'self';",
-            $"script-src 'self'{Suffix(script)};",
+            $"script-src 'self' {CaptchaScriptSources}{Suffix(script)};",
 
             // Styles. <style> elements need the style nonce (StyleNonce). Radix
             // (react-remove-scroll), vaul, sonner, cmdk and input-otp create them at runtime
@@ -148,7 +144,7 @@ public static class ContentSecurityPolicy
             $"img-src 'self' data: blob:{Suffix(img)};",
             "font-src 'self' data:;",
             $"connect-src 'self'{Suffix(connect)};",
-            $"frame-src 'self'{Suffix(frame)};",
+            $"frame-src 'self' {CaptchaFrameSources}{Suffix(frame)};",
             "frame-ancestors 'none';",
             "base-uri 'self';",
             "object-src 'none';",

@@ -34,5 +34,8 @@ namespace Authentication.DomainService.RequestModel
         /// project value" and all-null fields remove the client's values.
         /// </summary>
         public OidcClientTokenLifetimes? TokenLifetimes { get; set; }
+
+        /// <summary>How this client narrows the tenant's sign-in policy. Null keeps what is stored.</summary>
+        public OidcClientLoginPolicy? LoginPolicy { get; set; }
     }
 }

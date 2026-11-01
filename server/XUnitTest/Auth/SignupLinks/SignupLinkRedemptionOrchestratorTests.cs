@@ -999,48 +999,114 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         _sessions.Verify(s => s.CreateAsync(It.IsAny<LinkSessionModel>()), Times.Never);
     }
 
-    [Fact]
-    public async Task H3_TryBind_SignupLinkKey_SetsCookie()
-    {
-        _iam.Setup(i => i.GetUserKeyMapByKeyAsync("act-key"))
-            .ReturnsAsync(new UserKeyMap
-            {
-                Key = "act-key",
-                Value = "signup-link:link-1",
-                UserId = "user-pending"
-            });
-        _users.Setup(u => u.GetUserByIdAsync("user-pending")).ReturnsAsync(new User
-        {
-            ItemId = "user-pending",
-            Email = "new2@example.com",
-            Active = true,
-            Status = UserLifecycleStatus.Active
-        });
-        _links.Setup(l => l.GetByItemIdAsync("link-1")).ReturnsAsync(ActivePasswordless("new2@example.com"));
-
-        var http = Http();
-        var result = await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
-
-        // SignInAfterActivation off: today's behaviour, the invitee signs in afterwards.
-        result.Should().BeNull();
-        http.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1");
-        _sessions.Verify(s => s.CreateAsync(It.Is<LinkSessionModel>(m =>
-            m.UserId == "user-pending" && m.Amr.Contains("link"))), Times.Once);
-    }
-
     /// <summary>Wires an activation key through to the given link.</summary>
-    private void SetupActivation(SignupLink link)
+    private void SetupActivation(SignupLink link, Action<User>? tweakUser = null)
     {
         _iam.Setup(i => i.GetUserKeyMapByKeyAsync("act-key"))
             .ReturnsAsync(new UserKeyMap { Key = "act-key", Value = "signup-link:link-1", UserId = "user-pending" });
-        _users.Setup(u => u.GetUserByIdAsync("user-pending")).ReturnsAsync(new User
+        var user = new User
         {
             ItemId = "user-pending",
             Email = link.Email,
             Active = true,
             Status = UserLifecycleStatus.Active
-        });
+        };
+        tweakUser?.Invoke(user);
+        _users.Setup(u => u.GetUserByIdAsync("user-pending")).ReturnsAsync(user);
         _links.Setup(l => l.GetByItemIdAsync("link-1")).ReturnsAsync(link);
+    }
+
+    private static string AuthorizeUrlOf(IActionResult? result) =>
+        (string)result.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeOfType<Dictionary<string, object?>>().Subject["authorizeUrl"]!;
+
+    [Fact]
+    public async Task Activation_Oidc_WithoutSignIn_SendsTheInviteeToTheClientsSignIn()
+    {
+        var link = ActivePasswordless("new2@example.com");
+        link.CredentialMode = SignupLinkCredentialMode.PasswordRequired;
+        SetupActivation(link);
+
+        var http = Http();
+        var result = await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
+
+        // The hosted page is not the app. SignInAfterActivation off means the app's sign-in
+        // screen, so no link session, and prompt=login keeps any IdP session from skipping it.
+        var url = AuthorizeUrlOf(result);
+        url.Should().StartWith("https://iam.example.com/api/oidc/authorize?");
+        url.Should().Contain("client_id=construct-web").And.Contain("prompt=login");
+        _sessions.Verify(s => s.CreateAsync(It.IsAny<LinkSessionModel>()), Times.Never);
+        http.Response.Headers.SetCookie.ToString().Should().NotContain("blocks-link-session");
+        _embeddedTokens.Verify(t => t.IssueAsync(It.IsAny<SignupLink>(), It.IsAny<User>(), It.IsAny<List<string>>(), It.IsAny<HttpRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Activation_Oidc_WithoutSignIn_EndsALinkSessionLeftInTheBrowser()
+    {
+        var link = ActivePasswordless("new2@example.com");
+        link.CredentialMode = SignupLinkCredentialMode.PasswordRequired;
+        SetupActivation(link);
+
+        var http = Http();
+        http.Request.Headers["Cookie"] = "blocks-link-session-t1=EARLIER";
+        await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
+
+        // An earlier redemption's session would sign its own user in ahead of prompt=login.
+        _sessions.Verify(s => s.DeleteAsync("t1", "EARLIER"), Times.Once);
+        http.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1=;");
+    }
+
+    [Fact]
+    public async Task Activation_Oidc_SignInAfterActivation_IssuesTheLinkSession_AndAnAuthorizeUrl()
+    {
+        SetupActivation(SignInOnActivation(SignupLinkMode.Oidc));
+
+        var http = Http();
+        var result = await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
+
+        // Tokens minted on the hosted page would never reach the app; the authorize request does,
+        // and the link session makes it sign the invitee in.
+        var url = AuthorizeUrlOf(result);
+        url.Should().Contain("client_id=construct-web").And.NotContain("prompt=");
+        http.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1");
+        _sessions.Verify(s => s.CreateAsync(It.Is<LinkSessionModel>(m =>
+            m.UserId == "user-pending" && m.Amr.Contains("link"))), Times.Once);
+        _embeddedTokens.Verify(t => t.IssueAsync(It.IsAny<SignupLink>(), It.IsAny<User>(), It.IsAny<List<string>>(), It.IsAny<HttpRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Activation_Oidc_SignInAfterActivation_MfaAccount_GoesThroughTheSignInScreen()
+    {
+        SetupActivation(SignInOnActivation(SignupLinkMode.Oidc), u =>
+        {
+            u.MfaEnabled = true;
+            u.UserMfaType = UserMfaType.Email;
+        });
+
+        var http = Http();
+        var result = await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
+
+        // A link session would walk past the second factor; the sign-in screen asks for it.
+        AuthorizeUrlOf(result).Should().Contain("prompt=login");
+        _sessions.Verify(s => s.CreateAsync(It.IsAny<LinkSessionModel>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Activation_Oidc_SignInAfterActivation_UnenrolledAuthenticator_IsSignedIn()
+    {
+        SetupActivation(SignInOnActivation(SignupLinkMode.Oidc), u =>
+        {
+            u.MfaEnabled = true;
+            u.UserMfaType = UserMfaType.TOTP;
+            u.IsMfaVerified = false;
+        });
+
+        var http = Http();
+        var result = await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
+
+        // No factor enrolled yet, so nothing for the link session to skip.
+        AuthorizeUrlOf(result).Should().NotContain("prompt=");
+        _sessions.Verify(s => s.CreateAsync(It.IsAny<LinkSessionModel>()), Times.Once);
     }
 
     private static SignupLink SignInOnActivation(SignupLinkMode mode)
@@ -1058,12 +1124,10 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         return link;
     }
 
-    [Theory]
-    [InlineData(SignupLinkMode.Oidc)]
-    [InlineData(SignupLinkMode.Embedded)]
-    public async Task Activation_SignInAfterActivation_IssuesTokens_ForBothModes(SignupLinkMode mode)
+    [Fact]
+    public async Task Activation_Embedded_SignInAfterActivation_IssuesTokens()
     {
-        SetupActivation(SignInOnActivation(mode));
+        SetupActivation(SignInOnActivation(SignupLinkMode.Embedded));
         _embeddedTokens
             .Setup(t => t.IssueAsync(It.IsAny<SignupLink>(), It.IsAny<User>(), It.IsAny<List<string>>(), It.IsAny<HttpRequest>()))
             .ReturnsAsync(new OkObjectResult(new Dictionary<string, object?> { ["token_type"] = "Bearer" }));
@@ -1071,8 +1135,8 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
         var http = Http();
         var result = await Sut().CompleteActivationAsync("act-key", http.Request, http.Response);
 
-        // Both modes take the same path: the issuer needs no client, which is exactly why the
-        // link-session cookie could never have served embedded.
+        // The issuer needs no client, which is exactly why the link-session cookie could never
+        // have served embedded.
         result.Should().NotBeNull();
         _embeddedTokens.Verify(t => t.IssueAsync(
             It.Is<SignupLink>(l => l.ItemId == "link-1"),

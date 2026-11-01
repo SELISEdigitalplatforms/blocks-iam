@@ -59,7 +59,8 @@ namespace Iam.DomainService.Utilities
 
         /// <summary>
         /// True when <paramref name="organizationId"/> is a scope sentinel rather than a real
-        /// organization id, and therefore may never be accepted from a request payload.
+        /// organization id. <see cref="Resolve"/> never honours <c>"no-org"</c> from a request, and
+        /// honours <c>"default"</c> only for a user who literally holds it.
         /// </summary>
         public static bool IsReservedOrganizationId(string? organizationId) =>
             string.Equals(organizationId, IdpConstants.NoOrganizationId, StringComparison.Ordinal)
@@ -92,11 +93,16 @@ namespace Iam.DomainService.Utilities
             }
 
             // R1/R2. A requested organization is honoured only when the user actually belongs to
-            // it, and never when it is a sentinel -- "no-org" is not a place, and "default" would
-            // be a privilege escalation straight out of the payload. Both are discarded rather
-            // than rejected, matching UserListOrganizationScope and ResourceWriteOrganizationScope:
-            // an unauthorised id is ignored, so the caller learns nothing about whether it exists.
-            if (!IsReservedOrganizationId(requestedOrganizationId)
+            // it. "no-org" is never honoured: it is not a place. "default" is honoured only when the
+            // user literally holds it (SPEC10 C3) -- the membership test below is that check, so
+            // a payload naming "default" cannot reach the tenant-wide scope without the grant,
+            // while a user who has it can switch into it. Discarded ids are ignored rather than
+            // rejected, matching UserListOrganizationScope and ResourceWriteOrganizationScope:
+            // the caller learns nothing about whether an unauthorised id exists.
+            //
+            // "default" used to be discarded unconditionally here, so a member could not switch
+            // into it: switch-org answered 200 with a token for the last used organization.
+            if (!string.Equals(requestedOrganizationId, IdpConstants.NoOrganizationId, StringComparison.Ordinal)
                 && hasAccess(user, requestedOrganizationId))
             {
                 return Organization(requestedOrganizationId!);
@@ -119,8 +125,11 @@ namespace Iam.DomainService.Utilities
             return firstMembership is null ? NoOrganizationScope : Organization(firstMembership);
         }
 
+        // A "default" reached through a membership is the tenant-wide scope, whichever rule found it.
         private static OrganizationScope Organization(string organizationId) =>
-            new(OrganizationScopeKind.Organization, organizationId);
+            string.Equals(organizationId, IdpConstants.DefaultOrganizationId, StringComparison.Ordinal)
+                ? TenantWideScope
+                : new(OrganizationScopeKind.Organization, organizationId);
 
         private static string? FirstNonBlank(IEnumerable<string>? values) =>
             values?.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));

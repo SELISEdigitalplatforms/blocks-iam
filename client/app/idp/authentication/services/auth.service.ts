@@ -122,9 +122,14 @@ export class AuthService {
     return serviceInstances.idpService.post(AUTH_ENDPOINTS.RECOVER, payload);
   }
 
-  getLoginOptions(tenantId?: string): Promise<LoginOption> {
-    const url = tenantId
-      ? `${AUTH_ENDPOINTS.GET_LOGIN_OPTIONS}?tenantId=${encodeURIComponent(tenantId)}`
+  /** With a clientId, the IAM login page's options for that OIDC application. */
+  getLoginOptions(tenantId?: string, clientId?: string): Promise<LoginOption> {
+    const params = new URLSearchParams();
+    if (tenantId) params.set("tenantId", tenantId);
+    if (clientId) params.set("client_id", clientId);
+    const query = params.toString();
+    const url = query
+      ? `${AUTH_ENDPOINTS.GET_LOGIN_OPTIONS}?${query}`
       : AUTH_ENDPOINTS.GET_LOGIN_OPTIONS;
     const headers: Record<string, string> = tenantId
       ? { "X-Blocks-Key": tenantId }

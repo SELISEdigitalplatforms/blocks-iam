@@ -4,6 +4,8 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Notifications;
+using XUnitTest.IamTests.Notifications;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources;
@@ -124,6 +126,15 @@ namespace XUnitTest.IamTests.Users
 
             _message.Verify(m => m.SendToConsumerAsync(
                 It.Is<ConsumerMessage<UserMutationEvent>>(c => c.Payload.SendMail)), Times.Once);
+        }
+
+        [Fact]
+        public async Task CreateUser_EventCarriesTheInviterAndOrganization()
+        {
+            await Create().CreateUserAsync(new CreateUserRequest { Email = "new@test.com", Password = "pw", OrganizationId = "org-1" });
+
+            _message.Verify(m => m.SendToConsumerAsync(
+                It.Is<ConsumerMessage<UserMutationEvent>>(c => c.Payload.InvitedBy == "actor-1" && c.Payload.OrganizationId != null)), Times.Once);
         }
 
         [Fact]
@@ -1088,6 +1099,88 @@ namespace XUnitTest.IamTests.Users
             _userRepo.Verify(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()), Times.Never);
             _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
         }
+
+        private User ArrangeInvitationUser(bool mailQueued)
+        {
+            var user = new User { ItemId = "u1", Email = "invitee@example.com", Language = "en-US", MailPurpose = "AccountActivation" };
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+            _userRepo.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(new IamConfiguration
+            {
+                ActivationUrlLifetimeInMinutes = 30,
+                UseAccountActionBaseUrlAsDefault = true,
+                AccountActionBaseUrl = "https://app.test"
+            });
+            _userRepo.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+            _iam.Setup(i => i.SendActivationToEmailAsync(user, It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(mailQueued);
+            return user;
+        }
+
+        private static UserMutationEvent InvitationEvent() => new()
+        {
+            ItemId = "u1", Action = MutationEventType.Create, InvitedBy = "admin-1", OrganizationId = "org-1"
+        };
+
+        [Fact]
+        public async Task InvitationMail_NotQueued_TellsTheInviterWithIdsAndReasonOnly()
+        {
+            var user = ArrangeInvitationUser(mailQueued: false);
+            var sender = new RecordingSender();
+
+            await CreateWithSender(sender).ExecuteUserMutationCommandAsync(InvitationEvent());
+
+            var sent = sender.Sent.Should().ContainSingle().Subject;
+            sent.ConfigurationName.Should().Be("iam-invitation-mail-failed");
+            sent.UserIds.Should().Equal("admin-1");
+            sent.OrganizationId.Should().Be("org-1");
+            var json = RecordingSender.PayloadJson(sent);
+            json.Should().Contain("\"invitedUserId\":\"u1\"").And.Contain("\"reason\":\"not_queued\"");
+            json.Should().NotContain(user.Email);
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task InvitationMail_Queued_SendsNoNotification()
+        {
+            ArrangeInvitationUser(mailQueued: true);
+            var sender = new RecordingSender();
+
+            await CreateWithSender(sender).ExecuteUserMutationCommandAsync(InvitationEvent());
+
+            sender.Sent.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task InvitationMail_QueueThrows_TellsTheInviterAndStillThrowsForRetry()
+        {
+            ArrangeInvitationUser(mailQueued: true);
+            _iam.Setup(i => i.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("broker down for invitee@example.com"));
+            var sender = new RecordingSender();
+
+            var act = async () => await CreateWithSender(sender).ExecuteUserMutationCommandAsync(InvitationEvent());
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+            var json = RecordingSender.PayloadJson(sender.Sent.Should().ContainSingle().Subject);
+            json.Should().Contain("\"reason\":\"queue_error\"").And.NotContain("broker").And.NotContain("invitee@");
+        }
+
+        [Fact]
+        public async Task InvitationMail_NotQueuedWithoutInviter_SendsNoNotification()
+        {
+            ArrangeInvitationUser(mailQueued: false);
+            var sender = new RecordingSender();
+
+            await CreateWithSender(sender).ExecuteUserMutationCommandAsync(
+                new UserMutationEvent { ItemId = "u1", Action = MutationEventType.Create });
+
+            sender.Sent.Should().BeEmpty();
+        }
+
+        private UserManagementMutationService CreateWithSender(IBuiltInNotificationSender sender) =>
+            new(NullLogger<UserManagementMutationService>.Instance, _createValidator.Object, _updateValidator.Object, _myAccountValidator.Object,
+                _iam.Object, _userRepo.Object, _message.Object, _cache.Object, _tenants.Object, _activity.Object,
+                null, _resourceRepo.Object, null, notificationSender: sender);
 
         [Theory]
         [InlineData(MutationEventType.Update)]

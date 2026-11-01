@@ -1,4 +1,5 @@
-using Authentication.DomainService.Dtos;
+﻿using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Authentication.LoginPolicies;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
@@ -32,6 +33,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IRefreshSessionResolver _refreshSessionResolver;
         private readonly IUnknownUserLoginGuard _unknownUserLoginGuard;
+        private readonly ILoginPolicyService _loginPolicy;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
@@ -43,7 +45,8 @@ namespace Authentication.DomainService.Authentication
             ILogger<AuthenticationFlowService> logger,
             IRefreshTokenRepository refreshTokenRepository,
             IRefreshSessionResolver refreshSessionResolver,
-            IUnknownUserLoginGuard unknownUserLoginGuard)
+            IUnknownUserLoginGuard unknownUserLoginGuard,
+            ILoginPolicyService loginPolicy)
         {
             _authenticationRepository = authenticationRepository;
             _authStrategy = authStrategy;
@@ -55,6 +58,7 @@ namespace Authentication.DomainService.Authentication
             _refreshTokenRepository = refreshTokenRepository;
             _refreshSessionResolver = refreshSessionResolver;
             _unknownUserLoginGuard = unknownUserLoginGuard;
+            _loginPolicy = loginPolicy;
         }
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
@@ -67,6 +71,13 @@ namespace Authentication.DomainService.Authentication
                     StatusCode = StatusCodes.Status400BadRequest,
                     Error = OAuthError.AuthConfigMissing
                 };
+            }
+
+            // Checked before MFA completion too: a method turned off between the two steps stops here.
+            var policy = await _loginPolicy.CheckAsync(LoginChannel.Embedded, LoginMethods.Password);
+            if (!policy.IsAllowed)
+            {
+                return LoginNotAllowed(policy);
             }
 
             // MFA verification is identified solely by the mfa_id/mfa_code, and the account is
@@ -175,6 +186,12 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
+            var policy = await _loginPolicy.CheckAsync(LoginChannel.Embedded, LoginMethods.Social);
+            if (!policy.IsAllowed)
+            {
+                return LoginNotAllowed(policy);
+            }
+
             if (IsSocialMfaVerificationRequest(request))
             {
                 return await ExecuteMfaVerificationAsync(
@@ -228,6 +245,13 @@ namespace Authentication.DomainService.Authentication
                 TokenResponse = await _authStrategy.AuthenticateSocialAsync(tokenRequest, configuration)
             };
         }
+
+        private static AuthenticationFlowResult LoginNotAllowed(LoginPolicyDecision decision) => new()
+        {
+            StatusCode = StatusCodes.Status403Forbidden,
+            Error = LoginPolicyRules.Error,
+            ErrorDescription = decision.Message
+        };
 
         private static bool IsEmbeddedMfaVerificationRequest(EmbeddedLoginRequest request)
         {
@@ -565,7 +589,14 @@ namespace Authentication.DomainService.Authentication
             // One shared check decides validity: unrevoked, inside the sliding window and inside the
             // absolute cap. A cache miss is not evidence of replay, and a token rotated away moments ago
             // resolves to its successor rather than failing.
-            var tokenCache = await _refreshSessionResolver.TryResolveRefreshSessionAsync(refreshToken, configuration);
+            var resolution = await _refreshSessionResolver.ResolveRefreshSessionAsync(refreshToken, configuration, followImpersonationTransitions: false);
+            var tokenCache = resolution.Session;
+
+            if (resolution.SessionChanged)
+            {
+                // Not cleared: the cookie may already hold the token the impersonation change issued.
+                return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = OAuthError.SessionChanged });
+            }
 
             if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
             {
@@ -612,17 +643,8 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
             }
 
-            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
-            {
-                return new ObjectResult(new
-                {
-                    error = OAuthError.AccountLocked,
-                    error_description = "Account is temporarily locked due to failed authentication attempts"
-                })
-                {
-                    StatusCode = StatusCodes.Status423Locked
-                };
-            }
+            // A lock stops new sign-ins (password guessing), not sessions that already exist: otherwise
+            // anyone who knows an email could sign that user out everywhere with a few wrong passwords.
 
             // A deactivated or suspended account must not mint new tokens from a refresh token it
             // obtained while still active (same guard as /oidc/token).
@@ -640,7 +662,11 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.RefreshToken,
-                OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
+                // A hint, re-resolved against current membership at mint, as on /oidc/token. A blank
+                // stays blank: collapsing it to "default" would move a lineage that lost its
+                // organization into the tenant-wide scope for any user who holds "default", now that
+                // a requested "default" is honoured for its members.
+                OrganizationId = tokenCache.OrganizationId ?? string.Empty,
                 // Keep the lineage's OIDC client on the successor (empty stays empty: nothing is repaired).
                 ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,

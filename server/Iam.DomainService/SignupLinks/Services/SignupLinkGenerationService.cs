@@ -85,7 +85,10 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
 
         if (config.Mode == SignupLinkMode.Oidc)
         {
-            var clientError = await ValidateClientAndRedirectAsync(clientId, redirectUri);
+            var source = string.IsNullOrWhiteSpace(request.ClientId)
+                ? SignupLinkClientSource.StoredConfiguration
+                : SignupLinkClientSource.GenerateRequest;
+            var clientError = await ValidateClientAndRedirectAsync(clientId, redirectUri, source);
             if (clientError != null)
             {
                 return clientError;
@@ -366,22 +369,19 @@ public class SignupLinkGenerationService : ISignupLinkGenerationService
         return $"{baseUrl}/oidc/invitation/{tenantId}#link={code}";
     }
 
-    private async Task<GenerateSignupLinkResult?> ValidateClientAndRedirectAsync(string clientId, string redirectUri)
+    /// <summary>
+    /// Re-checked on every generation, not trusted from when the configuration was saved: the
+    /// client can be deleted, disabled or unregistered since, and a link generated then would
+    /// only ever answer invalid_link.
+    /// </summary>
+    private async Task<GenerateSignupLinkResult?> ValidateClientAndRedirectAsync(
+        string clientId,
+        string redirectUri,
+        SignupLinkClientSource source)
     {
         var client = await _oidcLookup.GetByClientIdAsync(clientId);
-        if (client == null || !client.IsActive)
-        {
-            return GenerateSignupLinkResult.Fail(400, "ClientId", "Client not found or inactive");
-        }
-
-        var registered = client.RedirectUris.Any(u =>
-            string.Equals(u, redirectUri, StringComparison.Ordinal));
-        if (!registered)
-        {
-            return GenerateSignupLinkResult.Fail(400, "RedirectUri", "RedirectUri is not registered for this client");
-        }
-
-        return null;
+        var problem = SignupLinkConfigurationValidation.FindClientProblem(client, clientId, redirectUri, source);
+        return problem is { } p ? GenerateSignupLinkResult.Fail(400, p.Field, p.Message) : null;
     }
 
     public static (string? OrganizationId, string? Error) ResolveOrganization(

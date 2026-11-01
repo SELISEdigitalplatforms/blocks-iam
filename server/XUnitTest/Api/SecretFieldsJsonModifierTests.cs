@@ -29,9 +29,11 @@ namespace XUnitTest.ApiTests
         [Fact]
         public void ClientCredential_HasNoSecretKey()
         {
-            var json = Write(new ClientCredential { ItemId = "cc-1", Name = "svc", ClientSecret = "cc-secret" }).AsObject();
+            var json = Write(new ClientCredential { ItemId = "cc-1", Name = "svc", ClientSecret = "cc-secret", ClientSecretReference = "cs-ref" }).AsObject();
 
             json.ContainsKey("clientSecret").Should().BeFalse();
+            json.ContainsKey("clientSecretReference").Should().BeFalse();
+            json.ToJsonString().Should().NotContain("cs-ref");
             json["itemId"]!.GetValue<string>().Should().Be("cc-1");
         }
 
@@ -46,11 +48,11 @@ namespace XUnitTest.ApiTests
         [Fact]
         public void OidcClientResponses_HaveNoSecretKey()
         {
-            var one = Write(new GetOIDCClientResponse { IsSuccess = true, oIDCClientCredential = new OidcClientRegistration { ItemId = "c1", ClientId = "c1", ClientSecret = "oidc-secret" } });
-            var many = Write(new GetOIDCClientsResponse { IsSuccess = true, oIDCClientCredentials = [new() { ItemId = "c1", ClientId = "c1", ClientSecret = "oidc-secret" }] });
+            var one = Write(new GetOIDCClientResponse { IsSuccess = true, oIDCClientCredential = new OidcClientRegistration { ItemId = "c1", ClientId = "c1", ClientSecret = "oidc-secret", ClientSecretReference = "oidc-ref" } });
+            var many = Write(new GetOIDCClientsResponse { IsSuccess = true, oIDCClientCredentials = [new() { ItemId = "c1", ClientId = "c1", ClientSecret = "oidc-secret", ClientSecretReference = "oidc-ref" }] });
 
-            one.ToJsonString().Should().NotContain("clientSecret").And.NotContain("oidc-secret").And.Contain("\"clientId\":\"c1\"");
-            many.ToJsonString().Should().NotContain("clientSecret").And.NotContain("oidc-secret");
+            one.ToJsonString().Should().NotContain("clientSecret").And.NotContain("oidc-secret").And.NotContain("oidc-ref").And.Contain("\"clientId\":\"c1\"");
+            many.ToJsonString().Should().NotContain("clientSecret").And.NotContain("oidc-secret").And.NotContain("oidc-ref");
         }
 
         [Fact]
@@ -59,9 +61,27 @@ namespace XUnitTest.ApiTests
             // The controller returns new { data = providers, isSuccess = true }.
             var json = Write(new { data = new List<IdentityProvider> { Idp() }, isSuccess = true }).ToJsonString();
 
-            json.Should().NotContain("clientSecret").And.NotContain("privateKey")
+            // The *Reference fields carry a secret's name, never its value, so only the exact keys are checked.
+            json.Should().NotContain("\"clientSecret\"").And.NotContain("\"privateKey\"")
                 .And.NotContain("idp-secret").And.NotContain("apple-key")
                 .And.Contain("\"clientId\":\"cid\"");
+        }
+
+        [Fact]
+        public void IdentityProvider_WithSecretReferences_OmitsAllFourSecretFields()
+        {
+            // #649 H12, E8: the Blocks Secrets reference ids are hidden like the secrets themselves.
+            var provider = Idp();
+            provider.ClientSecretReference = "cs-ref-1";
+            provider.PrivateKeyReference = "pk-ref-1";
+
+            var single = Write(provider).AsObject();
+            var wrapped = Write(new { data = new List<IdentityProvider> { provider }, isSuccess = true }).ToJsonString();
+
+            single.Select(p => p.Key).Should().NotContain(new[] { "clientSecret", "privateKey", "clientSecretReference", "privateKeyReference" });
+            single["clientId"]!.GetValue<string>().Should().Be("cid");
+            wrapped.Should().NotContain("cs-ref-1").And.NotContain("pk-ref-1").And.NotContain("Reference")
+                .And.NotContain("idp-secret").And.NotContain("apple-key");
         }
 
         [Fact]

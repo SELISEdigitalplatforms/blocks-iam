@@ -14,9 +14,15 @@ public static class SecretFieldsJsonModifier
 {
     private static readonly Dictionary<Type, string[]> SecretProperties = new()
     {
-        [typeof(ClientCredential)] = [nameof(ClientCredential.ClientSecret)],
-        [typeof(OidcClientRegistration)] = [nameof(OidcClientRegistration.ClientSecret)],
-        [typeof(IdentityProvider)] = [nameof(IdentityProvider.ClientSecret), nameof(IdentityProvider.PrivateKey)],
+        [typeof(ClientCredential)] = [nameof(ClientCredential.ClientSecret), nameof(ClientCredential.ClientSecretReference)],
+        [typeof(OidcClientRegistration)] = [nameof(OidcClientRegistration.ClientSecret), nameof(OidcClientRegistration.ClientSecretReference)],
+        [typeof(IdentityProvider)] =
+        [
+            nameof(IdentityProvider.ClientSecret),
+            nameof(IdentityProvider.PrivateKey),
+            nameof(IdentityProvider.ClientSecretReference),
+            nameof(IdentityProvider.PrivateKeyReference),
+        ],
     };
 
     public static void Apply(JsonTypeInfo typeInfo)

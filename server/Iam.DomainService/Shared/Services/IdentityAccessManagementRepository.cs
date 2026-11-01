@@ -276,6 +276,15 @@ namespace Iam.DomainService.Services
                     .Set(t => t.LastUpdatedDate, tenantConfiguration.LastUpdatedDate));
         }
 
+        public async Task SaveLoginPolicyAsync(TenantLoginPolicy loginPolicy, string? updatedBy)
+        {
+            await _tenantConfigurationStore.UpdateAsync(
+                Builders<TenantConfiguration>.Update
+                    .Set(t => t.LoginPolicy, loginPolicy)
+                    .Set(t => t.LastUpdatedBy, updatedBy)
+                    .Set(t => t.LastUpdatedDate, DateTime.UtcNow));
+        }
+
         public async Task<IamTenantConfiguration> GetTenantConfigurationAsync()
         {
             return (await _tenantConfigurationStore.ReadAsync())!;

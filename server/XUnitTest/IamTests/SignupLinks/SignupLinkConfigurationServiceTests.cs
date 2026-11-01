@@ -37,7 +37,8 @@ public class SignupLinkConfigurationServiceTests : IDisposable
             .ReturnsAsync(new OidcClientRegistrationInfo(
                 "construct-web",
                 ["https://construct.example.com/callback"],
-                true));
+                true,
+                IdentityProvider: OidcIdentityProviderState.Active));
         _resources.Setup(r => r.GetNonArchivedRolesBySlugAsync("site-manager"))
             .ReturnsAsync([new Role { Slug = "site-manager", Name = "Site Manager" }]);
         _repo.Setup(r => r.FindByNameAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
@@ -238,13 +239,74 @@ public class SignupLinkConfigurationServiceTests : IDisposable
         _oidc.Setup(o => o.GetByClientIdAsync("construct-web")).ReturnsAsync((OidcClientRegistrationInfo?)null);
         var missing = await Sut().CreateAsync(ValidCreate());
         missing.IsSuccess.Should().BeFalse();
-        missing.Errors!["ClientId"].Should().Be("Client not found or inactive");
+        missing.Errors!["ClientId"].Should().Be("The OIDC client 'construct-web' does not exist. Choose an existing client.");
         _repo.Verify(r => r.InsertAsync(It.IsAny<SignupLinkConfiguration>()), Times.Never);
 
         _oidc.Setup(o => o.GetByClientIdAsync("construct-web"))
             .ReturnsAsync(new OidcClientRegistrationInfo("construct-web", ["https://construct.example.com/callback"], false));
         var inactive = await Sut().CreateAsync(ValidCreate());
-        inactive.Errors!["ClientId"].Should().Be("Client not found or inactive");
+        inactive.Errors!["ClientId"].Should().Be("The OIDC client 'construct-web' is disabled. Enable it or choose another client.");
+    }
+
+    [Theory]
+    [InlineData(OidcIdentityProviderState.None,
+        "The OIDC client 'construct-web' is not registered as a Blocks OIDC identity provider. Register it or choose another client.")]
+    [InlineData(OidcIdentityProviderState.Inactive,
+        "The Blocks OIDC identity provider for client 'construct-web' is inactive. Activate it or choose another client.")]
+    public async Task ClientWithoutActiveIdentityProvider_RejectedOnCreate(OidcIdentityProviderState state, string message)
+    {
+        // Redemption ends at /idp/callback, which needs the provider; without one every link
+        // from this configuration would only ever answer invalid_link.
+        _oidc.Setup(o => o.GetByClientIdAsync("construct-web"))
+            .ReturnsAsync(new OidcClientRegistrationInfo("construct-web", ["https://construct.example.com/callback"], true, IdentityProvider: state));
+
+        var result = await Sut().CreateAsync(ValidCreate());
+
+        result.IsSuccess.Should().BeFalse();
+        result.Errors!["ClientId"].Should().Be(message);
+        _repo.Verify(r => r.InsertAsync(It.IsAny<SignupLinkConfiguration>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ClientWithoutIdentityProvider_RejectedOnPatch()
+    {
+        var existing = Stored();
+        _repo.Setup(r => r.GetByIdAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
+        _oidc.Setup(o => o.GetByClientIdAsync("construct-web"))
+            .ReturnsAsync(new OidcClientRegistrationInfo("construct-web", ["https://construct.example.com/callback"], true));
+
+        // The console sends the mode on every PATCH, which is what makes the client re-checked.
+        var result = await Sut().UpdateAsync(existing.ItemId, new UpdateSignupLinkConfigurationRequest
+        {
+            Mode = SignupLinkMode.Oidc,
+            Name = "Renamed"
+        });
+
+        result.IsSuccess.Should().BeFalse();
+        result.Errors!["ClientId"].Should().Be(
+            "The OIDC client 'construct-web' is not registered as a Blocks OIDC identity provider. Register it or update the signup link configuration.");
+        _repo.Verify(r => r.ReplaceAsync(It.IsAny<SignupLinkConfiguration>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Rename_WhenTheStoredClientWasDeleted_IsRefused_AndSaysWhatToFix()
+    {
+        var existing = Stored();
+        _repo.Setup(r => r.GetByIdAsync(existing.ItemId, TenantId)).ReturnsAsync(existing);
+        _oidc.Setup(o => o.GetByClientIdAsync("construct-web")).ReturnsAsync((OidcClientRegistrationInfo?)null);
+
+        // Decision D6: an unrelated edit still re-checks the stored client, so a configuration
+        // that can no longer produce working links is fixed on its next save.
+        var result = await Sut().UpdateAsync(existing.ItemId, new UpdateSignupLinkConfigurationRequest
+        {
+            Mode = SignupLinkMode.Oidc,
+            Name = "Renamed"
+        });
+
+        result.IsSuccess.Should().BeFalse();
+        result.Errors!["ClientId"].Should().Be(
+            "The OIDC client 'construct-web' no longer exists. Update the signup link configuration to use an existing client.");
+        _repo.Verify(r => r.ReplaceAsync(It.IsAny<SignupLinkConfiguration>()), Times.Never);
     }
 
     [Fact]
@@ -252,7 +314,8 @@ public class SignupLinkConfigurationServiceTests : IDisposable
     {
         var create = await Sut().CreateAsync(ValidCreate(r => r.RedirectUri = "https://attacker.example.com/callback"));
         create.IsSuccess.Should().BeFalse();
-        create.Errors!["RedirectUri"].Should().Be("RedirectUri is not registered for this client");
+        create.Errors!["RedirectUri"].Should().Be(
+            "The redirect URI 'https://attacker.example.com/callback' is not registered on OIDC client 'construct-web'. Choose one of its registered redirect URIs.");
         _repo.Verify(r => r.InsertAsync(It.IsAny<SignupLinkConfiguration>()), Times.Never);
 
         var existing = Stored();
@@ -262,7 +325,8 @@ public class SignupLinkConfigurationServiceTests : IDisposable
         {
             RedirectUri = "https://attacker.example.com/callback"
         });
-        patch.Errors!["RedirectUri"].Should().Be("RedirectUri is not registered for this client");
+        patch.Errors!["RedirectUri"].Should().Be(
+            "The redirect URI 'https://attacker.example.com/callback' is not registered on OIDC client 'construct-web'. Choose one of its registered redirect URIs.");
         _repo.Verify(r => r.ReplaceAsync(It.IsAny<SignupLinkConfiguration>()), Times.Never);
     }
 

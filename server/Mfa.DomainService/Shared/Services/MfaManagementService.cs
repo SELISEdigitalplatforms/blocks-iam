@@ -134,6 +134,10 @@ namespace Mfa.DomainService.Services
 
             await _mfaRepository.UpdatePartialAsync<UserMfaInfo>(request.UserId, updates, "Users");
 
+            // A disabled authenticator must not keep working: the old secret goes, and the next
+            // setup makes a new one.
+            await _mfaRepository.DeleteItemsAsync<UserTotpDetail>(t => t.CreatedBy == request.UserId);
+
             if (isAdmin)
             {
                 await WriteAuditAsync("mfa_reset", request.UserId, previousInfo?.UserMfaType ?? UserMfaType.None, "success",

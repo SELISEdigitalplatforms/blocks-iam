@@ -1,3 +1,4 @@
+using Blocks.Secrets;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
@@ -30,6 +31,7 @@ namespace XUnitTest.Auth
         private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<ITokenRevocationRepository> _tokenRevocation = new();
         private readonly Mock<ICacheClient> _cache = new();
+        private readonly Mock<ISecretService> _oidcSecrets = new(MockBehavior.Strict);
 
         public AuthorizationCodeExchangeServiceTests()
         {
@@ -323,6 +325,42 @@ namespace XUnitTest.Auth
             _authCodeRepo.Verify(r => r.TryConsumeAsync(It.Is<AuthorizationCodeModel>(c => c.Code == "auth-code")), Times.Once);
         }
 
+        private static OidcClientRegistration ReferencedConfidentialClient()
+        {
+            var client = ConfidentialClient();
+            client.ClientSecret = string.Empty;
+            client.ClientSecretReference = "oidc-ref";
+            return client;
+        }
+
+        [Fact]
+        public async Task Exchange_ConfidentialClient_ReferencedSecret_IsReadFromTheStore_AndPasses()
+        {
+            SetupValidExchange(ReferencedConfidentialClient());
+            _oidcSecrets.Setup(s => s.GetValueAsync("oidc-ref", It.IsAny<CancellationToken>())).ReturnsAsync("s3cret");
+
+            var result = await Create().ExchangeAsync(BuildContext(clientSecret: "s3cret").Request);
+
+            result.Should().NotBeOfType<UnauthorizedObjectResult>();
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.Is<AuthorizationCodeModel>(c => c.Code == "auth-code")), Times.Once);
+        }
+
+        [Fact]
+        public async Task Exchange_ConfidentialClient_UnreadableSecret_Returns503_AndConsumesNoCode()
+        {
+            // An unreachable store is not a wrong secret: the client retries instead of rotating credentials.
+            SetupValidExchange(ReferencedConfidentialClient());
+            _oidcSecrets.Setup(s => s.GetValueAsync("oidc-ref", It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new SecretVaultException("down", "get", "oidc-ref"));
+
+            var result = await Create().ExchangeAsync(BuildContext(clientSecret: "s3cret").Request);
+
+            var unavailable = result.Should().BeOfType<ObjectResult>().Subject;
+            unavailable.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+            Prop(unavailable.Value, "error").Should().Be("temporarily_unavailable");
+            _authCodeRepo.Verify(r => r.TryConsumeAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
         [Fact]
         public async Task Exchange_ConfidentialClient_SecretInBasicHeader_Passes()
         {
@@ -404,7 +442,7 @@ namespace XUnitTest.Auth
 
         private AuthorizationCodeExchangeService Create() =>
             new(_authCodeRepo.Object, _refreshTokenRepo.Object, _tokenService.Object, _pkce.Object,
-                _userRepo.Object, _claimsResolver.Object, _repo.Object, _tenants.Object, _tokenRevocation.Object, _cache.Object,
+                _userRepo.Object, _claimsResolver.Object, _repo.Object, XUnitTest.TestDoubles.OidcClientSecretTestDoubles.Resolver(_oidcSecrets), _tenants.Object, _tokenRevocation.Object, _cache.Object,
                 NullLogger<AuthorizationCodeExchangeService>.Instance);
 
         private static DefaultHttpContext BuildContext(

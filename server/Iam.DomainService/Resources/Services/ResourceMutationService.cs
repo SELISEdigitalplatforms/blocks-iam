@@ -2549,7 +2549,8 @@ namespace Iam.DomainService.Resources
                         ? "Default roles and permissions were set up for the new organization."
                         : "Default roles or permissions could not be set up for the new organization.",
                     isSuccess: isSuccess,
-                    fields: new Dictionary<string, object?> { ["organizationId"] = command.OrganizationId })));
+                    fields: new Dictionary<string, object?> { ["organizationId"] = command.OrganizationId }),
+                command.OrganizationId));
         }
 
         private async Task<bool> CopyRoleFromDefault(string organizationId, string userId)

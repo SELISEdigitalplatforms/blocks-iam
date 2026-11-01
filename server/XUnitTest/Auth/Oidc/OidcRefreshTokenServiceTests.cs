@@ -45,6 +45,13 @@ namespace XUnitTest.Auth.Oidc
                 permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
                 userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
                 originalTenantId: "tenant-1", impersonationSessionId: null, applicationDomain: "test"));
+
+            // The refresh grant asks the resolver through ResolveRefreshSessionAsync. Routing it through the
+            // TryResolveRefreshSessionAsync setups lets each test state its session once.
+            _sessionResolver
+                .Setup(r => r.ResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>(), It.IsAny<bool>()))
+                .Returns(async (string token, IdentityConfiguration configuration, bool _) =>
+                    new RefreshSessionResolution(await _sessionResolver.Object.TryResolveRefreshSessionAsync(token, configuration), false));
         }
 
         public void Dispose()
@@ -154,6 +161,36 @@ namespace XUnitTest.Auth.Oidc
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             bad.Value.Should().BeEquivalentTo(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" });
+        }
+
+        [Fact]
+        public async Task Rotate_TokenReplacedByAnImpersonationChange_RefusesWithSessionChanged()
+        {
+            // The newest token is in another tenant: handing it back put a page in one tenant on another
+            // tenant's token behind an ordinary 200.
+            SetupClient();
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
+            _sessionResolver
+                .Setup(r => r.ResolveRefreshSessionAsync("rt-1", It.IsAny<IdentityConfiguration>(), false))
+                .ReturnsAsync(RefreshSessionResolution.Changed);
+
+            var result = await Create().RotateAsync(MakeRequest(FormWithToken()));
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            bad.Value.Should().BeEquivalentTo(new { error = "invalid_grant", error_description = OAuthError.SessionChanged });
+            _innerTokenMgr.Verify(m => m.ManageRefreshTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<JwtAccessToken>(), It.IsAny<IdentityConfiguration>(), It.IsAny<Tenant>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Rotate_NeverFollowsAnImpersonationChange()
+        {
+            SetupClient();
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
+
+            await Create().RotateAsync(MakeRequest(FormWithToken()));
+
+            _sessionResolver.Verify(r => r.ResolveRefreshSessionAsync("rt-1", It.IsAny<IdentityConfiguration>(), false), Times.Once);
+            _sessionResolver.Verify(r => r.ResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>(), true), Times.Never);
         }
 
         [Fact]

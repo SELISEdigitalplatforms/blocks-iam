@@ -42,6 +42,19 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
+        public void RegisterAllServices_RegistersTheIdentityProviderSecretResolverAsASingleton()
+        {
+            // #649: the domain services that take it are singletons; it opens a scope per secret call.
+            var services = Registered();
+
+            services.Should().ContainSingle(d =>
+                d.ServiceType == typeof(IIdentityProviderSecretResolver) &&
+                d.ImplementationType == typeof(IdentityProviderSecretResolver) &&
+                d.Lifetime == ServiceLifetime.Singleton);
+            services.Should().Contain(d => d.ServiceType == typeof(Blocks.Secrets.ISecretService) && d.Lifetime == ServiceLifetime.Scoped);
+        }
+
+        [Fact]
         public void RegisterAllServicesRegistersAccessGrantAndBindsItsMode()
         {
             var services = Registered();

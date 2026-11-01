@@ -21,5 +21,13 @@ namespace Iam.DomainService.Dtos
         /// true so messages already in flight during a deploy keep sending it.
         /// </summary>
         public bool SendMail { get; set; } = true;
+
+        /// <summary>
+        /// The signed-in user who sent the invitation and the organization it is for. They travel on the
+        /// message so a failed activation mail can be reported to the inviter. Null for self signup and for
+        /// messages queued before this existed: then nobody is told.
+        /// </summary>
+        public string? InvitedBy { get; set; }
+        public string? OrganizationId { get; set; }
     }
 }

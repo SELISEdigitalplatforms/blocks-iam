@@ -35,10 +35,11 @@ public interface ISignupLinkRedemptionOrchestrator
     /// <c>UserKeyMap.Value</c> carries <c>signup-link:{linkId}</c>. A no-op for ordinary
     /// invites and recoveries, whose Value is a URL and can never carry that prefix.
     /// <para>
-    /// Returns a non-null result when the link's configuration asked for
-    /// <c>SignInAfterActivation</c>: the caller should return it in place of the plain
-    /// activation response, because it carries the session (and, on an MFA account, the
-    /// challenge). Returns null when the activation was left to sign in normally.
+    /// A non-null result replaces the plain activation response. An OIDC link always gets one:
+    /// the <c>authorizeUrl</c> back into its client, carrying a link session when the
+    /// configuration asked for <c>SignInAfterActivation</c> and <c>prompt=login</c> otherwise.
+    /// An embedded link gets one only with <c>SignInAfterActivation</c>: the session (or, on an
+    /// MFA account, the challenge). Null leaves the activation to sign in normally.
     /// </para>
     /// </summary>
     Task<IActionResult?> CompleteActivationAsync(

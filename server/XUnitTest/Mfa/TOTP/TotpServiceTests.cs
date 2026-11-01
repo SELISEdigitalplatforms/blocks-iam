@@ -1,6 +1,5 @@
 ﻿using System.Text.Json;
 using Blocks.Genesis;
-using DomainService.Storage;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -13,66 +12,10 @@ using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Moq;
-using StorageDriver;
 using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Mfa.TOTP
 {
-    /// <summary>
-    /// A minimal loopback HTTP server for tests exercising the QR-code upload's provider PUT,
-    /// which builds its own <see cref="HttpClient"/> internally rather than taking an injectable
-    /// factory - so the only way to observe the PUT's outcome is to actually receive it.
-    /// </summary>
-    internal sealed class TestHttpServer : IDisposable
-    {
-        private readonly System.Net.HttpListener _listener;
-        private readonly Task _acceptLoop;
-
-        public string Url { get; }
-
-        public TestHttpServer(System.Net.HttpStatusCode respondWith)
-        {
-            var port = GetFreeTcpPort();
-            Url = $"http://127.0.0.1:{port}/upload";
-            _listener = new System.Net.HttpListener();
-            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-            _listener.Start();
-
-            _acceptLoop = Task.Run(async () =>
-            {
-                try
-                {
-                    var context = await _listener.GetContextAsync();
-                    context.Response.StatusCode = (int)respondWith;
-                    context.Response.Close();
-                }
-                catch (System.Net.HttpListenerException)
-                {
-                    // Listener stopped while awaiting a request - fine, the test is tearing down.
-                }
-                catch (ObjectDisposedException)
-                {
-                    // Same as above.
-                }
-            });
-        }
-
-        private static int GetFreeTcpPort()
-        {
-            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-            listener.Start();
-            var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-            listener.Stop();
-            return port;
-        }
-
-        public void Dispose()
-        {
-            _listener.Stop();
-            _listener.Close();
-        }
-    }
-
     public class TotpServiceTests
     {
         private static IHttpContextAccessor BuildHttpContextAccessor(string? authorization = "Bearer test-token", string? xBlocksKey = "key-1")
@@ -94,7 +37,6 @@ namespace XUnitTest.Mfa.TOTP
             out Mock<ICacheClient> cache,
             out Mock<IValidator<VerifyOtpRequest>> validator,
             out Mock<ITenants> tenants,
-            out Mock<IStorageDriverService> storage,
             out IConfiguration configuration,
             out IHttpContextAccessor httpContext)
         {
@@ -102,7 +44,6 @@ namespace XUnitTest.Mfa.TOTP
             cache = new Mock<ICacheClient>();
             validator = new Mock<IValidator<VerifyOtpRequest>>();
             tenants = new Mock<ITenants>();
-            storage = new Mock<IStorageDriverService>();
 
             var configBuilder = new ConfigurationBuilder();
             configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
@@ -120,14 +61,13 @@ namespace XUnitTest.Mfa.TOTP
                 configuration,
                 cache.Object,
                 validator.Object,
-                tenants.Object,
-                storage.Object);
+                tenants.Object);
         }
 
         [Fact]
         public async Task GenerateAsync_AddsUserIdToCache_With15MinTtl_ReturnsMfaId()
         {
-            var service = CreateService(out _, out var cache, out _, out _, out _, out _, out _);
+            var service = CreateService(out _, out var cache, out _, out _, out _, out _);
             var user = new UserInfo { ItemId = "u1" };
 
             string? capturedKey = null;
@@ -149,7 +89,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task GenerateAsync_WithNullUserItemId_StoresEmptyString()
         {
-            var service = CreateService(out _, out var cache, out _, out _, out _, out _, out _);
+            var service = CreateService(out _, out var cache, out _, out _, out _, out _);
             string? capturedValue = null;
             cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()))
                 .Callback<string, string, long>((_, v, _) => capturedValue = v)
@@ -163,7 +103,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task VerifyAsync_WhenValidatorFails_ReturnsValidationErrors()
         {
-            var service = CreateService(out _, out var cache, out var validator, out _, out _, out _, out _);
+            var service = CreateService(out _, out var cache, out var validator, out _, out _, out _);
             validator.Setup(v => v.ValidateAsync(It.IsAny<VerifyOtpRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult(new List<ValidationFailure>
                 {
@@ -179,7 +119,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task VerifyAsync_WhenCacheKeyMissing_ReturnsLoginSessionExpiredError()
         {
-            var service = CreateService(out _, out var cache, out var validator, out _, out _, out _, out _);
+            var service = CreateService(out _, out var cache, out var validator, out _, out _, out _);
             validator.Setup(v => v.ValidateAsync(It.IsAny<VerifyOtpRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             cache.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync(false);
@@ -192,7 +132,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task VerifyAsync_WhenTotpInfoNull_ReturnsTotpNotSetupError()
         {
-            var service = CreateService(out var repo, out var cache, out var validator, out _, out _, out _, out _);
+            var service = CreateService(out var repo, out var cache, out var validator, out _, out _, out _);
             validator.Setup(v => v.ValidateAsync(It.IsAny<VerifyOtpRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             cache.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
@@ -208,7 +148,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task VerifyAsync_WhenTotpInfoSecretEmpty_ReturnsTotpNotSetupError()
         {
-            var service = CreateService(out var repo, out var cache, out var validator, out _, out _, out _, out _);
+            var service = CreateService(out var repo, out var cache, out var validator, out _, out _, out _);
             validator.Setup(v => v.ValidateAsync(It.IsAny<VerifyOtpRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             cache.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
@@ -224,7 +164,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task VerifyAsync_WhenTotpCodeInvalid_ReturnsInvalid()
         {
-            var service = CreateService(out var repo, out var cache, out var validator, out _, out _, out _, out _);
+            var service = CreateService(out var repo, out var cache, out var validator, out _, out _, out _);
             validator.Setup(v => v.ValidateAsync(It.IsAny<VerifyOtpRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             cache.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
@@ -240,7 +180,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task VerifyForUserAsync_WhenUserIdOrCodeEmpty_ReturnsError()
         {
-            var service = CreateService(out _, out _, out _, out _, out _, out _, out _);
+            var service = CreateService(out _, out _, out _, out _, out _, out _);
             var r1 = await service.VerifyForUserAsync("", "123456");
             r1.Errors.Should().ContainKey("invalid_request");
 
@@ -251,7 +191,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task VerifyForUserAsync_WhenNoExistingSecret_ReturnsTotpNotSetupError()
         {
-            var service = CreateService(out var repo, out _, out _, out _, out _, out _, out _);
+            var service = CreateService(out var repo, out _, out _, out _, out _, out _);
             repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync((UserTotpDetail?)null);
 
@@ -263,7 +203,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task VerifyForUserAsync_WhenSecretEmpty_ReturnsTotpNotSetupError()
         {
-            var service = CreateService(out var repo, out _, out _, out _, out _, out _, out _);
+            var service = CreateService(out var repo, out _, out _, out _, out _, out _);
             repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync(new UserTotpDetail { Secret = "" });
 
@@ -275,7 +215,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task VerifyForUserAsync_WhenCodeValid_ReturnsValid()
         {
-            var service = CreateService(out var repo, out _, out _, out _, out _, out _, out _);
+            var service = CreateService(out var repo, out _, out _, out _, out _, out _);
             repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync(new UserTotpDetail { Secret = "JBSWY3DPEHPK3PXP" });
 
@@ -287,7 +227,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task VerifyForUserAsync_WhenCodeInvalid_ReturnsInvalid()
         {
-            var service = CreateService(out var repo, out _, out _, out _, out _, out _, out _);
+            var service = CreateService(out var repo, out _, out _, out _, out _, out _);
             repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync(new UserTotpDetail { Secret = "JBSWY3DPEHPK3PXP" });
 
@@ -300,7 +240,7 @@ namespace XUnitTest.Mfa.TOTP
         [Fact]
         public async Task GenerateTotpImageByUserAsync_WhenUserInfoNull_ReturnsUserNotExistError()
         {
-            var service = CreateService(out var repo, out _, out _, out _, out _, out _, out _);
+            var service = CreateService(out var repo, out _, out _, out _, out _, out _);
             repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync((UserInfo?)null);
 
@@ -309,121 +249,74 @@ namespace XUnitTest.Mfa.TOTP
             result.Errors.Should().ContainKey("user_not_exist");
         }
 
-        [Fact]
-        public async Task GenerateTotpImageByUserAsync_WhenExistingOtpInfo_HasImageUri_ReturnsExistingWithoutUploading()
+        private static void SetupUser(Mock<IMfaManagementRepository> repo, UserInfo user, UserTotpDetail? existing)
         {
-            var service = CreateService(out var repo, out _, out _, out _, out var storage, out _, out _);
             repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
+                .ReturnsAsync(user);
             repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserTotpDetail { ImageUri = "https://img.test/qr.png", Secret = "JBSWY3DPEHPK3PXP" });
-
-            var result = await service.GenerateTotpImageByUserAsync("u1");
-
-            result.IsSuccess.Should().BeTrue();
-            result.QrImageUrl.Should().Be("https://img.test/qr.png");
-            result.QrCode.Should().Be("JBSWY3DPEHPK3PXP");
-            storage.Verify(s => s.GetPerSignedUrlForUploadAsync(It.IsAny<GetPreSignedUrlForUploadRequest>()), Times.Never);
+                .ReturnsAsync(existing!);
         }
 
         [Fact]
-        public async Task GenerateTotpImageByUserAsync_WhenPreSignedUrlEmpty_ReturnsConfigurationError()
+        public async Task GenerateTotpImageByUserAsync_WhenTotpIsActive_IsRefused_AndReturnsNoSecret()
         {
-            var service = CreateService(out var repo, out _, out _, out var tenants, out var storage, out _, out _);
-            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
-            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync((UserTotpDetail?)null);
+            var service = CreateService(out var repo, out _, out _, out _, out _, out _);
+            SetupUser(repo, new UserInfo { ItemId = "u1", MfaEnabled = true, UserMfaType = UserMfaType.TOTP },
+                new UserTotpDetail { Secret = "JBSWY3DPEHPK3PXP", CreatedBy = "u1" });
+
+            var result = await service.GenerateTotpImageByUserAsync("u1");
+
+            result.Errors.Should().ContainKey("totp_already_enabled");
+            result.QrCode.Should().BeNullOrEmpty();
+            result.QrImageUrl.Should().BeNullOrEmpty();
+        }
+
+        [Fact]
+        public async Task GenerateTotpImageByUserAsync_NewSetup_ReturnsInlineQr_AndStoresNoImageFile()
+        {
+            var service = CreateService(out var repo, out _, out _, out var tenants, out _, out _);
+            SetupUser(repo, new UserInfo { ItemId = "u1", Email = "u1@e.com" }, null);
             tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
-            storage.Setup(s => s.GetPerSignedUrlForUploadAsync(It.IsAny<GetPreSignedUrlForUploadRequest>()))
-                .ReturnsAsync(new GetPreSignedUrlForUploadResponse { UploadUrl = string.Empty });
-
-            var result = await service.GenerateTotpImageByUserAsync("u1");
-
-            result.IsSuccess.Should().BeFalse();
-            result.Errors.Should().ContainKey("configuration_not_exit");
-        }
-
-        private static Tenant TenantWithApplication() => new()
-        {
-            DbConnectionString = "mongodb://x",
-            JwtTokenParameters = new JwtTokenParameters { IssueDate = DateTime.UtcNow, PrivateCertificatePassword = "priv" },
-            Applications = new List<Applications> { new() { Domain = "https://app.example.com" } },
-        };
-
-        [Fact]
-        public async Task GenerateTotpImageByUserAsync_SkipsCompletion_WhenNotRequired()
-        {
-            var service = CreateService(out var repo, out _, out _, out var tenants, out var storage, out _, out _);
-            using var server = new TestHttpServer(System.Net.HttpStatusCode.Created);
-            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
-            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync((UserTotpDetail?)null);
-            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApplication());
-            storage.Setup(s => s.GetPerSignedUrlForUploadAsync(It.IsAny<GetPreSignedUrlForUploadRequest>()))
-                .ReturnsAsync(new GetPreSignedUrlForUploadResponse { UploadUrl = server.Url, UploadCompletionRequired = false });
-            storage.Setup(s => s.GetUrlForDownloadFileAsync(It.IsAny<GetFileRequest>()))
-                .ReturnsAsync(new FileResponse { IsSuccess = true, Url = "https://img.test/qr.png" });
-            repo.Setup(r => r.SaveAsync(It.IsAny<UserTotpDetail>(), It.IsAny<string>())).Returns(Task.CompletedTask);
+            UserTotpDetail? saved = null;
+            repo.Setup(r => r.SaveAsync(It.IsAny<UserTotpDetail>(), It.IsAny<string>()))
+                .Callback<UserTotpDetail, string>((d, _) => saved = d).Returns(Task.CompletedTask);
 
             var result = await service.GenerateTotpImageByUserAsync("u1");
 
             result.IsSuccess.Should().BeTrue();
-            storage.Verify(s => s.CompleteUploadAsync(It.IsAny<CompleteUploadRequest>()), Times.Never);
+            result.QrImageUrl.Should().StartWith("data:image/png;base64,");
+            saved.Should().NotBeNull();
+            saved!.ImageUri.Should().BeEmpty();
+            saved.Secret.Should().Be(result.QrCode);
         }
 
         [Fact]
-        public async Task GenerateTotpImageByUserAsync_CallsCompletion_AndSucceeds_WhenVerified()
+        public async Task GenerateTotpImageByUserAsync_OldSecretWithPublicQr_IsDeleted_AndReplaced()
         {
-            var service = CreateService(out var repo, out _, out _, out var tenants, out var storage, out _, out _);
-            using var server = new TestHttpServer(System.Net.HttpStatusCode.Created);
-            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
-            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync((UserTotpDetail?)null);
-            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApplication());
-            storage.Setup(s => s.GetPerSignedUrlForUploadAsync(It.IsAny<GetPreSignedUrlForUploadRequest>()))
-                .ReturnsAsync(new GetPreSignedUrlForUploadResponse { UploadUrl = server.Url, FileVersionId = "v1", UploadCompletionRequired = true });
-            storage.Setup(s => s.CompleteUploadAsync(It.Is<CompleteUploadRequest>(r => r.FileVersionId == "v1")))
-                .ReturnsAsync(new CompleteUploadResponse
-                {
-                    IsSuccess = true,
-                    VerificationStatus = Blocks.Genesis.Entities.Data.FileVerificationStatus.Verified,
-                });
-            storage.Setup(s => s.GetUrlForDownloadFileAsync(It.IsAny<GetFileRequest>()))
-                .ReturnsAsync(new FileResponse { IsSuccess = true, Url = "https://img.test/qr.png" });
-            repo.Setup(r => r.SaveAsync(It.IsAny<UserTotpDetail>(), It.IsAny<string>())).Returns(Task.CompletedTask);
+            var service = CreateService(out var repo, out _, out _, out var tenants, out _, out _);
+            SetupUser(repo, new UserInfo { ItemId = "u1", Email = "u1@e.com" },
+                new UserTotpDetail { Secret = "JBSWY3DPEHPK3PXP", ImageUri = "https://img.test/qr.png", CreatedBy = "u1", CreatedDate = DateTime.UtcNow });
+            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
 
             var result = await service.GenerateTotpImageByUserAsync("u1");
 
-            result.IsSuccess.Should().BeTrue();
-            result.QrImageUrl.Should().Be("https://img.test/qr.png");
+            result.QrCode.Should().NotBe("JBSWY3DPEHPK3PXP");
+            repo.Verify(r => r.DeleteItemsAsync(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>()), Times.Once);
         }
 
         [Fact]
-        public async Task GenerateTotpImageByUserAsync_ReturnsFailure_WhenCompletionRejects()
+        public async Task GenerateTotpImageByUserAsync_UnconfirmedSetupFromAMinuteAgo_KeepsTheSameSecret()
         {
-            var service = CreateService(out var repo, out _, out _, out var tenants, out var storage, out _, out _);
-            using var server = new TestHttpServer(System.Net.HttpStatusCode.Created);
-            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
-            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync((UserTotpDetail?)null);
-            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApplication());
-            storage.Setup(s => s.GetPerSignedUrlForUploadAsync(It.IsAny<GetPreSignedUrlForUploadRequest>()))
-                .ReturnsAsync(new GetPreSignedUrlForUploadResponse { UploadUrl = server.Url, FileVersionId = "v1", UploadCompletionRequired = true });
-            storage.Setup(s => s.CompleteUploadAsync(It.IsAny<CompleteUploadRequest>()))
-                .ReturnsAsync(new CompleteUploadResponse
-                {
-                    IsSuccess = true,
-                    VerificationStatus = Blocks.Genesis.Entities.Data.FileVerificationStatus.Rejected,
-                    RejectionReason = "real_file_type_mismatch",
-                });
+            // A page reload must not invalidate the QR the user may already have scanned.
+            var service = CreateService(out var repo, out _, out _, out var tenants, out _, out _);
+            SetupUser(repo, new UserInfo { ItemId = "u1", Email = "u1@e.com" },
+                new UserTotpDetail { Secret = "JBSWY3DPEHPK3PXP", ImageUri = string.Empty, CreatedBy = "u1", CreatedDate = DateTime.UtcNow.AddMinutes(-1) });
+            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
 
             var result = await service.GenerateTotpImageByUserAsync("u1");
 
-            result.IsSuccess.Should().BeFalse();
+            result.QrCode.Should().Be("JBSWY3DPEHPK3PXP");
+            repo.Verify(r => r.SaveAsync(It.IsAny<UserTotpDetail>(), It.IsAny<string>()), Times.Never);
         }
 
         // ---------- single use: mfa_id consumption and time-step replay ----------
@@ -434,7 +327,7 @@ namespace XUnitTest.Mfa.TOTP
         /// reports whether THIS call removed it, and the used-step marker behaves like SET NX.</summary>
         private static TotpService CreateStatefulService(out System.Collections.Concurrent.ConcurrentDictionary<string, string> sessions)
         {
-            var service = CreateService(out var repo, out var cache, out var validator, out _, out _, out _, out _);
+            var service = CreateService(out var repo, out var cache, out var validator, out _, out _, out _);
             var store = sessions = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
             var usedSteps = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>();
             validator.Setup(v => v.ValidateAsync(It.IsAny<VerifyOtpRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());

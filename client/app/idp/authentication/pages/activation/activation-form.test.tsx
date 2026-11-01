@@ -173,6 +173,32 @@ describe("ActivationForm", () => {
     );
   });
 
+  it("lets onActivated take over instead of the success page", async () => {
+    const response = { isSuccess: true, errors: null, authorizeUrl: "https://iam.example/api/oidc/authorize?x=1" };
+    h.mutateAsync.mockResolvedValue(response);
+    const onActivated = vi.fn(() => true);
+    const { container } = render(
+      <ActivationForm code="activation-code" tenantId="tenant-1" onActivated={onActivated} />,
+    );
+    fillValidPasswords(container);
+    fireEvent.submit(container.querySelector("form") as HTMLFormElement);
+    await vi.waitFor(() => expect(onActivated).toHaveBeenCalledWith(response));
+    expect(h.navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("still goes to the success page when onActivated declines", async () => {
+    h.mutateAsync.mockResolvedValue({ isSuccess: true, errors: null });
+    const onActivated = vi.fn(() => false);
+    const { container } = render(
+      <ActivationForm code="activation-code" tenantId="tenant-1" onActivated={onActivated} />,
+    );
+    fillValidPasswords(container);
+    fireEvent.submit(container.querySelector("form") as HTMLFormElement);
+    await vi.waitFor(() =>
+      expect(h.navigateMock).toHaveBeenCalledWith(expect.stringContaining("/oidc/activate-success")),
+    );
+  });
+
   describe("when the tenant turns the activation password step off", () => {
     const renderAuto = (props: Record<string, unknown> = {}) =>
       render(
