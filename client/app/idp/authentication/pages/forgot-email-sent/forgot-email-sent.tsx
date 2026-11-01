@@ -8,6 +8,7 @@ import { Link, useLocation } from "react-router"
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link"
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config"
 import { OidcThemedConfirmation } from "../oidc/oidc-themed-confirmation"
+import { useT } from "@seliseblocks/genesis-os/i18n"
 
 type ForgotEmailSentProps = {
   email: string
@@ -16,6 +17,7 @@ type ForgotEmailSentProps = {
 const SUPPORT_URL = "https://docs.seliseblocks.com/"
 
 export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
+  const { t } = useT("iam.password")
   const location = useLocation()
   const isOidc = location.pathname.startsWith("/oidc")
   const { data: oidcUiConfig } = useOidcUiConfig()
@@ -36,7 +38,7 @@ export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
       <OidcThemedConfirmation
         template={template}
         title={copy.successTitle}
-        subtitle={copy.successSubtitle.replace("{email}", email || "your email address")}
+        subtitle={copy.successSubtitle.replace("{email}", email || t("FORGOT_EMAIL_SENT.YOUR_EMAIL_ADDRESS"))}
         actionTitle={copy.resendPromptTitle}
         actionSubtitle={copy.resendPromptSubtitle}
         action={<Link className="oidc-sci-fi-btn px-5 py-2.5 no-underline" to={forgotPasswordUrl}>{copy.resendButton}</Link>}
@@ -54,15 +56,15 @@ export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
             <SuccessConfirmationIcon />
 
             <h1 className="mt-5 text-xl font-bold tracking-tight text-foreground sm:mt-6 sm:text-2xl md:mt-7 md:text-[1.75rem]">
-              Email sent
+              {t("FORGOT_EMAIL_SENT.EMAIL_SENT")}
             </h1>
 
             <p className="mt-3 w-full text-base leading-relaxed text-muted-foreground sm:mt-4 sm:text-lg">
-              A password reset email has been sent to{" "}
+              {t("FORGOT_EMAIL_SENT.SENT_TO_PREFIX")}{" "}
               <span className="wrap-break-word font-semibold text-primary wrap-anywhere">
-                {email || "your email address"}
+                {email || t("FORGOT_EMAIL_SENT.YOUR_EMAIL_ADDRESS")}
               </span>
-              . Please follow the instructions in the email to reset your password.
+              {t("FORGOT_EMAIL_SENT.SENT_TO_SUFFIX")}
             </p>
           </div>
 
@@ -77,10 +79,10 @@ export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
 
               <div className="min-w-0 flex-1 text-left">
                 <p className="text-sm font-semibold text-foreground sm:text-base">
-                  Didn&apos;t receive the email?
+                  {t("FORGOT_EMAIL_SENT.DIDNT_RECEIVE")}
                 </p>
                 <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-                  Check your spam folder or resend the email.
+                  {t("FORGOT_EMAIL_SENT.CHECK_SPAM")}
                 </p>
               </div>
             </div>
@@ -92,11 +94,11 @@ export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
             >
               <Link
                 to={forgotPasswordUrl}
-                aria-label="Resend password reset email"
+                aria-label={t("FORGOT_EMAIL_SENT.RESEND_ARIA_LABEL")}
                 className="inline-flex w-full items-center justify-center gap-2 md:w-auto"
               >
                 <RotateCw className="h-4 w-4 shrink-0" aria-hidden />
-                Resend email
+                {t("FORGOT_EMAIL_SENT.RESEND_EMAIL")}
               </Link>
             </Button>
           </div>
@@ -106,9 +108,9 @@ export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
           {/* Footer links */}
           <div className="space-y-5 text-center sm:space-y-6">
             <div>
-              <p className="text-sm text-muted-foreground">Remember your password?</p>
+              <p className="text-sm text-muted-foreground">{t("FORGOT_EMAIL_SENT.REMEMBER_PASSWORD")}</p>
               <LoginReturnLink className="mt-2 inline-flex min-h-11 items-center justify-center gap-0.5 text-sm font-semibold text-primary transition-colors hover:text-primary/80 md:min-h-0">
-                Go to login
+                {t("FORGOT_EMAIL_SENT.GO_TO_LOGIN")}
                 <ChevronRight className="h-4 w-4" aria-hidden />
               </LoginReturnLink>
             </div>
@@ -116,7 +118,7 @@ export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
             <p className="flex flex-col items-center justify-center gap-1 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-1.5">
               <span className="inline-flex items-center gap-1.5">
                 <HelpCircle className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-                Need help?
+                {t("FORGOT_EMAIL_SENT.NEED_HELP")}
               </span>
               <a
                 href={SUPPORT_URL}
@@ -124,7 +126,7 @@ export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
                 rel="noreferrer"
                 className="inline-flex min-h-11 items-center font-medium text-primary hover:text-primary/80 md:min-h-0"
               >
-                Contact support
+                {t("FORGOT_EMAIL_SENT.CONTACT_SUPPORT")}
               </a>
             </p>
           </div>

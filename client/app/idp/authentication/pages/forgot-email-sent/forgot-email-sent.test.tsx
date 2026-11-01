@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
+import { useI18nStore } from "@seliseblocks/genesis-os/i18n";
+import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
   buildOIDCNavigationUrl: (path: string) => `${path}?tenant=t1`,
@@ -58,5 +60,20 @@ describe("ForgotEmailSent", () => {
   it("falls back to placeholder copy when no email is provided", () => {
     renderAt("/forgot-email-sent", "");
     expect(screen.getByText("your email address")).toBeInTheDocument();
+  });
+});
+
+describe("iam.password language", () => {
+  afterEach(() => {
+    useAppSettingsStore.getState().setSettings({ language: "en" });
+  });
+
+  it("shows German text when the language is de", () => {
+    useI18nStore.getState().setRemote("de", "iam.password", {
+      "FORGOT_EMAIL_SENT.EMAIL_SENT": "E-Mail gesendet",
+    });
+    useAppSettingsStore.getState().setSettings({ language: "de" });
+    renderAt("/forgot-email-sent", "user@example.com");
+    expect(screen.getByText("E-Mail gesendet")).toBeInTheDocument();
   });
 });
