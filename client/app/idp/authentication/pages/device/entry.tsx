@@ -4,7 +4,8 @@ import { Loader } from "lucide-react";
 
 import { OidcAuthShell, OidcFooter, useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEVICE_ENTRY_PANEL, DEVICE_CONSENT_PANEL } from "./panel-config";
+import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
+import { buildDeviceConsentPanel, buildDeviceEntryPanel } from "./panel-config";
 import {
   formatUserCodeForDisplay,
   isValidUserCode,
@@ -30,15 +31,16 @@ function readErrorCode(err: unknown): string | undefined {
   );
 }
 
-function verifyErrorMessage(code?: string): string {
-  if (code === "expired_token") return "This device code has expired.";
-  if (code === "slow_down") return "Too many attempts. Wait a moment, then try again.";
-  if (code === "invalid_grant") return "Invalid code, wrong tenant, or already used.";
-  return "Invalid or expired code.";
+function verifyErrorMessage(t: TFunction, code?: string): string {
+  if (code === "expired_token") return t("DEVICE_ENTRY.ERROR_EXPIRED_TOKEN");
+  if (code === "slow_down") return t("DEVICE_ENTRY.ERROR_SLOW_DOWN");
+  if (code === "invalid_grant") return t("DEVICE_ENTRY.ERROR_INVALID_GRANT");
+  return t("DEVICE_ENTRY.ERROR_INVALID_OR_EXPIRED");
 }
 
 /** Where the sign-in request came from, as far as the device told us; nothing when it told us nothing. */
 function DeviceRequestDetails({ payload }: Readonly<{ payload: DeviceConsentPayload }>) {
+  const { t } = useT("iam.device");
   if (!(payload.requestIpAddress || payload.requestUserAgent || payload.deviceName || payload.deviceInfo)) return null;
   return (
     <div
@@ -47,22 +49,22 @@ function DeviceRequestDetails({ payload }: Readonly<{ payload: DeviceConsentPayl
     >
       {payload.deviceName && (
         <p>
-          Device: <span style={{ color: "var(--fg)" }}>{payload.deviceName}</span>
+          {t("DEVICE_ENTRY.DETAIL_DEVICE")} <span style={{ color: "var(--fg)" }}>{payload.deviceName}</span>
         </p>
       )}
       {payload.requestIpAddress && (
         <p>
-          Request IP: <span style={{ color: "var(--fg)" }}>{payload.requestIpAddress}</span>
+          {t("DEVICE_ENTRY.DETAIL_REQUEST_IP")} <span style={{ color: "var(--fg)" }}>{payload.requestIpAddress}</span>
         </p>
       )}
       {payload.requestUserAgent && (
         <p className="wrap-break-word">
-          Browser: <span style={{ color: "var(--fg)" }}>{payload.requestUserAgent}</span>
+          {t("DEVICE_ENTRY.DETAIL_BROWSER")} <span style={{ color: "var(--fg)" }}>{payload.requestUserAgent}</span>
         </p>
       )}
       {payload.deviceInfo && (
         <p className="wrap-break-word">
-          Details: <span style={{ color: "var(--fg)" }}>{payload.deviceInfo}</span>
+          {t("DEVICE_ENTRY.DETAIL_DETAILS")} <span style={{ color: "var(--fg)" }}>{payload.deviceInfo}</span>
         </p>
       )}
     </div>
@@ -70,6 +72,9 @@ function DeviceRequestDetails({ payload }: Readonly<{ payload: DeviceConsentPayl
 }
 
 export function DeviceEntryPage() {
+  const { t } = useT("iam.device");
+  const entryPanel = useMemo(() => buildDeviceEntryPanel(t), [t]);
+  const consentPanel = useMemo(() => buildDeviceConsentPanel(t), [t]);
   const params = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const tenantId = (params.tenantId ?? "").trim();
@@ -129,8 +134,8 @@ export function DeviceEntryPage() {
     logoUrlLight: template.branding.logoUrlLight,
     logoUrlDark: template.branding.logoUrlDark,
     brandName: template.branding.brandName,
-    successTitle: "Device Verified",
-    successSubtitle: "Continuing the device flow…",
+    successTitle: t("DEVICE_ENTRY.VERIFIED_TITLE"),
+    successSubtitle: t("DEVICE_ENTRY.VERIFIED_SUBTITLE"),
     footerNote: <OidcFooter footerText={template.pages.shared.footerText} />,
   };
 
@@ -144,7 +149,7 @@ export function DeviceEntryPage() {
     } catch (err: unknown) {
       shake(formRef.current);
       const errCode = readErrorCode(err);
-      const msg = verifyErrorMessage(errCode);
+      const msg = verifyErrorMessage(t, errCode);
       if (errCode === "expired_token" && isAutoSubmit) {
         // A code auto-submitted from the URL (refresh, back button, bookmark) is
         // dead by definition of the user never having typed it — drop to a clean
@@ -156,7 +161,7 @@ export function DeviceEntryPage() {
           return next;
         });
         setValue("");
-        setServerError("That code has expired. Enter the fresh code shown on your device.");
+        setServerError(t("DEVICE_ENTRY.CODE_EXPIRED_ENTER_FRESH"));
       } else if (errCode === "expired_token") {
         setFlow({ kind: "expired" });
       } else {
@@ -180,7 +185,7 @@ export function DeviceEntryPage() {
     if (res.status === "ready" && res.payload) {
       if (res.payload.tenant && res.payload.tenant !== tenantId) {
         setFlow({ kind: "tenant_mismatch", payload: res.payload });
-        await animCtx?.failAnimation("Tenant mismatch");
+        await animCtx?.failAnimation(t("DEVICE_ENTRY.TENANT_MISMATCH"));
         setIsSubmitting(false);
         return;
       }
@@ -191,8 +196,8 @@ export function DeviceEntryPage() {
     }
 
     shake(formRef.current);
-    setServerError("Unexpected response from server.");
-    await animCtx?.failAnimation("Unexpected response");
+    setServerError(t("DEVICE_ENTRY.UNEXPECTED_RESPONSE_SERVER"));
+    await animCtx?.failAnimation(t("DEVICE_ENTRY.UNEXPECTED_RESPONSE"));
     setIsSubmitting(false);
     void code;
   }
@@ -217,13 +222,13 @@ export function DeviceEntryPage() {
       if (code === "request_not_pending" || code === "expired_token") {
         setFlow({ kind: "expired" });
       } else if (code === "login_required") {
-        setServerError("Your sign-in session expired. Sign in again and retry this code.");
+        setServerError(t("DEVICE_ENTRY.SESSION_EXPIRED"));
       } else if (code === "slow_down") {
-        setServerError("Too many attempts. Wait a moment, then try again.");
+        setServerError(t("DEVICE_ENTRY.ERROR_SLOW_DOWN"));
       } else {
-        setServerError("We could not record your decision. Please try again.");
+        setServerError(t("DEVICE_ENTRY.DECISION_NOT_RECORDED"));
       }
-      await animCtx?.failAnimation("Decision failed");
+      await animCtx?.failAnimation(t("DEVICE_ENTRY.DECISION_FAILED"));
       setDecision(null);
     }
   }
@@ -234,7 +239,7 @@ export function DeviceEntryPage() {
     const code = normalizeUserCode(value);
     if (!isValidUserCode(code)) {
       shake(formRef.current);
-      const msg = "Enter the 8-character verification code shown on your device.";
+      const msg = t("DEVICE_ENTRY.ENTER_CODE_HINT");
       setServerError(msg);
       void animCtx?.failAnimation(msg);
       return;
@@ -249,15 +254,15 @@ export function DeviceEntryPage() {
   if (invalidTenant) {
     return (
       <OidcAuthShell
-        panelConfig={DEVICE_ENTRY_PANEL}
+        panelConfig={entryPanel}
         {...shellTemplateProps}
-        heading="Device Verification"
+        heading={t("DEVICE_ENTRY.DEVICE_VERIFICATION")}
         headingDimFirst={2}
         showCorners={false}
         footerNote={
           <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
             <Link to={backToSignInUrl} className="oidc-sci-fi-link">
-              Back to sign-in
+              {t("DEVICE_ENTRY.BACK_TO_SIGN_IN")}
             </Link>
           </p>
         }
@@ -268,10 +273,10 @@ export function DeviceEntryPage() {
             style={{ background: "var(--danger-soft)", border: "1px solid var(--danger-border)" }}
           >
             <p className="mb-1 text-sm font-semibold oidc-font-orbitron" style={{ color: "var(--danger)" }}>
-              Missing Tenant
+              {t("DEVICE_ENTRY.MISSING_TENANT")}
             </p>
             <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }}>
-              This URL is missing a tenant. Open the link exactly as displayed on your device.
+              {t("DEVICE_ENTRY.MISSING_TENANT_DETAIL")}
             </p>
           </div>
         </div>
@@ -282,22 +287,22 @@ export function DeviceEntryPage() {
   if (flow.kind === "login_required") {
     return (
       <OidcAuthShell
-        panelConfig={DEVICE_ENTRY_PANEL}
+        panelConfig={entryPanel}
         {...shellTemplateProps}
-        heading="Please sign in"
+        heading={t("DEVICE_ENTRY.PLEASE_SIGN_IN")}
         headingDimFirst={2}
         showCorners={false}
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-            You need to authenticate before you can authorize this device.
+            {t("DEVICE_ENTRY.AUTHENTICATE_FIRST")}
           </p>
           <button
             type="button"
             onClick={() => window.location.assign(flow.returnUrl)}
             className="oidc-sci-fi-btn w-full"
           >
-            Sign in
+            {t("DEVICE_ENTRY.SIGN_IN")}
           </button>
         </div>
       </OidcAuthShell>
@@ -307,18 +312,18 @@ export function DeviceEntryPage() {
   if (flow.kind === "expired") {
     return (
       <OidcAuthShell
-        panelConfig={DEVICE_ENTRY_PANEL}
+        panelConfig={entryPanel}
         {...shellTemplateProps}
-        heading="Device code expired"
+        heading={t("DEVICE_ENTRY.CODE_EXPIRED_HEADING")}
         headingDimFirst={3}
         showCorners={false}
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-            This device code has expired or has already been used.
+            {t("DEVICE_ENTRY.CODE_EXPIRED_OR_USED")}
           </p>
           <Link to={`/device/${tenantId}`} className="oidc-sci-fi-btn w-full text-center">
-            Start over
+            {t("DEVICE_ENTRY.START_OVER")}
           </Link>
         </div>
       </OidcAuthShell>
@@ -328,9 +333,9 @@ export function DeviceEntryPage() {
   if (flow.kind === "tenant_mismatch") {
     return (
       <OidcAuthShell
-        panelConfig={DEVICE_CONSENT_PANEL}
+        panelConfig={consentPanel}
         {...shellTemplateProps}
-        heading="Tenant mismatch"
+        heading={t("DEVICE_ENTRY.TENANT_MISMATCH")}
         headingDimFirst={2}
         showCorners={false}
       >
@@ -340,14 +345,14 @@ export function DeviceEntryPage() {
             style={{ background: "var(--danger-soft)", border: "1px solid var(--danger-border)" }}
           >
             <p className="mb-1 text-sm font-semibold oidc-font-orbitron" style={{ color: "var(--danger)" }}>
-              Wrong tenant
+              {t("DEVICE_ENTRY.WRONG_TENANT")}
             </p>
             <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }}>
-              This interaction belongs to <strong>{flow.payload.tenant}</strong>, not <strong>{tenantId}</strong>.
+              {t("DEVICE_ENTRY.WRONG_TENANT_DETAIL", { tenant: flow.payload.tenant, expected: tenantId })}
             </p>
           </div>
           <Link to={`/device/${tenantId}`} className="oidc-sci-fi-btn w-full text-center">
-            Use another code
+            {t("DEVICE_ENTRY.USE_ANOTHER_CODE")}
           </Link>
         </div>
       </OidcAuthShell>
@@ -358,9 +363,9 @@ export function DeviceEntryPage() {
     const payload = flow.payload;
     return (
       <OidcAuthShell
-        panelConfig={DEVICE_CONSENT_PANEL}
+        panelConfig={consentPanel}
         {...shellTemplateProps}
-        heading="Authorize device"
+        heading={t("DEVICE_ENTRY.AUTHORIZE_DEVICE")}
         headingDimFirst={2}
         showCorners={false}
       >
@@ -368,7 +373,7 @@ export function DeviceEntryPage() {
           <div className="oidc-sci-fi-panel-border">
             <div className="oidc-sci-fi-panel-inner p-5 sm:p-6 space-y-4">
               <h2 className="text-lg oidc-font-orbitron" style={{ color: "var(--fg)" }}>
-                Authorize this device?
+                {t("DEVICE_ENTRY.AUTHORIZE_THIS_DEVICE")}
               </h2>
 
               <div className="flex flex-wrap gap-2">
@@ -378,16 +383,16 @@ export function DeviceEntryPage() {
 
               <div className="text-sm oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
                 <p style={{ color: "var(--fg)" }} className="font-semibold mb-2">
-                  This device would like to:
+                  {t("DEVICE_ENTRY.DEVICE_WOULD_LIKE_TO")}
                 </p>
                 {payload.scopes.length > 0 ? (
                   <ul className="list-disc list-inside space-y-1 pl-4">
                     {payload.scopes.map((scope) => (
-                      <li key={scope}>{scopeDescription(scope)}</li>
+                      <li key={scope}>{scopeDescription(t, scope)}</li>
                     ))}
                   </ul>
                 ) : (
-                  <p>Access your account.</p>
+                  <p>{t("DEVICE_ENTRY.ACCESS_YOUR_ACCOUNT")}</p>
                 )}
               </div>
 
@@ -413,10 +418,10 @@ export function DeviceEntryPage() {
                   {decision === "deny" ? (
                     <span className="inline-flex items-center gap-2 justify-center">
                       <Loader size={14} className="oidc-spin-slow" />
-                      Denying…
+                      {t("DEVICE_ENTRY.DENYING")}
                     </span>
                   ) : (
-                    "Deny"
+                    t("DEVICE_ENTRY.DENY")
                   )}
                 </button>
                 <button
@@ -428,10 +433,10 @@ export function DeviceEntryPage() {
                   {decision === "allow" ? (
                     <span className="inline-flex items-center gap-2 justify-center">
                       <Loader size={14} className="oidc-spin-slow" />
-                      Authorizing…
+                      {t("DEVICE_ENTRY.AUTHORIZING")}
                     </span>
                   ) : (
-                    "Allow"
+                    t("DEVICE_ENTRY.ALLOW")
                   )}
                 </button>
               </div>
@@ -441,7 +446,7 @@ export function DeviceEntryPage() {
                 className="oidc-sci-fi-link text-center block text-xs"
                 onClick={() => setFlow({ kind: "idle" })}
               >
-                Cancel
+                {t("common:CANCEL")}
               </Link>
             </div>
           </div>
@@ -453,9 +458,9 @@ export function DeviceEntryPage() {
   if (flow.kind === "error") {
     return (
       <OidcAuthShell
-        panelConfig={DEVICE_ENTRY_PANEL}
+        panelConfig={entryPanel}
         {...shellTemplateProps}
-        heading="Device Verification"
+        heading={t("DEVICE_ENTRY.DEVICE_VERIFICATION")}
         headingDimFirst={2}
         showCorners={false}
       >
@@ -464,7 +469,7 @@ export function DeviceEntryPage() {
           style={{ background: "var(--danger-soft)", border: "1px solid var(--danger-border)" }}
         >
           <p className="mb-1 text-sm font-semibold oidc-font-orbitron" style={{ color: "var(--danger)" }}>
-            Error
+            {t("common:ERROR")}
           </p>
           <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }}>
             {flow.message}
@@ -481,14 +486,14 @@ export function DeviceEntryPage() {
 
   return (
     <OidcAuthShell
-      panelConfig={DEVICE_ENTRY_PANEL}
+      panelConfig={entryPanel}
       {...shellTemplateProps}
-      heading="Enter your device code"
+      heading={t("DEVICE_ENTRY.ENTER_YOUR_DEVICE_CODE")}
       headingDimFirst={3}
       showCorners={false}
       footerNote={
         <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-          © {new Date().getFullYear()} SELISE Digital Platforms. Secure device flow.
+          {t("DEVICE_ENTRY.FOOTER", { year: new Date().getFullYear() })}
         </p>
       }
     >
@@ -500,7 +505,7 @@ export function DeviceEntryPage() {
       >
         <div className="flex flex-col gap-2">
           <label htmlFor="device-user-code" className="oidc-sci-fi-label">
-            Verification Code
+            {t("DEVICE_ENTRY.VERIFICATION_CODE")}
           </label>
           <input
             id="device-user-code"
@@ -509,7 +514,7 @@ export function DeviceEntryPage() {
             autoComplete="off"
             autoCapitalize="characters"
             spellCheck={false}
-            placeholder="ABCD-EFGH"
+            placeholder={t("DEVICE_ENTRY.CODE_PLACEHOLDER")}
             value={value}
             onChange={onChange}
             maxLength={9}
@@ -538,17 +543,17 @@ export function DeviceEntryPage() {
           {isAuthenticating ? (
             <>
               <Loader size={16} className="oidc-spin-slow" />
-              <span>Resolving…</span>
+              <span>{t("DEVICE_ENTRY.RESOLVING")}</span>
             </>
           ) : (
-            <span>Continue</span>
+            <span>{t("common:CONTINUE")}</span>
           )}
         </button>
 
         <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-          Not the right tenant?{" "}
+          {t("DEVICE_ENTRY.NOT_RIGHT_TENANT")}{" "}
           <Link to={backToSignInUrl} className="oidc-sci-fi-link">
-            Back to sign-in
+            {t("DEVICE_ENTRY.BACK_TO_SIGN_IN")}
           </Link>
         </p>
       </form>
@@ -556,12 +561,12 @@ export function DeviceEntryPage() {
   );
 }
 
-function scopeDescription(scope: string): string {
+function scopeDescription(t: TFunction, scope: string): string {
   const map: Record<string, string> = {
-    openid: "Authenticate you with your Blocks account",
-    profile: "Access your basic profile information",
-    email: "Access your email address",
-    offline_access: "Stay signed in when you are offline",
+    openid: t("DEVICE_ENTRY.SCOPE_OPENID"),
+    profile: t("DEVICE_ENTRY.SCOPE_PROFILE"),
+    email: t("DEVICE_ENTRY.SCOPE_EMAIL"),
+    offline_access: t("DEVICE_ENTRY.SCOPE_OFFLINE_ACCESS"),
   };
   return map[scope] ?? scope;
 }

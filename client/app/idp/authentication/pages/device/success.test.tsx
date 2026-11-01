@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
+import { useI18nStore } from "@seliseblocks/genesis-os/i18n";
+import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({ oidcUiConfig: undefined as unknown }));
 
@@ -32,7 +34,7 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
     resetAnimation: () => {},
   }),
 }));
-vi.mock("./panel-config", () => ({ DEVICE_CONSENT_PANEL: {} }));
+vi.mock("./panel-config", () => ({ buildDeviceConsentPanel: () => ({}) }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
   useOidcUiConfig: () => ({ data: h.oidcUiConfig }),
 }));
@@ -86,5 +88,22 @@ describe("DeviceSuccessPage", () => {
   it("does not render a use-another-code link", () => {
     renderAt("/device/t1/success");
     expect(screen.queryByRole("link", { name: "Use another code" })).not.toBeInTheDocument();
+  });
+});
+
+describe("iam.device language", () => {
+  afterEach(() => {
+    useAppSettingsStore.getState().setSettings({ language: "en" });
+  });
+
+  it("shows German text when the language is de", () => {
+    useI18nStore.getState().setRemote("de", "iam.device", {
+      "DEVICE_SUCCESS.FLOW_COMPLETE": "Geräteablauf abgeschlossen",
+      "DEVICE_SUCCESS.APPROVED_SUBTITLE": "Ihr Gerät wurde autorisiert.",
+    });
+    useAppSettingsStore.getState().setSettings({ language: "de" });
+    renderAt("/device/t1/success?outcome=approved");
+    expect(screen.getByText("Geräteablauf abgeschlossen")).toBeInTheDocument();
+    expect(screen.getByText("Ihr Gerät wurde autorisiert.")).toBeInTheDocument();
   });
 });
