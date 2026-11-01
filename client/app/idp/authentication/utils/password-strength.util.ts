@@ -1,3 +1,5 @@
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
+
 export const STRENGTH_THRESHOLDS = {
   WEAK: 25,
   MEDIUM: 50,
@@ -19,11 +21,19 @@ export const STRENGTH_TEXT_COLORS = {
 } as const;
 
 export const STRENGTH_LABELS = {
-  WEAK: "Weak",
-  MEDIUM_WEAK: "Fair",
-  MEDIUM_STRONG: "Good",
-  STRONG: "Strong",
-} as const;
+  get WEAK() {
+    return tStatic("iam.shared", "PASSWORD_STRENGTH.WEAK");
+  },
+  get MEDIUM_WEAK() {
+    return tStatic("iam.shared", "PASSWORD_STRENGTH.FAIR");
+  },
+  get MEDIUM_STRONG() {
+    return tStatic("iam.shared", "PASSWORD_STRENGTH.GOOD");
+  },
+  get STRONG() {
+    return tStatic("iam.shared", "PASSWORD_STRENGTH.STRONG");
+  },
+};
 
 export type StrengthBand = keyof typeof STRENGTH_COLORS;
 

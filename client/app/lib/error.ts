@@ -1,9 +1,11 @@
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
+
 export const getErrorMessage = (
   error: Record<string, string | string[]>,
   messageMap: Record<string, string> = {},
 ): string | string[] => {
   if (!error || Object.keys(error).length === 0) {
-    return "Something went wrong.";
+    return tStatic("iam.shared", "ERROR.SOMETHING_WENT_WRONG");
   }
 
   const messages: string[] = [];
@@ -23,7 +25,7 @@ export const getErrorMessage = (
     }
   }
 
-  return messages.length ? messages : "Something went wrong.";
+  return messages.length ? messages : tStatic("iam.shared", "ERROR.SOMETHING_WENT_WRONG");
 };
 
 export const isErrorWithErrors = (
@@ -47,5 +49,5 @@ export const handleErrorMessages = (
     return getErrorMessage(errors as Record<string, string | string[]>, customMessages);
   }
 
-  return "An unexpected error occurred.";
+  return tStatic("iam.shared", "ERROR.UNEXPECTED");
 };

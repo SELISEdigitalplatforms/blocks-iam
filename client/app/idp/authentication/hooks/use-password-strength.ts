@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import type {
   IOidcPasswordPolicy,
   PasswordPolicyChecks,
@@ -24,8 +25,10 @@ export type {
 export const usePasswordStrength = (
   password: string,
   policy: IOidcPasswordPolicy | null | undefined,
-) =>
-  useMemo(() => {
+) => {
+  // `t` changes with the language and when its text arrives; the labels below are built with it.
+  const { t } = useT("iam.shared");
+  return useMemo(() => {
     // No tenant policy (unconfigured, still loading, or failed to load) falls back to the FE's
     // own baseline rule rather than dropping to "no requirements at all".
     const effectivePolicy = resolvePasswordPolicy(policy);
@@ -53,4 +56,5 @@ export const usePasswordStrength = (
       getStrengthTextColor: () => getStrengthTextColor(strength),
       getStrengthLabel: () => getStrengthLabel(strength),
     };
-  }, [password, policy]);
+  }, [password, policy, t]);
+};

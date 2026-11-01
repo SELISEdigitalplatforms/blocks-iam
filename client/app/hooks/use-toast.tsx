@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { ToastActionElement, ToastProps } from "@/components/ui-kits/toaster/toast";
 import { handleErrorMessages } from "@/lib/error";
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
 
 const TOAST_LIMIT = 1;
 const TOAST_REMOVE_DELAY = 1000000;
@@ -178,7 +179,7 @@ type ErrorToastOptions = {
   customMessages?: Record<string, string>;
 };
 
-export const showSuccessToast = ({ title = "Success", description }: SuccessToastOptions) => {
+export const showSuccessToast = ({ title = tStatic("iam.shared", "common:SUCCESS"), description }: SuccessToastOptions) => {
   toast({
     variant: "success",
     title,
@@ -186,7 +187,7 @@ export const showSuccessToast = ({ title = "Success", description }: SuccessToas
   });
 };
 
-export const showInfoToast = ({ title = "Info", description }: InfoToastOptions) => {
+export const showInfoToast = ({ title = tStatic("iam.shared", "USE_TOAST.INFO"), description }: InfoToastOptions) => {
   toast({
     variant: "info",
     title,
@@ -195,7 +196,7 @@ export const showInfoToast = ({ title = "Info", description }: InfoToastOptions)
 };
 
 export const showErrorToast = ({
-  title = "Failed",
+  title = tStatic("iam.shared", "USE_TOAST.FAILED"),
   errors,
   customMessages,
 }: ErrorToastOptions) => {

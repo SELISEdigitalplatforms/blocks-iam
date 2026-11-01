@@ -6,6 +6,7 @@ import {
   STRENGTH_SEGMENTS,
   getFilledSegments,
 } from "@blocks-idp/authentication/utils/password-strength.util";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 
 interface PasswordStrengthCheckerProps {
   password: string;
@@ -38,6 +39,7 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
   excludePasswordLabel,
   policy,
 }) => {
+  const { t } = useT("iam.shared");
   const {
     checks,
     requirements,
@@ -71,7 +73,7 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
 
   return (
     <div className="border-border-default mx-auto w-full rounded-lg border px-6 py-4 shadow-xs">
-      <h2 className="mb-2 text-sm font-semibold text-high-emphasis">Password Strength</h2>
+      <h2 className="mb-2 text-sm font-semibold text-high-emphasis">{t("PASSWORD_STRENGTH_CHECKER.TITLE")}</h2>
 
       {hasPolicy && (
         <div className="mb-3 flex items-center gap-3">
@@ -83,8 +85,8 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
               aria-valuenow={strength}
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuetext={`${strengthLabel} password, ${strength} percent`}
-              aria-label="Password strength"
+              aria-valuetext={t("PASSWORD_STRENGTH_CHECKER.VALUE_TEXT", { label: strengthLabel, value: strength })}
+              aria-label={t("PASSWORD_STRENGTH_CHECKER.ARIA_LABEL")}
             />
             {Array.from({ length: STRENGTH_SEGMENTS }, (_, index) => (
               <div
@@ -102,7 +104,7 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
       )}
 
       <p className="mb-2 text-xs text-medium-emphasis">
-        Your password must meet these requirements:
+        {t("PASSWORD_STRENGTH_CHECKER.REQUIREMENTS_INTRO")}
       </p>
 
       <ul className="space-y-1.5 text-medium-emphasis">
@@ -114,11 +116,11 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
 
         {excludePassword && password !== "" && (
           <RequirementRow met={isDifferentFromExcluded}>
-            {excludePasswordLabel ?? "New password shouldn't match current password"}
+            {excludePasswordLabel ?? t("PASSWORD_STRENGTH_CHECKER.DIFFERENT_FROM_CURRENT")}
           </RequirementRow>
         )}
 
-        <RequirementRow met={passwordsMatch}>Passwords match</RequirementRow>
+        <RequirementRow met={passwordsMatch}>{t("PASSWORD_STRENGTH_CHECKER.PASSWORDS_MATCH")}</RequirementRow>
       </ul>
 
       {/* Admin-authored guidance, display only -- never independently checked, so it never
