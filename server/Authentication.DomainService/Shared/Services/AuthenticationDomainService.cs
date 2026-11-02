@@ -194,6 +194,12 @@ namespace Authentication.DomainService.Services
             ApplyOidcClientTokenLifetimes(credential, request.TokenLifetimes, isNewClient);
             ApplyOidcClientLoginPolicy(credential, request.LoginPolicy);
 
+            var discoveryError = await CheckDiscoveryBeforeProviderCreateAsync(credential);
+            if (discoveryError != null)
+            {
+                return discoveryError;
+            }
+
             OidcClientSecretWrite secretWrite;
             try
             {
@@ -559,6 +565,43 @@ namespace Authentication.DomainService.Services
             {
                 credential.AllowedResponseTypes = ["code"];
             }
+        }
+
+        /// <summary>
+        /// When this save will create the client's identity provider, checks its discovery URL first,
+        /// with the same rule the identity-provider create uses. Without it an unusable URL fails
+        /// the provider fetch only after the client and its secret are saved: a 500 and a half-saved
+        /// client (Rollbar #1809/#1810). A client already linked to a provider makes no call.
+        /// </summary>
+        private async Task<SaveOIDCClientResponse?> CheckDiscoveryBeforeProviderCreateAsync(OidcClientRegistration credential)
+        {
+            if (!credential.RegisterAsIdentityProvider || string.IsNullOrWhiteSpace(credential.ExternalDiscoveryEndpoint))
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(credential.ClientId)
+                && await _authenticationRepository.GetIdentityProviderByClientIdAsync(credential.ClientId) != null)
+            {
+                return null;
+            }
+
+            var probe = new SaveIdentityProviderRequest { WellKnownUrl = credential.ExternalDiscoveryEndpoint };
+            var result = await _saveIdpValidator.ValidateAsync(probe, o => o.IncludeProperties(x => x.WellKnownUrl));
+            if (result.IsValid)
+            {
+                return null;
+            }
+
+            return new SaveOIDCClientResponse
+            {
+                IsSuccess = false,
+                Errors = new Dictionary<string, string>
+                {
+                    [nameof(SaveOIDCClientRequest.ExternalDiscoveryEndpoint)] =
+                        "ExternalDiscoveryEndpoint does not return OpenID Connect discovery metadata."
+                }
+            };
         }
 
         private static void ApplyOidcClientOptions(OidcClientRegistration credential, SaveOIDCClientRequest request)

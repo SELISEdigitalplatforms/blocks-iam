@@ -668,6 +668,79 @@ namespace XUnitTest.Auth.Shared
                 && p.ClientSecretReference == "oidc-ref-1" && p.ClientSecret == string.Empty)), Times.Once);
         }
 
+        private static SaveOIDCClientRequest RegisterWithDiscovery(string discoveryUrl) => new()
+        {
+            RedirectUris = new() { "https://app/cb" },
+            AllowedScopes = new() { "openid" },
+            ClientType = "confidential",
+            ClientDisplayName = "My App",
+            RegisterAsIdentityProvider = true,
+            ExternalDiscoveryEndpoint = discoveryUrl
+        };
+
+        private void DiscoveryCheckAnswers(ValidationResult result) =>
+            _saveIdpValidator.Setup(v => v.ValidateAsync(It.IsAny<IValidationContext>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(result);
+
+        [Fact]
+        public async Task SaveOIDCClient_RegisterAsProvider_UnusableDiscovery_RefusesBeforeSavingAnything()
+        {
+            // Rollbar #1809/#1810: the discovery URL answered HTML, the provider fetch failed after
+            // the client and its secret were saved, and the caller got a 500.
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+            DiscoveryCheckAnswers(new ValidationResult(new[]
+            {
+                new ValidationFailure("WellKnownUrl", "WellKnownUrl does not expose valid OpenID Connect metadata.")
+            }));
+
+            var result = await Create().SaveOIDCClientAsync(RegisterWithDiscovery("https://example.com/"));
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("ExternalDiscoveryEndpoint");
+            _saveIdpValidator.Verify(v => v.ValidateAsync(
+                It.Is<IValidationContext>(c => ((SaveIdentityProviderRequest)c.InstanceToValidate).WellKnownUrl == "https://example.com/"),
+                It.IsAny<CancellationToken>()), Times.Once);
+            _repo.Verify(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()), Times.Never);
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_RegisterAsProvider_UsableDiscovery_SavesAndCreatesProvider()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+            _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(Idp());
+            OidcSecretStoreAccepts();
+            DiscoveryCheckAnswers(new ValidationResult());
+
+            var result = await Create().SaveOIDCClientAsync(RegisterWithDiscovery("https://iam.example.com/t1/.well-known/openid-configuration"));
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.Is<IdentityProvider>(p =>
+                p.WellKnownUrl == "https://iam.example.com/t1/.well-known/openid-configuration")), Times.Once);
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_RegisterAsProvider_AlreadyLinked_MakesNoDiscoveryCheck()
+        {
+            // An edit of a client that already has its provider creates nothing, so it must not gain
+            // a new way to fail.
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(Idp(provider: "my-app"));
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(Idp(provider: "my-app"));
+            OidcSecretStoreAccepts();
+            DiscoveryCheckAnswers(new ValidationResult(new[] { new ValidationFailure("WellKnownUrl", "unreachable") }));
+
+            var result = await Create().SaveOIDCClientAsync(RegisterWithDiscovery("https://example.com/"));
+
+            result.IsSuccess.Should().BeTrue();
+            _saveIdpValidator.Verify(v => v.ValidateAsync(It.IsAny<IValidationContext>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
         [Fact]
         public async Task DeleteOidcClient_HappyPath_CleansUpProvider()
         {
