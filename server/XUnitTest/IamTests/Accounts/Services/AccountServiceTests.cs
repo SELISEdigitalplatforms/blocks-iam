@@ -772,6 +772,29 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
+        public async Task Recover_TwoErrorsOnOneField_ReturnsTheFirst_InsteadOfThrowing()
+        {
+            // Rollbar #2126: a blank email failed both Email rules and the error map threw a 500.
+            var service = CreateService();
+            _recoverValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<RecoveryUserRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult(new[]
+                {
+                    new ValidationFailure("Email", "Email is required."),
+                    new ValidationFailure("Email", "Invalid email format."),
+                    new ValidationFailure("CaptchaCode", "Captcha verification is required.")
+                }));
+
+            var result = await service.RecoverAccountAsync(new RecoveryUserRequest { Email = "" });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().BeEquivalentTo(new Dictionary<string, string>
+            {
+                ["Email"] = "Email is required.",
+                ["CaptchaCode"] = "Captcha verification is required."
+            });
+        }
+
+        [Fact]
         public async Task Recover_UnknownEmail_ReturnsSuccess_NoEmailSent()
         {
             var service = CreateService();

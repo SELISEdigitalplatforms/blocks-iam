@@ -14,7 +14,9 @@ namespace Iam.DomainService.Accounts
             _captchaService = captchaService;
             _captchaConfigurationService = captchaConfigurationService;
 
+            // Stop at the first failure: a blank email is not also reported as a bad format.
             RuleFor(x => x.Email)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty().WithMessage("Email is required.")
                 .EmailAddress().WithMessage("Invalid email format.");
 
