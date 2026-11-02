@@ -65,6 +65,20 @@ describe("useResendOtp", () => {
     expect(mockReset).not.toHaveBeenCalled();
   });
 
+  it("sends the sign-in's tenant with the resend", async () => {
+    mockMutateAsync.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useResendOtp({ mfaId: MOCK_MFA_ID, tenantId: "construct-tenant" }), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.resend();
+    });
+
+    expect(mockMutateAsync).toHaveBeenCalledWith({ mfaId: MOCK_MFA_ID, tenantId: "construct-tenant" });
+  });
+
   it("reports an expired challenge to onExpired instead of logging it", async () => {
     mockMutateAsync.mockRejectedValue({ errors: { message: "invalid_two_factor_id" } });
     const onExpired = vi.fn();

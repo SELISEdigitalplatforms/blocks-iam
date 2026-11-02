@@ -50,6 +50,16 @@ const MFA_SESSION_EXPIRED = "invalid_mfa_session";
 export const SESSION_EXPIRED_MESSAGE =
   "Your sign-in took too long, so this code can no longer be used. Please sign in again.";
 
+// The tenant of the login being completed, NOT the tenant of the IdP serving this page.
+// `BLOCKS_X_BLOCKS_KEY` is this bundle's own build-time project key -- always the root IdP --
+// so using it alone sent every construct's second leg to the root tenant. The server resolves
+// the challenge's user against the tenant named by x-blocks-key, so the construct's user was
+// looked up in the root database: verify failed with `invalid_credentials`, resend with
+// `user_not_found`. /oidc/login's first leg already prefers the URL's tenant (see
+// oidc-login-form); verify and resend keep the second leg on the same tenant.
+const loginTenantId = (): string | undefined =>
+  extractOIDCParams().tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
+
 type MfaCheckFromProps = {
   /** Lets the page swap its heading and instructions once the sign-in has expired. */
   onSessionExpired?: () => void;
@@ -81,7 +91,11 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
     onSessionExpired?.();
   };
   // An email challenge expires with the sign-in, and a resend cannot extend it.
-  const { remainingTime, resend } = useResendOtp({ mfaId, onExpired: expireSession });
+  const { remainingTime, resend } = useResendOtp({
+    mfaId,
+    tenantId: loginTenantId(),
+    onExpired: expireSession,
+  });
 
   // Both ways out lead to the sign-in of this same flow: the OS console's or the construct
   // app's client, tenant and PKCE challenge. A page without them falls back to the application.
@@ -174,16 +188,7 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
     animCtx?.startAnimation();
 
     try {
-      // The tenant of the login being completed, NOT the tenant of the IdP serving
-      // this page. `BLOCKS_X_BLOCKS_KEY` is this bundle's own build-time project key
-      // -- always the root IdP -- so using it alone sent every construct's second leg
-      // to the root tenant. CompleteMfaLoginAsync resolves the user against the
-      // tenant named by x-blocks-key, so the construct's user id was looked up in the
-      // root database and the verification failed with `invalid_credentials`.
-      // /oidc/login's first leg already prefers the URL's tenant (see oidc-login-form);
-      // this keeps the second leg on the same tenant.
-      const finalTenantId =
-        extractOIDCParams().tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
+      const finalTenantId = loginTenantId();
 
       const payload = {
         mfa_id: mfaId,

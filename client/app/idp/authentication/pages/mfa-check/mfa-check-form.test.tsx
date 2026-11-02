@@ -60,6 +60,7 @@ vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
 
 import { MfaCheckFrom, SESSION_EXPIRED_MESSAGE } from "./mfa-check-form";
 import { resolveLoginReturnTarget } from "@blocks-idp/authentication/utils/oidc-utils";
+import { useResendOtp } from "@blocks-idp/mfa/hooks/use-resend-otp";
 import {
   DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
   OIDC_UI_TEMPLATE_FIXTURE,
@@ -376,6 +377,23 @@ describe("MfaCheckFrom", () => {
     render(<MfaCheckFrom />);
     fireEvent.click(screen.getByRole("button", { name: /resend code/i }));
     expect(h.resend).toHaveBeenCalled();
+  });
+
+  // Regression (dev 2026-11-02): a construct app's hosted MFA page resent with the IdP's own key,
+  // so the server looked the construct user up in the root database: 400 `user_not_found`.
+  it("resends on the tenant named by the url, like verify", () => {
+    h.urlTenant = "construct-tenant-key";
+    render(<MfaCheckFrom />);
+    expect(vi.mocked(useResendOtp)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mfaId: "mfa-1", tenantId: "construct-tenant-key" }),
+    );
+  });
+
+  it("resends on the configured project key when the url names no tenant", () => {
+    render(<MfaCheckFrom />);
+    expect(vi.mocked(useResendOtp)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mfaId: "mfa-1", tenantId: "root-project-key" }),
+    );
   });
 
   describe("way back to sign in", () => {
