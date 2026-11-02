@@ -76,7 +76,8 @@ namespace XUnitTest.ApiTests
                 config,
                 new Mock<ICacheClient>().Object,
                 new Mock<IValidator<VerifyOtpRequest>>().Object,
-                new Mock<ITenants>().Object);
+                new Mock<ITenants>().Object,
+                new Mock<ITotpSecretResolver>().Object);
         }
 
         private MfaController CreateController()

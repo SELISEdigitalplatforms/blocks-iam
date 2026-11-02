@@ -27,7 +27,8 @@ namespace XUnitTest.Mfa.Shared.Services
                 new ConfigurationBuilder().Build(),
                 new Mock<ICacheClient>().Object,
                 new Mock<IValidator<VerifyOtpRequest>>().Object,
-                new Mock<ITenants>().Object);
+                new Mock<ITenants>().Object,
+                new Mock<ITotpSecretResolver>().Object);
 
             var services = new ServiceCollection();
             services.AddSingleton(totpService);

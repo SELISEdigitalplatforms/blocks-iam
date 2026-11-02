@@ -1,4 +1,4 @@
-using Blocks.Genesis.Notifications;
+﻿using Blocks.Genesis.Notifications;
 using Blocks.Genesis.DataAccess;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth;
@@ -264,6 +264,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IMfaManagementRepository, MfaManagementRepository>();
             serviceCollection.AddSingleton<IMfaConfigurationService, MfaConfigurationService>();
             serviceCollection.AddSingleton<TotpService>();
+            serviceCollection.AddSingleton<ITotpSecretResolver, TotpSecretResolver>();
             serviceCollection.AddSingleton<EmailOtpService>();
             serviceCollection.AddHttpContextAccessor();
 
