@@ -29,7 +29,7 @@ test.describe("OIDC MFA check", () => {
     await mockOidcUiConfig(page);
   });
 
-  test("MFA check — email/TOTP render, invalid code + locked errors, successful redirect", async ({
+  test("MFA check — email/TOTP render, invalid code + locked errors, expired sign-in, successful redirect", async ({
     page,
   }) => {
     await test.step("[Positive] mfa_type=2 (email) renders a 6-slot OTP and the resend button", async () => {
@@ -125,6 +125,55 @@ test.describe("OIDC MFA check", () => {
           /your account is locked\. please contact support or reset your password\./i,
         ),
       ).toBeVisible({ timeout: 15_000 });
+
+      await page.unroute("**/api/oidc/login").catch(() => {});
+    });
+
+    await test.step("[Negative] Server returns invalid_mfa_session → expired notice + back to the same sign-in", async () => {
+      await page.route("**/api/oidc/login", async (route: Route) => {
+        const body = JSON.parse(route.request().postData() || "{}");
+        if (!body.mfa_code) {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: "invalid_mfa_session",
+            error_description: "Mfa login session is expired or invalid",
+          }),
+        });
+      });
+
+      // The flow of a construct app on its own tenant, with the app's own PKCE challenge.
+      await page.goto(
+        "/oidc/mfa-check?mfa_id=mfa-id-6&mfa_type=1&clientId=construct-client&tenant_id=construct-tenant" +
+          "&state=st&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&code_challenge=rp-challenge&code_challenge_method=S256",
+        { waitUntil: "domcontentloaded" },
+      );
+
+      // The way back is there before anything goes wrong.
+      await expect(page.getByRole("link", { name: /^back to sign in$/i })).toBeVisible({ timeout: 30_000 });
+
+      await page.locator('input[maxlength="6"]').fill("123456");
+      await page.getByRole("button", { name: /^verify$/i }).click();
+
+      await expect(page.getByRole("heading", { name: /sign-in expired/i })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/your sign-in took too long/i)).toBeVisible();
+      await expect(page.locator('input[maxlength="6"]')).toHaveCount(0);
+
+      const back = page.getByRole("link", { name: /back to sign in/i });
+      const href = (await back.getAttribute("href")) ?? "";
+      const target = new URL(href, "http://x");
+      expect(target.pathname).toBe("/oidc/login");
+      expect(target.searchParams.get("clientId")).toBe("construct-client");
+      expect(target.searchParams.get("tenant_id")).toBe("construct-tenant");
+      expect(target.searchParams.get("code_challenge")).toBe("rp-challenge");
+      expect(target.searchParams.get("mfa_id")).toBeNull();
+
+      await back.click();
+      await page.waitForURL(/\/oidc\/login\?/, { timeout: 15_000 });
 
       await page.unroute("**/api/oidc/login").catch(() => {});
     });

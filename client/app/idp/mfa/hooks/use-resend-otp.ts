@@ -1,16 +1,23 @@
 import { useCountDown } from "@/hooks/use-count-down";
+import { isErrorWithErrors } from "@/lib/error";
 import { useResendMfaOTP } from "./use-mfa-config";
 import { useCallback } from "react";
 
 type ResendOtpProps = {
   mfaId: string;
+  /** Called when the challenge behind mfaId is gone: no resend can revive it, only a new sign-in. */
+  onExpired?: () => void;
 };
 
 // Must match the backend resend cooldown (MFA challenge resend is rejected with 429 until
 // this many seconds have elapsed since the last send). Keep the two in sync.
 const RESEND_COOLDOWN_SECONDS = 60;
 
-export const useResendOtp = ({ mfaId }: ResendOtpProps) => {
+// The resend answer for a challenge that expired (fixed lifetime, never extended by a resend) or
+// was already used.
+const EXPIRED_CHALLENGE = "invalid_two_factor_id";
+
+export const useResendOtp = ({ mfaId, onExpired }: ResendOtpProps) => {
   const { remainingTime, reset } = useCountDown(RESEND_COOLDOWN_SECONDS);
   const { mutateAsync } = useResendMfaOTP();
 
@@ -19,9 +26,13 @@ export const useResendOtp = ({ mfaId }: ResendOtpProps) => {
       await mutateAsync({ mfaId });
       reset();
     } catch (error) {
+      if (onExpired && isErrorWithErrors(error) && error.errors.message === EXPIRED_CHALLENGE) {
+        onExpired();
+        return;
+      }
       console.error(error);
     }
-  }, [mfaId, mutateAsync, reset]);
+  }, [mfaId, mutateAsync, onExpired, reset]);
 
   return { remainingTime, reset, resend };
 };
