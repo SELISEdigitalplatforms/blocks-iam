@@ -23,8 +23,8 @@ namespace Mfa.DomainService.TOTP
         Task<string> StoreAsync(string userId, string? organizationId, string value, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Soft-deletes a secret. Never throws apart from cancellation: not-found and state failures are
-        /// ignored, anything else is logged as a warning.
+        /// Permanently deletes a secret (delete, then purge), so no deleted record stays behind. Never
+        /// throws apart from cancellation: a secret already gone is ignored, anything else is logged as a warning.
         /// </summary>
         Task RetireAsync(string userId, string? reference, CancellationToken cancellationToken = default);
     }
@@ -140,13 +140,23 @@ namespace Mfa.DomainService.TOTP
             {
                 await InContextAsync(userId, async secrets =>
                 {
-                    await secrets.DeleteAsync(reference, cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        await secrets.DeleteAsync(reference, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (SecretStateException)
+                    {
+                        // Already deleted (an earlier retire stopped before the purge): purge it now.
+                    }
+
+                    // Purge needs the deleted state; it removes the value and the metadata (owner 2026-11-02).
+                    await secrets.PurgeAsync(reference, cancellationToken).ConfigureAwait(false);
                     return true;
                 }).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is SecretNotFoundException or SecretStateException)
+            catch (SecretNotFoundException)
             {
-                // Already gone or already deleted: nothing to retire.
+                // Already gone: nothing to retire.
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

@@ -146,14 +146,53 @@ namespace XUnitTest.Mfa.TOTP
         }
 
         [Fact]
-        public async Task Retire_DeletesTheSecret_AndIgnoresOneAlreadyGone()
+        public async Task Retire_DeletesThenPurgesTheSecret()
+        {
+            BlocksContext.SetContext(UserContext(), false);
+            var calls = new List<string>();
+            _secrets.Setup(s => s.DeleteAsync(Reference, It.IsAny<CancellationToken>())).Callback(() => calls.Add("delete")).Returns(Task.CompletedTask);
+            _secrets.Setup(s => s.PurgeAsync(Reference, It.IsAny<CancellationToken>())).Callback(() => calls.Add("purge")).Returns(Task.CompletedTask);
+
+            await Resolver().RetireAsync("u1", Reference);
+
+            calls.Should().Equal("delete", "purge");
+        }
+
+        [Fact]
+        public async Task Retire_AlreadyDeleted_StillPurges()
+        {
+            BlocksContext.SetContext(UserContext(), false);
+            _secrets.Setup(s => s.DeleteAsync(Reference, It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new SecretStateException(SecretStatuses.Deleted, "delete"));
+            _secrets.Setup(s => s.PurgeAsync(Reference, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            await Resolver().RetireAsync("u1", Reference);
+
+            _secrets.Verify(s => s.PurgeAsync(Reference, It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Retire_AlreadyGone_IsIgnored_WithoutAPurge()
         {
             BlocksContext.SetContext(UserContext(), false);
             _secrets.Setup(s => s.DeleteAsync(Reference, It.IsAny<CancellationToken>())).ThrowsAsync(new SecretNotFoundException(Reference));
 
             await Resolver().RetireAsync("u1", Reference);
 
-            _secrets.Verify(s => s.DeleteAsync(Reference, It.IsAny<CancellationToken>()), Times.Once);
+            _secrets.Verify(s => s.PurgeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Retire_PurgeRefused_DoesNotThrow()
+        {
+            BlocksContext.SetContext(UserContext(), false);
+            _secrets.Setup(s => s.DeleteAsync(Reference, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _secrets.Setup(s => s.PurgeAsync(Reference, It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new SecretVaultException("vault down", "Purge", Reference));
+
+            var act = () => Resolver().RetireAsync("u1", Reference);
+
+            await act.Should().NotThrowAsync();
         }
 
         [Fact]
