@@ -32,18 +32,18 @@ describe("InvitationInvalid", () => {
     expect(screen.getByRole("heading", { name: "Link unavailable" })).toBeInTheDocument();
   });
 
-  it("shows German text when the language is de", () => {
+  it("shows the remote text for another language", () => {
     act(() => {
-      useI18nStore.getState().setRemote("de", "iam.invitation", {
-        "INVITATION_INVALID.HEADING": "Link nicht verfügbar",
+      useI18nStore.getState().setRemote("xx", "iam.invitation", {
+        "INVITATION_INVALID.HEADING": "[xx] Link unavailable",
       });
-      useAppSettingsStore.getState().setSettings({ language: "de" });
+      useAppSettingsStore.getState().setSettings({ language: "xx" });
     });
     render(
       <MemoryRouter>
         <InvitationInvalid template={DEFAULT_OIDC_UI_TEMPLATE_FIXTURE} />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("heading", { name: "Link nicht verfügbar" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "[xx] Link unavailable" })).toBeInTheDocument();
   });
 });

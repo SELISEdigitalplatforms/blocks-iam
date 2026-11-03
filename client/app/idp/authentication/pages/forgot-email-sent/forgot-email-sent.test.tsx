@@ -68,12 +68,12 @@ describe("iam.password language", () => {
     useAppSettingsStore.getState().setSettings({ language: "en" });
   });
 
-  it("shows German text when the language is de", () => {
-    useI18nStore.getState().setRemote("de", "iam.password", {
-      "FORGOT_EMAIL_SENT.EMAIL_SENT": "E-Mail gesendet",
+  it("shows the remote text for another language", () => {
+    useI18nStore.getState().setRemote("xx", "iam.password", {
+      "FORGOT_EMAIL_SENT.EMAIL_SENT": "[xx] Email sent",
     });
-    useAppSettingsStore.getState().setSettings({ language: "de" });
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
     renderAt("/forgot-email-sent", "user@example.com");
-    expect(screen.getByText("E-Mail gesendet")).toBeInTheDocument();
+    expect(screen.getByText("[xx] Email sent")).toBeInTheDocument();
   });
 });

@@ -96,14 +96,17 @@ describe("iam.device language", () => {
     useAppSettingsStore.getState().setSettings({ language: "en" });
   });
 
-  it("shows German text when the language is de", () => {
-    useI18nStore.getState().setRemote("de", "iam.device", {
-      "DEVICE_SUCCESS.FLOW_COMPLETE": "Geräteablauf abgeschlossen",
-      "DEVICE_SUCCESS.APPROVED_SUBTITLE": "Ihr Gerät wurde autorisiert.",
+  it("shows the remote text for another language", () => {
+    useI18nStore.getState().setRemote("xx", "iam.device", {
+      "DEVICE_SUCCESS.FLOW_COMPLETE": "[xx] Device Flow Complete",
+      "DEVICE_SUCCESS.APPROVED_SUBTITLE":
+        "[xx] Your device has been authorized. You can close this window.",
     });
-    useAppSettingsStore.getState().setSettings({ language: "de" });
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
     renderAt("/device/t1/success?outcome=approved");
-    expect(screen.getByText("Geräteablauf abgeschlossen")).toBeInTheDocument();
-    expect(screen.getByText("Ihr Gerät wurde autorisiert.")).toBeInTheDocument();
+    expect(screen.getByText("[xx] Device Flow Complete")).toBeInTheDocument();
+    expect(
+      screen.getByText("[xx] Your device has been authorized. You can close this window."),
+    ).toBeInTheDocument();
   });
 });

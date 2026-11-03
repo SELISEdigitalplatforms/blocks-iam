@@ -5,7 +5,7 @@ import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
 import { PasswordStrengthChecker } from "./password-strength-checker";
 import { getSsoStartErrorMessage } from "@blocks-idp/authentication/utils/sso-start-errors";
 
-const setLanguage = (language: "en" | "de") =>
+const setLanguage = (language: "en" | "xx") =>
   act(() => useAppSettingsStore.getState().setSettings({ language }));
 
 afterEach(() => {
@@ -13,14 +13,15 @@ afterEach(() => {
   useI18nStore.setState({ remote: {} });
 });
 
-describe("iam.shared in German", () => {
-  it("shows the German dictionary once it has arrived", () => {
-    setLanguage("de");
+describe("iam.shared in another language", () => {
+  it("shows the remote dictionary once it has arrived", () => {
+    setLanguage("xx");
     act(() =>
-      useI18nStore.getState().setRemote("de", "iam.shared", {
-        "PASSWORD_STRENGTH_CHECKER.TITLE": "Passwortstärke",
-        "PASSWORD_STRENGTH_CHECKER.PASSWORDS_MATCH": "Passwörter stimmen überein",
-        "SSO_START_ERRORS.INVALID_CLIENT": "Die Anwendung wird nicht erkannt.",
+      useI18nStore.getState().setRemote("xx", "iam.shared", {
+        "PASSWORD_STRENGTH_CHECKER.TITLE": "[xx] Password Strength",
+        "PASSWORD_STRENGTH_CHECKER.PASSWORDS_MATCH": "[xx] Passwords match",
+        "SSO_START_ERRORS.INVALID_CLIENT":
+          "[xx] The application that sent you here is not recognised.",
       }),
     );
 
@@ -33,16 +34,16 @@ describe("iam.shared in German", () => {
       />,
     );
 
-    expect(screen.getByText("Passwortstärke")).toBeInTheDocument();
-    expect(screen.getByText("Passwörter stimmen überein")).toBeInTheDocument();
+    expect(screen.getByText("[xx] Password Strength")).toBeInTheDocument();
+    expect(screen.getByText("[xx] Passwords match")).toBeInTheDocument();
     // Text outside React reads the same dictionary.
     expect(getSsoStartErrorMessage({ error: "invalid_client" })).toBe(
-      "Die Anwendung wird nicht erkannt.",
+      "[xx] The application that sent you here is not recognised.",
     );
   });
 
-  it("falls back to bundled English for a key the German dictionary lacks", () => {
-    setLanguage("de");
+  it("falls back to bundled English for a key the remote dictionary lacks", () => {
+    setLanguage("xx");
     render(
       <PasswordStrengthChecker
         password="abc"

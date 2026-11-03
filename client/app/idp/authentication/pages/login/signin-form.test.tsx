@@ -177,14 +177,14 @@ describe("SigninForm language", () => {
     useAppSettingsStore.getState().setSettings({ language: "en" });
   });
 
-  it("shows German text when the language is de", () => {
-    useI18nStore.getState().setRemote("de", "iam.login", {
-      "SIGNIN_FORM.EMAIL_PLACEHOLDER": "E-Mail-Adresse eingeben",
-      "SIGNIN_FORM.FORGOT_PASSWORD": "Passwort vergessen?",
+  it("shows the remote text for another language", () => {
+    useI18nStore.getState().setRemote("xx", "iam.login", {
+      "SIGNIN_FORM.EMAIL_PLACEHOLDER": "[xx] Enter your email",
+      "SIGNIN_FORM.FORGOT_PASSWORD": "[xx] Forgot password?",
     });
-    useAppSettingsStore.getState().setSettings({ language: "de" });
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
     renderForm();
-    expect(screen.getByPlaceholderText("E-Mail-Adresse eingeben")).toBeInTheDocument();
-    expect(screen.getByText("Passwort vergessen?")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("[xx] Enter your email")).toBeInTheDocument();
+    expect(screen.getByText("[xx] Forgot password?")).toBeInTheDocument();
   });
 });

@@ -483,7 +483,7 @@ function CascadeBody({
 }
 
 export function NodesPanelOidc({ config, phase, errorMessage, idleContent, instant }: Readonly<NodesPanelOidcProps>) {
-  // Subscribes the panel to the text of this module, so it redraws when German arrives. The
+  // Subscribes the panel to the text of this module, so it redraws when another language arrives. The
   // labels are read from `config` as they are drawn.
   useT("iam.oidc");
   const [visible, setVisible] = useState<VisibleNode[]>([]);
