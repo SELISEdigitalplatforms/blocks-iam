@@ -24,6 +24,7 @@ namespace Mfa.DomainService.TOTP
         private readonly ICacheClient _cacheClient;
         private readonly IValidator<VerifyOtpRequest> _validator;
         private readonly ITenants _tenant;
+        private readonly ITotpSecretResolver _secrets;
 
         private const long DefaultTotpLoginSession = 15 * 60;
 
@@ -40,7 +41,8 @@ namespace Mfa.DomainService.TOTP
                            IConfiguration configuration,
                            ICacheClient cacheClient,
                            IValidator<VerifyOtpRequest> validator,
-                           ITenants tenant)
+                           ITenants tenant,
+                           ITotpSecretResolver secrets)
         {
             _repository = repository;
             _logger = logger;
@@ -49,6 +51,7 @@ namespace Mfa.DomainService.TOTP
             _cacheClient = cacheClient;
             _validator = validator;
             _tenant = tenant;
+            _secrets = secrets;
         }
 
         public async Task<OtpGenerationResponse> GenerateAsync(UserInfo userInfo, string? sendPhoneNumberAsEmailDomain = null)
@@ -71,7 +74,16 @@ namespace Mfa.DomainService.TOTP
                 return new SetUpUserTotpResponse { Errors = new Dictionary<string, string> { { "totp_already_enabled", "TOTP is already enabled for this user" } } };
             }
 
-            var secret = await GetOrCreatePendingSecretAsync(userId);
+            string secret;
+            try
+            {
+                secret = await GetOrCreatePendingSecretAsync(userId);
+            }
+            catch (TotpSecretUnavailableException)
+            {
+                return new SetUpUserTotpResponse { Errors = new Dictionary<string, string> { { "totp_unavailable", "TOTP setup is not possible right now. Try again later." } } };
+            }
+
             var qrImage = GenerateQrCodeImageData(GetIssuer(), userInfo.Email ?? string.Empty, secret);
 
             // The QR holds the secret, so it is sent once in this response and never stored as a file.
@@ -80,22 +92,37 @@ namespace Mfa.DomainService.TOTP
 
         // A setup that is not confirmed yet keeps its secret for a short time, so a page reload
         // shows the same QR the user may already have scanned. Anything older, or left from before
-        // this change, is replaced by a new secret.
+        // this change, is replaced by a new secret. The value lives only in Blocks Secrets.
         private async Task<string> GetOrCreatePendingSecretAsync(string userId)
         {
             var existing = await GetExistingOtpInfoAsync(userId);
             if (existing is not null
-                && !string.IsNullOrWhiteSpace(existing.Secret)
+                && !string.IsNullOrWhiteSpace(existing.SecretReference)
                 && string.IsNullOrEmpty(existing.ImageUri)
                 && existing.CreatedDate > DateTime.UtcNow - PendingSetupLifetime)
             {
-                return existing.Secret;
+                var pending = await ReadSecretAsync(userId, existing.SecretReference);
+                if (pending is not null)
+                {
+                    return pending;
+                }
             }
 
-            await _repository.DeleteItemsAsync<UserTotpDetail>(t => t.CreatedBy == userId);
+            await TotpSecretRows.DeleteAsync(_repository, _secrets, userId);
 
             var secret = Base32Encoding.ToString(KeyGeneration.GenerateRandomKey(20));
-            await SaveOtpInfoAsync(userId, secret);
+            var reference = await _secrets.StoreAsync(userId, BlocksContext.GetContext()?.OrganizationId, secret);
+            try
+            {
+                await SaveOtpInfoAsync(userId, reference);
+            }
+            catch
+            {
+                // No row points at it, so the stored secret must not stay behind.
+                await _secrets.RetireAsync(userId, reference);
+                throw;
+            }
+
             return secret;
         }
 
@@ -112,13 +139,14 @@ namespace Mfa.DomainService.TOTP
             return (await _repository.GetItemAsync<UserTotpDetail>(t => t.CreatedBy == userId));
         }
 
-        private async Task SaveOtpInfoAsync(string userId, string secret)
+        private async Task SaveOtpInfoAsync(string userId, string secretReference)
         {
             var otpInfo = new UserTotpDetail
             {
                 CreatedBy = userId,
                 LastUpdatedBy = userId,
-                Secret = secret,
+                Secret = string.Empty,
+                SecretReference = secretReference,
                 ImageUri = string.Empty,
                 CreatedDate = DateTime.UtcNow,
                 LastUpdatedDate = DateTime.UtcNow,
@@ -176,13 +204,18 @@ namespace Mfa.DomainService.TOTP
             var userId = await _cacheClient.GetStringValueAsync(request.MfaId ?? string.Empty);
             var tOTPInfo = await _repository.GetItemAsync<UserTotpDetail>(t => t.CreatedBy == userId);
 
-            if (tOTPInfo is null || string.IsNullOrWhiteSpace(tOTPInfo.Secret))
+            if (tOTPInfo is null || string.IsNullOrWhiteSpace(tOTPInfo.SecretReference))
             {
-                return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { "totp_not_setup", "TOTP has not been set up for this user" } } };
+                return TotpNotSetUp();
             }
 
-            var key = Base32Encoding.ToBytes(tOTPInfo.Secret);
-            var tOTP = new Totp(key);
+            var secret = await ReadSecretAsync(userId ?? string.Empty, tOTPInfo.SecretReference);
+            if (secret is null)
+            {
+                return TotpUnavailable();
+            }
+
+            var tOTP = new Totp(Base32Encoding.ToBytes(secret));
             bool isValid = tOTP.VerifyTotp(request.VerificationCode ?? string.Empty, out long timeStepMatched, VerificationWindow.RfcSpecifiedNetworkDelay);
 
             // Single use. Deleting the login session is the atomic gate: of any number of
@@ -209,16 +242,41 @@ namespace Mfa.DomainService.TOTP
             }
 
             var existing = await GetExistingOtpInfoAsync(userId);
-            if (existing == null || string.IsNullOrWhiteSpace(existing.Secret))
+            if (existing == null || string.IsNullOrWhiteSpace(existing.SecretReference))
             {
-                return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { "totp_not_setup", "TOTP has not been set up for this user" } } };
+                return TotpNotSetUp();
             }
 
-            var key = Base32Encoding.ToBytes(existing.Secret);
-            var totp = new Totp(key);
+            var secret = await ReadSecretAsync(userId, existing.SecretReference);
+            if (secret is null)
+            {
+                return TotpUnavailable();
+            }
+
+            var totp = new Totp(Base32Encoding.ToBytes(secret));
             var isValid = totp.VerifyTotp(verificationCode, out _, VerificationWindow.RfcSpecifiedNetworkDelay);
 
             return new OtpVerificationResponse { IsSuccess = true, IsValid = isValid, UserId = userId };
         }
+
+        // Only the secret store holds the value: a row without a reference (an old plaintext secret)
+        // counts as not set up, and a failed read fails the check (owner 2026-11-01).
+        private async Task<string?> ReadSecretAsync(string userId, string reference)
+        {
+            try
+            {
+                return await _secrets.GetAsync(userId, reference);
+            }
+            catch (TotpSecretUnavailableException)
+            {
+                return null;
+            }
+        }
+
+        private static OtpVerificationResponse TotpNotSetUp() =>
+            new() { Errors = new Dictionary<string, string> { { "totp_not_setup", "TOTP has not been set up for this user" } } };
+
+        private static OtpVerificationResponse TotpUnavailable() =>
+            new() { Errors = new Dictionary<string, string> { { "totp_unavailable", "TOTP cannot be checked right now. Try again or use another sign-in method." } } };
     }
 }

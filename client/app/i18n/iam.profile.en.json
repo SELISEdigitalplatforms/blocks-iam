@@ -63,8 +63,6 @@
   "PROFILE_MFA_METHODS.DISABLE": "Disable",
   "PROFILE_MFA_METHODS.DISABLED_FOR_PROJECT": "Multi-factor Authentication is disabled for your project. Contact your project admin to activate it.",
   "PROFILE_MFA_METHODS.ENABLE": "Enable",
-  "PROFILE_MFA_METHODS.NONE": "None",
-  "PROFILE_MFA_METHODS.NONE_DESCRIPTION": "No two-factor authentication.",
   "PROFILE_MFA_VERIFY.FOLLOW_INSTRUCTIONS": "Please follow the instructions below.",
   "PROFILE_MFA_VERIFY.SET_UP_AUTHENTICATOR": "Set up your authenticator app",
   "PROFILE_MFA_VERIFY_FORM.CODE_INVALID": "Code is not valid",

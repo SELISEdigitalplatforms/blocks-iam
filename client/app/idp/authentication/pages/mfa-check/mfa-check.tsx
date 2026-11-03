@@ -1,6 +1,7 @@
 import { Loader } from "lucide-react";
+import { useState } from "react";
 import { SciFiBackgroundOidc } from "../oidc/sci-fi-background-oidc";
-import { parseAsInteger, useQueryStates } from "nuqs";
+import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { MfaCheckFrom } from "./mfa-check-form";
 import {
   buildOidcThemeStyle,
@@ -17,9 +18,13 @@ export const MfaCheck = () => {
   const { data: oidcUiConfig } = useOidcUiConfig();
   const template = oidcUiConfig?.template;
   const resolvedTheme = useOidcResolvedTheme();
-  const [{ mfa_type: mfaType }] = useQueryStates({
+  const [{ mfa_type: mfaType, mfa_id: mfaId }] = useQueryStates({
     mfa_type: parseAsInteger.withDefault(0),
+    mfa_id: parseAsString.withDefault(""),
   });
+  // Set by the form once the server says the sign-in is gone; a URL without a challenge never had one.
+  const [expired, setExpired] = useState(false);
+  const sessionEnded = expired || !mfaId;
   const mfaTypeMessage =
     mfaType == 1
       ? t("MFA_CHECK.MESSAGE_AUTHENTICATOR")
@@ -50,14 +55,16 @@ export const MfaCheck = () => {
 
           <div className="mb-6">
             <h2 className="text-xl font-semibold mb-2 font-sans text-(--fg)">
-              {template.pages.mfa.heading}
+              {sessionEnded ? t("MFA_CHECK.SESSION_EXPIRED_TITLE") : template.pages.mfa.heading}
             </h2>
-            <p className="text-sm font-sans text-(--muted)">
-              {mfaTypeMessage}
-            </p>
+            {!sessionEnded && (
+              <p className="text-sm font-sans text-(--muted)">
+                {mfaTypeMessage}
+              </p>
+            )}
           </div>
 
-          <MfaCheckFrom />
+          <MfaCheckFrom onSessionExpired={() => setExpired(true)} />
         </div>
         <OidcFooter footerText={template.pages.shared.footerText} />
       </main>

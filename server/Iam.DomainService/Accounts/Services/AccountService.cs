@@ -985,10 +985,14 @@ namespace Iam.DomainService.Accounts
 
             if (!validationResult.IsValid)
             {
+                // One message per field: two failures on the same property must answer 400, not
+                // throw a duplicate-key error (Rollbar #2126, a blank email on this public endpoint).
                 return new BaseAccountResponse
                 {
                     IsSuccess = false,
-                    Errors = validationResult.Errors.ToDictionary(e => e.PropertyName, e => e.ErrorMessage)
+                    Errors = validationResult.Errors
+                        .GroupBy(e => e.PropertyName)
+                        .ToDictionary(g => g.Key, g => g.First().ErrorMessage)
                 };
             }
 

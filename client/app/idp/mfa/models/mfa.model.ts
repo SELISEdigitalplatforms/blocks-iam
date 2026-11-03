@@ -68,6 +68,8 @@ export interface IVerifyMfaOtpResponse {
 export interface IResendMfaOtpPayload {
   mfaId: string;
   sendPhoneNumberAsEmailDomain?: string;
+  /** Tenant of the sign-in the challenge belongs to. Sent as X-Blocks-Key, not in the body. */
+  tenantId?: string;
 }
 export interface IResendMfaOtpResponse {
   errors: unknown;

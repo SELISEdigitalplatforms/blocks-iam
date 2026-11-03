@@ -14,13 +14,17 @@ import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useAuthStore } from "@seliseblocks/genesis-os";
 import { useResendOtp } from "@blocks-idp/mfa/hooks/use-resend-otp";
 import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
+import {
+  extractOIDCParams,
+  resolveLoginReturnTarget,
+} from "@blocks-idp/authentication/utils/oidc-utils";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
-import { ArrowRight, Loader, RotateCcw } from "lucide-react";
+import { ArrowRight, Clock, Loader, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { useT } from "@seliseblocks/genesis-os/i18n";
 
@@ -40,9 +44,30 @@ const CustomInputOTPSlot = ({ index }: { index: number }) => {
 const formSchema = z.object({
   code: z.string().min(6),
 });
-export const MfaCheckFrom = () => {
+
+// The second leg's answer when the sign-in behind this page is gone: the server keeps it only a
+// few minutes (IdpConstants.OidcStateCacheTtlSeconds), so no code can finish it any more.
+const MFA_SESSION_EXPIRED = "invalid_mfa_session";
+
+// The tenant of the login being completed, NOT the tenant of the IdP serving this page.
+// `BLOCKS_X_BLOCKS_KEY` is this bundle's own build-time project key -- always the root IdP --
+// so using it alone sent every construct's second leg to the root tenant. The server resolves
+// the challenge's user against the tenant named by x-blocks-key, so the construct's user was
+// looked up in the root database: verify failed with `invalid_credentials`, resend with
+// `user_not_found`. /oidc/login's first leg already prefers the URL's tenant (see
+// oidc-login-form); verify and resend keep the second leg on the same tenant.
+const loginTenantId = (): string | undefined =>
+  extractOIDCParams().tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
+
+type MfaCheckFromProps = {
+  /** Lets the page swap its heading and instructions once the sign-in has expired. */
+  onSessionExpired?: () => void;
+};
+
+export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
   const { t } = useT("iam.mfa-check");
   const navigate = useNavigate();
+  const location = useLocation();
   const animCtx = useOidcAuthAnimation();
   const { data: oidcUiConfig } = useOidcUiConfig();
   const [{ mfa_id: mfaId, mfa_type: mfaType, returnUrl }] = useQueryStates({
@@ -57,8 +82,28 @@ export const MfaCheckFrom = () => {
   const [serverError, setServerError] = useState<string | null>(null);
   // Set when the client is a native app; OidcAppHandoff then replaces the form and opens the app.
   const [appHandoffUrl, setAppHandoffUrl] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const { setAuthenticated } = useAuthStore();
-  const { remainingTime, resend } = useResendOtp({ mfaId });
+
+  const expireSession = () => {
+    setServerError(null);
+    setSessionExpired(true);
+    onSessionExpired?.();
+  };
+  // An email challenge expires with the sign-in, and a resend cannot extend it.
+  const { remainingTime, resend } = useResendOtp({
+    mfaId,
+    tenantId: loginTenantId(),
+    onExpired: expireSession,
+  });
+
+  // Both ways out lead to the sign-in of this same flow: the OS console's or the construct
+  // app's client, tenant and PKCE challenge. A page without them falls back to the application.
+  const backToSignInLabel = resolveLoginReturnTarget(location.pathname.startsWith("/oidc"), {
+    preferOidcLogin: true,
+  }).external
+    ? t("MFA_CHECK_FORM.BACK_TO_APPLICATION")
+    : t("MFA_CHECK_FORM.BACK_TO_SIGN_IN");
 
   const form = useForm<{ code: string }>({
     resolver: zodResolver(formSchema),
@@ -71,6 +116,25 @@ export const MfaCheckFrom = () => {
 
   if (!oidcUiConfig?.template) return null;
   const mfaCopy = oidcUiConfig.template.pages.mfa;
+
+  // Expired, or a link that never carried a challenge: a code cannot help, only a new sign-in.
+  if (sessionExpired || !mfaId) {
+    return (
+      <div role="alert" className="flex flex-col items-center gap-5 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full border bg-(--warn-soft) border-(--warn-border)">
+          <Clock className="h-7 w-7 text-(--warn)" aria-hidden />
+        </div>
+        <p className="max-w-sm text-sm leading-relaxed text-(--fg)">{t("MFA_CHECK_FORM.SESSION_EXPIRED_MESSAGE")}</p>
+        <LoginReturnLink
+          preferOidcLogin
+          className="oidc-sci-fi-btn flex w-full items-center justify-center gap-2 no-underline"
+        >
+          <span>{backToSignInLabel}</span>
+          <ArrowRight size={16} />
+        </LoginReturnLink>
+      </div>
+    );
+  }
 
   const isAuthenticating =
     isLoading ||
@@ -124,16 +188,7 @@ export const MfaCheckFrom = () => {
     animCtx?.startAnimation();
 
     try {
-      // The tenant of the login being completed, NOT the tenant of the IdP serving
-      // this page. `BLOCKS_X_BLOCKS_KEY` is this bundle's own build-time project key
-      // -- always the root IdP -- so using it alone sent every construct's second leg
-      // to the root tenant. CompleteMfaLoginAsync resolves the user against the
-      // tenant named by x-blocks-key, so the construct's user id was looked up in the
-      // root database and the verification failed with `invalid_credentials`.
-      // /oidc/login's first leg already prefers the URL's tenant (see oidc-login-form);
-      // this keeps the second leg on the same tenant.
-      const finalTenantId =
-        extractOIDCParams().tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
+      const finalTenantId = loginTenantId();
 
       const payload = {
         mfa_id: mfaId,
@@ -176,6 +231,9 @@ export const MfaCheckFrom = () => {
         setServerError(msg);
         await animCtx?.failAnimation(msg);
         form.reset();
+      } else if (errorCode === MFA_SESSION_EXPIRED) {
+        expireSession();
+        await animCtx?.failAnimation(t("MFA_CHECK_FORM.SESSION_EXPIRED_MESSAGE"));
       } else {
         setServerError(errorMsg);
         await animCtx?.failAnimation(errorMsg);
@@ -266,6 +324,13 @@ export const MfaCheckFrom = () => {
             </>
           )}
         </button>
+
+        {/* Always there: a lost phone, a mail that never comes or a locked account must not strand the user. */}
+        <div className="flex justify-center text-sm">
+          <LoginReturnLink preferOidcLogin className="oidc-sci-fi-link text-sm font-medium no-underline!">
+            {backToSignInLabel}
+          </LoginReturnLink>
+        </div>
       </form>
     </Form>
   );

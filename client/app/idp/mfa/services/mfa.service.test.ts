@@ -181,6 +181,19 @@ describe("MFAService", () => {
       expect(result).toEqual(mockSuccessResponse);
     });
 
+    it("should send the sign-in's tenant as X-Blocks-Key and keep it out of the body", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+
+      await service.resendOtp({ ...mockResendOtpPayload, tenantId: "construct-tenant" });
+
+      expect(http.post).toHaveBeenCalledWith(
+        iamUrl(MFA_ENDPOINTS.RESEND_OTP),
+        mockResendOtpPayload,
+        { "X-Blocks-Key": "construct-tenant" },
+        { absoluteUrl: true },
+      );
+    });
+
     it("should throw when the API call fails", async () => {
       vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
 

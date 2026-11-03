@@ -4,6 +4,7 @@ using Mfa.DomainService.Entities;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Shared;
 using Blocks.Genesis.Entities.Iam;
+using Mfa.DomainService.TOTP;
 
 namespace Mfa.DomainService.Services
 {
@@ -14,17 +15,20 @@ namespace Mfa.DomainService.Services
         private readonly IMfaConfigurationService _configurationService;
         private readonly IMfaAuditService? _auditService;
         private readonly ICacheClient _cacheClient;
+        private readonly ITotpSecretResolver _totpSecrets;
 
         public MfaManagementService(IOtpServiceFactory otpServiceFactory,
                                     IMfaManagementRepository mdmRepository,
                                     IMfaConfigurationService configurationService,
                                     ICacheClient cacheClient,
+                                    ITotpSecretResolver totpSecrets,
                                     IMfaAuditService? auditService = null)
         {
             _otpServiceFactory = otpServiceFactory;
             _mfaRepository = mdmRepository;
             _configurationService = configurationService;
             _cacheClient = cacheClient;
+            _totpSecrets = totpSecrets;
             _auditService = auditService;
         }
 
@@ -134,9 +138,9 @@ namespace Mfa.DomainService.Services
 
             await _mfaRepository.UpdatePartialAsync<UserMfaInfo>(request.UserId, updates, "Users");
 
-            // A disabled authenticator must not keep working: the old secret goes, and the next
-            // setup makes a new one.
-            await _mfaRepository.DeleteItemsAsync<UserTotpDetail>(t => t.CreatedBy == request.UserId);
+            // A disabled authenticator must not keep working: the old secret goes (retired in Blocks
+            // Secrets), and the next setup makes a new one.
+            await TotpSecretRows.DeleteAsync(_mfaRepository, _totpSecrets, request.UserId);
 
             if (isAdmin)
             {

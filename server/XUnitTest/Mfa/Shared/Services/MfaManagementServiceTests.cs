@@ -5,6 +5,7 @@ using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
+using Mfa.DomainService.TOTP;
 using Moq;
 using Blocks.Genesis.Entities.Iam;
 
@@ -12,7 +13,9 @@ namespace XUnitTest.Mfa.Shared.Services
 {
     public class MfaManagementServiceTests
     {
-        private static MfaManagementService CreateService(
+        private readonly Mock<ITotpSecretResolver> _totpSecrets = new();
+
+        private MfaManagementService CreateService(
             out Mock<IOtpServiceFactory> factory,
             out Mock<IMfaManagementRepository> repo,
             out Mock<IMfaConfigurationService> config,
@@ -30,6 +33,7 @@ namespace XUnitTest.Mfa.Shared.Services
                 repo.Object,
                 config.Object,
                 cache.Object,
+                _totpSecrets.Object,
                 audit.Object);
         }
 
@@ -167,7 +171,7 @@ namespace XUnitTest.Mfa.Shared.Services
             var repo = new Mock<IMfaManagementRepository>();
             var config = new Mock<IMfaConfigurationService>();
             var cache = new Mock<ICacheClient>();
-            var service = new MfaManagementService(factory.Object, repo.Object, config.Object, cache.Object, null);
+            var service = new MfaManagementService(factory.Object, repo.Object, config.Object, cache.Object, _totpSecrets.Object, null);
 
             var otpService = new Mock<IOtpService>();
             var verification = new OtpVerificationResponse { IsValid = true, UserId = "u1" };
@@ -265,11 +269,14 @@ namespace XUnitTest.Mfa.Shared.Services
             var service = CreateService(out _, out var repo, out _, out _, out _);
             repo.Setup(r => r.UpdatePartialAsync<UserMfaInfo>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()))
                 .Returns(Task.CompletedTask);
+            repo.Setup(r => r.GetItemsAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync(new List<UserTotpDetail> { new() { SecretReference = "ref1", CreatedBy = "target" } });
 
             var result = await service.DisableUserMfa(new DisableUserMfaRequest { UserId = "target", AdminActorUserId = "admin-1" });
 
             result.IsSuccess.Should().BeTrue();
             repo.Verify(r => r.DeleteItemsAsync(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>()), Times.Once);
+            _totpSecrets.Verify(s => s.RetireAsync("target", "ref1", It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]

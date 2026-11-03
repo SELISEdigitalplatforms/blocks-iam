@@ -37,6 +37,17 @@ namespace XUnitTest.IamTests.Accounts.Validators
             result.Errors.Should().Contain(e => e.ErrorMessage == "Email is required.");
         }
 
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task Email_Blank_ReportsOnlyRequired(string email)
+        {
+            var result = await Create().ValidateAsync(new RecoveryUserRequest { Email = email });
+
+            result.Errors.Should().ContainSingle(e => e.PropertyName == "Email")
+                .Which.ErrorMessage.Should().Be("Email is required.");
+        }
+
         [Fact]
         public async Task Email_InvalidFormat_Fails()
         {
