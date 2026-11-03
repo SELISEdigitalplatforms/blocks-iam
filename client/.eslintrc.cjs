@@ -1,3 +1,9 @@
+// Shared Blocks rule: no hard-coded user-facing text (published by genesis-os).
+const {
+  noHardcodedTextRule,
+  hardcodedTextExemptFiles,
+} = require("@seliseblocks/genesis-os/eslint");
+
 module.exports = {
   root: true,
   env: {
@@ -85,38 +91,12 @@ module.exports = {
     // languages come from the localization service. Flags JSX text and text-bearing attributes with at
     // least two lowercase letters, so acronyms such as "MFA" pass. Disable per line with a reason for
     // genuinely non-translatable tokens (product names, code identifiers).
-    "no-restricted-syntax": [
-      "error",
-      {
-        selector: "JSXText[value=/[a-z]{2,}/]",
-        message:
-          "User-facing text must use an i18n key (useT/tStatic) in the module's .en.json, not a hard-coded string.",
-      },
-      {
-        selector:
-          "JSXAttribute[name.name=/^(placeholder|title|alt|aria-label)$/] > Literal[value=/[a-z]{2,}/]",
-        message:
-          "User-facing text must use an i18n key (useT/tStatic) in the module's .en.json, not a hard-coded string.",
-      },
-      {
-        selector:
-          "JSXAttribute[name.name=/^(placeholder|title|alt|aria-label)$/] > JSXExpressionContainer > TemplateLiteral[expressions.length=0][quasis.0.value.raw=/[a-z]{2,}/]",
-        message:
-          "User-facing text must use an i18n key (useT/tStatic) in the module's .en.json, not a hard-coded string.",
-      },
-    ],
+    "no-restricted-syntax": noHardcodedTextRule,
   },
   overrides: [
     {
       // Tests, stories and test helpers render fixture text, not product UI.
-      files: [
-        "**/*.test.{ts,tsx}",
-        "**/*.spec.{ts,tsx}",
-        "**/*.stories.{ts,tsx}",
-        "**/__tests__/**",
-        "**/__mocks__/**",
-        "**/test-utils/**",
-      ],
+      files: [...hardcodedTextExemptFiles],
       rules: { "no-restricted-syntax": "off" },
     },
   ],
