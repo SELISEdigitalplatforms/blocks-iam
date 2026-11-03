@@ -258,6 +258,16 @@ export const buildOIDCNavigationUrl = (path: string): string => {
   if (params.returnUrl) searchParams.set("returnUrl", params.returnUrl);
   if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
 
+  // The relying party's PKCE challenge travels with the flow, as in getCurrentOIDCParams. A page
+  // that leads back to /oidc/login (MFA, error, signup) must hand the login form the challenge the
+  // RP holds the verifier for; without it the form makes its own, and the RP's exchange fails.
+  const current = new URLSearchParams(globalThis.location?.search ?? "");
+  const codeChallenge = current.get("code_challenge");
+  if (codeChallenge) {
+    searchParams.set("code_challenge", codeChallenge);
+    searchParams.set("code_challenge_method", current.get("code_challenge_method") || "S256");
+  }
+
   const queryString = searchParams.toString();
   if (!queryString) return safePath;
 

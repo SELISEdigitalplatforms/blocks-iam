@@ -1,5 +1,6 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 const h = vi.hoisted(() => ({
@@ -13,11 +14,25 @@ const h = vi.hoisted(() => ({
   oidcUiConfig: undefined as unknown,
   animCtx: null as Record<string, ReturnType<typeof vi.fn>> | null,
   returnUrl: "",
+  mfaId: "mfa-1",
+  pathname: "/oidc/mfa-check",
+  // What resolveLoginReturnTarget answers: the flow's own /oidc/login, or the application.
+  returnTarget: { href: "/oidc/login?clientId=os-client&tenant_id=t1", external: false },
+  // The onExpired the form hands the resend hook.
+  onResendExpired: undefined as (() => void) | undefined,
 }));
 
-vi.mock("react-router", () => ({ useNavigate: () => h.navigateMock }));
+vi.mock("react-router", () => ({
+  useNavigate: () => h.navigateMock,
+  useLocation: () => ({ pathname: h.pathname }),
+  Link: ({ to, children, ...rest }: { to: string; children: ReactNode }) => (
+    <a href={to} {...rest}>
+      {children}
+    </a>
+  ),
+}));
 vi.mock("nuqs", () => ({
-  useQueryStates: () => [{ mfa_id: "mfa-1", mfa_type: 2, returnUrl: h.returnUrl }],
+  useQueryStates: () => [{ mfa_id: h.mfaId, mfa_type: 2, returnUrl: h.returnUrl }],
   parseAsString: { withDefault: () => ({}) },
   parseAsInteger: { withDefault: () => ({}) },
 }));
@@ -26,7 +41,10 @@ vi.mock("@/store/useAuthStore", () => ({
 }));
 vi.mock("@/hooks/use-toast", () => ({ showErrorToast: vi.fn() }));
 vi.mock("@blocks-idp/mfa/hooks/use-resend-otp", () => ({
-  useResendOtp: vi.fn(() => ({ remainingTime: 0, resend: h.resend })),
+  useResendOtp: vi.fn(({ onExpired }: { onExpired?: () => void }) => {
+    h.onResendExpired = onExpired;
+    return { remainingTime: 0, resend: h.resend };
+  }),
 }));
 vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
   useOidcAuthAnimation: vi.fn(() => h.animCtx),
@@ -37,9 +55,12 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 vi.mock("@/lib/runtime-env", () => ({ getRuntimeEnv: () => h.envTenant }));
 vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
   extractOIDCParams: () => ({ tenantId: h.urlTenant, themeColor: "#124091" }),
+  resolveLoginReturnTarget: vi.fn(() => h.returnTarget),
 }));
 
-import { MfaCheckFrom } from "./mfa-check-form";
+import { MfaCheckFrom, SESSION_EXPIRED_MESSAGE } from "./mfa-check-form";
+import { resolveLoginReturnTarget } from "@blocks-idp/authentication/utils/oidc-utils";
+import { useResendOtp } from "@blocks-idp/mfa/hooks/use-resend-otp";
 import {
   DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
   OIDC_UI_TEMPLATE_FIXTURE,
@@ -51,6 +72,10 @@ beforeEach(() => {
   h.urlTenant = undefined;
   h.animCtx = null;
   h.returnUrl = "";
+  h.mfaId = "mfa-1";
+  h.pathname = "/oidc/mfa-check";
+  h.returnTarget = { href: "/oidc/login?clientId=os-client&tenant_id=t1", external: false };
+  h.onResendExpired = undefined;
   h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
@@ -352,5 +377,124 @@ describe("MfaCheckFrom", () => {
     render(<MfaCheckFrom />);
     fireEvent.click(screen.getByRole("button", { name: /resend code/i }));
     expect(h.resend).toHaveBeenCalled();
+  });
+
+  // Regression (dev 2026-11-02): a construct app's hosted MFA page resent with the IdP's own key,
+  // so the server looked the construct user up in the root database: 400 `user_not_found`.
+  it("resends on the tenant named by the url, like verify", () => {
+    h.urlTenant = "construct-tenant-key";
+    render(<MfaCheckFrom />);
+    expect(vi.mocked(useResendOtp)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mfaId: "mfa-1", tenantId: "construct-tenant-key" }),
+    );
+  });
+
+  it("resends on the configured project key when the url names no tenant", () => {
+    render(<MfaCheckFrom />);
+    expect(vi.mocked(useResendOtp)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mfaId: "mfa-1", tenantId: "root-project-key" }),
+    );
+  });
+
+  describe("way back to sign in", () => {
+    const expiredResponse = () =>
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: false,
+          status: 400,
+          headers: { get: () => "application/json" },
+          json: async () => ({
+            error: "invalid_mfa_session",
+            error_description: "Mfa login session is expired or invalid",
+          }),
+        }),
+      );
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("always offers the sign-in of the same flow next to the code form", () => {
+      const { container } = render(<MfaCheckFrom />);
+      const link = screen.getByRole("link", { name: "Back to Sign In" });
+      expect(link).toHaveAttribute("href", "/oidc/login?clientId=os-client&tenant_id=t1");
+      expect(container.querySelector("input")).toBeInTheDocument();
+      expect(resolveLoginReturnTarget).toHaveBeenCalledWith(true, { preferOidcLogin: true });
+    });
+
+    it("names the application when the way back leads there", () => {
+      h.pathname = "/mfa-check";
+      h.returnTarget = { href: "https://construct.example.com", external: true };
+      render(<MfaCheckFrom />);
+      const link = screen.getByRole("link", { name: "Back to application" });
+      expect(link).toHaveAttribute("href", "https://construct.example.com");
+      expect(resolveLoginReturnTarget).toHaveBeenCalledWith(false, { preferOidcLogin: true });
+    });
+
+    it("replaces the form with the expired notice when the sign-in is gone (authenticator or email)", async () => {
+      const onSessionExpired = vi.fn();
+      expiredResponse();
+      const { container } = render(<MfaCheckFrom onSessionExpired={onSessionExpired} />);
+      await submitCode(container);
+
+      expect(await screen.findByText(SESSION_EXPIRED_MESSAGE)).toBeInTheDocument();
+      expect(screen.queryByText("Mfa login session is expired or invalid")).not.toBeInTheDocument();
+      expect(container.querySelector("form")).toBeNull();
+      expect(screen.queryByRole("button", { name: /verify/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /resend code/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /Back to Sign In/ })).toHaveAttribute(
+        "href",
+        "/oidc/login?clientId=os-client&tenant_id=t1",
+      );
+      expect(onSessionExpired).toHaveBeenCalledTimes(1);
+    });
+
+    it("plays the panel's failure state with the expired message inside the shell", async () => {
+      h.animCtx = {
+        startAnimation: vi.fn(),
+        succeedAnimation: vi.fn().mockResolvedValue(undefined),
+        failAnimation: vi.fn().mockResolvedValue(undefined),
+        resetAnimation: vi.fn(),
+      };
+      expiredResponse();
+      const { container } = render(<MfaCheckFrom />);
+      await submitCode(container);
+      await screen.findByText(SESSION_EXPIRED_MESSAGE);
+      expect(h.animCtx.failAnimation).toHaveBeenCalledWith(SESSION_EXPIRED_MESSAGE);
+    });
+
+    it("shows the expired notice when a resend finds the email challenge gone", async () => {
+      const onSessionExpired = vi.fn();
+      const { container } = render(<MfaCheckFrom onSessionExpired={onSessionExpired} />);
+      expect(h.onResendExpired).toBeTypeOf("function");
+
+      act(() => h.onResendExpired?.());
+
+      expect(await screen.findByText(SESSION_EXPIRED_MESSAGE)).toBeInTheDocument();
+      expect(container.querySelector("form")).toBeNull();
+      expect(onSessionExpired).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the expired notice straight away for a link without a challenge", () => {
+      h.mfaId = "";
+      const { container } = render(<MfaCheckFrom />);
+      expect(screen.getByText(SESSION_EXPIRED_MESSAGE)).toBeInTheDocument();
+      expect(container.querySelector("form")).toBeNull();
+      expect(screen.getByRole("link", { name: /Back to Sign In/ })).toBeInTheDocument();
+    });
+
+    it("keeps the way back after an account-locked answer", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: false,
+          headers: { get: () => "application/json" },
+          json: async () => ({ error: "account_locked" }),
+        }),
+      );
+      const { container } = render(<MfaCheckFrom />);
+      await submitCode(container);
+      await screen.findByText(/Your account is locked/);
+      expect(screen.getByRole("link", { name: "Back to Sign In" })).toBeInTheDocument();
+    });
   });
 });

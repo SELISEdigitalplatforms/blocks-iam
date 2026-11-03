@@ -64,4 +64,55 @@ describe("useResendOtp", () => {
     expect(mockMutateAsync).toHaveBeenCalledWith({ mfaId: MOCK_MFA_ID });
     expect(mockReset).not.toHaveBeenCalled();
   });
+
+  it("sends the sign-in's tenant with the resend", async () => {
+    mockMutateAsync.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useResendOtp({ mfaId: MOCK_MFA_ID, tenantId: "construct-tenant" }), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.resend();
+    });
+
+    expect(mockMutateAsync).toHaveBeenCalledWith({ mfaId: MOCK_MFA_ID, tenantId: "construct-tenant" });
+  });
+
+  it("reports an expired challenge to onExpired instead of logging it", async () => {
+    mockMutateAsync.mockRejectedValue({ errors: { message: "invalid_two_factor_id" } });
+    const onExpired = vi.fn();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { result } = renderHook(() => useResendOtp({ mfaId: MOCK_MFA_ID, onExpired }), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.resend();
+    });
+
+    expect(onExpired).toHaveBeenCalledTimes(1);
+    expect(mockReset).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("leaves other resend failures to the log, not onExpired", async () => {
+    mockMutateAsync.mockRejectedValue({ errors: { message: "resend_too_soon" } });
+    const onExpired = vi.fn();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { result } = renderHook(() => useResendOtp({ mfaId: MOCK_MFA_ID, onExpired }), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.resend();
+    });
+
+    expect(onExpired).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
 });

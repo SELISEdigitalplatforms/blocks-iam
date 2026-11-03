@@ -18,6 +18,18 @@ namespace XUnitTest.Mfa.TOTP
 {
     public class TotpServiceTests
     {
+        // Blocks Secrets fake: every reference reads as TotpSecret; a store returns "ref-new".
+        private readonly Mock<ITotpSecretResolver> _secrets = new();
+        private string? _storedValue;
+
+        public TotpServiceTests()
+        {
+            _secrets.Setup(s => s.GetAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(TotpSecret);
+            _secrets.Setup(s => s.StoreAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Callback<string, string?, string, CancellationToken>((_, _, v, _) => _storedValue = v)
+                .ReturnsAsync("ref-new");
+        }
+
         private static IHttpContextAccessor BuildHttpContextAccessor(string? authorization = "Bearer test-token", string? xBlocksKey = "key-1")
         {
             var ctx = new DefaultHttpContext();
@@ -32,7 +44,7 @@ namespace XUnitTest.Mfa.TOTP
             return new HttpContextAccessor { HttpContext = ctx };
         }
 
-        private static TotpService CreateService(
+        private TotpService CreateService(
             out Mock<IMfaManagementRepository> repo,
             out Mock<ICacheClient> cache,
             out Mock<IValidator<VerifyOtpRequest>> validator,
@@ -61,7 +73,8 @@ namespace XUnitTest.Mfa.TOTP
                 configuration,
                 cache.Object,
                 validator.Object,
-                tenants.Object);
+                tenants.Object,
+                _secrets.Object);
         }
 
         [Fact]
@@ -170,7 +183,7 @@ namespace XUnitTest.Mfa.TOTP
             cache.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
             cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync("u1");
             repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserTotpDetail { Secret = "JBSWY3DPEHPK3PXP" });
+                .ReturnsAsync(new UserTotpDetail { SecretReference = "ref1" });
 
             var result = await service.VerifyAsync(new VerifyOtpRequest { VerificationCode = "000000", MfaId = "m1" });
 
@@ -217,7 +230,7 @@ namespace XUnitTest.Mfa.TOTP
         {
             var service = CreateService(out var repo, out _, out _, out _, out _, out _);
             repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserTotpDetail { Secret = "JBSWY3DPEHPK3PXP" });
+                .ReturnsAsync(new UserTotpDetail { SecretReference = "ref1" });
 
             var result = await service.VerifyForUserAsync("u1", "000000");
 
@@ -229,7 +242,7 @@ namespace XUnitTest.Mfa.TOTP
         {
             var service = CreateService(out var repo, out _, out _, out _, out _, out _);
             repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserTotpDetail { Secret = "JBSWY3DPEHPK3PXP" });
+                .ReturnsAsync(new UserTotpDetail { SecretReference = "ref1" });
 
             var result = await service.VerifyForUserAsync("u1", "999999");
 
@@ -262,7 +275,7 @@ namespace XUnitTest.Mfa.TOTP
         {
             var service = CreateService(out var repo, out _, out _, out _, out _, out _);
             SetupUser(repo, new UserInfo { ItemId = "u1", MfaEnabled = true, UserMfaType = UserMfaType.TOTP },
-                new UserTotpDetail { Secret = "JBSWY3DPEHPK3PXP", CreatedBy = "u1" });
+                new UserTotpDetail { SecretReference = "ref1", CreatedBy = "u1" });
 
             var result = await service.GenerateTotpImageByUserAsync("u1");
 
@@ -286,8 +299,10 @@ namespace XUnitTest.Mfa.TOTP
             result.IsSuccess.Should().BeTrue();
             result.QrImageUrl.Should().StartWith("data:image/png;base64,");
             saved.Should().NotBeNull();
-            saved!.ImageUri.Should().BeEmpty();
-            saved.Secret.Should().Be(result.QrCode);
+            saved.ImageUri.Should().BeEmpty();
+            saved.Secret.Should().BeEmpty();
+            saved.SecretReference.Should().Be("ref-new");
+            _storedValue.Should().Be(result.QrCode);
         }
 
         [Fact]
@@ -296,12 +311,15 @@ namespace XUnitTest.Mfa.TOTP
             var service = CreateService(out var repo, out _, out _, out var tenants, out _, out _);
             SetupUser(repo, new UserInfo { ItemId = "u1", Email = "u1@e.com" },
                 new UserTotpDetail { Secret = "JBSWY3DPEHPK3PXP", ImageUri = "https://img.test/qr.png", CreatedBy = "u1", CreatedDate = DateTime.UtcNow });
+            repo.Setup(r => r.GetItemsAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync(new List<UserTotpDetail> { new() { SecretReference = "ref-old", CreatedBy = "u1" } });
             tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
 
             var result = await service.GenerateTotpImageByUserAsync("u1");
 
             result.QrCode.Should().NotBe("JBSWY3DPEHPK3PXP");
             repo.Verify(r => r.DeleteItemsAsync(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>()), Times.Once);
+            _secrets.Verify(s => s.RetireAsync("u1", "ref-old", It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]
@@ -310,7 +328,7 @@ namespace XUnitTest.Mfa.TOTP
             // A page reload must not invalidate the QR the user may already have scanned.
             var service = CreateService(out var repo, out _, out _, out var tenants, out _, out _);
             SetupUser(repo, new UserInfo { ItemId = "u1", Email = "u1@e.com" },
-                new UserTotpDetail { Secret = "JBSWY3DPEHPK3PXP", ImageUri = string.Empty, CreatedBy = "u1", CreatedDate = DateTime.UtcNow.AddMinutes(-1) });
+                new UserTotpDetail { SecretReference = "ref1", ImageUri = string.Empty, CreatedBy = "u1", CreatedDate = DateTime.UtcNow.AddMinutes(-1) });
             tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
 
             var result = await service.GenerateTotpImageByUserAsync("u1");
@@ -319,13 +337,92 @@ namespace XUnitTest.Mfa.TOTP
             repo.Verify(r => r.SaveAsync(It.IsAny<UserTotpDetail>(), It.IsAny<string>()), Times.Never);
         }
 
+        [Fact]
+        public async Task VerifyForUserAsync_OldPlainSecretWithoutReference_CountsAsNotSetUp()
+        {
+            // Only the secret store holds the value: a plaintext row is never used.
+            var service = CreateService(out var repo, out _, out _, out _, out _, out _);
+            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync(new UserTotpDetail { Secret = TotpSecret, CreatedBy = "u1" });
+
+            var result = await service.VerifyForUserAsync("u1", CodeAt(DateTime.UtcNow));
+
+            result.Errors.Should().ContainKey("totp_not_setup");
+            _secrets.Verify(s => s.GetAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task VerifyAsync_SecretStoreUnavailable_FailsClosed_AndKeepsTheLoginSession()
+        {
+            var service = CreateService(out var repo, out var cache, out var validator, out _, out _, out _);
+            validator.Setup(v => v.ValidateAsync(It.IsAny<VerifyOtpRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
+            cache.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
+            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync("u1");
+            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync(new UserTotpDetail { SecretReference = "ref1", CreatedBy = "u1" });
+            _secrets.Setup(s => s.GetAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new TotpSecretUnavailableException("u1", "SecretStateException"));
+
+            var result = await service.VerifyAsync(new VerifyOtpRequest { VerificationCode = CodeAt(DateTime.UtcNow), MfaId = "m1" });
+
+            result.IsValid.Should().BeFalse();
+            result.Errors.Should().ContainKey("totp_unavailable");
+            cache.Verify(c => c.RemoveKeyAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GenerateTotpImageByUserAsync_SecretStoreDown_ReturnsError_AndSavesNoRow()
+        {
+            var service = CreateService(out var repo, out _, out _, out _, out _, out _);
+            SetupUser(repo, new UserInfo { ItemId = "u1", Email = "u1@e.com" }, null);
+            _secrets.Setup(s => s.StoreAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new TotpSecretUnavailableException("u1", "SecretAccessDeniedException"));
+
+            var result = await service.GenerateTotpImageByUserAsync("u1");
+
+            result.Errors.Should().ContainKey("totp_unavailable");
+            result.QrCode.Should().BeNullOrEmpty();
+            repo.Verify(r => r.SaveAsync(It.IsAny<UserTotpDetail>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GenerateTotpImageByUserAsync_RowSaveFails_RetiresTheStoredSecret()
+        {
+            var service = CreateService(out var repo, out _, out _, out var tenants, out _, out _);
+            SetupUser(repo, new UserInfo { ItemId = "u1", Email = "u1@e.com" }, null);
+            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
+            repo.Setup(r => r.SaveAsync(It.IsAny<UserTotpDetail>(), It.IsAny<string>())).ThrowsAsync(new InvalidOperationException("db down"));
+
+            var act = () => service.GenerateTotpImageByUserAsync("u1");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+            _secrets.Verify(s => s.RetireAsync("u1", "ref-new", It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task GenerateTotpImageByUserAsync_PendingSecretGoneFromStore_MakesANewOne()
+        {
+            var service = CreateService(out var repo, out _, out _, out var tenants, out _, out _);
+            SetupUser(repo, new UserInfo { ItemId = "u1", Email = "u1@e.com" },
+                new UserTotpDetail { SecretReference = "ref1", ImageUri = string.Empty, CreatedBy = "u1", CreatedDate = DateTime.UtcNow.AddMinutes(-1) });
+            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
+            _secrets.Setup(s => s.GetAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new TotpSecretUnavailableException("u1", "SecretNotFoundException"));
+
+            var result = await service.GenerateTotpImageByUserAsync("u1");
+
+            result.IsSuccess.Should().BeTrue();
+            result.QrCode.Should().Be(_storedValue);
+            repo.Verify(r => r.SaveAsync(It.Is<UserTotpDetail>(d => d.SecretReference == "ref-new"), It.IsAny<string>()), Times.Once);
+        }
+
         // ---------- single use: mfa_id consumption and time-step replay ----------
 
         private const string TotpSecret = "JBSWY3DPEHPK3PXP";
 
         /// <summary>A TotpService over stateful fakes: mfa ids live in a dictionary whose removal
         /// reports whether THIS call removed it, and the used-step marker behaves like SET NX.</summary>
-        private static TotpService CreateStatefulService(out System.Collections.Concurrent.ConcurrentDictionary<string, string> sessions)
+        private TotpService CreateStatefulService(out System.Collections.Concurrent.ConcurrentDictionary<string, string> sessions)
         {
             var service = CreateService(out var repo, out var cache, out var validator, out _, out _, out _);
             var store = sessions = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
@@ -339,7 +436,7 @@ namespace XUnitTest.Mfa.TOTP
                 .ReturnsAsync((StackExchange.Redis.RedisKey k, StackExchange.Redis.RedisValue _, TimeSpan? _, StackExchange.Redis.When _) => usedSteps.TryAdd(k.ToString(), true));
             cache.Setup(c => c.CacheDatabase()).Returns(db.Object);
             repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserTotpDetail { Secret = TotpSecret, CreatedBy = "u1" });
+                .ReturnsAsync(new UserTotpDetail { SecretReference = "ref1", CreatedBy = "u1" });
             return service;
         }
 

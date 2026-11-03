@@ -56,8 +56,16 @@ export class MFAService {
     return serviceInstances.idpService.post(toIamUrl(MFA_ENDPOINTS.VERIFY_TOTP_SETUP), payload, undefined, { absoluteUrl: true });
   }
 
-  resendOtp(payload: IResendMfaOtpPayload): Promise<IResendMfaOtpResponse> {
-    return serviceInstances.idpService.post(toIamUrl(MFA_ENDPOINTS.RESEND_OTP), payload, undefined, { absoluteUrl: true });
+  // The server looks the challenge's user up in the tenant named by X-Blocks-Key. On the hosted MFA
+  // page that is the sign-in's tenant (a construct app's), not this bundle's own key, which the
+  // client adds by default and which answered `user_not_found` for every construct user.
+  resendOtp({ tenantId, ...payload }: IResendMfaOtpPayload): Promise<IResendMfaOtpResponse> {
+    return serviceInstances.idpService.post(
+      toIamUrl(MFA_ENDPOINTS.RESEND_OTP),
+      payload,
+      tenantId ? { "X-Blocks-Key": tenantId } : undefined,
+      { absoluteUrl: true },
+    );
   }
   disableMFA(payload: IDisableMFAPayload): Promise<IDisableMFAResponse> {
     return serviceInstances.idpService.post(toIamUrl(MFA_ENDPOINTS.DISABLE_MFA), payload, undefined, { absoluteUrl: true });
