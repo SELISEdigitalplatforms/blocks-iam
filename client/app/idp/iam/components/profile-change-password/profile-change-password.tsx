@@ -25,7 +25,7 @@ import { PasswordInput } from "@/components/password-input/password-input";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
 import { useChangePassword } from "@blocks-idp/iam/hooks/use-account";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { isErrorWithErrors } from "@/lib/error";
+import { firstErrorText, isErrorWithErrors } from "@/lib/error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import {
@@ -80,11 +80,7 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
       onClose();
     } catch (error) {
       const message = isErrorWithErrors(error)
-        ? Array.isArray(error.errors)
-          ? (error.errors[0] as string)
-          : typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? t("PROFILE_CHANGE_PASSWORD.UPDATE_FAILED"))
-          : (error.errors as string)
+        ? firstErrorText(error.errors, t("PROFILE_CHANGE_PASSWORD.UPDATE_FAILED"))
         : t("PROFILE_CHANGE_PASSWORD.CHECK_CURRENT_PASSWORD");
       showErrorToast({ title: t("PROFILE_CHANGE_PASSWORD.UPDATE_FAILED"), errors: message });
     }

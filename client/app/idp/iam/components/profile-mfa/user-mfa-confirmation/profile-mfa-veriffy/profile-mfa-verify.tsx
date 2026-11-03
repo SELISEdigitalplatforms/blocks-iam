@@ -48,33 +48,31 @@ export const ProfileMFAVerify = () => {
   }, [generateOtp, isFirstMount, isVerifyModalOpen]);
 
   return (
-    <>
-      <Dialog
-        open={isVerifyModalOpen}
-        onOpenChange={(value) => {
-          if (!value) isFirstMount.current = true;
-          setIsVerifyModalOpen(value);
-        }}
-      >
-        <DialogContent aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>{mfaMethodType === 1 && t("PROFILE_MFA_VERIFY.SET_UP_AUTHENTICATOR")}</DialogTitle>
-            <DialogDescription>
-              {mfaMethodType === 1 && t("PROFILE_MFA_VERIFY.FOLLOW_INSTRUCTIONS")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="text-sm font-normal text-high-emphasis">
-            {mfaMethodType === 1 ? (
-              <ProfileMfaVerifyGuideLineTotp />
-            ) : (
-              <ProfileMfaVerifyGuideLineEmail mfaId={mfaId} />
-            )}
-            <div className="mt-4">
-              <ProfileMfaVerifyForm mfaId={mfaId} />
-            </div>
+    <Dialog
+      open={isVerifyModalOpen}
+      onOpenChange={(value) => {
+        if (!value) isFirstMount.current = true;
+        setIsVerifyModalOpen(value);
+      }}
+    >
+      <DialogContent aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{mfaMethodType === 1 && t("PROFILE_MFA_VERIFY.SET_UP_AUTHENTICATOR")}</DialogTitle>
+          <DialogDescription>
+            {mfaMethodType === 1 && t("PROFILE_MFA_VERIFY.FOLLOW_INSTRUCTIONS")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="text-sm font-normal text-high-emphasis">
+          {mfaMethodType === 1 ? (
+            <ProfileMfaVerifyGuideLineTotp />
+          ) : (
+            <ProfileMfaVerifyGuideLineEmail mfaId={mfaId} />
+          )}
+          <div className="mt-4">
+            <ProfileMfaVerifyForm mfaId={mfaId} />
           </div>
-        </DialogContent>
-      </Dialog>
-    </>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 };

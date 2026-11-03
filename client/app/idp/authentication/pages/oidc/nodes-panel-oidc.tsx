@@ -151,6 +151,32 @@ function getNodeBadgeText(
   return t("NODES_PANEL.BADGE_STANDBY");
 }
 
+type NodeTone = "failed" | "done" | "active" | "idle";
+
+function nodeTone({ isFailed, isDone, isActive }: { isFailed: boolean; isDone: boolean; isActive: boolean }): NodeTone {
+  if (isFailed) return "failed";
+  if (isDone) return "done";
+  if (isActive) return "active";
+  return "idle";
+}
+
+const NODE_LOOK: Record<NodeTone, { badge: React.CSSProperties; text: string }> = {
+  failed: { badge: { background: "var(--danger-soft)", color: "var(--danger)" }, text: "var(--danger)" },
+  done: { badge: { background: "var(--success-soft)", color: "var(--success)" }, text: "var(--success)" },
+  active: { badge: { background: "var(--accent-soft)", color: "var(--accent2)" }, text: "var(--accent2)" },
+  idle: { badge: { background: "var(--node-divider)", color: "var(--fg)" }, text: "var(--muted)" },
+};
+
+function getNodeDescription(
+  t: TFunction,
+  node: OidcServiceNode,
+  { isFailed, isDone }: { isFailed: boolean; isDone: boolean },
+) {
+  if (isFailed) return node.failLabel ?? t("NODES_PANEL.STEP_FAILED");
+  if (isDone) return node.successLabel;
+  return node.activeLabel;
+}
+
 function NodeCard({
   node, state, floatIdx, indeterminate = false, showProgress = true, floating = true,
 }: {
@@ -162,21 +188,12 @@ function NodeCard({
   const isDone   = state === "complete";
   const isFailed = state === "failed";
 
-  const badgeStyle: React.CSSProperties = isFailed
-    ? { background: "var(--danger-soft)", color: "var(--danger)" }
-    : isDone
-    ? { background: "var(--success-soft)", color: "var(--success)" }
-    : isActive
-    ? { background: "var(--accent-soft)",  color: "var(--accent2)" }
-    : { background: "var(--node-divider)", color: "var(--fg)" };
-
+  const look = NODE_LOOK[nodeTone({ isFailed, isDone, isActive })];
+  const badgeStyle = look.badge;
   const badgeText = getNodeBadgeText(t, { isFailed, isDone, isActive });
   const stateLabel = isFailed ? t("NODES_PANEL.ABORTED") : t("NODES_PANEL.COMPLETE");
-  const descColor = isFailed ? "var(--danger)" : isDone ? "var(--success)" : isActive ? "var(--accent2)" : "var(--muted)";
-  const description = isFailed
-    ? (node.failLabel ?? t("NODES_PANEL.STEP_FAILED"))
-    : isDone   ? node.successLabel
-    : node.activeLabel;
+  const descColor = look.text;
+  const description = getNodeDescription(t, node, { isFailed, isDone });
 
   const IconComp = ICON_MAP[node.icon] ?? KeyRound;
   const floatClass = floating ? `oidc-node-float-${floatIdx}` : "";

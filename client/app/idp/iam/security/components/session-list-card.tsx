@@ -128,62 +128,64 @@ export const SessionListCard = ({ showSignOut = true, userId }: SessionListCardP
   const loading = isLoading || isFetching;
   const cards = (data ?? []).map(toSessionCardViewModel);
 
+  const renderSessions = () => {
+    if (loading) return <LoadingSkeleton />;
+    if (cards.length === 0) return <EmptyState />;
+    return (
+      <ul className="divide-y rounded-lg border bg-card">
+        {cards.map((card) => {
+          const Icon = getDeviceIcon(undefined, card.operatingSystem);
+          return (
+            <li
+              key={card.id}
+              className="flex items-center justify-between hover:bg-muted/30"
+            >
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-4 pr-3 text-left"
+                onClick={() => setSelectedSessionId(card.id)}
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="block min-w-0">
+                  <span className="block truncate font-medium text-high-emphasis">
+                    {card.deviceName}
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {t("SESSION_LIST_CARD.BROWSER_ON_OS", { browser: card.browser, os: card.operatingSystem, apps: card.applicationSummary })}
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {t("SESSION_LIST_CARD.IP_LAST_ACTIVE", { ip: card.ipAddress, time: card.lastActivityDisplay })}
+                  </span>
+                </span>
+              </button>
+              <div className="flex shrink-0 items-center gap-2 py-3 pr-4">
+                {card.isCurrent ? (
+                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                    {t("SESSION_LIST_CARD.THIS_DEVICE")}
+                  </span>
+                ) : null}
+                {showSignOut ? (
+                  <SignOutButton
+                    card={card}
+                    onRevoked={() => refetch()}
+                    mutateAsync={mutateAsync}
+                    isPending={isPending}
+                  />
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
+
   return (
     <Card className="flex h-full min-h-0 flex-col">
       <CardContent className="flex-1 overflow-y-auto">
-        {loading ? (
-          <LoadingSkeleton />
-        ) : cards.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <ul className="divide-y rounded-lg border bg-card">
-            {cards.map((card) => {
-              const Icon = getDeviceIcon(undefined, card.operatingSystem);
-              return (
-                <li
-                  key={card.id}
-                  className="flex items-center justify-between hover:bg-muted/30"
-                >
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-3 pl-4 pr-3 text-left"
-                    onClick={() => setSelectedSessionId(card.id)}
-                  >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span className="block min-w-0">
-                      <span className="block truncate font-medium text-high-emphasis">
-                        {card.deviceName}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {t("SESSION_LIST_CARD.BROWSER_ON_OS", { browser: card.browser, os: card.operatingSystem, apps: card.applicationSummary })}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {t("SESSION_LIST_CARD.IP_LAST_ACTIVE", { ip: card.ipAddress, time: card.lastActivityDisplay })}
-                      </span>
-                    </span>
-                  </button>
-                  <div className="flex shrink-0 items-center gap-2 py-3 pr-4">
-                    {card.isCurrent ? (
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
-                        {t("SESSION_LIST_CARD.THIS_DEVICE")}
-                      </span>
-                    ) : null}
-                    {showSignOut ? (
-                      <SignOutButton
-                        card={card}
-                        onRevoked={() => refetch()}
-                        mutateAsync={mutateAsync}
-                        isPending={isPending}
-                      />
-                    ) : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        {renderSessions()}
       </CardContent>
 
       <SessionDetailsDrawer

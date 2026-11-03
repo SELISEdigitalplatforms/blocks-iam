@@ -12,7 +12,7 @@ import { Captcha } from "@/components/captcha";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@seliseblocks/genesis-os/i18n";
 import { useAccountResetPassword } from "@blocks-idp/iam/hooks/use-account";
-import { isErrorWithErrors } from "@/lib/error";
+import { firstErrorText, isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
@@ -22,7 +22,7 @@ import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
 import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 import { PASSWORD_MAX_INPUT_LENGTH } from "@blocks-idp/authentication/utils/password-policy.util";
 
-const RESET_PASSWORD_FORM_SOMETHING_WENT_WRONG = "RESET_PASSWORD_FORM.SOMETHING_WENT_WRONG";
+const SOMETHING_WENT_WRONG_KEY = "RESET_PASSWORD_FORM.SOMETHING_WENT_WRONG";
 
 type ResetPasswordFormProps = { code: string; tenantId?: string };
 
@@ -121,11 +121,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
       });
       if (!res.isSuccess) {
         resetCaptcha();
-        const msg = Array.isArray(res.errors)
-          ? res.errors[0]
-          : res.errors && typeof res.errors === "object"
-          ? (Object.values(res.errors as Record<string, string>)[0] ?? t("RESET_PASSWORD_FORM.RESET_FAILED"))
-          : (res.errors as string) || t("RESET_PASSWORD_FORM.RESET_FAILED");
+        const msg = firstErrorText(res.errors, t("RESET_PASSWORD_FORM.RESET_FAILED"));
         setServerError(msg);
         shake();
         await animCtx?.failAnimation(msg);
@@ -139,15 +135,11 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
       resetCaptcha();
       shake();
       if (isErrorWithErrors(error)) {
-        const msg = Array.isArray(error.errors)
-          ? (error.errors[0] as string)
-          : error.errors && typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? t(RESET_PASSWORD_FORM_SOMETHING_WENT_WRONG))
-          : (error.errors as unknown as string) || t(RESET_PASSWORD_FORM_SOMETHING_WENT_WRONG);
+        const msg = firstErrorText(error.errors, t(SOMETHING_WENT_WRONG_KEY));
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       } else {
-        const msg = t(RESET_PASSWORD_FORM_SOMETHING_WENT_WRONG);
+        const msg = t(SOMETHING_WENT_WRONG_KEY);
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       }

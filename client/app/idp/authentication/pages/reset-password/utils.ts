@@ -6,13 +6,13 @@ import {
   type IOidcPasswordPolicy,
 } from "@blocks-idp/authentication/utils/password-policy.util";
 
-const IAM_PASSWORD_MODULE = "iam.password";
+const I18N_MODULE = "iam.password";
 
 export const buildResetPasswordFormSchema = (policy: IOidcPasswordPolicy | null | undefined) => {
   const basePassword = z
     .string()
-    .min(1, { error: () => tStatic(IAM_PASSWORD_MODULE, "RESET_PASSWORD_SCHEMA.PASSWORD_REQUIRED") })
-    .max(PASSWORD_MAX_INPUT_LENGTH, { error: () => tStatic(IAM_PASSWORD_MODULE, "RESET_PASSWORD_SCHEMA.PASSWORD_TOO_LONG") });
+    .min(1, { error: () => tStatic(I18N_MODULE, "RESET_PASSWORD_SCHEMA.PASSWORD_REQUIRED") })
+    .max(PASSWORD_MAX_INPUT_LENGTH, { error: () => tStatic(I18N_MODULE, "RESET_PASSWORD_SCHEMA.PASSWORD_TOO_LONG") });
   const password = applyPasswordPolicyToSchema(basePassword, policy);
 
   return z.object({
@@ -21,7 +21,7 @@ export const buildResetPasswordFormSchema = (policy: IOidcPasswordPolicy | null 
     logoutFromAllDevices: z.boolean().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    error: () => tStatic(IAM_PASSWORD_MODULE, "RESET_PASSWORD_SCHEMA.PASSWORDS_MUST_MATCH"),
+    error: () => tStatic(I18N_MODULE, "RESET_PASSWORD_SCHEMA.PASSWORDS_MUST_MATCH"),
     path: ["confirmPassword"],
   });
 };

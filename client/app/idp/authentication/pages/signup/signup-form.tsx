@@ -6,7 +6,7 @@ import {
   FormMessage,
 } from "@/components/ui-kits/form/form";
 import { Captcha } from "@/components/captcha";
-import { isErrorWithErrors } from "@/lib/error";
+import { firstErrorText, isErrorWithErrors } from "@/lib/error";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { useSignupByEmail } from "@blocks-idp/authentication/hooks/use-auth";
@@ -193,11 +193,7 @@ export const SignupForm = ({
       });
       if (!res.isSuccess) {
         resetCaptcha();
-        const msg = Array.isArray(res.errors)
-          ? res.errors[0]
-          : res.errors && typeof res.errors === "object"
-          ? (Object.values(res.errors as Record<string, string>)[0] ?? t("SIGNUP_FORM.REGISTRATION_FAILED"))
-          : (res.errors as string) || t("SIGNUP_FORM.REGISTRATION_FAILED");
+        const msg = firstErrorText(res.errors, t("SIGNUP_FORM.REGISTRATION_FAILED"));
         const shown = surfaceServerError(res.errors, msg);
         shake();
         await animCtx?.failAnimation(shown);
@@ -214,11 +210,7 @@ export const SignupForm = ({
       resetCaptcha();
       shake();
       if (isErrorWithErrors(error)) {
-        const msg = Array.isArray(error.errors)
-          ? (error.errors[0] as string)
-          : error.errors && typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? t(SIGNUP_FORM_SOMETHING_WENT_WRONG))
-          : (error.errors as unknown as string) || t(SIGNUP_FORM_SOMETHING_WENT_WRONG);
+        const msg = firstErrorText(error.errors, t(SIGNUP_FORM_SOMETHING_WENT_WRONG));
         const shown = surfaceServerError(error.errors, msg);
         await animCtx?.failAnimation(shown);
       } else {

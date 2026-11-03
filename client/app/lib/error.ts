@@ -53,3 +53,15 @@ export const handleErrorMessages = (
 
   return tStatic(IAM_SHARED_MODULE, "ERROR.UNEXPECTED");
 };
+
+/**
+ * The first message of a server `errors` value: an array's first entry, an object's first
+ * value, or the string itself; `fallback` when there is none.
+ */
+export const firstErrorText = (errors: unknown, fallback: string): string => {
+  if (Array.isArray(errors)) return errors[0] as string;
+  if (errors && typeof errors === "object") {
+    return Object.values(errors as Record<string, string>)[0] ?? fallback;
+  }
+  return (errors as string) || fallback;
+};

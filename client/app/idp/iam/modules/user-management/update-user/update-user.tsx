@@ -76,90 +76,98 @@ export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: Up
     }
   };
 
+  const renderTrigger = () => {
+    if (iconOnly) {
+      return (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={own ? t("UPDATE_USER.EDIT_PROFILE_ARIA") : t("UPDATE_USER.EDIT_USER_ARIA")}
+          className="h-7 w-7 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <Pen className="h-3.5 w-3.5" />
+        </Button>
+      );
+    }
+    if (own) {
+      return (
+        <Button
+          className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-xs transition-all hover:bg-muted"
+        >
+          <Pen className="h-4 w-4" />
+          {t("UPDATE_USER.EDIT_PROFILE")}
+        </Button>
+      );
+    }
+    return (
+      <Button variant="outline" size="sm" className="gap-2">
+        <Pen className="h-4 w-4" />
+        <span className="sr-only sm:not-sr-only">{t("UPDATE_USER.EDIT_USER")}</span>
+      </Button>
+    );
+  };
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(value) => {
-        if (userData?.data) {
-          form.reset({
-            firstName: userData.data.firstName || "",
-            lastName: userData.data.lastName || "",
-          });
-        } else {
-          form.reset(inviteUserFormDefaultValue);
-        }
-        setOpen(value);
-      }}
-    >
-      <DialogTrigger asChild>
-        {iconOnly ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={own ? t("UPDATE_USER.EDIT_PROFILE_ARIA") : t("UPDATE_USER.EDIT_USER_ARIA")}
-            className="h-7 w-7 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <Pen className="h-3.5 w-3.5" />
-          </Button>
-        ) : own ? (
-          <Button
-            className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-xs transition-all hover:bg-muted"
-          >
-            <Pen className="h-4 w-4" />
-            {t("UPDATE_USER.EDIT_PROFILE")}
-          </Button>
-        ) : (
-          <Button variant="outline" size="sm" className="gap-2">
-            <Pen className="h-4 w-4" />
-            <span className="sr-only sm:not-sr-only">{t("UPDATE_USER.EDIT_USER")}</span>
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t("UPDATE_USER.EDIT_USER")}</DialogTitle>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmitHandler)}>
-            <div className="flex flex-col gap-4">
-              <FormField
-                control={form.control}
-                name="firstName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t("UPDATE_USER.FIRST_NAME")}</FormLabel>
-                    <FormControl>
-                      <Input placeholder={t("UPDATE_USER.FIRST_NAME_PLACEHOLDER")} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="lastName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t("UPDATE_USER.LAST_NAME")}</FormLabel>
-                    <FormControl>
-                      <Input placeholder={t("UPDATE_USER.LAST_NAME_PLACEHOLDER")} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-            <DialogFooter className="mt-6">
-              <DialogClose asChild>
-                <Button variant="secondary" disabled={isPending}>
-                  {t("common:CANCEL")}
-                </Button>
-              </DialogClose>
-              <Button disabled={isPending || isLoading || isFetching || !isDirty}>{t("common:SAVE")}</Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+  <Dialog
+    open={open}
+    onOpenChange={(value) => {
+      if (userData?.data) {
+        form.reset({
+          firstName: userData.data.firstName || "",
+          lastName: userData.data.lastName || "",
+        });
+      } else {
+        form.reset(inviteUserFormDefaultValue);
+      }
+      setOpen(value);
+    }}
+  >
+    <DialogTrigger asChild>{renderTrigger()}</DialogTrigger>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>{t("UPDATE_USER.EDIT_USER")}</DialogTitle>
+      </DialogHeader>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmitHandler)}>
+          <div className="flex flex-col gap-4">
+            <FormField
+              control={form.control}
+              name="firstName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("UPDATE_USER.FIRST_NAME")}</FormLabel>
+                  <FormControl>
+                    <Input placeholder={t("UPDATE_USER.FIRST_NAME_PLACEHOLDER")} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="lastName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("UPDATE_USER.LAST_NAME")}</FormLabel>
+                  <FormControl>
+                    <Input placeholder={t("UPDATE_USER.LAST_NAME_PLACEHOLDER")} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          <DialogFooter className="mt-6">
+            <DialogClose asChild>
+              <Button variant="secondary" disabled={isPending}>
+                {t("common:CANCEL")}
+              </Button>
+            </DialogClose>
+            <Button disabled={isPending || isLoading || isFetching || !isDirty}>{t("common:SAVE")}</Button>
+          </DialogFooter>
+        </form>
+      </Form>
+    </DialogContent>
+  </Dialog>
   );
 };
