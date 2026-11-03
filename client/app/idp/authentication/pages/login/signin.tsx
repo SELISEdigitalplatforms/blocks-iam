@@ -81,6 +81,7 @@ const SigninUnavailable = () => {
   return (
   <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
     <CardHeader className="text-center">
+      {/* eslint-disable-next-line no-restricted-syntax -- product name, not translated */}
       <CardTitle className="text-3xl">Blocks IAM</CardTitle>
       <CardDescription className="text-xl text-foreground">{t("SIGNIN.LOG_IN")}</CardDescription>
     </CardHeader>
@@ -141,6 +142,7 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
   return (
     <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
       <CardHeader className="text-center">
+        {/* eslint-disable-next-line no-restricted-syntax -- product name, not translated */}
         <CardTitle className="text-3xl">Blocks IAM</CardTitle>
         <CardDescription className="text-xl text-foreground">{t("SIGNIN.LOG_IN")}</CardDescription>
       </CardHeader>

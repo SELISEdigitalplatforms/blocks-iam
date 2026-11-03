@@ -9,6 +9,7 @@ export const SuccessConfirmationCardHeader = () => {
     <Logo
       width={200}
       height={250}
+      // eslint-disable-next-line no-restricted-syntax -- product name, not translated
       alt="Blocks IAM"
       className="h-auto w-22 sm:w-27 md:w-29"
     />
