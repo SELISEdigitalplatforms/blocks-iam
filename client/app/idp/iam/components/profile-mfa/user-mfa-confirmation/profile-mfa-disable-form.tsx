@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui-kits/button/button";
+import { tStatic, useT } from "@seliseblocks/genesis-os/i18n";
 import { DialogFooter } from "@/components/ui-kits/dialog/dialog";
 import {
   Form,
@@ -14,9 +15,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+const IAM_PROFILE_MODULE = "iam.profile";
+
 const FormSchema = z.object({
-  password: z.string().min(1, "Enter your password"),
-  code: z.string().min(6, "Enter the 6-digit code"),
+  password: z.string().min(1, { error: () => tStatic(IAM_PROFILE_MODULE, "PROFILE_MFA_DISABLE_FORM.ENTER_PASSWORD") }),
+  code: z.string().min(6, { error: () => tStatic(IAM_PROFILE_MODULE, "PROFILE_MFA_DISABLE_FORM.ENTER_CODE") }),
 });
 
 export type DisableMfaFormValues = z.infer<typeof FormSchema>;
@@ -29,6 +32,7 @@ type Props = {
 };
 
 export const ProfileMfaDisableForm = ({ isPending, isTotp, onSubmit, onCancel }: Props) => {
+  const { t } = useT(IAM_PROFILE_MODULE);
   const form = useForm<DisableMfaFormValues>({
     resolver: zodResolver(FormSchema),
     defaultValues: { password: "", code: "" },
@@ -42,10 +46,10 @@ export const ProfileMfaDisableForm = ({ isPending, isTotp, onSubmit, onCancel }:
           name="password"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Password</FormLabel>
+              <FormLabel>{t("PROFILE_MFA_DISABLE_FORM.PASSWORD")}</FormLabel>
               <FormControl>
                 <PasswordInput
-                  placeholder="Enter your password"
+                  placeholder={t("PROFILE_MFA_DISABLE_FORM.PASSWORD_PLACEHOLDER")}
                   autoComplete="current-password"
                   {...field}
                 />
@@ -60,7 +64,7 @@ export const ProfileMfaDisableForm = ({ isPending, isTotp, onSubmit, onCancel }:
           render={({ field }) => (
             <FormItem>
               <FormLabel>
-                {isTotp ? "Code from your authenticator app" : "Code sent to your email"}
+                {isTotp ? t("PROFILE_MFA_DISABLE_FORM.CODE_FROM_APP") : t("PROFILE_MFA_DISABLE_FORM.CODE_FROM_EMAIL")}
               </FormLabel>
               <FormControl>
                 <InputOTP maxLength={6} {...field}>
@@ -84,10 +88,10 @@ export const ProfileMfaDisableForm = ({ isPending, isTotp, onSubmit, onCancel }:
             onClick={onCancel}
             className="w-full sm:w-auto"
           >
-            Cancel
+            {t("common:CANCEL")}
           </Button>
           <Button type="submit" size="sm" disabled={isPending} className="w-full sm:w-auto">
-            {isPending ? "Processing" : "Disable MFA"}
+            {isPending ? t("PROFILE_MFA_DISABLE_FORM.PROCESSING") : t("PROFILE_MFA_DISABLE_FORM.DISABLE_MFA")}
           </Button>
         </DialogFooter>
       </form>

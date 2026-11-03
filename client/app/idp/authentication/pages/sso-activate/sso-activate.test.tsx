@@ -1,6 +1,8 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useI18nStore } from "@seliseblocks/genesis-os/i18n";
+import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 const h = vi.hoisted(() => ({
@@ -119,12 +121,17 @@ describe("SsoActivate", () => {
     sessionStorage.setItem("clicked_sso_provider", "google");
     sessionStorage.setItem("clicked_sso_audience", "https://aud.test");
     h.getSocialLoginEndpoint.mockResolvedValue({ providerUrl: "https://google.test/auth" });
-    const replace = { href: "" };
+    const original = window.location;
+    const replace = { href: "", origin: original.origin };
     Object.defineProperty(window, "location", { value: replace, configurable: true });
-    renderComp();
-    const useDifferent = await screen.findByText(/Use a different Google account/);
-    fireEvent.click(useDifferent);
-    await waitFor(() => expect(h.getSocialLoginEndpoint).toHaveBeenCalled());
+    try {
+      renderComp();
+      const useDifferent = await screen.findByText(/Use a different Google account/);
+      fireEvent.click(useDifferent);
+      await waitFor(() => expect(h.getSocialLoginEndpoint).toHaveBeenCalled());
+    } finally {
+      Object.defineProperty(window, "location", { value: original, configurable: true });
+    }
   });
 
   it("errors when using a different account without an audience", async () => {
@@ -202,5 +209,21 @@ describe("SsoActivate", () => {
       expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "Something went wrong" }),
     );
     vi.unstubAllGlobals();
+  });
+});
+
+describe("SsoActivate language", () => {
+  afterEach(() => {
+    useAppSettingsStore.getState().setSettings({ language: "en" });
+    useI18nStore.setState({ remote: {} });
+  });
+
+  it("shows German text when the language is de", () => {
+    useI18nStore.getState().setRemote("de", "iam.sso", {
+      "SSO_ACTIVATE.TERMS_LINK": "Nutzungsbedingungen",
+    });
+    useAppSettingsStore.getState().setSettings({ language: "de" });
+    renderComp();
+    expect(screen.getByText("Nutzungsbedingungen")).toBeInTheDocument();
   });
 });

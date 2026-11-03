@@ -1,9 +1,13 @@
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
+
+const IAM_SHARED_MODULE = "iam.shared";
+
 export const getErrorMessage = (
   error: Record<string, string | string[]>,
   messageMap: Record<string, string> = {},
 ): string | string[] => {
   if (!error || Object.keys(error).length === 0) {
-    return "Something went wrong.";
+    return tStatic(IAM_SHARED_MODULE, "ERROR.SOMETHING_WENT_WRONG");
   }
 
   const messages: string[] = [];
@@ -23,7 +27,7 @@ export const getErrorMessage = (
     }
   }
 
-  return messages.length ? messages : "Something went wrong.";
+  return messages.length ? messages : tStatic(IAM_SHARED_MODULE, "ERROR.SOMETHING_WENT_WRONG");
 };
 
 export const isErrorWithErrors = (
@@ -47,5 +51,17 @@ export const handleErrorMessages = (
     return getErrorMessage(errors as Record<string, string | string[]>, customMessages);
   }
 
-  return "An unexpected error occurred.";
+  return tStatic(IAM_SHARED_MODULE, "ERROR.UNEXPECTED");
+};
+
+/**
+ * The first message of a server `errors` value: an array's first entry, an object's first
+ * value, or the string itself; `fallback` when there is none.
+ */
+export const firstErrorText = (errors: unknown, fallback: string): string => {
+  if (Array.isArray(errors)) return errors[0] as string;
+  if (errors && typeof errors === "object") {
+    return Object.values(errors as Record<string, string>)[0] ?? fallback;
+  }
+  return (errors as string) || fallback;
 };

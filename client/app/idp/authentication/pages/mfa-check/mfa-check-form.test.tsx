@@ -58,7 +58,10 @@ vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
   resolveLoginReturnTarget: vi.fn(() => h.returnTarget),
 }));
 
-import { MfaCheckFrom, SESSION_EXPIRED_MESSAGE } from "./mfa-check-form";
+import { MfaCheckFrom } from "./mfa-check-form";
+
+const SESSION_EXPIRED_MESSAGE =
+  "Your sign-in took too long, so this code can no longer be used. Please sign in again.";
 import { resolveLoginReturnTarget } from "@blocks-idp/authentication/utils/oidc-utils";
 import { useResendOtp } from "@blocks-idp/mfa/hooks/use-resend-otp";
 import {

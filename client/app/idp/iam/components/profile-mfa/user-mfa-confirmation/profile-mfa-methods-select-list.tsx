@@ -1,5 +1,6 @@
 import { profileMfaContext } from "../profile-mfa";
 import { ReactNode, useContext, useMemo } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { useGetMFAConfig } from "@blocks-idp/mfa/hooks/use-mfa-config";
 import { useGetMe, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { MFA_PROVIDER_DATA } from "@blocks-idp/mfa/utils/mfa-config";
@@ -24,6 +25,7 @@ const MethodsOption = ({
   isActive,
   isVerified,
 }: MethodsOptionProps) => {
+  const { t } = useT("iam.profile");
   return (
     <div className="flex gap-2 border-b p-4 py-6">
       <div className="w-full">
@@ -37,7 +39,7 @@ const MethodsOption = ({
                   variant="outline"
                   className={cn("inline rounded-full border-success py-0 text-xs text-success")}
                 >
-                  Active
+                  {t("PROFILE_MFA_METHODS.ACTIVE")}
                 </Badge>
               )}
             </div>
@@ -46,11 +48,11 @@ const MethodsOption = ({
           <div>
             {isActive ? (
               <Button size="xs" onClick={onDisableClick} variant="outline">
-                Disable
+                {t("PROFILE_MFA_METHODS.DISABLE")}
               </Button>
             ) : (
               <Button size="xs" onClick={onEnableClick} variant="outline">
-                Enable
+                {t("PROFILE_MFA_METHODS.ENABLE")}
               </Button>
             )}
           </div>
@@ -61,6 +63,7 @@ const MethodsOption = ({
 };
 
 export const ProfileMfaMethodSelectList = () => {
+  const { t } = useT("iam.profile");
   const { userId, projectKey, own, showVerifyModal, setIsDisableModalOpen } =
     useContext(profileMfaContext);
   const { data: projectConfig } = useGetMFAConfig();
@@ -105,8 +108,7 @@ export const ProfileMfaMethodSelectList = () => {
         </div>
       ) : (
         <div className="rounded-sm border p-4 py-6 text-sm text-muted-foreground">
-          Multi-factor Authentication is disabled for your project. Contact your project admin to
-          activate it.
+          {t("PROFILE_MFA_METHODS.DISABLED_FOR_PROJECT")}
         </div>
       )}
 

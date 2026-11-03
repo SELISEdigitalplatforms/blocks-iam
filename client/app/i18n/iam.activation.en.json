@@ -1,0 +1,23 @@
+{
+  "ACTIVATION_FORM.ACTIVATION_FAILED": "Activation failed",
+  "ACTIVATION_FORM.ALREADY_ACTIVE": "This account is already active. Please sign in to continue.",
+  "ACTIVATION_FORM.FIRST_NAME_PLACEHOLDER": "First name",
+  "ACTIVATION_FORM.HIDE_PASSWORD": "Hide password",
+  "ACTIVATION_FORM.LAST_NAME_PLACEHOLDER": "Last name",
+  "ACTIVATION_FORM.SHOW_PASSWORD": "Show password",
+  "ACTIVATION_FORM.SOMETHING_WENT_WRONG": "Something went wrong",
+  "ACTIVATION_SUCCESS.CONTACT_SUPPORT": "Contact support",
+  "ACTIVATION_SUCCESS.GO_TO_LOGIN": "Go to login",
+  "ACTIVATION_SUCCESS.LOG_IN": "Log in",
+  "ACTIVATION_SUCCESS.MESSAGE": "Your account has been successfully activated. Sign in to continue and unlock the Blocks IAM platform.",
+  "ACTIVATION_SUCCESS.MESSAGE_WITH_PASSWORD": "Your account has been successfully activated. Sign in with your password to continue and unlock the Blocks IAM platform.",
+  "ACTIVATION_SUCCESS.NEED_HELP": "Need help?",
+  "ACTIVATION_SUCCESS.READY": "Ready to sign in?",
+  "ACTIVATION_SUCCESS.READY_HINT": "Sign in to access your workspace.",
+  "ACTIVATION_SUCCESS.READY_WITH_PASSWORD": "Use your password to access your workspace.",
+  "ACTIVATION_SUCCESS.TITLE": "Account activated",
+  "UTILS.FIRST_NAME_REQUIRED": "First name is required",
+  "UTILS.LAST_NAME_REQUIRED": "Last name is required",
+  "UTILS.PASSWORD_NO_SPACES": "Password must not contain spaces",
+  "UTILS.PASSWORD_TOO_LONG": "Password is too long"
+}

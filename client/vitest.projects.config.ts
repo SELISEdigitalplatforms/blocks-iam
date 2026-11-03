@@ -9,7 +9,16 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { globSync } from "tinyglobby";
 
+const genesisDist = path.resolve(__dirname, "./node_modules/@seliseblocks/genesis-os/dist");
+
 const alias = {
+  // Real i18n runtime and its settings store (not stubbed), listed before the bare package key.
+  "@seliseblocks/genesis-os/i18n": path.join(genesisDist, "i18n/index.js"),
+  "@seliseblocks/genesis-os/store": path.join(genesisDist, "store/index.js"),
+  "@seliseblocks/genesis-os/components": path.resolve(
+    __dirname,
+    "./app/test-utils/stubs/genesis-components.tsx",
+  ),
   "@seliseblocks/genesis-os/observability": path.resolve(
     __dirname,
     "./app/test-utils/stubs/observability.tsx",

@@ -10,8 +10,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router";
 import { Captcha } from "@/components/captcha";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { useAccountResetPassword } from "@blocks-idp/iam/hooks/use-account";
-import { isErrorWithErrors } from "@/lib/error";
+import { firstErrorText, isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
@@ -21,9 +22,12 @@ import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
 import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 import { PASSWORD_MAX_INPUT_LENGTH } from "@blocks-idp/authentication/utils/password-policy.util";
 
+const SOMETHING_WENT_WRONG_KEY = "RESET_PASSWORD_FORM.SOMETHING_WENT_WRONG";
+
 type ResetPasswordFormProps = { code: string; tenantId?: string };
 
 export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) => {
+  const { t } = useT("iam.password");
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const formRef = useRef<HTMLFormElement>(null);
@@ -117,11 +121,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
       });
       if (!res.isSuccess) {
         resetCaptcha();
-        const msg = Array.isArray(res.errors)
-          ? res.errors[0]
-          : res.errors && typeof res.errors === "object"
-          ? (Object.values(res.errors as Record<string, string>)[0] ?? "Reset failed")
-          : (res.errors as string) || "Reset failed";
+        const msg = firstErrorText(res.errors, t("RESET_PASSWORD_FORM.RESET_FAILED"));
         setServerError(msg);
         shake();
         await animCtx?.failAnimation(msg);
@@ -135,15 +135,11 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
       resetCaptcha();
       shake();
       if (isErrorWithErrors(error)) {
-        const msg = Array.isArray(error.errors)
-          ? (error.errors[0] as string)
-          : error.errors && typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
-          : (error.errors as unknown as string) || "Something went wrong";
+        const msg = firstErrorText(error.errors, t(SOMETHING_WENT_WRONG_KEY));
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       } else {
-        const msg = "Something went wrong";
+        const msg = t(SOMETHING_WENT_WRONG_KEY);
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       }
@@ -181,7 +177,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
               onClick={() => setShowPassword(v => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2"
               style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-label={showPassword ? t("RESET_PASSWORD_FORM.HIDE_PASSWORD") : t("RESET_PASSWORD_FORM.SHOW_PASSWORD")}
             >
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
@@ -211,7 +207,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
               onClick={() => setShowConfirmPassword(v => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2"
               style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-              aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+              aria-label={showConfirmPassword ? t("RESET_PASSWORD_FORM.HIDE_PASSWORD") : t("RESET_PASSWORD_FORM.SHOW_PASSWORD")}
             >
               {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>

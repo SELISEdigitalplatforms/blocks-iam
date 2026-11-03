@@ -1,5 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useI18nStore } from "@seliseblocks/genesis-os/i18n";
+import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
@@ -109,5 +111,20 @@ describe("ProfileChangePassword", () => {
         expect.objectContaining({ errors: "Wrong password" }),
       ),
     );
+  });
+});
+
+describe("iam.profile language", () => {
+  afterEach(() => {
+    useAppSettingsStore.getState().setSettings({ language: "en" });
+  });
+
+  it("shows German text when the language is de", () => {
+    useI18nStore.getState().setRemote("de", "iam.profile", {
+      "PROFILE_CHANGE_PASSWORD.CHANGE_PASSWORD": "Passwort ändern",
+    });
+    useAppSettingsStore.getState().setSettings({ language: "de" });
+    render(<ProfileChangePassword />);
+    expect(screen.getByText("Passwort ändern")).toBeInTheDocument();
   });
 });

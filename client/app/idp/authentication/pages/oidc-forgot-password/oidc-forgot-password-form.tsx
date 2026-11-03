@@ -8,8 +8,9 @@ import { z } from "zod";
 import { useNavigate } from "react-router";
 import { Captcha } from "@/components/captcha";
 import { useEffect, useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";
-import { isErrorWithErrors } from "@/lib/error";
+import { firstErrorText, isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import {
@@ -28,7 +29,10 @@ import {
   FormMessage,
 } from "@/components/ui-kits/form/form";
 
+const SOMETHING_WENT_WRONG_KEY = "OIDC_FORGOT_PASSWORD_FORM.SOMETHING_WENT_WRONG";
+
 export const OIDCForgotPasswordForm = () => {
+  const { t } = useT("iam.password");
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const tenantId =
@@ -68,11 +72,7 @@ export const OIDCForgotPasswordForm = () => {
       const res = await mutateAsync({ ...values, captchaCode, tenantId, clientId, redirectUri });
       if (!res.isSuccess) {
         resetCaptcha();
-        const msg = Array.isArray(res.errors)
-          ? res.errors[0]
-          : res.errors && typeof res.errors === "object"
-          ? (Object.values(res.errors as Record<string, string>)[0] ?? "Something went wrong")
-          : (res.errors as string) || "Something went wrong";
+        const msg = firstErrorText(res.errors, t(SOMETHING_WENT_WRONG_KEY));
         setServerError(msg);
         return;
       }
@@ -91,14 +91,10 @@ export const OIDCForgotPasswordForm = () => {
     } catch (error) {
       resetCaptcha();
       if (isErrorWithErrors(error)) {
-        const msg = Array.isArray(error.errors)
-          ? (error.errors[0] as string)
-          : error.errors && typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
-          : (error.errors as unknown as string) || "Something went wrong";
+        const msg = firstErrorText(error.errors, t(SOMETHING_WENT_WRONG_KEY));
         setServerError(msg);
       } else {
-        setServerError("Something went wrong");
+        setServerError(t(SOMETHING_WENT_WRONG_KEY));
       }
     }
   };

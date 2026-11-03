@@ -4,6 +4,7 @@ import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
 import { JOIN_PANEL } from "../oidc/oidc-panel-config";
 import type { IOidcUiTemplate } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { Button } from "@/components/ui-kits/button/button";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 
 type Props = Readonly<{
   template: IOidcUiTemplate;
@@ -13,6 +14,7 @@ type Props = Readonly<{
 
 /** Single refusal card for every invalid/expired/revoked/exhausted link (C1). */
 export function InvitationInvalid({ template, message }: Props) {
+  const { t } = useT("iam.invitation");
   return (
     <OidcAuthShell
       panelConfig={JOIN_PANEL}
@@ -20,10 +22,10 @@ export function InvitationInvalid({ template, message }: Props) {
       logoUrlLight={template.branding.logoUrlLight}
       logoUrlDark={template.branding.logoUrlDark}
       brandName={template.branding.brandName}
-      heading="Link unavailable"
+      heading={t("INVITATION_INVALID.HEADING")}
       headingDimFirst={0}
       headingAlign="center"
-      successTitle="You're in"
+      successTitle={t("INVITATION_INVALID.YOU_RE_IN")}
       successSubtitle=""
       showCorners={false}
       footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
@@ -31,10 +33,10 @@ export function InvitationInvalid({ template, message }: Props) {
       <div className="flex flex-col items-center gap-4 py-6 text-center">
         <AlertTriangle className="h-10 w-10" style={{ color: "var(--warn, #f59e0b)" }} />
         <p className="text-sm" style={{ color: "var(--fg)" }}>
-          {message ?? "This link is no longer valid."}
+          {message ?? t("INVITATION_INVALID.LINK_INVALID")}
         </p>
         <Button asChild variant="outline">
-          <LoginReturnLink preferOidcLogin>Back to login</LoginReturnLink>
+          <LoginReturnLink preferOidcLogin>{t("INVITATION_INVALID.BACK_TO_LOGIN")}</LoginReturnLink>
         </Button>
       </div>
     </OidcAuthShell>

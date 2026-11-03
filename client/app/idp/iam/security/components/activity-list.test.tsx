@@ -1,5 +1,7 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { useI18nStore } from "@seliseblocks/genesis-os/i18n";
+import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
+import { afterEach, describe, expect, it } from "vitest";
 import { ActivityList, toActivityRows } from "./activity-list";
 import type { IActivityRowViewModel } from "../view-models/activity.view-model";
 
@@ -55,5 +57,20 @@ describe("ActivityList", () => {
     expect(mapped[0].id).toBe("a1");
     expect(mapped[0].tone).toBe("success");
     expect(mapped[0].ipAddress).toBe("9.9.9.9");
+  });
+});
+
+describe("iam.security language", () => {
+  afterEach(() => {
+    useAppSettingsStore.getState().setSettings({ language: "en" });
+  });
+
+  it("shows German text when the language is de", () => {
+    useI18nStore.getState().setRemote("de", "iam.security", {
+      "ACTIVITY_LIST.NO_ACTIVITY": "Noch keine Aktivität",
+    });
+    useAppSettingsStore.getState().setSettings({ language: "de" });
+    render(<ActivityList isLoading={false} rows={[]} />);
+    expect(screen.getByText("Noch keine Aktivität")).toBeInTheDocument();
   });
 });

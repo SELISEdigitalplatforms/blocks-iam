@@ -4,6 +4,7 @@ import { showErrorToast } from "@/hooks/use-toast";
 import { Loader } from "lucide-react";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { buildOidcThemeStyle, OidcBrand, OidcFooter, useOidcResolvedTheme } from "./oidc-auth-shell";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 
 export interface OidcAccountInfo {
   user_id: string;
@@ -20,6 +21,7 @@ export interface OidcAccountSelectorProps {
 }
 
 export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = false }: OidcAccountSelectorProps) => {
+  const { t } = useT("iam.oidc");
   const { data: oidcUiConfig } = useOidcUiConfig();
   const template = oidcUiConfig?.template;
   const resolvedTheme = useOidcResolvedTheme();
@@ -40,7 +42,7 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
       if (error instanceof Error) {
         showErrorToast({ errors: error.message });
       } else {
-        showErrorToast({ errors: "Failed to select account" });
+        showErrorToast({ errors: t("OIDC_ACCOUNT_SELECTOR.SELECT_FAILED") });
       }
     }
   };

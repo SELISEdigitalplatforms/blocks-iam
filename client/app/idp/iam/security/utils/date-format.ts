@@ -1,9 +1,18 @@
 import { formatDistanceToNow } from "date-fns";
+import { de } from "date-fns/locale";
+import { getLanguageCode } from "@seliseblocks/genesis-os/i18n";
+
+/** Locale for dates: German when the UI is German, else the browser's own. */
+export const dateLocale = (): string | undefined =>
+  getLanguageCode() === "de" ? "de-DE" : undefined;
 
 export const formatRelative = (value?: string | null): string => {
   if (!value) return "—";
   try {
-    return formatDistanceToNow(new Date(value), { addSuffix: true });
+    return formatDistanceToNow(new Date(value), {
+      addSuffix: true,
+      ...(getLanguageCode() === "de" ? { locale: de } : {}),
+    });
   } catch {
     return value;
   }
@@ -12,7 +21,7 @@ export const formatRelative = (value?: string | null): string => {
 export const formatAbsolute = (value?: string | null): string => {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleString(undefined, {
+    return new Date(value).toLocaleString(dateLocale(), {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -27,7 +36,7 @@ export const formatAbsolute = (value?: string | null): string => {
 export const formatAbsoluteWithSeconds = (value?: string | null): string => {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleString(undefined, {
+    return new Date(value).toLocaleString(dateLocale(), {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -44,7 +53,7 @@ export const formatAbsoluteUtcWithSeconds = (value?: string | null): string => {
   if (!value) return "—";
   try {
     const date = new Date(value);
-    const formatted = date.toLocaleString("en-GB", {
+    const formatted = date.toLocaleString(getLanguageCode() === "de" ? "de-DE" : "en-GB", {
       timeZone: "UTC",
       month: "short",
       day: "numeric",

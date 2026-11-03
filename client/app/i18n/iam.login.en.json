@@ -1,0 +1,17 @@
+{
+  "SIGNIN.LOG_IN": "Log in",
+  "SIGNIN.NOT_A_MEMBER": "Not a member?",
+  "SIGNIN.OR": "OR",
+  "SIGNIN.SIGN_UP": "Sign up",
+  "SIGNIN.UNAVAILABLE_CONTACT_ADMIN": "Open the application you were invited to and sign in from there, or contact your administrator.",
+  "SIGNIN.UNAVAILABLE_MISSING_APP": "This sign-in link is missing the application it belongs to, so there is nothing to sign in to from here.",
+  "SIGNIN_FORM.EMAIL_PLACEHOLDER": "Enter your email",
+  "SIGNIN_FORM.FORGOT_PASSWORD": "Forgot password?",
+  "SIGNIN_FORM.LOG_IN": "Log in",
+  "SIGNIN_FORM.PASSWORD_LABEL": "Password",
+  "SIGNIN_FORM.PASSWORD_PLACEHOLDER": "Enter your password",
+  "SIGNIN_FORM.SOMETHING_WENT_WRONG": "Something went wrong",
+  "SIGNIN_SCHEMA.EMAIL_INVALID": "Invalid email format",
+  "SIGNIN_SCHEMA.EMAIL_REQUIRED": "Email is required",
+  "SIGNIN_SCHEMA.PASSWORD_REQUIRED": "Password is required"
+}

@@ -4,15 +4,19 @@ import { Loader, XCircle } from "lucide-react";
 
 import { OidcAuthShell, OidcFooter, useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEVICE_CONSENT_PANEL } from "./panel-config";
+import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
+import { buildDeviceConsentPanel } from "./panel-config";
 
 type Outcome = "approved" | "denied" | "expired" | "neutral";
 
-const HEADINGS: Record<Outcome, string> = {
-  approved: "Device Flow Complete",
-  denied: "Authorization Declined",
-  expired: "Session Expired",
-  neutral: "Device Flow Complete",
+const headingFor = (t: TFunction, outcome: Outcome): string => {
+  const headings: Record<Outcome, string> = {
+    approved: t("DEVICE_SUCCESS.FLOW_COMPLETE"),
+    denied: t("DEVICE_SUCCESS.AUTHORIZATION_DECLINED"),
+    expired: t("DEVICE_SUCCESS.SESSION_EXPIRED"),
+    neutral: t("DEVICE_SUCCESS.FLOW_COMPLETE"),
+  };
+  return headings[outcome];
 };
 
 function resolveOutcome(raw: string | null): Outcome {
@@ -27,6 +31,7 @@ function resolveOutcome(raw: string | null): Outcome {
    so this jumps straight to the final panel/card state instead of replaying the
    multi-second "simulated request" cascade — nothing here is still in flight. */
 function DeviceSuccessBody({ outcome }: Readonly<{ outcome: Outcome }>) {
+  const { t } = useT("iam.device");
   const animCtx = useOidcAuthAnimation();
   const startedRef = useRef(false);
 
@@ -34,9 +39,9 @@ function DeviceSuccessBody({ outcome }: Readonly<{ outcome: Outcome }>) {
     if (startedRef.current) return;
     startedRef.current = true;
     if (outcome === "denied") {
-      animCtx?.failAnimation("Authorization declined", { instant: true });
+      animCtx?.failAnimation(t("DEVICE_SUCCESS.AUTHORIZATION_DECLINED_LOWER"), { instant: true });
     } else if (outcome === "expired") {
-      animCtx?.failAnimation("Device code expired", { instant: true });
+      animCtx?.failAnimation(t("DEVICE_SUCCESS.DEVICE_CODE_EXPIRED"), { instant: true });
     } else {
       animCtx?.succeedAnimation({ instant: true });
     }
@@ -53,7 +58,7 @@ function DeviceSuccessBody({ outcome }: Readonly<{ outcome: Outcome }>) {
           <XCircle size={26} style={{ color: "var(--danger)" }} />
         </div>
         <p className="text-sm oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-          You can safely close this window.
+          {t("DEVICE_SUCCESS.CLOSE_WINDOW")}
         </p>
       </div>
     );
@@ -61,12 +66,14 @@ function DeviceSuccessBody({ outcome }: Readonly<{ outcome: Outcome }>) {
 
   return (
     <p className="text-sm oidc-font-rajdhani text-center" style={{ color: "var(--muted)" }}>
-      You can safely close this window.
+      {t("DEVICE_SUCCESS.CLOSE_WINDOW")}
     </p>
   );
 }
 
 export function DeviceSuccessPage() {
+  const { t } = useT("iam.device");
+  const consentPanel = useMemo(() => buildDeviceConsentPanel(t), [t]);
   const [searchParams] = useSearchParams();
   const { data: oidcUiConfig } = useOidcUiConfig();
   const template = oidcUiConfig?.template;
@@ -79,26 +86,26 @@ export function DeviceSuccessPage() {
     switch (outcome) {
       case "approved":
         return {
-          successTitle: "Success",
-          successSubtitle: "Your device has been authorized. You can close this window.",
+          successTitle: t("DEVICE_SUCCESS.SUCCESS"),
+          successSubtitle: t("DEVICE_SUCCESS.APPROVED_SUBTITLE"),
         };
       case "denied":
         return {
-          successTitle: "Authorization Declined",
-          successSubtitle: "The device was not authorized. You can close this window.",
+          successTitle: t("DEVICE_SUCCESS.AUTHORIZATION_DECLINED"),
+          successSubtitle: t("DEVICE_SUCCESS.DENIED_SUBTITLE"),
         };
       case "expired":
         return {
-          successTitle: "Session Expired",
-          successSubtitle: "The device code expired before approval. You can close this window.",
+          successTitle: t("DEVICE_SUCCESS.SESSION_EXPIRED"),
+          successSubtitle: t("DEVICE_SUCCESS.EXPIRED_SUBTITLE"),
         };
       default:
         return {
-          successTitle: "Success",
-          successSubtitle: "Device flow finished. You can close this window.",
+          successTitle: t("DEVICE_SUCCESS.SUCCESS"),
+          successSubtitle: t("DEVICE_SUCCESS.NEUTRAL_SUBTITLE"),
         };
     }
-  }, [outcome]);
+  }, [outcome, t]);
 
   if (!template) {
     return (
@@ -110,12 +117,12 @@ export function DeviceSuccessPage() {
 
   return (
     <OidcAuthShell
-      panelConfig={DEVICE_CONSENT_PANEL}
+      panelConfig={consentPanel}
       theme={template.theme}
       logoUrlLight={template.branding.logoUrlLight}
       logoUrlDark={template.branding.logoUrlDark}
       brandName={template.branding.brandName}
-      heading={HEADINGS[outcome]}
+      heading={headingFor(t, outcome)}
       headingDimFirst={3}
       showCorners={false}
       successTitle={copy.successTitle}
