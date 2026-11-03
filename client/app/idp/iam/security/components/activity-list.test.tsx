@@ -65,12 +65,12 @@ describe("iam.security language", () => {
     useAppSettingsStore.getState().setSettings({ language: "en" });
   });
 
-  it("shows German text when the language is de", () => {
-    useI18nStore.getState().setRemote("de", "iam.security", {
-      "ACTIVITY_LIST.NO_ACTIVITY": "Noch keine Aktivität",
+  it("shows the remote text for another language", () => {
+    useI18nStore.getState().setRemote("xx", "iam.security", {
+      "ACTIVITY_LIST.NO_ACTIVITY": "[xx] No activity yet",
     });
-    useAppSettingsStore.getState().setSettings({ language: "de" });
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
     render(<ActivityList isLoading={false} rows={[]} />);
-    expect(screen.getByText("Noch keine Aktivität")).toBeInTheDocument();
+    expect(screen.getByText("[xx] No activity yet")).toBeInTheDocument();
   });
 });

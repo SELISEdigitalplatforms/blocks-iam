@@ -128,7 +128,7 @@ export const OIDCForgotPasswordForm = () => {
                 <FormControl>
                   <input
                     type="email"
-                    placeholder="name@company.com"
+                    placeholder={t("OIDC_FORGOT_PASSWORD_FORM.EMAIL_PLACEHOLDER")}
                     autoComplete="email"
                     className="oidc-sci-fi-input"
                     {...field}

@@ -88,12 +88,12 @@ describe("iam.mfa-check language", () => {
     useAppSettingsStore.getState().setSettings({ language: "en" });
   });
 
-  it("shows German text when the language is de", () => {
-    useI18nStore.getState().setRemote("de", "iam.mfa-check", {
-      "MFA_CHECK.MESSAGE_EMAIL": "Prüfen Sie Ihr E-Mail-Postfach auf den Bestätigungscode.",
+  it("shows the remote text for another language", () => {
+    useI18nStore.getState().setRemote("xx", "iam.mfa-check", {
+      "MFA_CHECK.MESSAGE_EMAIL": "[xx] Check your email for the verification code and enter it here to continue.",
     });
-    useAppSettingsStore.getState().setSettings({ language: "de" });
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
     render(<MfaCheck />);
-    expect(screen.getByText("Prüfen Sie Ihr E-Mail-Postfach auf den Bestätigungscode.")).toBeInTheDocument();
+    expect(screen.getByText("[xx] Check your email for the verification code and enter it here to continue.")).toBeInTheDocument();
   });
 });

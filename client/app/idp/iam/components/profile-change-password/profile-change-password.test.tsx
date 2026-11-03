@@ -119,12 +119,12 @@ describe("iam.profile language", () => {
     useAppSettingsStore.getState().setSettings({ language: "en" });
   });
 
-  it("shows German text when the language is de", () => {
-    useI18nStore.getState().setRemote("de", "iam.profile", {
-      "PROFILE_CHANGE_PASSWORD.CHANGE_PASSWORD": "Passwort ändern",
+  it("shows the remote text for another language", () => {
+    useI18nStore.getState().setRemote("xx", "iam.profile", {
+      "PROFILE_CHANGE_PASSWORD.CHANGE_PASSWORD": "[xx] Change Password",
     });
-    useAppSettingsStore.getState().setSettings({ language: "de" });
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
     render(<ProfileChangePassword />);
-    expect(screen.getByText("Passwort ändern")).toBeInTheDocument();
+    expect(screen.getByText("[xx] Change Password")).toBeInTheDocument();
   });
 });

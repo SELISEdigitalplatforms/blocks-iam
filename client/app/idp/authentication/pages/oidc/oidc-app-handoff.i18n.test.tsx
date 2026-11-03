@@ -10,21 +10,21 @@ afterEach(() => {
   useI18nStore.setState({ remote: {} });
 });
 
-describe("iam.oidc in German", () => {
-  it("shows German in the hand-off and in the pipeline panel text", () => {
-    act(() => useAppSettingsStore.getState().setSettings({ language: "de" }));
+describe("iam.oidc in another language", () => {
+  it("shows the remote text in the hand-off and in the pipeline panel", () => {
+    act(() => useAppSettingsStore.getState().setSettings({ language: "xx" }));
     act(() =>
-      useI18nStore.getState().setRemote("de", "iam.oidc", {
-        "OIDC_APP_HANDOFF.SIGNED_IN": "Angemeldet",
-        "OIDC_LOGIN_PANEL.HEADING": "OIDC-Authentifizierungsablauf",
+      useI18nStore.getState().setRemote("xx", "iam.oidc", {
+        "OIDC_APP_HANDOFF.SIGNED_IN": "[xx] Signed in",
+        "OIDC_LOGIN_PANEL.HEADING": "[xx] OIDC Authentication Pipeline",
       }),
     );
 
     render(<OidcAppHandoff url="com.example.app://cb?code=1" />);
 
-    expect(screen.getByText("Angemeldet")).toBeInTheDocument();
-    // English for a key without German text.
+    expect(screen.getByText("[xx] Signed in")).toBeInTheDocument();
+    // English for a key without remote text.
     expect(screen.getByText("Return to the app")).toBeInTheDocument();
-    expect(OIDC_LOGIN_PANEL.heading).toBe("OIDC-Authentifizierungsablauf");
+    expect(OIDC_LOGIN_PANEL.heading).toBe("[xx] OIDC Authentication Pipeline");
   });
 });

@@ -11,7 +11,7 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 import { SignupEmailSent } from "./signup-email-sent";
 import { ActivationSuccess } from "../activation-success/activation-success";
 
-describe("signup and activation pages in German", () => {
+describe("signup and activation pages in another language", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
   });
@@ -22,29 +22,35 @@ describe("signup and activation pages in German", () => {
     useI18nStore.setState({ remote: {} });
   });
 
-  it("shows the German signup-email-sent text when a German dictionary is registered", () => {
+  it("shows the remote signup-email-sent text when a remote dictionary is registered", () => {
     act(() => {
-      useI18nStore.getState().setRemote("de", "iam.signup", { "SIGNUP_EMAIL_SENT.TITLE": "E-Mail gesendet" });
-      useAppSettingsStore.getState().setSettings({ language: "de" });
+      useI18nStore
+        .getState()
+        .setRemote("xx", "iam.signup", { "SIGNUP_EMAIL_SENT.TITLE": "[xx] Email sent" });
+      useAppSettingsStore.getState().setSettings({ language: "xx" });
     });
     render(
       <MemoryRouter>
         <SignupEmailSent email="jane@example.com" />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("heading", { name: "E-Mail gesendet" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "[xx] Email sent" })).toBeInTheDocument();
   });
 
-  it("shows the German activation success title", () => {
+  it("shows the another language activation success title", () => {
     act(() => {
-      useI18nStore.getState().setRemote("de", "iam.activation", { "ACTIVATION_SUCCESS.TITLE": "Konto aktiviert" });
-      useAppSettingsStore.getState().setSettings({ language: "de" });
+      useI18nStore
+        .getState()
+        .setRemote("xx", "iam.activation", {
+          "ACTIVATION_SUCCESS.TITLE": "[xx] Account activated",
+        });
+      useAppSettingsStore.getState().setSettings({ language: "xx" });
     });
     render(
       <MemoryRouter>
         <ActivationSuccess />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("heading", { name: "Konto aktiviert" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "[xx] Account activated" })).toBeInTheDocument();
   });
 });
