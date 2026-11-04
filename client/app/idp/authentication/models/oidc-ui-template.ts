@@ -8,6 +8,7 @@ export interface IOidcUiThemePalette {
 }
 
 export interface IOidcUiTemplate {
+  layout: { showAnimationPanel: boolean };
   branding: { logoUrlLight: string | null; logoUrlDark: string | null; brandName: string };
   theme: { light: IOidcUiThemePalette; dark: IOidcUiThemePalette };
   pages: {
@@ -23,6 +24,7 @@ export interface IOidcUiTemplate {
 }
 
 export const DEFAULT_OIDC_UI_TEMPLATE: IOidcUiTemplate = {
+  layout: { showAnimationPanel: true },
   branding: { logoUrlLight: null, logoUrlDark: null, brandName: "Blocks IAM" },
   theme: {
     light: { primary: "#0066b2", secondary: "#0084d4", background: "#f5f7fb", surface: "#ffffff", text: "#0c1024", mutedText: "#5b6378", success: "#16a34a", danger: "#dc2626", border: "#dde2ec", borderStrong: "rgba(0, 102, 178, 0.45)", accentSoft: "rgba(0, 102, 178, 0.08)", buttonText: "#ffffff" },

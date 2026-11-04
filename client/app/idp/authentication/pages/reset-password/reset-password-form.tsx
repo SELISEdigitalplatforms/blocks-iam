@@ -30,6 +30,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
   const { t } = useT("iam.password");
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
+  const inlineRequirements = animCtx?.animationPanelVisible === false;
   const formRef = useRef<HTMLFormElement>(null);
   const [requirementsMet, setRequirementsMet] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -39,6 +40,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
     data: oidcUiConfig,
     captchaEnabled: tenantCaptchaEnabled,
     passwordPolicy,
+    isLoading: isConfigLoading,
   } = useOidcUiConfig(tenantId);
   const formSchema = useMemo(
     () => buildResetPasswordFormSchema(passwordPolicy),
@@ -77,6 +79,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
   /* Inject PasswordStrengthChecker into the right panel's idle slot */
   const setPanelIdleSlot = animCtx?.setPanelIdleSlot;
   useEffect(() => {
+    if (inlineRequirements) return;
     setPanelIdleSlot?.(
       <PasswordStrengthChecker
         password={password}
@@ -87,7 +90,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
     );
     return () => { setPanelIdleSlot?.(null); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [password, confirmPassword, passwordPolicy, setPanelIdleSlot]);
+  }, [password, confirmPassword, passwordPolicy, setPanelIdleSlot, inlineRequirements]);
 
   const isAuthenticating =
     isPending ||
@@ -217,6 +220,15 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
           )}
         </div>
 
+        {inlineRequirements && (
+          <PasswordStrengthChecker
+            password={password}
+            confirmPassword={confirmPassword}
+            policy={passwordPolicy}
+            onRequirementsMet={setRequirementsMet}
+          />
+        )}
+
         <div
           className="rounded-lg py-2.5 px-3 flex items-center justify-between gap-3"
           style={{ border: "1px solid var(--border)", background: "var(--accent-softer)" }}
@@ -240,10 +252,8 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
 
         <button
           type="submit"
-          // TEMPORARY: always enabled. Restore the guard below to gate on config load, submission
-          // in flight, captcha, and the password rules:
-          // disabled={isConfigLoading || isAuthenticating || (captchaEnabled && !captchaCode) || !isValid || !requirementsMet}
-          disabled={false}
+          // Preserve the existing visible-panel override; form-only pages enforce the guard.
+          disabled={inlineRequirements && (isConfigLoading || isAuthenticating || (captchaEnabled && !captchaCode) || !isValid || !requirementsMet)}
           className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
         >
           {isAuthenticating ? (

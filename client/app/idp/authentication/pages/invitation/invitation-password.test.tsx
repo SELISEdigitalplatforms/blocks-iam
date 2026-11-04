@@ -19,7 +19,7 @@ vi.mock("@blocks-idp/authentication/services/signup-link.service", () => ({
 
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
   useOidcUiConfig: () => ({
-    data: { template: { theme: {}, branding: { brandName: "Blocks" }, pages: { shared: { footerText: "" } } } },
+    data: { template: { layout: { showAnimationPanel: true }, theme: {}, branding: { brandName: "Blocks" }, pages: { shared: { footerText: "" } } } },
   }),
 }));
 

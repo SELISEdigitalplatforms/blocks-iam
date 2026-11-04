@@ -571,6 +571,12 @@ namespace Authentication.DomainService.Services
                 branding.LogoUrlDark = resolvedDark;
             }
 
+            if (template is not null)
+            {
+                template.Layout ??= new OidcUiTemplateLayout();
+                template.Layout.ShowAnimationPanel ??= true;
+            }
+
             return template;
         }
 

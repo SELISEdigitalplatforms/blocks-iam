@@ -12,6 +12,7 @@ export function InvitationLoading({ template }: Props) {
   return (
     <OidcAuthShell
       panelConfig={JOIN_PANEL}
+      showAnimationPanel={template.layout.showAnimationPanel}
       theme={template.theme}
       logoUrlLight={template.branding.logoUrlLight}
       logoUrlDark={template.branding.logoUrlDark}

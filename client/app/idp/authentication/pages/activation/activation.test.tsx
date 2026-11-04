@@ -97,6 +97,7 @@ describe("Activation", () => {
       captcha: null,
       template: {
         ...OIDC_UI_TEMPLATE_FIXTURE,
+        layout: { showAnimationPanel: false },
         branding: {
           logoUrlLight: "https://example.test/activation-light.svg",
           logoUrlDark: "https://example.test/activation-dark.svg",
@@ -116,6 +117,7 @@ describe("Activation", () => {
     renderCmp({ code: "good", tenantId: "t1" });
     await waitFor(() => expect(screen.getByText("Enable Acme account")).toBeInTheDocument());
     expect(h.shellProps).toEqual(expect.objectContaining({
+      showAnimationPanel: false,
       successTitle: "Acme account enabled",
       successSubtitle: "You can now continue",
       logoUrlLight: "https://example.test/activation-light.svg",

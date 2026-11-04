@@ -708,7 +708,8 @@ namespace Authentication.DomainService.Services
                 SchemaVersion = OidcUiTemplate.CurrentSchemaVersion,
                 Branding = request.Branding,
                 Theme = request.Theme,
-                Pages = request.Pages
+                Pages = request.Pages,
+                Layout = request.Layout
             };
 
             try

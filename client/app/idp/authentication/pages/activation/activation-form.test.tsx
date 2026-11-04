@@ -1,3 +1,4 @@
+import { configureI18n } from "@seliseblocks/genesis-os/i18n";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -36,9 +37,6 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
     isLoading: h.configLoading,
   })),
 }));
-vi.mock("../../components/password-strength-checker/password-strength-checker", () => ({
-  PasswordStrengthChecker: () => null,
-}));
 vi.mock("../oidc/oidc-auth-shell", () => ({ useOidcAuthAnimation: vi.fn(() => h.animCtx) }));
 
 import { ActivationForm } from "./activation-form";
@@ -49,6 +47,7 @@ const passwordInputs = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('input[type="password"]')) as HTMLInputElement[];
 
 beforeEach(() => {
+  configureI18n({ baseUrl: () => "", blocksKey: () => "" });
   vi.clearAllMocks();
   h.animCtx = null;
   h.captchaCode = "";
@@ -70,6 +69,45 @@ const fillValidPasswords = (container: HTMLElement) => {
 };
 
 describe("ActivationForm", () => {
+  it("mounts one inline checker when hidden and gates submit on matching compliant passwords", async () => {
+    const setPanelIdleSlot = vi.fn();
+    h.animCtx = { animationPanelVisible: false, setPanelIdleSlot };
+    const { container } = render(<ActivationForm code="activation-code" tenantId="tenant-1" />);
+    const checker = screen.getByRole("heading", { name: "Password Strength" });
+    expect(screen.getAllByRole("heading", { name: "Password Strength" })).toHaveLength(1);
+    expect(checker.closest("form")).toBeInTheDocument();
+    expect(setPanelIdleSlot).not.toHaveBeenCalled();
+    const [password, confirm] = passwordInputs(container);
+    fireEvent.change(password, { target: { value: "abc" } });
+    fireEvent.change(confirm, { target: { value: "abc" } });
+    expect(screen.getByRole("button", { name: /activate/i })).toBeDisabled();
+    fillValidPasswords(container);
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: /activate/i })).toBeEnabled());
+    expect(confirm.compareDocumentPosition(checker) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.change(confirm, { target: { value: "Different1!" } });
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: /activate/i })).toBeDisabled());
+    expect(setPanelIdleSlot).not.toHaveBeenCalled();
+  });
+
+  it("shows a rejected activation inline when the panel is hidden", async () => {
+    h.animCtx = { animationPanelVisible: false, startAnimation: vi.fn(), failAnimation: vi.fn() };
+    h.mutateAsync.mockResolvedValue({ isSuccess: false, errors: { password: "Password recently used" } });
+    const { container } = render(<ActivationForm code="activation-code" />);
+    fillValidPasswords(container);
+    const submit = screen.getByRole("button", { name: /activate/i });
+    await vi.waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+    expect(await screen.findByText("Password recently used")).toBeInTheDocument();
+  });
+
+  it("automatically activates without a checker or requirement gate when no password is collected", async () => {
+    const setPanelIdleSlot = vi.fn();
+    h.animCtx = { animationPanelVisible: false, setPanelIdleSlot, startAnimation: vi.fn(), succeedAnimation: vi.fn() };
+    render(<ActivationForm code="activation-code" collectPassword={false} />);
+    await vi.waitFor(() => expect(h.mutateAsync).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("heading", { name: "Password Strength" })).not.toBeInTheDocument();
+    expect(setPanelIdleSlot).not.toHaveBeenCalled();
+  });
   it("renders the name and password fields and a disabled activate button", () => {
     const { container } = render(<ActivationForm code="activation-code" tenantId="tenant-1" />);
     expect(screen.getByText("First Name")).toBeInTheDocument();

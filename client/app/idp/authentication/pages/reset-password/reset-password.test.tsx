@@ -56,6 +56,7 @@ describe("ResetPassword", () => {
       captcha: null,
       template: {
         ...OIDC_UI_TEMPLATE_FIXTURE,
+        layout: { showAnimationPanel: false },
         branding: {
           logoUrlLight: "https://example.test/reset-light.svg",
           logoUrlDark: "https://example.test/reset-dark.svg",
@@ -75,6 +76,7 @@ describe("ResetPassword", () => {
     renderPage();
     expect(screen.getByText("Choose a new Acme secret")).toBeInTheDocument();
     expect(h.shellProps).toEqual(expect.objectContaining({
+      showAnimationPanel: false,
       successTitle: "Secret changed",
       successSubtitle: "Your Acme sessions are protected",
       logoUrlLight: "https://example.test/reset-light.svg",
