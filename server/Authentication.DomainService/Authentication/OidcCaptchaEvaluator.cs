@@ -3,6 +3,7 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Mvc;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -20,9 +21,13 @@ namespace Authentication.DomainService.Authentication
             _captchaEvaluator = captchaEvaluator;
         }
 
-        public async Task<OidcCaptchaEvaluation> EvaluateAsync(User user, string? captchaCode)
+        public Task<OidcCaptchaEvaluation> EvaluateAsync(User user, string? captchaCode) =>
+            EvaluateAsync(user?.FailedLoginCount ?? 0, captchaCode);
+
+        /// <summary>Same gate for a failure count kept outside a user document (unknown usernames).</summary>
+        public async Task<OidcCaptchaEvaluation> EvaluateAsync(int failedLoginCount, string? captchaCode)
         {
-            if (!CaptchaGate.IsCaptchaRequired(user))
+            if (!CaptchaGate.IsCaptchaRequired(failedLoginCount))
             {
                 return OidcCaptchaEvaluation.Pass();
             }

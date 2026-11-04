@@ -7,10 +7,12 @@ import { HelpCircle, LogIn } from "lucide-react"
 import { useLocation } from "react-router"
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config"
 import { OidcThemedConfirmation } from "../oidc/oidc-themed-confirmation"
+import { useT } from "@seliseblocks/genesis-os/i18n"
 
 const SUPPORT_URL = "https://docs.seliseblocks.com/"
 
 export const ResetPasswordSuccess = () => {
+  const { t } = useT("iam.password")
   const isOidc = useLocation().pathname.startsWith("/oidc")
   const { data: oidcUiConfig } = useOidcUiConfig()
 
@@ -38,12 +40,11 @@ export const ResetPasswordSuccess = () => {
             <SuccessConfirmationIcon />
 
             <h1 className="mt-5 text-xl font-bold tracking-tight text-foreground sm:mt-6 sm:text-2xl md:mt-7 md:text-[1.75rem]">
-              Password updated
+              {t("RESET_PASSWORD_SUCCESS.PASSWORD_UPDATED")}
             </h1>
 
             <p className="mt-3 w-full text-base leading-relaxed text-muted-foreground sm:mt-4 sm:text-lg">
-              Your password has been successfully reset. Sign in with your new password to
-              access your account.
+              {t("RESET_PASSWORD_SUCCESS.RESET_DONE")}
             </p>
           </div>
 
@@ -57,10 +58,10 @@ export const ResetPasswordSuccess = () => {
 
               <div className="min-w-0 flex-1 text-left">
                 <p className="text-sm font-semibold text-foreground sm:text-base">
-                  Ready to sign in?
+                  {t("RESET_PASSWORD_SUCCESS.READY_TO_SIGN_IN")}
                 </p>
                 <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-                  Sign in with your new password.
+                  {t("RESET_PASSWORD_SUCCESS.SIGN_IN_WITH_NEW_PASSWORD")}
                 </p>
               </div>
             </div>
@@ -71,11 +72,11 @@ export const ResetPasswordSuccess = () => {
               asChild
             >
               <LoginReturnLink
-                aria-label="Go to login"
+                aria-label={t("RESET_PASSWORD_SUCCESS.GO_TO_LOGIN")}
                 className="inline-flex w-full items-center justify-center gap-2 md:w-auto"
               >
                 <LogIn className="h-4 w-4 shrink-0" aria-hidden />
-                Log in
+                {t("RESET_PASSWORD_SUCCESS.LOG_IN")}
               </LoginReturnLink>
             </Button>
           </div>
@@ -85,7 +86,7 @@ export const ResetPasswordSuccess = () => {
           <div className="flex flex-col items-center justify-center gap-1 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-1.5">
             <span className="inline-flex items-center gap-1.5">
               <HelpCircle className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-              Need help?
+              {t("RESET_PASSWORD_SUCCESS.NEED_HELP")}
             </span>
             <a
               href={SUPPORT_URL}
@@ -93,7 +94,7 @@ export const ResetPasswordSuccess = () => {
               rel="noreferrer"
               className="inline-flex min-h-11 items-center font-medium text-primary hover:text-primary/80 md:min-h-0"
             >
-              Contact support
+              {t("RESET_PASSWORD_SUCCESS.CONTACT_SUPPORT")}
             </a>
           </div>
         </div>

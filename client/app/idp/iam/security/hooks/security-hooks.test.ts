@@ -10,8 +10,6 @@ import {
   useRevokeSession,
   useRevokeRefreshToken,
   useActivities,
-  usePats,
-  useGeneratePats,
 } from "./index";
 
 vi.mock("../services/security.service", () => ({
@@ -22,8 +20,6 @@ vi.mock("../services/security.service", () => ({
     revokeSession: vi.fn(),
     revokeRefreshToken: vi.fn(),
     getActivities: vi.fn(),
-    getPats: vi.fn(),
-    generatePats: vi.fn(),
   },
 }));
 
@@ -68,21 +64,6 @@ const mockRevokeResponse = {
 };
 
 const mockActivitiesResponse = { items: [], totalCount: 0, page: 0, pageSize: 10 };
-
-const makePat = (itemId: string, createdDate: string) => ({
-  note: "token",
-  itemId,
-  createdDate,
-  expiryDate: "2025-02-01T00:00:00Z",
-  createdBy: "user-1",
-  language: "en",
-  lastUpdatedBy: "user-1",
-  organizationIds: [],
-  tags: [],
-  code: "code",
-  userId: "user-1",
-  clientId: "client-1",
-});
 
 describe("Security Hooks", () => {
   beforeEach(() => {
@@ -254,58 +235,6 @@ describe("Security Hooks", () => {
 
       expect(result.current.fetchStatus).toBe("idle");
       expect(securityService.getActivities).not.toHaveBeenCalled();
-    });
-  });
-
-  // ─── usePats ───────────────────────────────────────────────────────────────
-  describe("usePats", () => {
-    it("should fetch and sort PATs by createdDate descending", async () => {
-      const older = makePat("pat-old", "2025-01-01T00:00:00Z");
-      const newer = makePat("pat-new", "2025-06-01T00:00:00Z");
-      vi.mocked(securityService.getPats).mockResolvedValue([older, newer]);
-
-      const { result } = renderHook(() => usePats(), { wrapper: createWrapper() });
-
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-      expect(result.current.data?.map((p) => p.itemId)).toEqual(["pat-new", "pat-old"]);
-    });
-
-    it("should return an empty array when the response is not an array", async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(securityService.getPats).mockResolvedValue(null as any);
-
-      const { result } = renderHook(() => usePats(), { wrapper: createWrapper() });
-
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-      expect(result.current.data).toEqual([]);
-    });
-  });
-
-  // ─── useGeneratePats ───────────────────────────────────────────────────────
-  describe("useGeneratePats", () => {
-    it("should generate a PAT successfully", async () => {
-      vi.mocked(securityService.generatePats).mockResolvedValue([makePat("pat-1", "2025-01-01T00:00:00Z")]);
-
-      const payload = { note: "ci token", codeTtlInMinute: 60, clientId: "client-1" };
-      const { result } = renderHook(() => useGeneratePats(), { wrapper: createWrapper() });
-
-      result.current.mutate(payload);
-
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-      expect(securityService.generatePats).toHaveBeenCalledWith(payload);
-    });
-
-    it("should surface errors", async () => {
-      vi.mocked(securityService.generatePats).mockRejectedValue(new Error("boom"));
-
-      const { result } = renderHook(() => useGeneratePats(), { wrapper: createWrapper() });
-
-      result.current.mutate({ codeTtlInMinute: 60, clientId: "client-1" });
-
-      await waitFor(() => expect(result.current.isError).toBe(true));
     });
   });
 });

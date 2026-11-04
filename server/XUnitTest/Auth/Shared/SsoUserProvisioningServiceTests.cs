@@ -2,12 +2,14 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Shared.Services;
 using Blocks.Genesis;
 using FluentAssertions;
+using Iam.DomainService.Accounts;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {
@@ -27,7 +29,9 @@ namespace XUnitTest.Auth.Shared
             NullLogger<SsoUserProvisioningService>.Instance,
             _userRepository.Object,
             _resourceMutation.Object,
-            _resourceRepository.Object);
+            _resourceRepository.Object,
+            // The real shared resolver, so placement is exercised exactly as the email sign-up sees it.
+            new SignupOrganizationResolver(_resourceRepository.Object));
 
         /// <summary>
         /// The login services have already stamped the identity provider's InitialRoles /
@@ -51,15 +55,19 @@ namespace XUnitTest.Auth.Shared
             bool ssoSignup,
             bool multiOrg = false,
             bool orgFromSignup = false,
-            bool nameUniqueness = false)
+            bool nameUniqueness = false,
+            bool autoJoin = false,
+            string? autoJoinTarget = null)
         {
             _resourceRepository.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration
+                .ReturnsAsync(new IamTenantConfiguration
                 {
                     IsSSoSignUpEnabled = ssoSignup,
                     IsMultiOrgEnabled = multiOrg,
                     AllowOrgCreationFromSignup = orgFromSignup,
                     IsOrgNameUniquenessEnabled = nameUniqueness,
+                    IsSignupAutoJoinEnabled = autoJoin,
+                    SignupAutoJoinOrganizationId = autoJoinTarget,
                     // Deliberately populated: an SSO user must NOT pick these up. They describe
                     // the email-signup route, not what an identity provider grants.
                     DefaultRolesForNewUserOnSignUp = new List<string> { "signup-default-role" },
@@ -330,6 +338,125 @@ namespace XUnitTest.Auth.Shared
             created.Status.Should().Be(UserLifecycleStatus.Active);
             created.ProvisioningSource.Should().Be(UserProvisioningSource.Social);
             created.Platform.Should().Be("google");
+        }
+
+        // ---------- Sign-up auto-join ----------
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task H9_H10_H11_NewUser_AutoJoinOn_JoinsTheTarget_WithIdpRoles_AndNoPersonalOrganization(bool orgFromSignup)
+        {
+            NoExistingUser();
+            TenantConfig(ssoSignup: true, multiOrg: true, orgFromSignup: orgFromSignup, autoJoin: true, autoJoinTarget: "org-sales");
+            _resourceRepository.Setup(r => r.GetOrganizationById("org-sales"))
+                .ReturnsAsync(new Organization { ItemId = "org-sales", Name = "Sales" });
+
+            var result = await Create().ResolveOrProvisionAsync(ExternalUser(), "google");
+
+            result.Outcome.Should().Be(SsoProvisioningOutcome.Provisioned);
+            var created = CapturedUser();
+            created.OrganizationIds.Should().Equal("org-sales");
+            created.Roles.Keys.Should().Equal("org-sales");
+            created.Roles["org-sales"].Should().Equal("idp-role");
+            created.Permissions["org-sales"].Should().Equal("idp-permission");
+            _resourceMutation.Verify(
+                r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string>()),
+                Times.Never);
+            _resourceRepository.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task H9_NewUser_AutoJoinToDefault_LandsInDefault_WithoutAnyOrganizationRead()
+        {
+            NoExistingUser();
+            TenantConfig(ssoSignup: true, multiOrg: true, orgFromSignup: true, autoJoin: true, autoJoinTarget: DefaultOrganizationId);
+
+            var result = await Create().ResolveOrProvisionAsync(ExternalUser(), "google");
+
+            result.Outcome.Should().Be(SsoProvisioningOutcome.Provisioned);
+            CapturedUser().OrganizationIds.Should().Equal(DefaultOrganizationId);
+            _resourceRepository.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+            _resourceMutation.Verify(
+                r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string>()),
+                Times.Never);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task C8_C9_NewUser_TargetMissingOrDisabled_IsOrganizationUnavailable_AndWritesNothing(bool exists)
+        {
+            NoExistingUser();
+            TenantConfig(ssoSignup: true, multiOrg: true, orgFromSignup: true, autoJoin: true, autoJoinTarget: "org-sales");
+            _resourceRepository.Setup(r => r.GetOrganizationById("org-sales"))
+                .ReturnsAsync(exists ? new Organization { ItemId = "org-sales", Name = "Sales", IsDisabled = true } : null!);
+
+            var result = await Create().ResolveOrProvisionAsync(ExternalUser(), "google");
+
+            result.Outcome.Should().Be(SsoProvisioningOutcome.OrganizationUnavailable);
+            result.User.Should().BeNull();
+            _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+            _resourceMutation.Verify(
+                r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public void ProvisioningOutcomeNumbering_AddsOrganizationUnavailableAs4_ExistingValuesUnchanged()
+        {
+            ((int)SsoProvisioningOutcome.ExistingUser).Should().Be(0);
+            ((int)SsoProvisioningOutcome.Provisioned).Should().Be(1);
+            ((int)SsoProvisioningOutcome.SignupDisabled).Should().Be(2);
+            ((int)SsoProvisioningOutcome.Failed).Should().Be(3);
+            ((int)SsoProvisioningOutcome.OrganizationUnavailable).Should().Be(4);
+        }
+
+        [Fact]
+        public async Task C13_NewUser_SsoSignupOff_IsRefusedBeforeAnyAutoJoinLogic()
+        {
+            _userRepository.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync((User)null!);
+            TenantConfig(ssoSignup: false, multiOrg: true, autoJoin: true, autoJoinTarget: "org-sales");
+
+            var result = await Create().ResolveOrProvisionAsync(ExternalUser(), "google");
+
+            result.Outcome.Should().Be(SsoProvisioningOutcome.SignupDisabled);
+            _resourceRepository.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+            _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task C10_ExistingUser_AutoJoinOn_IsALogin_AndMembershipsAreUntouched()
+        {
+            var existing = new User
+            {
+                ItemId = "u1",
+                Email = "new@example.com",
+                Active = true,
+                OrganizationIds = ["org-other"]
+            };
+            _userRepository.Setup(r => r.GetUserByEmailAsync("new@example.com")).ReturnsAsync(existing);
+            TenantConfig(ssoSignup: true, multiOrg: true, autoJoin: true, autoJoinTarget: "org-sales");
+
+            var result = await Create().ResolveOrProvisionAsync(ExternalUser(), "google");
+
+            result.Outcome.Should().Be(SsoProvisioningOutcome.ExistingUser);
+            existing.OrganizationIds.Should().Equal("org-other");
+            _resourceRepository.Verify(r => r.GetTenantConfigurationAsync(), Times.Never);
+            _resourceRepository.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+            _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task C12_NewUser_MultiOrgOff_AutoJoinStored_StillLandsInDefault()
+        {
+            NoExistingUser();
+            TenantConfig(ssoSignup: true, multiOrg: false, autoJoin: true, autoJoinTarget: "org-sales");
+
+            await Create().ResolveOrProvisionAsync(ExternalUser(), "google");
+
+            CapturedUser().OrganizationIds.Should().Equal(DefaultOrganizationId);
+            _resourceRepository.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
         }
     }
 }

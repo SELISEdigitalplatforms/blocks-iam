@@ -11,6 +11,7 @@ using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Shared
 {
@@ -56,7 +57,7 @@ namespace XUnitTest.IamTests.Shared
         }
 
         private IdentityAccessManagementRepository Sut() =>
-            new(_db.Object, _secret.Object, NullLogger<IdentityAccessManagementRepository>.Instance);
+            new(_db.Object, _secret.Object, NullLogger<IdentityAccessManagementRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         [Fact]
         public async Task GetIamConfigurationAsync_ReturnsMatch()
@@ -203,7 +204,7 @@ namespace XUnitTest.IamTests.Shared
                 .ThrowsAsync(new InvalidOperationException("no permission"));
 
             var logger = new Mock<ILogger<IdentityAccessManagementRepository>>();
-            var sut = new IdentityAccessManagementRepository(_db.Object, _secret.Object, logger.Object);
+            var sut = new IdentityAccessManagementRepository(_db.Object, _secret.Object, logger.Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
             // A missing index costs speed, never correctness, so startup must survive this - but it
             // must not vanish silently either, or a permanently missing index goes unnoticed.
@@ -288,19 +289,26 @@ namespace XUnitTest.IamTests.Shared
         }
 
         [Fact]
-        public async Task SaveSignUpSettingAsync_UpdatesOne()
+        public async Task SaveSignUpSettingAsync_UpdatesTheIdentityConfigurationField()
         {
-            var col = Register<TenantConfiguration>();
-            await Sut().SaveSignUpSettingAsync(new TenantConfiguration { ItemId = "c1", IsEmailPasswordSignUpEnabled = true });
-            col.Verify(c => c.UpdateOneAsync(
-                It.IsAny<FilterDefinition<TenantConfiguration>>(), It.IsAny<UpdateDefinition<TenantConfiguration>>(),
+            var identity = Register<BsonDocument>();
+            var legacy = Register<IamTenantConfiguration>();
+
+            await Sut().SaveSignUpSettingAsync(new IamTenantConfiguration { ItemId = "c1", IsEmailPasswordSignUpEnabled = true });
+
+            identity.Verify(c => c.UpdateOneAsync(
+                It.IsAny<FilterDefinition<BsonDocument>>(), It.IsAny<UpdateDefinition<BsonDocument>>(),
                 It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()), Times.Once);
+            legacy.Verify(c => c.UpdateOneAsync(
+                It.IsAny<FilterDefinition<IamTenantConfiguration>>(), It.IsAny<UpdateDefinition<IamTenantConfiguration>>(),
+                It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
         [Fact]
-        public async Task GetTenantConfigurationAsync_ReturnsMatch()
+        public async Task GetTenantConfigurationAsync_FieldMissing_ReadsTheOldCollection()
         {
-            Register(new[] { new TenantConfiguration { ItemId = "c1" } });
+            Register<BsonDocument>();
+            Register(new[] { new IamTenantConfiguration { ItemId = "c1" } });
             (await Sut().GetTenantConfigurationAsync()).ItemId.Should().Be("c1");
         }
     }

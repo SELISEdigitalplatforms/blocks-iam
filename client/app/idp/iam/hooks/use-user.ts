@@ -143,6 +143,11 @@ export const useUpdateUser = (options: {
       // key for `useGetMe`, and `["user-by-id"]` covers the user-detail view.
       queryClient.invalidateQueries({ queryKey: ["user"] });
       queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      // The console header (genesis-os `useGetUserInfo`) caches the signed-in
+      // user under `["user-info"]`; refetching it also re-syncs its avatar store.
+      if (own) {
+        queryClient.invalidateQueries({ queryKey: ["user-info"] });
+      }
       // The users-list pages keep the user's record too.
       queryClient.invalidateQueries({ queryKey: ["users"] });
       if (!own) {

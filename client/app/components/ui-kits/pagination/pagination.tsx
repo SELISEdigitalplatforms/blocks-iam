@@ -9,6 +9,7 @@ import {
 } from "@/components/ui-kits/select/select";
 import { Button } from "@/components/ui-kits/button/button";
 import { cn } from "@/lib/utils";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 
 interface PaginationProps {
   onChange: (pageIndex: number) => void;
@@ -30,6 +31,7 @@ export function Pagination({
   onPageSizeChange,
   compact,
 }: PaginationProps) {
+  const { t } = useT("iam.shared");
   const pageChangeHandler = (page: number) => {
     onChange(page);
   };
@@ -37,6 +39,17 @@ export function Pagination({
   const canGoPreviousPage = !!page;
   const totalPage = Math.ceil(totalCount / pageSize);
   const canGoNextPage = page < totalPage - 1;
+
+  // Offer only sizes that change what is shown: every size below the total plus the
+  // first one that fits it all. The current size always stays listed. When even the
+  // smallest size fits every row, there is nothing to choose.
+  const firstFitAll = pageSizeOptions?.find((size) => size >= totalCount);
+  const sizeChoices =
+    totalCount > Math.min(...(pageSizeOptions ?? [0]))
+      ? (pageSizeOptions ?? []).filter(
+          (size) => size < totalCount || size === firstFitAll || size === pageSize,
+        )
+      : [];
 
   const onPageSizeChangeHandler = (value: string) => {
     if (onPageSizeChange) onPageSizeChange(+value);
@@ -49,9 +62,9 @@ export function Pagination({
         compact && "flex-row items-center gap-2",
       )}
     >
-      {pageSizeOptions && pageSizeOptions?.length > 0 ? (
+      {sizeChoices.length > 1 ? (
         <div className={cn("flex items-center space-x-2", compact && "shrink-0 space-x-1.5")}>
-          <p className={cn("text-sm font-medium", compact && "hidden md:block")}>Rows per page</p>
+          <p className={cn("text-sm font-medium", compact && "hidden md:block")}>{t("PAGINATION.ROWS_PER_PAGE")}</p>
           <Select value={`${pageSize}`} onValueChange={onPageSizeChangeHandler}>
             <SelectTrigger
               className={cn("h-8 w-[70px]", compact && "h-7 w-[58px] text-xs md:h-8 md:w-[70px] md:text-sm")}
@@ -59,7 +72,7 @@ export function Pagination({
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent side="top">
-              {pageSizeOptions?.map((pageSize) => (
+              {sizeChoices.map((pageSize) => (
                 <SelectItem key={pageSize} value={`${pageSize}`}>
                   {pageSize}
                 </SelectItem>
@@ -78,7 +91,7 @@ export function Pagination({
             compact && "text-xs md:text-sm",
           )}
         >
-          Page {page + 1} of {totalPage}
+          {t("PAGINATION.PAGE_OF", { page: page + 1, total: totalPage })}
         </div>
         <div className={cn("flex items-center gap-1", compact && "gap-0.5")}>
           <Button

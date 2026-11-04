@@ -59,9 +59,12 @@ namespace Authentication.DomainService.Authentication
             var result = await _clientCredentialAuthorizationService.AuthenticateAsync(tokenRequest, authConfiguration);
             if (!string.IsNullOrWhiteSpace(result.Error))
             {
-                var statusCode = string.Equals(result.Error, "invalid_client", StringComparison.OrdinalIgnoreCase)
-                    ? StatusCodes.Status401Unauthorized
-                    : StatusCodes.Status400BadRequest;
+                // An error that names its own status (503 while the secret store is unavailable) keeps it.
+                var statusCode = result.StatusCode >= StatusCodes.Status400BadRequest
+                    ? result.StatusCode
+                    : string.Equals(result.Error, "invalid_client", StringComparison.OrdinalIgnoreCase)
+                        ? StatusCodes.Status401Unauthorized
+                        : StatusCodes.Status400BadRequest;
 
                 return new ObjectResult(new
                 {

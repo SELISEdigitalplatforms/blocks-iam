@@ -1,0 +1,60 @@
+namespace Iam.DomainService.Dtos
+{
+    /// <summary>
+    /// One chunk of a bulk role change, on its way to the worker.
+    /// <para>
+    /// The ids are <em>resolved at submit time</em> rather than the filter being re-run in the
+    /// worker. Re-resolving would let the matched set drift between the number the operator approved
+    /// in the preview and the number actually changed -- the one thing the preview exists to prevent.
+    /// It also makes chunking and idempotent redelivery straightforward.
+    /// </para>
+    /// </summary>
+    public class BulkUserRoleChangeEvent
+    {
+        /// <summary>Shared by every chunk of one submit; a log correlation id only.</summary>
+        public required string BatchId { get; set; }
+
+        public required string OrganizationId { get; set; }
+
+        /// <summary>Captured from <c>BlocksContext</c> at submit, since the worker has no caller.</summary>
+        public string? TenantId { get; set; }
+
+        public List<string> AddRoles { get; set; } = new();
+
+        public List<string> RemoveRoles { get; set; } = new();
+
+        /// <summary>The resolved ids for this chunk; disjoint from every other chunk of the batch.</summary>
+        public List<string> UserIds { get; set; } = new();
+
+        /// <summary>
+        /// The user who submitted the batch; gets the "finished" notification. Null on messages
+        /// queued before this field existed: those apply as before and send no such notification.
+        /// </summary>
+        public string? RequestedBy { get; set; }
+
+        /// <summary>
+        /// The submitter's organization, so the worker can re-check every user against the
+        /// submitter's power (access grant, R3) after the request is gone.
+        /// </summary>
+        public string? RequestedByOrganizationId { get; set; }
+
+        /// <summary>
+        /// True when the submitter was the system user, to whom no access grant rule
+        /// applies. Null on messages queued before this field existed: those apply as before.
+        /// </summary>
+        public bool? RequestedBySystemCaller { get; set; }
+
+        /// <summary>
+        /// The client credential that submitted the batch, when the caller was a client (no user).
+        /// Taken from the authenticated context at submit, never from the request body. Null for a
+        /// user submitter and on messages queued before this field existed: those apply as before.
+        /// </summary>
+        public string? RequestedByClientId { get; set; }
+
+        /// <summary>1-based number of this chunk in the batch (0 when unknown).</summary>
+        public int Part { get; set; }
+
+        /// <summary>How many chunks the batch has (0 when unknown).</summary>
+        public int Parts { get; set; }
+    }
+}

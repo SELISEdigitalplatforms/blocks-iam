@@ -4,6 +4,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Activity.Services
 {

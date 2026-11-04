@@ -6,6 +6,7 @@ using Iam.DomainService.Activity.Services;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Security
 {

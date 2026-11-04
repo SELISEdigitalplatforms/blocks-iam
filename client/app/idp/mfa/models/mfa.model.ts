@@ -43,12 +43,12 @@ export interface ISetupUserTotpResponse {
   qrCode: string;
   secret?: string;
 }
-export interface IGenerateUserMFA_OtpPayload {
+export interface IGenerateUserMfaOtpPayload {
   userId: string;
   mfaType: number;
   sendPhoneNumberAsEmailDomain?: string;
 }
-export interface IGenerateUserMFA_OtpResponse {
+export interface IGenerateUserMfaOtpResponse {
   errors: unknown | null;
   isSuccess: boolean;
   mfaId: string;
@@ -68,6 +68,8 @@ export interface IVerifyMfaOtpResponse {
 export interface IResendMfaOtpPayload {
   mfaId: string;
   sendPhoneNumberAsEmailDomain?: string;
+  /** Tenant of the sign-in the challenge belongs to. Sent as X-Blocks-Key, not in the body. */
+  tenantId?: string;
 }
 export interface IResendMfaOtpResponse {
   errors: unknown;
@@ -76,7 +78,9 @@ export interface IResendMfaOtpResponse {
   userId: string;
 }
 export interface IDisableMFAPayload {
-  userId: string;
+  password: string;
+  mfaId: string;
+  verificationCode: string;
 }
 export interface IDisableMFAResponse {
   errors: unknown;

@@ -9,6 +9,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -29,7 +30,7 @@ namespace XUnitTest.Auth.OAuth
         private readonly List<string> _graphCalls = [];
 
         private MicrosoftLogInService CreateMicrosoft() =>
-            new(NullLogger<MicrosoftLogInService>.Instance, _authRepo.Object, _http.Object);
+            new(NullLogger<MicrosoftLogInService>.Instance, _authRepo.Object, _http.Object, TestDoubles.IdentityProviderSecretTestDoubles.Resolver());
 
         private static IdentityProvider Provider() => new()
         {

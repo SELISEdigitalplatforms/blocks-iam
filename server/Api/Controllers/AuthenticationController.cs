@@ -9,8 +9,11 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.AccessGrant;
+using Authentication.DomainService.SignupLinks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Api.Controllers;
 
@@ -32,23 +35,27 @@ public class AuthenticationController : ControllerBase
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
     private readonly IAuthenticationConfigurationService _configurationService;
-    private readonly IAuthenticationRepository _authenticationRepository;
     private readonly IAuthenticationDomainService _authenticationDomainService;
+    private readonly ISignupLinkRedemptionOrchestrator _signupLinkRedemption;
+    private readonly IClientCredentialGrantGuard _clientCredentialGrant;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
         IAccountService accountService,
         IAuthenticationFlowService authenticationFlowService,
-        IAuthenticationConfigurationService configurationService, IAuthenticationRepository authenticationRepository,
-        IAuthenticationDomainService authenticationDomainService
+        IAuthenticationConfigurationService configurationService,
+        IAuthenticationDomainService authenticationDomainService,
+        ISignupLinkRedemptionOrchestrator signupLinkRedemption,
+        IClientCredentialGrantGuard clientCredentialGrant
     )
     {
         _authenticationService = authenticationService;
         _accountService = accountService;
         _authenticationFlowService = authenticationFlowService;
         _configurationService= configurationService;
-        _authenticationRepository = authenticationRepository;
         _authenticationDomainService = authenticationDomainService;
+        _signupLinkRedemption = signupLinkRedemption;
+        _clientCredentialGrant = clientCredentialGrant;
     }
 
     /// <summary>
@@ -60,7 +67,18 @@ public class AuthenticationController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> ExecuteSignup([FromBody] SignupUserRequest request)
     {
-        var result = await _accountService.SignupAccountAsync(request);
+        // This endpoint is anonymous, so it must never accept a caller's claim of an SSO identity:
+        // an SSO signup here created an active, verified user for any email and could link a
+        // caller-chosen external id to a pending account. SSO users are provisioned server-side
+        // after a real provider callback (SsoUserProvisioningService), never from this body.
+        if (request != null)
+        {
+            request.IsSsoSignup = false;
+            request.Provider = null;
+            request.ExternalUserId = null;
+        }
+
+        var result = await _accountService.SignupAccountAsync(request!);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -72,9 +90,9 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpGet("login-options")]
     [AllowAnonymous]
-    public Task<IActionResult> RetrieveLoginOptions()
+    public Task<IActionResult> RetrieveLoginOptions([FromQuery(Name = "client_id")] string? clientId = null)
     {
-        return _authenticationService.GetLoginOptionsAsync();
+        return _authenticationService.GetLoginOptionsAsync(clientId);
     }
 
     /// <summary>
@@ -128,6 +146,10 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> UpdatePassword([FromBody] ChangePasswordRequest request)
     {
         var result = await _accountService.ChangePasswordAsync(request);
+        if (result.Errors.ContainsKey(Iam.DomainService.Accounts.AccountService.AccountLockedErrorKey))
+        {
+            return StatusCode(StatusCodes.Status423Locked, result);
+        }
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -149,7 +171,31 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> Activate([FromBody] ActivateUserRequest command)
     {
         var result = await _accountService.ActivateAccountAsync(command);
-        return result.IsSuccess ? Ok(result) : BadRequest(result);
+        if (!result.IsSuccess)
+        {
+            return BadRequest(result);
+        }
+
+        // Signup-link activation keys come back with where to go next: an OIDC link's authorize
+        // URL into its client, or an embedded link's session when the configuration asks for one.
+        var signedIn = await _signupLinkRedemption.CompleteActivationAsync(command?.Code, Request, Response);
+        if (signedIn == null)
+        {
+            return Ok(result);
+        }
+
+        // Additive: the activation fields every existing caller reads stay exactly where they
+        // were, and the link's fields are layered on top. A non-200 (an MFA challenge) is
+        // returned untouched, because it is not an activation response at all.
+        if (signedIn is ObjectResult { Value: Dictionary<string, object?> tokens } ok
+            && (ok.StatusCode ?? StatusCodes.Status200OK) == StatusCodes.Status200OK)
+        {
+            tokens["isSuccess"] = result.IsSuccess;
+            tokens["itemId"] = result.ItemId;
+            return Ok(tokens);
+        }
+
+        return signedIn;
     }
 
     /// <summary>
@@ -166,6 +212,11 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> ResendActivation([FromBody] ResendActivationRequest command)
     {
         var result = await _accountService.ResendActivationAsync(command);
+        if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        }
+
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -266,6 +317,7 @@ public class AuthenticationController : ControllerBase
             return BadRequest(result.LogoutResponse);
         }
 
+        await _signupLinkRedemption.EndLinkSessionAsync(Request, Response);
         return Ok(result.LogoutResponse);
     }
 
@@ -372,6 +424,7 @@ public class AuthenticationController : ControllerBase
             backchannelSuccess = await _authenticationService.TriggerBackchannelLogoutAllAsync(Request);
         }
 
+        await _signupLinkRedemption.EndLinkSessionAsync(Request, Response);
         return Ok(new
         {
             IsSuccess = true,
@@ -439,7 +492,7 @@ public class AuthenticationController : ControllerBase
     /// <summary>
     /// Get identity provider by ID
     /// Retrieves specific provider configuration
-    /// Does NOT return sensitive credentials (client_secret)
+    /// Does NOT return sensitive credentials (client_secret, private key)
     /// </summary>
     [HttpGet("identity-providers/{id}")]
     [ProtectedEndPoint("blocks-iam::auth::identity-providers")]
@@ -512,37 +565,56 @@ public class AuthenticationController : ControllerBase
         return await _configurationService.UpdateAuthenticationConfigAsync(configuration);
     }
 
-    [HttpPost("user-codes")]
-    [ProtectedEndPoint("blocks-iam::auth::mutate-user-pats")]
-    public async Task<BaseResponse> GenerateUserCode([FromBody] GenerateUserCodeRequest request)
-    {
-        return await _authenticationDomainService.GenerateUserCodeByClientAsync(request);
-    }
-
-    [HttpGet("user-codes")]
-    [ProtectedEndPoint("blocks-iam::auth::user-pats")]
-    public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodes()
-    {
-        return await _authenticationRepository.GetUserCodesByUserIdAsync(BlocksContext.GetContext()?.UserId);
-    }
-
     #region Client Credential Management
 
     [HttpPost("client-credentials")]
     [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
-    public async Task<BaseResponse> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
+    public async Task<ActionResult<SaveClientCredentialResponse>> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
     {
+        if (!await _clientCredentialGrant.MaySaveAsync(request).ConfigureAwait(false))
+        {
+            return GrantNotAllowed(new SaveClientCredentialResponse());
+        }
+
         return await _authenticationDomainService.SaveClientCredentialAsync(request);
+    }
+
+    [HttpPost("client-credentials/{id}/rotate-secret")]
+    [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
+    public async Task<ActionResult<RotateClientCredentialSecretResponse>> RotateClientCredentialSecret([FromRoute] string id)
+    {
+        if (!await _clientCredentialGrant.MayChangeAsync(id).ConfigureAwait(false))
+        {
+            return GrantNotAllowed(new RotateClientCredentialSecretResponse());
+        }
+
+        return await _authenticationDomainService.RotateClientCredentialSecretAsync(id);
     }
 
     [HttpDelete("client-credentials/{id}")]
     [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
-    public async Task<BaseResponse> DeleteClientCredential([FromRoute] string id)
+    public async Task<ActionResult<BaseResponse>> DeleteClientCredential([FromRoute] string id)
     {
+        if (!await _clientCredentialGrant.MayChangeAsync(id).ConfigureAwait(false))
+        {
+            return GrantNotAllowed(new BaseResponse());
+        }
+
         return await _authenticationDomainService.DeleteClientCredentialAsync(new DeleteClientCredentialRequest
         {
             ItemId = id
         });
+    }
+
+    /// <summary>
+    /// A access grant refusal (R8): 403 with the generic error, in the response shape
+    /// the endpoint always returns.
+    /// </summary>
+    private ObjectResult GrantNotAllowed(BaseResponse response)
+    {
+        response.IsSuccess = false;
+        response.Errors = AccessGrantErrors.Create();
+        return StatusCode(StatusCodes.Status403Forbidden, response);
     }
 
     [HttpGet("client-credentials")]

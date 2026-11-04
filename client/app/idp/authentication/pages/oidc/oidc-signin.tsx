@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { Loader } from "lucide-react";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@seliseblocks/genesis-os";
@@ -11,8 +11,10 @@ import { OidcLoginForm } from "./oidc-login-form";
 import { OidcAuthShell, OidcFooter } from "./oidc-auth-shell";
 import { OIDC_LOGIN_PANEL } from "./oidc-panel-config";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { tStatic, useT } from "@seliseblocks/genesis-os/i18n";
 
 export const OIDCSignin = () => {
+  const { t } = useT("iam.oidc");
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { setAuthenticated, setTokens } = useAuthStore();
@@ -96,7 +98,7 @@ export const OIDCSignin = () => {
         }
         navigate(`/oidc/permission?${params.toString()}`);
       } catch {
-        showErrorToast({ errors: "Social sign in failed. Please try again." });
+        showErrorToast({ errors: tStatic("iam.oidc", "OIDC_SIGNIN.SOCIAL_SIGN_IN_FAILED") });
       } finally {
         setIsActivatingSocial(false);
       }
@@ -104,6 +106,23 @@ export const OIDCSignin = () => {
 
     activateSocial();
   }, [code, navigate, oidcContext.clientId, oidcContext.userName, setAuthenticated, setTokens, state]);
+
+  // `/oidc/login` with no application at all — no client, no return address, no tenant —
+  // is reached from a bookmark or an IAM page whose "Sign in" link lost the flow. The
+  // fallback card below then reads IAM's own login options, and IAM's own tenant allows
+  // only authorization_code, so it can only render "this sign-in link is missing the
+  // application". Send the user to `/login` instead: it starts IAM's own OIDC request and
+  // comes back here with a client, so the real form renders.
+  const hasApplication = !!(
+    effectiveClientId ||
+    oidcContext.redirectUri ||
+    urlRedirectUri ||
+    effectiveReturnUrl ||
+    tenantId
+  );
+  if (isOidcPasswordFlow && !code && !hasApplication) {
+    return <Navigate to="/login" replace />;
+  }
 
   if (isActivatingSocial) {
     return (
@@ -138,8 +157,8 @@ export const OIDCSignin = () => {
         brandName={template.branding.brandName}
         heading={template.pages.login.heading}
         headingDimFirst={3}
-        successTitle="Access Granted"
-        successSubtitle="Redirecting to your application…"
+        successTitle={t("OIDC_SIGNIN.ACCESS_GRANTED")}
+        successSubtitle={t("OIDC_SIGNIN.REDIRECTING")}
         showCorners={false}
         footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
       >

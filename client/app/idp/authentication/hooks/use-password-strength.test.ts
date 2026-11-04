@@ -2,8 +2,6 @@ import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { usePasswordStrength } from "./use-password-strength";
 import type { IOidcPasswordPolicy } from "../utils/password-policy.util";
-import { DEFAULT_PASSWORD_POLICY, buildPasswordPolicyRequirements } from "../utils/password-policy.util";
-import { STRENGTH_COLORS } from "../utils/password-strength.util";
 
 const policy: IOidcPasswordPolicy = {
   minLength: 10,

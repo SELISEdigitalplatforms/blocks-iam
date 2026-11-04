@@ -1,4 +1,5 @@
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Authentication.LoginPolicies;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
@@ -26,6 +27,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -40,6 +42,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ITenants _tenants;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
+        private readonly ILoginPolicyService _loginPolicy;
 
         private const string PublicCertCachePrefix = "tetocertpublic::";
 
@@ -51,7 +54,8 @@ namespace Authentication.DomainService.Authentication
             IAuthSessionFacade authSession,
             ITenants tenants,
             IUserActivityDispatcher userActivityDispatcher,
-            IRefreshTokenRepository refreshTokenRepository
+            IRefreshTokenRepository refreshTokenRepository,
+            ILoginPolicyService loginPolicy
         )
         {
             _logger = logger;
@@ -62,6 +66,7 @@ namespace Authentication.DomainService.Authentication
             _tenants = tenants;
             _userActivityDispatcher = userActivityDispatcher;
             _refreshTokenRepository = refreshTokenRepository;
+            _loginPolicy = loginPolicy;
         }
 
         public async Task<IActionResult> BuildFlowResultAsync(AuthenticationFlowResult result, HttpContext httpContext)
@@ -346,7 +351,15 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            var isCookieDeleted = tenant.IsRootTenant? DeleteAllCookies(httpContext.Request) : DeleteCookie(httpContext.Request);
+            if (tenant.IsRootTenant)
+            {
+                DeleteAllCookies(httpContext.Request);
+            }
+            else
+            {
+                DeleteCookie(httpContext.Request);
+            }
+
             var shouldClearIdpSessionCookie = await UpdateIdpSessionForLogoutAsync(httpContext, httpContext.User, isGlobalLogout: false, logoutResult.IdpSessionIds );
 
             if (shouldClearIdpSessionCookie)
@@ -589,14 +602,19 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        public async Task<IActionResult> GetLoginOptionsAsync()
+        /// <summary>
+        /// What a login page may offer. With an OIDC client id, the IAM login page's options for that
+        /// client; without one, the embedded login's. Follows the tenant login policy.
+        /// </summary>
+        public async Task<IActionResult> GetLoginOptionsAsync(string? oidcClientId = null)
         {
-            var identityProviders = await _authenticationRepository.GetIdentityProvidersAsync();
+            var channel = string.IsNullOrWhiteSpace(oidcClientId) ? LoginChannel.Embedded : LoginChannel.Oidc;
+            var client = channel == LoginChannel.Oidc
+                ? await _authenticationRepository.GetOidcClientRegistrationAsync(oidcClientId!)
+                : null;
 
-            // Filter to only social providers that are active
-            var socialProviders = identityProviders
-                .Where(p => p.IsActive && p.ProviderType == "social")
-                .ToList();
+            var options = await _loginPolicy.GetOptionsAsync(channel, client);
+            var socialProviders = options.Providers;
 
             // Return only metadata, NOT authorization URLs
             var ssoInfo = socialProviders.Any()
@@ -605,7 +623,6 @@ namespace Authentication.DomainService.Authentication
                               provider = provider.Provider,
                               displayName = provider.DisplayName,
                               icon = provider.Provider, // Can be URL or icon name
-                              redirectUris = provider.RedirectUris,
                               clientId = provider.ClientId,
                           }).ToList()
                           : null;
@@ -616,6 +633,10 @@ namespace Authentication.DomainService.Authentication
                 GrantTypes.ClientCredential,
                 GrantTypes.RefreshToken
             };
+            if (options.Password)
+                gts.Add(GrantTypes.Password);
+            if (options.Social)
+                gts.Add(GrantTypes.Social);
 
             return new OkObjectResult(new
             {
@@ -646,6 +667,14 @@ namespace Authentication.DomainService.Authentication
                 if (identityProvider.ProviderType != "social")
                     return new BadRequestObjectResult(new { error = "invalid_provider_type", error_description = $"Provider '{clientId}' is not a social provider" });
 
+                var policy = await _loginPolicy.CheckAsync(LoginChannel.Embedded, LoginMethods.Social, provider: identityProvider);
+                if (!policy.IsAllowed)
+                    return LoginNotAllowed(policy);
+
+                var checkedRedirectUri = ResolveProviderRedirectUri(identityProvider, redirectUri);
+                if (checkedRedirectUri == null)
+                    return InvalidProviderRedirectUri();
+
                 // Generate state for CSRF protection
                 var state = Guid.NewGuid().ToString("n");
                 var stateValue = JsonSerializer.Serialize(new StateInfo
@@ -653,15 +682,14 @@ namespace Authentication.DomainService.Authentication
                     ClientId = clientId,
                     Provider = identityProvider.Provider,
                     State = state,
-                    RedirectUri = redirectUri,
+                    RedirectUri = checkedRedirectUri,
                     Audience = clientId,
                 });
                 await _cacheClient.AddStringValueAsync(state, stateValue, IdpConstants.OidcStateCacheTtlSeconds); // 5 minutes in seconds
 
                 // Build authorization URL
                 var scope = identityProvider.Scope ?? IdpConstants.OpenIdProfileEmailScope;
-                redirectUri = string.IsNullOrWhiteSpace(redirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : redirectUri;
-                var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, redirectUri, scope);
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, checkedRedirectUri, scope);
 
                 return new OkObjectResult(new
                 {
@@ -672,7 +700,7 @@ namespace Authentication.DomainService.Authentication
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting social authorization URL for provider: {Provider}", clientId);
-                return new BadRequestObjectResult(new { error = "authorization_url_generation_failed", error_description = ex.Message });
+                return AuthorizationUrlFailed();
             }
         }
 
@@ -709,6 +737,19 @@ namespace Authentication.DomainService.Authentication
                 if (!identityProvider.IsActive)
                     return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider with client ID '{providerClientId}' is not active" });
 
+                // The OIDC request this social sign-in belongs to names the client whose policy applies.
+                var oidcClientId = JsonSerializer.Deserialize<OidcContext>(contextJson)?.ClientId;
+                var oidcClient = string.IsNullOrWhiteSpace(oidcClientId)
+                    ? null
+                    : await _authenticationRepository.GetOidcClientRegistrationAsync(oidcClientId);
+                var policy = await _loginPolicy.CheckAsync(LoginChannel.Oidc, LoginMethods.Social, oidcClient, identityProvider);
+                if (!policy.IsAllowed)
+                    return LoginNotAllowed(policy);
+
+                var checkedRedirectUri = ResolveProviderRedirectUri(identityProvider, providerRedirectUri);
+                if (checkedRedirectUri == null)
+                    return InvalidProviderRedirectUri();
+
                 // Generate state for social provider (separate from OIDC state)
                 var socialState = Guid.NewGuid().ToString("n");
 
@@ -719,15 +760,15 @@ namespace Authentication.DomainService.Authentication
                 {
                     OidcState = oidcState,
                     Provider = identityProvider.Provider,
+                    ProviderRedirectUri = checkedRedirectUri,
                     CreatedAt = DateTime.UtcNow
                 });
-                await _cacheClient.AddStringValueAsync(stateKey, stateValue, IdpConstants.OidcStateCacheTtlSeconds); // 5 minute TTL
+                await _cacheClient.AddStringValueAsync(stateKey, stateValue, IdpConstants.OidcSocialStateCacheTtlSeconds);
 
                 // Build authorization URL for social provider
                 // Callback should redirect to /oidc/callback with provider and state
                 var scope = identityProvider.Scope ?? IdpConstants.OpenIdProfileEmailScope;
-                providerRedirectUri = string.IsNullOrWhiteSpace(providerRedirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : providerRedirectUri;
-                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, providerRedirectUri, scope);
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, checkedRedirectUri, scope);
 
                 return new OkObjectResult(new
                 {
@@ -738,9 +779,30 @@ namespace Authentication.DomainService.Authentication
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting OIDC social authorization URL for provider: {ClientId}", providerClientId);
-                return new BadRequestObjectResult(new { error = "authorization_url_generation_failed", error_description = ex.Message });
+                return AuthorizationUrlFailed();
             }
         }
+
+        /// <summary>
+        /// The redirect URI sent to a social provider. A caller-given URI is used only when it exactly
+        /// matches one the provider registered; with none given, the first registered one. Null means refuse.
+        /// </summary>
+        internal static string? ResolveProviderRedirectUri(IdentityProvider provider, string? requested)
+        {
+            if (string.IsNullOrWhiteSpace(requested))
+                return provider.RedirectUris.FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+
+            return provider.RedirectUris.FirstOrDefault(u => string.Equals(u, requested, StringComparison.Ordinal));
+        }
+
+        private static ObjectResult LoginNotAllowed(LoginPolicyDecision decision) =>
+            new(new { error = LoginPolicyRules.Error, error_description = decision.Message }) { StatusCode = StatusCodes.Status403Forbidden };
+
+        private static BadRequestObjectResult InvalidProviderRedirectUri() =>
+            new(new { error = "invalid_redirect_uri", error_description = "redirectUri is not registered for this provider" });
+
+        private static BadRequestObjectResult AuthorizationUrlFailed() =>
+            new(new { error = "authorization_url_generation_failed", error_description = "Could not start sign-in with this provider" });
 
         /// <summary>
         /// Build authorization URL with proper OAuth 2.0 parameters
@@ -1251,16 +1313,7 @@ namespace Authentication.DomainService.Authentication
             // on the refresh token. That id is authoritative here. The mint only wrote its cookie to
             // the response, so the request cookie is stale or absent; consulting it first created a
             // second live session that logout could never reach.
-            string? sessionId = null;
-            if (!string.IsNullOrWhiteSpace(tokenResponse.RefreshToken))
-            {
-                sessionId = (await ReadRefreshTokenCacheAsync(tokenResponse.RefreshToken))?.SessionId;
-            }
-
-            if (string.IsNullOrWhiteSpace(sessionId))
-            {
-                sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId)];
-            }
+            var sessionId = await ResolveCandidateIdpSessionIdAsync(tokenResponse, httpContext, bc?.TenantId);
 
             if (string.IsNullOrWhiteSpace(sessionId))
             {
@@ -1268,31 +1321,7 @@ namespace Authentication.DomainService.Authentication
             }
             else
             {
-                var existingSession = await _authSession.GetSessionAsync(sessionId);
-                if (existingSession == null || existingSession.RevokedAt.HasValue || existingSession.IsExpired())
-                {
-                    sessionId = await _authSession.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
-                }
-                else
-                {
-                    var accountExists = existingSession.Accounts.Any(a =>
-                        string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
-
-                    if (!accountExists)
-                    {
-                        await _authSession.AddAccountAsync(sessionId, userId, tenantId, userId);
-                    }
-                    else
-                    {
-                        await _authSession.UpdateActivityAsync(sessionId);
-                    }
-
-                    // Rotate session id on successful login transition to reduce fixation risk.
-                    // Rotation re-points the refresh tokens at the new id, so the token issued above
-                    // keeps resolving to the live session.
-                    sessionId = await _authSession.RotateSessionAsync(sessionId, LoginAuditEvents.LoginSuccess) ?? sessionId;
-                }
+                sessionId = await ContinueOrReplaceIdpSessionAsync(sessionId, userId, tenantId, httpContext);
             }
 
             IdpSessionCookie.Append(
@@ -1302,6 +1331,49 @@ namespace Authentication.DomainService.Authentication
                 bc?.TenantId,
                 sessionId,
                 tokenResponse.RefreshExpiresUtc);
+        }
+
+        private async Task<string?> ResolveCandidateIdpSessionIdAsync(TokenResponse tokenResponse, HttpContext httpContext, string? contextTenantId)
+        {
+            string? sessionId = null;
+            if (!string.IsNullOrWhiteSpace(tokenResponse.RefreshToken))
+            {
+                sessionId = (await ReadRefreshTokenCacheAsync(tokenResponse.RefreshToken))?.SessionId;
+            }
+
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(contextTenantId)];
+            }
+
+            return sessionId;
+        }
+
+        private async Task<string> ContinueOrReplaceIdpSessionAsync(string sessionId, string userId, string tenantId, HttpContext httpContext)
+        {
+            var existingSession = await _authSession.GetSessionAsync(sessionId);
+            if (existingSession == null || existingSession.RevokedAt.HasValue || existingSession.IsExpired())
+            {
+                return await _authSession.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+            }
+
+            var accountExists = existingSession.Accounts.Any(a =>
+                string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
+
+            if (!accountExists)
+            {
+                await _authSession.AddAccountAsync(sessionId, userId, tenantId, userId);
+            }
+            else
+            {
+                await _authSession.UpdateActivityAsync(sessionId);
+            }
+
+            // Rotate session id on successful login transition to reduce fixation risk.
+            // Rotation re-points the refresh tokens at the new id, so the token issued above
+            // keeps resolving to the live session.
+            return await _authSession.RotateSessionAsync(sessionId, LoginAuditEvents.LoginSuccess) ?? sessionId;
         }
 
         public async Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId)
@@ -1407,7 +1479,7 @@ namespace Authentication.DomainService.Authentication
         {
             return await _authenticationDomainService.RotateOidcClientSecretAsync(itemId);
         }
-        private async Task<bool> IsTenantSharedWithUserAsync(string userId, string targetTenantId)
+        public async Task<bool> IsTenantSharedWithUserAsync(string userId, string targetTenantId)
         {
             try
             {
@@ -1633,6 +1705,9 @@ namespace Authentication.DomainService.Authentication
         }
 
 
+        /// <summary>The impersonation session status a successful stop records.</summary>
+        private const string ImpersonationStoppedStatus = "ended_by_admin_stop";
+
         public async Task<IActionResult> ExecuteStopImpersonationAsync(StopImpersonationRequest request, HttpRequest httpRequest, HttpResponse httpResponse)
         {
             var bc = BlocksContext.GetContext();
@@ -1669,7 +1744,22 @@ namespace Authentication.DomainService.Authentication
 
             var rootRefreshCache = await _authSession.TryResolveRefreshSessionAsync(refreshToken, configuration);
 
-            if (rootRefreshCache == null || !rootRefreshCache.Impersonated)
+            // A stop whose answer never reached the client leaves it holding the impersonated token it
+            // presented here, while the lineage has already moved back to root. Its retry resolves onto that
+            // root successor; refusing it used to strand the client on the project's access token until
+            // that expired. Issuing the root pair again finishes the stop it already asked for.
+            // The lineage is the evidence: only a stop moves an impersonated lineage back to root, and the
+            // caller still carries this impersonation's access token. The session record is not consulted.
+            // The endpoint has already reset the context to root (Impersonated is false here); only an
+            // impersonated access token carries an impersonation session id, so that id is what ties the
+            // caller to this impersonation.
+            var isRetryOfFinishedStop = rootRefreshCache != null
+                && !rootRefreshCache.Impersonated
+                && !string.Equals(rootRefreshCache.RefreshToken, refreshToken, StringComparison.Ordinal)
+                && string.Equals(bc.ImpersonationSessionId, session.Id, StringComparison.Ordinal)
+                && string.Equals(rootRefreshCache.UserId, bc.UserId, StringComparison.OrdinalIgnoreCase);
+
+            if (rootRefreshCache == null || (!rootRefreshCache.Impersonated && !isRetryOfFinishedStop))
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_refresh_token" });
             }
@@ -1708,22 +1798,30 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = tokenResponse.Error });
             }
 
-            try
+            if (isRetryOfFinishedStop)
             {
-                var updates = new Dictionary<string, object>
-                    {
-                        { "status", "ended_by_admin_stop" },
-                        { "ended_at", DateTime.UtcNow }
-                    };
-                await _authenticationRepository.UpdateImpersonationSessionAsync(impersonationSessionId, updates);
-                // httpResponse.Cookies.Delete(IdpConstants.ImpersonationIdCookieName);
+                // Recorded and audited by the attempt whose answer was lost.
+                _logger.LogInformation("Impersonation stop retried after it had already finished; root session issued again for session {SessionId}", impersonationSessionId);
             }
-            catch (Exception ex)
+            else
             {
-                _logger.LogWarning(ex, "Failed to cleanup impersonation session {SessionId}", impersonationSessionId);
-            }
+                try
+                {
+                    var updates = new Dictionary<string, object>
+                        {
+                            { "status", ImpersonationStoppedStatus },
+                            { "ended_at", DateTime.UtcNow }
+                        };
+                    await _authenticationRepository.UpdateImpersonationSessionAsync(impersonationSessionId, updates);
+                    // httpResponse.Cookies.Delete(IdpConstants.ImpersonationIdCookieName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to cleanup impersonation session {SessionId}", impersonationSessionId);
+                }
 
-            await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopped, bc!.UserId, session.TargetTenantId, IdpConstants.SeverityInfo, IdpConstants.StatusSuccess, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopped, bc!.UserId, session.TargetTenantId, IdpConstants.SeverityInfo, IdpConstants.StatusSuccess, rootTenant.TenantId);
+            }
 
             var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
             if (!cookiesSet)
@@ -1745,7 +1843,7 @@ namespace Authentication.DomainService.Authentication
         }
 
 
-        private async Task<(IActionResult? Error, string UserId, Iam.DomainService.Entities.User User)> ValidateImpersonationRequestAsync(
+        private async Task<(IActionResult? Error, string UserId, Blocks.Genesis.Entities.Iam.User User)> ValidateImpersonationRequestAsync(
             ImpersonateRequest request,
             Tenant? rootTenant,
             HttpRequest httpRequest)
@@ -1807,7 +1905,7 @@ namespace Authentication.DomainService.Authentication
             string existingSessionId,
             ImpersonateRequest request,
             string userId,
-            Iam.DomainService.Entities.User user,
+            Blocks.Genesis.Entities.Iam.User user,
             Tenant rootTenant,
             RefreshTokenCache? rootRefreshCache,
             IdentityConfiguration authConfiguration,

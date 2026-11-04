@@ -5,6 +5,7 @@ using Iam.DomainService.Entities;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Services;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {

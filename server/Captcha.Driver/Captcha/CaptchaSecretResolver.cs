@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace Blocks.CaptchaDriver;
 
 /// <summary>
-/// Key Vault backed <see cref="ICaptchaSecretResolver"/>, with a short-lived cache in front.
+/// Reads the captcha secret from Blocks Secrets on every call; never caches it.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -28,31 +28,24 @@ namespace Blocks.CaptchaDriver;
 /// </remarks>
 public sealed class CaptchaSecretResolver : ICaptchaSecretResolver
 {
-    internal const string CacheKeyPrefix = "captcha:secret:";
-
-    /// <summary>Cache lifetime, in seconds. Deliberately fixed rather than configurable.</summary>
-    internal const long CacheTtlSeconds = 1800;
-
     /// <summary>
     /// Actor recorded on the secret store's audit row. A named identity rather than an empty one,
     /// so a captcha resolution is distinguishable from an unattributed read.
     /// </summary>
     internal const string ServiceUserId = "blocks-iam-captcha";
 
-    private const string ServiceRequestUri = "internal://captcha/resolve-secret";
+    /// <summary>Marks the request as this resolver's own, not a real address: <c>internal://captcha/resolve-secret</c>.</summary>
+    private static readonly string ServiceRequestUri = new UriBuilder("internal", "captcha") { Path = "resolve-secret" }.Uri.ToString();
     private const string DefaultOrganizationId = "default";
 
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ICacheClient _cache;
     private readonly ILogger<CaptchaSecretResolver> _logger;
 
     public CaptchaSecretResolver(
         IServiceScopeFactory scopeFactory,
-        ICacheClient cache,
         ILogger<CaptchaSecretResolver> logger)
     {
         _scopeFactory = scopeFactory;
-        _cache = cache;
         _logger = logger;
     }
 
@@ -77,14 +70,6 @@ public sealed class CaptchaSecretResolver : ICaptchaSecretResolver
             return null;
         }
 
-        var cacheKey = BuildCacheKey(tenantId, secretId);
-
-        var cached = await TryReadCacheAsync(cacheKey).ConfigureAwait(false);
-        if (!string.IsNullOrEmpty(cached))
-        {
-            return cached;
-        }
-
         var organizationId = string.IsNullOrWhiteSpace(context!.OrganizationId)
             ? DefaultOrganizationId
             : context.OrganizationId;
@@ -92,17 +77,8 @@ public sealed class CaptchaSecretResolver : ICaptchaSecretResolver
         var value = await ReadFromStoreAsync(secretId, tenantId, organizationId, cancellationToken)
             .ConfigureAwait(false);
 
-        if (string.IsNullOrEmpty(value))
-        {
-            return null;
-        }
-
-        await TryWriteCacheAsync(cacheKey, value).ConfigureAwait(false);
-        return value;
+        return string.IsNullOrEmpty(value) ? null : value;
     }
-
-    internal static string BuildCacheKey(string tenantId, string secretId) =>
-        $"{CacheKeyPrefix}{tenantId}:{secretId}";
 
     private async Task<string?> ReadFromStoreAsync(
         string secretId,
@@ -137,8 +113,7 @@ public sealed class CaptchaSecretResolver : ICaptchaSecretResolver
             _logger.LogError(ex, "Unexpected failure resolving captcha secret {SecretId}.", secretId);
         }
 
-        // Nothing is cached on any of these paths on purpose: a vault outage would otherwise
-        // lock captcha verification out for the whole TTL after a single failure.
+        // Nothing is stored on any path.
         return null;
     }
 
@@ -148,33 +123,6 @@ public sealed class CaptchaSecretResolver : ICaptchaSecretResolver
         var secretService = scope.ServiceProvider.GetRequiredService<ISecretService>();
 
         return await secretService.GetValueAsync(secretId, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task<string?> TryReadCacheAsync(string cacheKey)
-    {
-        try
-        {
-            return await _cache.GetStringValueAsync(cacheKey).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // A cache failure is a miss, never a request failure.
-            _logger.LogWarning(ex, "Reading the captcha secret cache failed; treating as a miss.");
-            return null;
-        }
-    }
-
-    private async Task TryWriteCacheAsync(string cacheKey, string value)
-    {
-        try
-        {
-            await _cache.AddStringValueAsync(cacheKey, value, CacheTtlSeconds).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // The value is already resolved; failing to cache it only costs a later round-trip.
-            _logger.LogWarning(ex, "Writing the captcha secret cache failed.");
-        }
     }
 
     private static BlocksContext BuildServiceContext(string tenantId, string organizationId) =>

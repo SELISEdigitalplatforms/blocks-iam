@@ -3,10 +3,12 @@ using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
+using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Resources.TenantPropagation
 {
@@ -16,19 +18,21 @@ namespace Iam.DomainService.Resources.TenantPropagation
 
         private const int MaxConcurrentTenants = 8;
         
-        private readonly ConcurrentDictionary<string, MongoClient> _clients = new();
         private readonly IResourceRepository _resourceRepository;
         private readonly IDbContextProvider _dbContextProvider;
+        private readonly IBlocksSecret _blocksSecret;
         private readonly ILogger<TenantPermissionPropagator> _logger;
 
         public TenantPermissionPropagator(
             IResourceRepository resourceRepository,
             IDbContextProvider dbContextProvider,
-            ILogger<TenantPermissionPropagator> logger)
+            ILogger<TenantPermissionPropagator> logger,
+            IBlocksSecret blocksSecret)
         {
             _resourceRepository = resourceRepository;
             _dbContextProvider = dbContextProvider;
             _logger = logger;
+            _blocksSecret = blocksSecret;
         }
 
         public async Task<PropagationSummary> PropagateAsync(PermissionMutationForTenantsEvent context)
@@ -97,7 +101,10 @@ namespace Iam.DomainService.Resources.TenantPropagation
         {
             try
             {
-                var collection = _dbContextProvider.GetCollection<Tenant>("Tenants");
+                // Discovery always belongs to main/root, regardless of the worker's tenant.
+                var collection = _dbContextProvider
+                    .GetDatabase(_blocksSecret.DatabaseConnectionString, _blocksSecret.RootDatabaseName)
+                    .GetCollection<Tenant>("Tenants");
 
                 var filter = Builders<Tenant>.Filter.Eq("IsDisabled", false);
 
@@ -117,7 +124,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
                         {
                             TenantId = tenantId,
                             TenantName = doc.Name,
-                            DbConnectionString = doc.DbConnectionString,
+                            DbConnectionString = _blocksSecret.DatabaseConnectionString,
                             DBName = "BlocksConfiguration"
                         });
 
@@ -146,11 +153,18 @@ namespace Iam.DomainService.Resources.TenantPropagation
 
                 return targets;
             }
-            catch (Exception ex)
+            // Let the worker retry; a registry outage is not a successful empty propagation.
+            // The filter logs and returns false, so the original exception propagates untouched.
+            catch (Exception ex) when (LogTargetEnumerationFailure(ex))
             {
-                _logger.LogError(ex, "Failed to enumerate tenants from root DB (Tenants collection).");
-                return Array.Empty<PermissionMutationTarget>();
+                throw;
             }
+        }
+
+        private bool LogTargetEnumerationFailure(Exception ex)
+        {
+            _logger.LogError(ex, "Failed to enumerate tenants from root DB (Tenants collection).");
+            return false;
         }
 
         private async Task ProcessTenantAsync(
@@ -226,8 +240,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
                 throw new ArgumentException("Tenant database name is required", nameof(databaseName));
             }
 
-            var client = _clients.GetOrAdd(connectionString, static cs => new MongoClient(cs));
-            return client.GetDatabase(databaseName);
+            return _dbContextProvider.GetDatabase(connectionString, databaseName);
         }
 
         private async Task<long> ApplyInsertAsync(
@@ -239,8 +252,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
             {
                 var payload = BuildPermissionBson(permission);
                 await collection.InsertOneAsync(payload);
-                var configCollection = database.GetCollection<TenantConfiguration>("TenantConfigurations");
-                var tenantConfiguration = await configCollection.Find(_ => true).FirstOrDefaultAsync();
+                var tenantConfiguration = await TenantConfigurationStore.ReadAsync(database);
                 if (tenantConfiguration == null || !tenantConfiguration.IsMultiOrgEnabled)
                 {
                     return 1;
@@ -254,7 +266,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
                     return 1;
                 }
 
-                var permissions = orgIds.Select(orgId => BuildPermissionBson(permission, orgId)).ToList();
+                var permissions = orgIds.Select(orgId => BuildPermissionBson(permission, orgId, Guid.NewGuid().ToString())).ToList();
 
                 await collection.InsertManyAsync(permissions);
 
@@ -292,13 +304,14 @@ namespace Iam.DomainService.Resources.TenantPropagation
             return result.IsAcknowledged ? result.ModifiedCount : 0;
         }
 
-        private static BsonDocument BuildPermissionBson(Permission source, string orgId="default")
+        private static BsonDocument BuildPermissionBson(Permission source, string orgId = "default", string? itemId = null)
         {
             var now = DateTime.UtcNow;
+            var id = itemId ?? source.ItemId;
             return new BsonDocument
             {
-                { "_id", source.ItemId },
-                { "ItemId", source.ItemId },
+                { "_id", id },
+                { "ItemId", id },
                 { "Name", source.Name ?? string.Empty },
                 { "Description", source.Description ?? string.Empty },
                 { "Type", source.Type.ToString() },

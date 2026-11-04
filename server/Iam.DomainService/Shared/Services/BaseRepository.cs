@@ -6,10 +6,12 @@ namespace Iam.DomainService.Services
     public abstract class BaseRepository
     {
         protected readonly IDbContextProvider _dbContextProvider;
+        protected readonly IIamDataAccess _dataAccess;
 
-        protected BaseRepository(IDbContextProvider dbContextProvider)
+        protected BaseRepository(IDbContextProvider dbContextProvider, IIamDataAccess dataAccess)
         {
             _dbContextProvider = dbContextProvider;
+            _dataAccess = dataAccess;
         }
 
         public IMongoCollection<T> GetCollection<T>()
@@ -31,7 +33,7 @@ namespace Iam.DomainService.Services
         {
             IMongoCollection<T> collection = _dbContextProvider.GetCollection<T>(string.IsNullOrWhiteSpace(collectionName) ? (typeof(T).Name + "s") : collectionName);
 
-            var filter = Builders<T>.Filter.Eq("_id", id);
+            FilterDefinition<T> filter = Builders<T>.Filter.Eq("_id", id);
             var updateDefinition = new List<UpdateDefinition<T>>();
 
             foreach (var update in updates)
@@ -40,6 +42,14 @@ namespace Iam.DomainService.Services
             }
 
             var combinedUpdate = Builders<T>.Update.Combine(updateDefinition);
+            var schema = IamSchemas.For(typeof(T));
+            if (schema is not null)
+            {
+                var edit = await _dataAccess.EditFilterAsync(schema, filter, "BaseRepository.UpdatePartialAsync");
+                if (edit is null) return;
+                await _dataAccess.CheckUpdateAsync(schema, combinedUpdate, "BaseRepository.UpdatePartialAsync");
+                filter = edit;
+            }
             await collection.UpdateOneAsync(filter, combinedUpdate);
         }
     }

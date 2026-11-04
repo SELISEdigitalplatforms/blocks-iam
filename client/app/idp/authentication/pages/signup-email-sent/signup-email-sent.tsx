@@ -5,8 +5,10 @@ import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/s
 import { buildOIDCNavigationUrl, extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils"
 import { ChevronRight, HelpCircle, Mail, RotateCw } from "lucide-react"
 import { Link, useLocation } from "react-router"
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link"
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config"
 import { OidcThemedConfirmation } from "../oidc/oidc-themed-confirmation"
+import { useT } from "@seliseblocks/genesis-os/i18n"
 
 type SignupEmailSentProps = {
   email: string
@@ -15,15 +17,11 @@ type SignupEmailSentProps = {
 const SUPPORT_URL = "https://docs.seliseblocks.com/"
 
 export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
+  const { t } = useT("iam.signup")
   const location = useLocation()
   const isOidc = location.pathname.startsWith("/oidc")
   const { tenantId } = extractOIDCParams()
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId)
-
-  // Signing in has to re-enter the OIDC flow the user came from, otherwise they
-  // land on the IAM login with no clientId/redirect_uri and never get back to
-  // the application that sent them here.
-  const loginUrl = isOidc ? buildOIDCNavigationUrl("/oidc/login") : "/login"
 
   // Resending means going back to the signup form, which lives at
   // /oidc/signup/:tenantId — tenantId is a path segment, not a query param.
@@ -47,7 +45,7 @@ export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
       <OidcThemedConfirmation
         template={template}
         title={copy.emailSentTitle}
-        subtitle={copy.emailSentSubtitle.replace("{email}", email || "your email address")}
+        subtitle={copy.emailSentSubtitle.replace("{email}", email || t("SIGNUP_EMAIL_SENT.YOUR_EMAIL_ADDRESS"))}
         actionTitle={copy.resendPromptTitle}
         actionSubtitle={copy.resendPromptSubtitle}
         action={<Link className="oidc-sci-fi-btn px-5 py-2.5 no-underline" to={signupUrl}>{copy.resendButton}</Link>}
@@ -65,15 +63,15 @@ export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
             <SuccessConfirmationIcon />
 
             <h1 className="mt-5 text-xl font-bold tracking-tight text-foreground sm:mt-6 sm:text-2xl md:mt-7 md:text-[1.75rem]">
-              Email sent
+              {t("SIGNUP_EMAIL_SENT.TITLE")}
             </h1>
 
             <p className="mt-3 w-full text-base leading-relaxed text-muted-foreground sm:mt-4 sm:text-lg">
-              An email has been sent to{" "}
-              <span className="break-words font-semibold text-primary [overflow-wrap:anywhere]">
-                {email || "your email address"}
+              {t("SIGNUP_EMAIL_SENT.SENT_TO")}{" "}
+              <span className="wrap-break-word font-semibold text-primary wrap-anywhere">
+                {email || t("SIGNUP_EMAIL_SENT.YOUR_EMAIL_ADDRESS")}
               </span>
-              . Please follow the link in the email to continue your sign up.
+              {t("SIGNUP_EMAIL_SENT.FOLLOW_LINK")}
             </p>
           </div>
 
@@ -87,10 +85,10 @@ export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
 
               <div className="min-w-0 flex-1 text-left">
                 <p className="text-sm font-semibold text-foreground sm:text-base">
-                  Didn&apos;t receive the email?
+                  {t("SIGNUP_EMAIL_SENT.NOT_RECEIVED")}
                 </p>
                 <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-                  Check your spam folder or resend the email.
+                  {t("SIGNUP_EMAIL_SENT.CHECK_SPAM")}
                 </p>
               </div>
             </div>
@@ -102,11 +100,11 @@ export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
             >
               <Link
                 to={signupUrl}
-                aria-label="Resend sign up email"
+                aria-label={t("SIGNUP_EMAIL_SENT.RESEND_ARIA")}
                 className="inline-flex w-full items-center justify-center gap-2 md:w-auto"
               >
                 <RotateCw className="h-4 w-4 shrink-0" aria-hidden />
-                Resend email
+                {t("SIGNUP_EMAIL_SENT.RESEND")}
               </Link>
             </Button>
           </div>
@@ -115,20 +113,22 @@ export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
 
           <div className="space-y-5 text-center sm:space-y-6">
             <div>
-              <p className="text-sm text-muted-foreground">Already have an account?</p>
-              <Link
-                to={loginUrl}
+              <p className="text-sm text-muted-foreground">{t("SIGNUP_EMAIL_SENT.HAVE_ACCOUNT")}</p>
+              {/* Re-enters the OIDC flow the user came from, or goes back to the application —
+                  never a bare /oidc/login, which has no application to sign in to. */}
+              <LoginReturnLink
+                preferOidcLogin
                 className="mt-2 inline-flex min-h-11 items-center justify-center gap-0.5 text-sm font-semibold text-primary transition-colors hover:text-primary/80 md:min-h-0"
               >
-                Go to login
+                {t("SIGNUP_EMAIL_SENT.GO_TO_LOGIN")}
                 <ChevronRight className="h-4 w-4" aria-hidden />
-              </Link>
+              </LoginReturnLink>
             </div>
 
             <p className="flex flex-col items-center justify-center gap-1 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-1.5">
               <span className="inline-flex items-center gap-1.5">
                 <HelpCircle className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-                Need help?
+                {t("SIGNUP_EMAIL_SENT.NEED_HELP")}
               </span>
               <a
                 href={SUPPORT_URL}
@@ -136,7 +136,7 @@ export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
                 rel="noreferrer"
                 className="inline-flex min-h-11 items-center font-medium text-primary hover:text-primary/80 md:min-h-0"
               >
-                Contact support
+                {t("SIGNUP_EMAIL_SENT.CONTACT_SUPPORT")}
               </a>
             </p>
           </div>

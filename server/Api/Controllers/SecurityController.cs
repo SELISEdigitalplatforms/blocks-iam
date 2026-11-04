@@ -3,8 +3,10 @@ using Authentication.DomainService.Security.Models;
 using Authentication.DomainService.Security.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Activity.RequestModel;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Api.Controllers
 {
@@ -19,15 +21,18 @@ namespace Api.Controllers
         private readonly ISecurityQueryService _securityQueryService;
         private readonly ISessionRevocationService _sessionRevocationService;
         private readonly IActivityQueryService _activityQueryService;
+        private readonly IAccessGrantService _accessGrant;
 
         public SecurityController(
             ISecurityQueryService securityQueryService,
             ISessionRevocationService sessionRevocationService,
-            IActivityQueryService activityQueryService)
+            IActivityQueryService activityQueryService,
+            IAccessGrantService accessGrant)
         {
             _securityQueryService = securityQueryService;
             _sessionRevocationService = sessionRevocationService;
             _activityQueryService = activityQueryService;
+            _accessGrant = accessGrant;
         }
 
         [HttpGet("summary")]
@@ -35,9 +40,9 @@ namespace Api.Controllers
         public async Task<IActionResult> GetSummary([FromQuery] string? uid, CancellationToken ct)
         {
             var actor = ResolveActor(uid);
-            if (string.IsNullOrWhiteSpace(actor))
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
             {
-                return BadRequest(new { error = "user_id_required" });
+                return GrantNotAllowed();
             }
             var summary = await _securityQueryService.GetSecuritySummaryAsync(actor, ct);
             return Ok(summary);
@@ -48,9 +53,9 @@ namespace Api.Controllers
         public async Task<ActionResult<IReadOnlyList<UserSessionDto>>> GetUserSessions([FromQuery] string? uid, CancellationToken ct)
         {
             var actor = ResolveActor(uid);
-            if (string.IsNullOrWhiteSpace(actor))
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
             {
-                return BadRequest(new { error = "user_id_required" });
+                return GrantNotAllowed();
             }
             var sessions = await _securityQueryService.GetUserSessionsAsync(actor, ct);
             return Ok(sessions);
@@ -64,9 +69,9 @@ namespace Api.Controllers
             CancellationToken ct)
         {
             var actor = ResolveActor(uid);
-            if (string.IsNullOrWhiteSpace(actor))
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
             {
-                return BadRequest(new { error = "user_id_required" });
+                return GrantNotAllowed();
             }
 
             var details = await _securityQueryService.GetSessionDetailsAsync(actor, sessionId, ct);
@@ -84,7 +89,12 @@ namespace Api.Controllers
             [FromBody] RevokeSessionRequest? req,
             CancellationToken ct)
         {
-            var actor = ResolveActor(req.UserId);
+            var actor = ResolveActor(req?.UserId);
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
             var currentSessionId = await _securityQueryService.ResolveCurrentSessionIdAsync(actor, ct);
 
             var result = await _sessionRevocationService.RevokeSessionAsync(
@@ -93,6 +103,11 @@ namespace Api.Controllers
             if (result.Warnings.Contains("cannot_revoke_current_session"))
             {
                 return BadRequest(new { error = "cannot_revoke_current_session", hint = "POST /auth/logout" });
+            }
+
+            if (result.Warnings.Contains("session_not_found"))
+            {
+                return BadRequest(new { error = "session_not_found" });
             }
 
             return Ok(result);
@@ -107,7 +122,12 @@ namespace Api.Controllers
             [FromBody] RevokeSessionRequest? req,
             CancellationToken ct)
         {
-            var actor = ResolveActor(req.UserId);
+            var actor = ResolveActor(req?.UserId);
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
             var currentSessionId = await _securityQueryService.ResolveCurrentSessionIdAsync(actor, ct);
 
             var result = await _sessionRevocationService.RevokeRefreshTokenAsync(
@@ -116,6 +136,11 @@ namespace Api.Controllers
             if (result.Warnings.Contains("cannot_revoke_current_session"))
             {
                 return BadRequest(new { error = "cannot_revoke_current_session", hint = "POST /auth/logout" });
+            }
+
+            if (result.Warnings.Contains("refresh_token_not_found"))
+            {
+                return BadRequest(new { error = "refresh_token_not_found" });
             }
 
             return Ok(result);
@@ -128,9 +153,9 @@ namespace Api.Controllers
             CancellationToken ct)
         {
             var actor = ResolveActor(payload?.UserId);
-            if (string.IsNullOrWhiteSpace(actor))
+            if (!await MayActForAsync(actor).ConfigureAwait(false))
             {
-                return BadRequest(new { error = "user_id_required" });
+                return GrantNotAllowed();
             }
 
             var req = new GetActivitiesRequest
@@ -168,6 +193,32 @@ namespace Api.Controllers
             public string? Search { get; set; }
             public string? UserId { get; set; }
         }
+
+        /// <summary>
+        /// Whose sessions and activity a call may read or revoke. A user may always act on themselves.
+        /// Acting on another user is managing that user (access grant, R3), and only the Blocks OS console
+        /// may do it: a project's own token, as an app such as Construct holds, acts on its own user alone.
+        /// A token with no user, such as a client credential, acts on no one.
+        /// </summary>
+        private async Task<bool> MayActForAsync(string actor)
+        {
+            var caller = BlocksContext.GetContext()?.UserId;
+            if (string.IsNullOrWhiteSpace(caller))
+            {
+                return false;
+            }
+
+            if (string.Equals(actor, caller, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return _accessGrant.IsConsoleCaller()
+                && await _accessGrant.AuthorizeManageUserAsync(actor).ConfigureAwait(false);
+        }
+
+        private ObjectResult GrantNotAllowed() =>
+            StatusCode(StatusCodes.Status403Forbidden, new { error = AccessGrantErrors.GrantNotAllowed });
 
         private static string ResolveActor(string? userIdOverride = null) =>
             !string.IsNullOrWhiteSpace(userIdOverride)

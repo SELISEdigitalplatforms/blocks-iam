@@ -1,6 +1,7 @@
 ﻿using Iam.DomainService.Enums;
 using Iam.DomainService.Services;
 using FluentValidation;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Resources
 {

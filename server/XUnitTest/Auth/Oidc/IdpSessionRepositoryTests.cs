@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Oidc
 {
@@ -30,7 +31,7 @@ namespace XUnitTest.Auth.Oidc
         }
 
         private IdpSessionRepository Sut() =>
-            new(_db.Object, NullLogger<IdpSessionRepository>.Instance);
+            new(_db.Object, NullLogger<IdpSessionRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         [Fact]
         public async Task CreateAsync_InsertsAndReturnsSessionId()

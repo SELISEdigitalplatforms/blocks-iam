@@ -52,8 +52,12 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         services.AddSingleton<IConsumer<CreateUserViaSsoEvent>, CreateUserViaSsoConsumer>();
         services.AddSingleton<IConsumer<OrganizationProvisioningEvent>, OrganizationProvisioningConsumer>();
         services.AddSingleton<IConsumer<UpdateOrganizationUserEvent>, UpdateOrganizationUserConsumer>();
+        services.AddSingleton<IConsumer<BulkUserRoleChangeEvent>, BulkUserRoleChangeConsumer>();
         services.AddSingleton<IConsumer<PermissionMutationForTenantsEvent>, PermissionMutationForTenantsConsumer>();
         services.AddSingleton<IConsumer<PropagationRolePermissionUpdateEvent>, PropagationRolePermissionUpdateConsumer>();
+        // Password reset / change publish LogoutAllEvent; without this registration the event is dropped
+        // and the user's existing sessions survive the password change.
+        services.AddSingleton<IConsumer<LogoutAllEvent>, Authentication.DomainService.Worker.LogoutAllWorkerService>();
 
       //  services.AddHostedService<PeriodicPingBackgroundService>();
 

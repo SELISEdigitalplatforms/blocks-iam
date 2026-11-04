@@ -1,7 +1,10 @@
+﻿using Authentication.DomainService.Authentication.LoginPolicies;
+using XUnitTest.TestSupport;
 using System.Security.Claims;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using FluentAssertions;
@@ -15,6 +18,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Shared.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Oidc
 {
@@ -27,6 +31,7 @@ namespace XUnitTest.Auth.Oidc
     {
         private readonly Mock<IAuthorizationCodeRepository> _authCodeRepo = new();
         private readonly Mock<IIdpSessionRepository> _sessionRepo = new();
+        private readonly Mock<IIdpSessionService> _sessionService = new();
         private readonly Mock<IPkceService> _pkce = new();
         private readonly Mock<IUserRepository> _userRepo = new();
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
@@ -34,6 +39,8 @@ namespace XUnitTest.Auth.Oidc
         private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<ICacheClient> _cache = new();
         private readonly Mock<IResourceRepository> _resourceRepo = new();
+        private readonly FakeLoginPolicy _loginPolicy = new();
+        private readonly Mock<ILinkSessionRepository> _linkSessions = new();
 
         private readonly OidcAuthorizationEndpoint _endpoint;
 
@@ -57,17 +64,24 @@ namespace XUnitTest.Auth.Oidc
             _authCodeRepo.Setup(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>())).ReturnsAsync("code-id");
             _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync((string)null!);
             _userRepo.Setup(u => u.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
+            _sessionService.Setup(s => s.RevokeSessionAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+            _sessionService.Setup(s => s.RotateSessionAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync("rotated-sess");
 
             _endpoint = new OidcAuthorizationEndpoint(
-                _authCodeRepo.Object,
-                _sessionRepo.Object,
-                _pkce.Object,
-                _userRepo.Object,
-                _authRepo.Object,
-                _authService.Object,
-                _tenants.Object,
-                _cache.Object,
-                _resourceRepo.Object,
+                new OidcAuthorizationSessionStores(
+                    _authCodeRepo.Object,
+                    _sessionRepo.Object,
+                    _sessionService.Object,
+                    _pkce.Object,
+                    _linkSessions.Object),
+                new OidcAuthorizationIdentityStores(
+                    _userRepo.Object,
+                    _authRepo.Object,
+                    _authService.Object,
+                    _tenants.Object,
+                    _cache.Object,
+                    _resourceRepo.Object,
+                    _loginPolicy),
                 NullLogger<OidcAuthorizationEndpoint>.Instance);
         }
 
@@ -106,21 +120,25 @@ namespace XUnitTest.Auth.Oidc
             HttpContext? ctx = null,
             string? blocksUserId = null,
             bool returnRedirectResponse = true,
-            bool mfaCompleted = false)
+            bool mfaCompleted = false,
+            string? loginMethod = null)
         {
             ctx ??= new DefaultHttpContext();
             return _endpoint.AuthorizeAsync(
                 client_id, response_type, redirect_uri, scope, state, nonce,
                 code_challenge, code_challenge_method, prompt, tenant_id,
-                ctx.Request, ctx.Response, blocksUserId, returnRedirectResponse, mfaCompleted);
+                ctx.Request, ctx.Response, blocksUserId, returnRedirectResponse, mfaCompleted, loginMethod);
         }
 
-        private void ClientExists(string redirectUri = RedirectUri) =>
+        // RequirePkce off by default here: these tests are about the rest of the flow and send no
+        // challenge. The PKCE rule has its own tests below.
+        private void ClientExists(string redirectUri = RedirectUri, bool requirePkce = false) =>
             _authRepo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
                 .ReturnsAsync(new OidcClientRegistration
                 {
                     ClientId = "client-1",
-                    RedirectUris = new List<string> { redirectUri }
+                    RedirectUris = new List<string> { redirectUri },
+                    RequirePkce = requirePkce
                 });
 
         private static User ValidUser(string id = "user-1") => new()
@@ -140,6 +158,97 @@ namespace XUnitTest.Auth.Oidc
             IdleExpiry = DateTime.UtcNow.AddHours(1),
             AbsoluteExpiry = DateTime.UtcNow.AddHours(5)
         };
+
+        // ================= SPEC2: link sessions (Redis, per tenant) =================
+
+        private static LinkSessionModel LinkSession(string clientId = "client-1", string tenantId = "t1") => new()
+        {
+            SessionId = "LS",
+            UserId = "link-user",
+            TenantId = tenantId,
+            ClientId = clientId,
+            OrganizationId = "org-1",
+            Roles = new() { "r1" },
+            Amr = new() { "link" },
+            IssuedAtUtc = DateTime.UtcNow,
+            ExpiresAtUtc = DateTime.UtcNow.AddMinutes(20)
+        };
+
+        [Fact]
+        public async Task AuthorizeAsync_LinkCookie_ReadsTheTenantsSession_ManyTimes_NeverDeletes()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser("link-user"));
+            _linkSessions.Setup(l => l.GetBySessionIdAsync("t1", "LS")).ReturnsAsync(LinkSession());
+
+            for (var i = 0; i < 3; i++)
+            {
+                var result = await Authorize(tenant_id: "t1", ctx: Ctx("blocks-link-session-t1=LS"));
+                result.Should().BeOfType<RedirectResult>().Subject.Url.Should().Contain("code=authcode123");
+            }
+
+            _linkSessions.Verify(l => l.GetBySessionIdAsync("t1", "LS"), Times.Exactly(3));
+            _linkSessions.Verify(l => l.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.IsLinkAuthentication && m.UserId == "link-user")), Times.Exactly(3));
+        }
+
+        [Theory]
+        [InlineData("other-client", "t1")]
+        [InlineData("client-1", "other-tenant")]
+        public async Task AuthorizeAsync_LinkSessionOfAnotherClientOrTenant_IsIgnored_NotDeleted(string clientId, string tenantId)
+        {
+            ClientExists();
+            _linkSessions.Setup(l => l.GetBySessionIdAsync("t1", "LS")).ReturnsAsync(LinkSession(clientId, tenantId));
+
+            var result = await Authorize(tenant_id: "t1", ctx: Ctx("blocks-link-session-t1=LS"));
+
+            result.Should().BeOfType<RedirectResult>().Subject.Url.Should().StartWith("/oidc/login?");
+            _linkSessions.Verify(l => l.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_PasswordLogin_DeletesTheLinkSession_AndClearsTheCookie()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            var ctx = Ctx("blocks-link-session-t1=LS");
+
+            var result = await Authorize(tenant_id: "t1", ctx: ctx, blocksUserId: "user-1");
+
+            result.Should().BeOfType<RedirectResult>();
+            _linkSessions.Verify(l => l.DeleteAsync("t1", "LS"), Times.Once);
+            _linkSessions.Verify(l => l.GetBySessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            ctx.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1=;");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => !m.IsLinkAuthentication && m.UserId == "user-1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_BlankTenant_WithLinkCookie_NoLinkSessionReadOrDelete()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var silent = await Authorize(tenant_id: "", ctx: Ctx("blocks-link-session=LS"));
+            var password = await Authorize(tenant_id: null, ctx: Ctx("blocks-link-session=LS"), blocksUserId: "user-1");
+
+            silent.Should().BeOfType<RedirectResult>().Subject.Url.Should().StartWith("/oidc/login?");
+            password.Should().BeOfType<RedirectResult>().Subject.Url.Should().Contain("code=authcode123");
+            _linkSessions.Verify(l => l.GetBySessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _linkSessions.Verify(l => l.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_LinkSessionStoreDown_FailsTheRequest_NoCode()
+        {
+            ClientExists();
+            _linkSessions.Setup(l => l.GetBySessionIdAsync("t1", "LS")).ThrowsAsync(new TimeoutException("redis down"));
+
+            var result = await Authorize(tenant_id: "t1", ctx: Ctx("blocks-link-session-t1=LS"), returnRedirectResponse: false);
+
+            result.Should().NotBeOfType<RedirectResult>();
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
 
         // ================= validation branches =================
 
@@ -209,14 +318,49 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
-        public async Task AuthorizeAsync_RedirectsWithError_WhenValidationFails_AndRedirectUriPresent()
+        public async Task AuthorizeAsync_RedirectsToSameOriginLogin_WhenValidationFails_AndRedirectUriPresent()
         {
+            // Must NOT bounce to redirect_uri before it is matched to a registered client
+            // (CWE-601 / RFC 6749 §4.1.2.1). Same-origin login error page instead.
             var result = await Authorize(scope: "profile", returnRedirectResponse: true);
 
             var redirect = result.Should().BeOfType<RedirectResult>().Subject;
-            redirect.Url.Should().StartWith(RedirectUri);
+            redirect.Url.Should().StartWith("/oidc/login?");
             redirect.Url.Should().Contain("error=invalid_request");
-            redirect.Url.Should().Contain("state=st");
+            redirect.Url.Should().NotStartWith("https://");
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_DoesNotRedirectToExternalHost_WhenValidationFails_WithAttackerRedirectUri()
+        {
+            const string attacker = "https://2369250200165828074.owasp.org";
+            var result = await Authorize(
+                client_id: "client_id",
+                response_type: "response_type",
+                redirect_uri: attacker,
+                scope: "scope",
+                returnRedirectResponse: true);
+
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            redirect.Url.Should().Contain("error=invalid_request");
+            redirect.Url.Should().NotStartWith(attacker);
+            redirect.Url.Should().NotContain("://2369250200165828074.owasp.org?");
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_RejectsUnregisteredRedirectUri_BeforeLogin_WhenClientKnown()
+        {
+            ClientExists("https://app.example.com/callback");
+            const string attacker = "https://evil.example/callback";
+
+            var result = await Authorize(redirect_uri: attacker, returnRedirectResponse: true);
+
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            redirect.Url.Should().Contain("error=invalid_request");
+            redirect.Url.Should().Contain("error_description=Invalid%20redirect_uri");
+            redirect.Url.Should().NotStartWith(attacker);
         }
 
         // ================= session / auth resolution =================
@@ -249,6 +393,24 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
+        public async Task AuthorizeAsync_IssuedCode_RecordsTheSigningInBrowsersAddressAndUserAgent()
+        {
+            const string chromeOnWindows = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "" }));
+
+            var ctx = Ctx("idp_session_id=SID");
+            ctx.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("203.0.113.10");
+            ctx.Request.Headers.UserAgent = chromeOnWindows;
+            await Authorize(ctx: ctx);
+
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m =>
+                m.CreatedByIpAddress == "203.0.113.10" && m.CreatedByUserAgent == chromeOnWindows)), Times.Once);
+        }
+
+        [Fact]
         public async Task AuthorizeAsync_PromptLogin_IgnoresLiveSessionCookie_AndRedirectsToLogin()
         {
             ClientExists();
@@ -275,6 +437,77 @@ namespace XUnitTest.Auth.Oidc
             _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.UserId == "user-1")), Times.Once);
         }
 
+        // ================= tenant login policy =================
+
+        [Fact]
+        public async Task AuthorizeAsync_OidcLoginTurnedOff_IsRefused_BeforeAnyUserOrSessionWork()
+        {
+            ClientExists();
+            _loginPolicy.ChannelDecision = LoginPolicyDecision.Denied("Signing in through the login page is turned off for this project.");
+
+            var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: false, loginMethod: LoginMethods.Password);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be(LoginPolicyRules.Error);
+            _userRepo.Verify(u => u.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+            _sessionRepo.Verify(s => s.CreateAsync(It.IsAny<IdpSessionModel>()), Times.Never);
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_JustVerifiedSignIn_WithAMethodTheClientRefuses_IsRefused()
+        {
+            ClientExists();
+            _loginPolicy.Decide = (_, method, _, _) => method == LoginMethods.Social
+                ? LoginPolicyDecision.Denied("Social sign-in is turned off for this application.")
+                : LoginPolicyDecision.Allowed;
+
+            var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: false, loginMethod: LoginMethods.Social);
+
+            Prop(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value, "error").Should().Be(LoginPolicyRules.Error);
+            _loginPolicy.Checks.Should().Equal((LoginChannel.Oidc, LoginMethods.Social));
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_SilentSignIn_WithAnAccountTheClientRefuses_GoesToTheLoginPage()
+        {
+            ClientExists();
+            _loginPolicy.SessionAccountAllowed = a => a.LoginMethod != LoginMethods.Social;
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "", LoginMethod = LoginMethods.Social }));
+
+            var result = await Authorize(ctx: Ctx("idp_session_id=SID"));
+
+            result.Should().BeOfType<RedirectResult>().Subject.Url.Should().StartWith("/oidc/login?");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_NewSession_RecordsHowTheUserSignedIn()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            await Authorize(blocksUserId: "user-1", loginMethod: LoginMethods.Password);
+
+            _sessionRepo.Verify(s => s.CreateAsync(It.Is<IdpSessionModel>(m =>
+                m.Accounts.Count == 1 && m.Accounts[0].LoginMethod == LoginMethods.Password)), Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_SameUserSignsInAgain_UpdatesTheRecordedMethod()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "t1", LoginMethod = LoginMethods.Social }));
+
+            await Authorize(ctx: Ctx("idp_session_id_t1=SID"), tenant_id: "t1", blocksUserId: "user-1", loginMethod: LoginMethods.Password);
+
+            _sessionRepo.Verify(s => s.SetAccountLoginMethodAsync("SID", "user-1", "t1", LoginMethods.Password), Times.Once);
+        }
+
         [Fact]
         public async Task AuthorizeAsync_AddsAccountToSession_WhenUserNotInSession()
         {
@@ -291,6 +524,132 @@ namespace XUnitTest.Auth.Oidc
 
             result.Should().BeOfType<RedirectResult>();
             _sessionRepo.Verify(s => s.AddAccountAsync("SID", It.Is<IdpSessionAccount>(a => a.UserId == "user-3")), Times.Once);
+        }
+
+        // ================= credentialed login vs. live session =================
+        //
+        // The quadrant that was never covered: blocksUserId set (the login orchestrator has just
+        // verified a password) AND a live session cookie in the same request. Resolving from the
+        // cookie here handed the new user an authorization code minted for the previous one.
+
+        [Fact]
+        public async Task AuthorizeAsync_VerifiedPassword_BeatsLiveSessionCookieForAnotherUser()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>()))
+                .ReturnsAsync((string id) => ValidUser(id));
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "previous-user", TenantId = "tenant-1" }));
+
+            var result = await Authorize(
+                tenant_id: "tenant-1",
+                ctx: Ctx("idp_session_id_tenant-1=SID"),
+                blocksUserId: "just-authenticated-user");
+
+            result.Should().BeOfType<RedirectResult>();
+            _authCodeRepo.Verify(
+                a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.UserId == "just-authenticated-user")),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_VerifiedPassword_RevokesSessionBelongingToAnotherUser()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>()))
+                .ReturnsAsync((string id) => ValidUser(id));
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "previous-user", TenantId = "tenant-1" }));
+
+            await Authorize(
+                tenant_id: "tenant-1",
+                ctx: Ctx("idp_session_id_tenant-1=SID"),
+                blocksUserId: "just-authenticated-user");
+
+            // Torn down, not extended: the previous user must not stay resumable in this browser.
+            _sessionService.Verify(s => s.RevokeSessionAsync("SID", "reauthenticated_as_different_user"), Times.Once);
+            _sessionRepo.Verify(s => s.AddAccountAsync("SID", It.IsAny<IdpSessionAccount>()), Times.Never);
+            _sessionRepo.Verify(s => s.CreateAsync(It.Is<IdpSessionModel>(
+                m => m.Accounts.Count == 1 && m.Accounts[0].UserId == "just-authenticated-user")), Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_VerifiedPassword_RotatesSessionWhenItIsTheSameUser()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>()))
+                .ReturnsAsync((string id) => ValidUser(id));
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "tenant-1" }));
+
+            await Authorize(
+                tenant_id: "tenant-1",
+                ctx: Ctx("idp_session_id_tenant-1=SID"),
+                blocksUserId: "user-1");
+
+            // Session fixation: the id the browser arrived with must not survive authentication.
+            _sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _sessionService.Verify(s => s.RotateSessionAsync("SID", "password_login"), Times.Once);
+            _authCodeRepo.Verify(
+                a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.UserId == "user-1" && m.IdpSessionId == "rotated-sess")),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_SilentSso_StillResolvesFromSessionAndDoesNotRotate()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "tenant-1" }));
+
+            await Authorize(tenant_id: "tenant-1", ctx: Ctx("idp_session_id_tenant-1=SID"));
+
+            // No password was presented, so nothing outranks the session and nothing is torn down.
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.UserId == "user-1")), Times.Once);
+            _sessionService.Verify(s => s.RotateSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_VerifiedPassword_LeavesOtherTenantsAccountsAlone()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>()))
+                .ReturnsAsync((string id) => ValidUser(id));
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "other-user", TenantId = "tenant-b" }));
+
+            await Authorize(
+                tenant_id: "tenant-1",
+                ctx: Ctx("idp_session_id_tenant-1=SID"),
+                blocksUserId: "user-1");
+
+            // Multi-account SSO holds one user per tenant; signing in to tenant-1 must not sign the
+            // person out of tenant-b.
+            _sessionService.Verify(s => s.RevokeSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _sessionRepo.Verify(s => s.AddAccountAsync("SID", It.Is<IdpSessionAccount>(a => a.UserId == "user-1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_VerifiedPassword_KeepsCurrentSessionWhenRotationFails()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "tenant-1" }));
+            _sessionService.Setup(s => s.RotateSessionAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync((string?)null);
+
+            await Authorize(
+                tenant_id: "tenant-1",
+                ctx: Ctx("idp_session_id_tenant-1=SID"),
+                blocksUserId: "user-1");
+
+            // Rotation is best-effort: losing it must not cost the user their login.
+            _authCodeRepo.Verify(
+                a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.UserId == "user-1" && m.IdpSessionId == "SID")),
+                Times.Once);
         }
 
         // ================= lockout gates =================
@@ -359,6 +718,27 @@ namespace XUnitTest.Auth.Oidc
             Prop(bad.Value, "error").Should().Be("invalid_client");
         }
 
+        [Theory]
+        [InlineData(null)]
+        [InlineData("user-1")]
+        public async Task AuthorizeAsync_InactiveClient_IsRefusedAsInvalidClient_BeforeAnyUserOrSessionWork(string? blocksUserId)
+        {
+            _authRepo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
+                .ReturnsAsync(new OidcClientRegistration
+                {
+                    ClientId = "client-1",
+                    RedirectUris = new List<string> { RedirectUri },
+                    RequirePkce = false,
+                    IsActive = false
+                });
+
+            var result = await Authorize(blocksUserId: blocksUserId, returnRedirectResponse: false);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_client");
+            _userRepo.Verify(u => u.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+        }
+
         [Fact]
         public async Task AuthorizeAsync_ReturnsInvalidRequest_WhenRedirectUriNotRegistered()
         {
@@ -417,6 +797,32 @@ namespace XUnitTest.Auth.Oidc
         }
 
         // ================= code issuance (happy path) =================
+
+        [Fact]
+        public async Task AuthorizeAsync_RefusesLoginWithoutChallenge_WhenClientRequiresPkce()
+        {
+            ClientExists(requirePkce: true);
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: false);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_request");
+            (Prop(bad.Value, "error_description") as string).Should().Contain("code_challenge is required");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_IssuesCode_WithChallenge_WhenClientRequiresPkce()
+        {
+            ClientExists(requirePkce: true);
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var result = await Authorize(blocksUserId: "user-1", code_challenge: new string('a', 43),
+                code_challenge_method: "S256", returnRedirectResponse: true);
+
+            result.Should().BeOfType<RedirectResult>().Subject.Url.Should().Contain("code=authcode123");
+        }
 
         [Fact]
         public async Task AuthorizeAsync_IssuesCode_AndRedirects_OnValidRequest()
@@ -512,12 +918,21 @@ namespace XUnitTest.Auth.Oidc
             // Only a real organization is worth remembering, and only multi-org tenants have any:
             // with the mode off the scope is "default", a sentinel, which is never persisted here.
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
 
             var result = await Authorize(blocksUserId: "user-1");
 
             result.Should().BeOfType<RedirectResult>();
-            _userRepo.Verify(u => u.UpdateUserAsync(It.Is<User>(x => x.LastUsedOrganizationId == "org-1")), Times.Once);
+            // A single-field $set, not a document replace: the replace wrote back every other field
+            // as it looked when the user was read earlier in this request, which could revert a
+            // concurrent write - the login counter among them.
+            _authRepo.Verify(r => r.UpdatePartialAsync<User>(
+                    "user-1",
+                    It.Is<Dictionary<string, object>>(d =>
+                        d.Count == 1 && (string)d[nameof(User.LastUsedOrganizationId)] == "org-1"),
+                    It.IsAny<string>()),
+                Times.Once);
+            _userRepo.Verify(u => u.UpdateUserAsync(It.IsAny<User>()), Times.Never);
         }
 
         [Fact]
@@ -527,7 +942,8 @@ namespace XUnitTest.Auth.Oidc
             var user = ValidUser();
             user.OrganizationIds = new List<string> { "org-1" };
             _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
-            _userRepo.Setup(u => u.UpdateUserAsync(It.IsAny<User>())).ThrowsAsync(new Exception("db down"));
+            _authRepo.Setup(r => r.UpdatePartialAsync<User>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()))
+                .ThrowsAsync(new Exception("db down"));
 
             var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: true);
 
@@ -562,6 +978,85 @@ namespace XUnitTest.Auth.Oidc
             var redirect = result.Should().BeOfType<RedirectResult>().Subject;
             redirect.Url.Should().StartWith(RedirectUri);
             redirect.Url.Should().Contain("error=server_error");
+        }
+    
+
+        // ================= mobile app-scheme redirect URIs =================
+
+        private const string AppRedirectUri = "com.klaxai.app://login/callback";
+        private static readonly string Challenge = new('a', 43);
+
+        [Fact]
+        public async Task AuthorizeAsync_AppSchemeRedirect_WithChallenge_GoesToLoginWithoutError()
+        {
+            ClientExists(AppRedirectUri, requirePkce: true);
+
+            var result = await Authorize(redirect_uri: AppRedirectUri, code_challenge: Challenge,
+                code_challenge_method: "S256");
+
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            redirect.Url.Should().NotContain("error=");
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_AppSchemeRedirect_ExactMatch_IssuesCodeToTheAppUri()
+        {
+            ClientExists(AppRedirectUri, requirePkce: true);
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var redirect = await Authorize(redirect_uri: AppRedirectUri, code_challenge: Challenge,
+                code_challenge_method: "S256", blocksUserId: "user-1", returnRedirectResponse: true);
+            var json = await Authorize(redirect_uri: AppRedirectUri, code_challenge: Challenge,
+                code_challenge_method: "S256", blocksUserId: "user-1", returnRedirectResponse: false);
+
+            var location = redirect.Should().BeOfType<RedirectResult>().Subject.Url;
+            location.Should().StartWith(AppRedirectUri + "?code=authcode123&state=st");
+            var body = json.Should().BeOfType<OkObjectResult>().Subject;
+            (Prop(body.Value, "redirect_uri") as string).Should().Be(location);
+        }
+
+        [Theory]
+        [InlineData("COM.KLAXAI.APP://login/callback")]
+        [InlineData("com.klaxai.app://login/Callback")]
+        [InlineData("com.klaxai.app://login/callback/")]
+        [InlineData("com.klaxai.app://login/callback/extra")]
+        public async Task AuthorizeAsync_AppSchemeRedirect_Variant_IsRefused(string variant)
+        {
+            ClientExists(AppRedirectUri, requirePkce: true);
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var result = await Authorize(redirect_uri: variant, code_challenge: Challenge,
+                code_challenge_method: "S256", blocksUserId: "user-1", returnRedirectResponse: false);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error_description").Should().Be("Invalid redirect_uri");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_AppSchemeRedirect_WithoutChallenge_IsRefusedBeforeLogin()
+        {
+            ClientExists(AppRedirectUri, requirePkce: true);
+
+            var result = await Authorize(redirect_uri: AppRedirectUri, returnRedirectResponse: false);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            (Prop(bad.Value, "error_description") as string).Should().Contain("PKCE code_challenge is required");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_DeviceFlowClient_InJsonMode_StillReturnsSuccess()
+        {
+            _authRepo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
+                .ReturnsAsync(new OidcClientRegistration { ClientId = "client-1", IsDeviceFlowClient = true });
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+
+            var result = await Authorize(blocksUserId: "user-1", returnRedirectResponse: false);
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            Prop(ok.Value, "success").Should().Be(true);
         }
     }
 }

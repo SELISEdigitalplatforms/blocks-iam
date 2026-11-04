@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Idp.DomainService.Oidc.Contracts;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -12,9 +13,21 @@ namespace Authentication.DomainService.Oidc.Repositories
     public interface IAuthorizationCodeRepository
     {
         Task<string> CreateAsync(AuthorizationCodeModel code);
+
+        /// <summary>Reads a code (also after use, until it expires). The model carries the store it came from.</summary>
         Task<AuthorizationCodeModel> GetByCodeAsync(string code);
-        Task<bool> DeleteAsync(string code);
-        Task<IEnumerable<AuthorizationCodeModel>> GetExpiredAsync();
+
+        /// <summary>Atomically marks an unused code as used, in the store the code was read from.</summary>
+        Task<AuthorizationCodeConsumeResult> TryConsumeAsync(AuthorizationCodeModel code);
+
+        /// <summary>
+        /// Records what the first exchange minted. False when the code was reused (or is gone) in the
+        /// meantime: the minted tokens must then not be handed out.
+        /// </summary>
+        Task<bool> RecordMintAsync(AuthorizationCodeModel code, AuthorizationCodeMint mint);
+
+        /// <summary>Marks a code as reused and returns what its first exchange minted, if anything.</summary>
+        Task<AuthorizationCodeMint?> MarkReusedAsync(AuthorizationCodeModel code);
     }
 
     /// <summary>
@@ -36,6 +49,12 @@ namespace Authentication.DomainService.Oidc.Repositories
         /// successor inside the rotation grace period.
         /// </summary>
         Task<bool> RevokeByTokenIdAsync(string tokenId, string reason, string? supersededByTokenId = null);
+
+        /// <summary>Atomically revokes an unrevoked token for rotation; true only for the one caller that changed it.</summary>
+        Task<bool> TryClaimForRotationAsync(string tokenId, string successorTokenId, string reason);
+
+        /// <summary>Undoes a won claim whose successor could not be stored (matches only that successor).</summary>
+        Task<bool> ReleaseRotationClaimAsync(string tokenId, string successorTokenId);
         Task<int> RevokeAllByTokenIdsAsync(IEnumerable<string> tokenIds, string reason);
         Task<int> RevokeAllBySessionIdAsync(string sessionId, string reason);
 
@@ -58,6 +77,13 @@ namespace Authentication.DomainService.Oidc.Repositories
         /// </summary>
         Task<int> RevokeSupersededLoginLineagesAsync(string sessionId, string userId, string clientId, string exceptRefreshTokenSessionId, string reason);
 
+        /// <summary>
+        /// Revokes every still-unrevoked token of one lineage in MongoDB, then removes every token of
+        /// that lineage from the Redis refresh cache (a cache hit is not checked against MongoDB).
+        /// One pass, no retry. Returns the number of documents revoked.
+        /// </summary>
+        Task<int> RevokeLineageAndEvictAsync(string refreshTokenSessionId, string reason);
+
         Task<bool> DeleteAsync(string tokenId);
         Task<IEnumerable<RefreshTokenModel>> GetExpiredAsync();
     }
@@ -72,6 +98,9 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<IdpSessionModel> GetBySessionIdAsync(string sessionId);
         Task<bool> AddAccountAsync(string sessionId, IdpSessionAccount account);
         Task<bool> RemoveAccountAsync(string sessionId, string userId, string tenantId);
+
+        /// <summary>Records how a session account last signed in (password or social).</summary>
+        Task<bool> SetAccountLoginMethodAsync(string sessionId, string userId, string tenantId, string loginMethod);
         Task<bool> UpdateActivityAsync(string sessionId);
         Task<bool> RevokeAsync(string sessionId);
         Task<bool> DeleteAsync(string sessionId);
@@ -121,13 +150,16 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<bool> MarkDeniedAsync(string id, DateTime at, CancellationToken ct = default);
         Task<bool> MarkConsumedAsync(string id, DateTime at, CancellationToken ct = default);
         Task<bool> MarkExpiredAsync(IEnumerable<string> ids, CancellationToken ct = default);
+        Task<bool> MarkExpiredAsync(string tenantId, IEnumerable<string> ids, CancellationToken ct = default);
         Task<bool> SetApprovalTokenHashAsync(string id, string approvalTokenHash, CancellationToken ct = default);
         Task<bool> UpdatePollAsync(string id, DateTime lastPollAt, int pollsObserved, CancellationToken ct = default);
         Task<int> BumpPollIntervalAsync(string id, int currentInterval, CancellationToken ct = default);
-        Task<bool> TryRecordPollAsync(string id, DateTime previousLastPollAt, DateTime newLastPollAt, int pollsObserved, CancellationToken ct = default);
         Task<int> BumpPollIntervalAsync(string id, int currentInterval, int incrementSeconds, CancellationToken ct = default);
+        Task<bool> TryRecordPollAsync(string id, DateTime previousLastPollAt, DateTime newLastPollAt, int pollsObserved, CancellationToken ct = default);
         Task<IReadOnlyList<string>> GetExpiredIdsAsync(DateTime olderThanUtc, int limit, CancellationToken ct = default);
+        Task<IReadOnlyList<string>> GetExpiredIdsAsync(string tenantId, DateTime olderThanUtc, int limit, CancellationToken ct = default);
         Task EnsureIndexesAsync(CancellationToken ct = default);
+        Task EnsureIndexesAsync(string tenantId, CancellationToken ct = default);
     }
 }
 

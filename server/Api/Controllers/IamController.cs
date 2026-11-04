@@ -3,6 +3,7 @@ using Authentication.DomainService.Utilities;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.RequestModel;
@@ -18,7 +19,7 @@ namespace Api.Controllers
     [ApiController]
     [Route("iam")]
 
-    public class IamController : ControllerBase
+    public class IamController : ControllerBase // NOSONAR S6960 — legacy aggregate IAM surface; split tracked separately
     {
         private readonly IAccountService _accountService;
         private readonly IUserManagementQueryService _userManagementQueryService;
@@ -54,7 +55,7 @@ namespace Api.Controllers
         public async Task<IActionResult> CreatePermission([FromBody] CreatePermissionRequest command)
         {
             var result = await _resourceMutationService.CreatePermissionAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("permissions/{id}")]
@@ -63,7 +64,7 @@ namespace Api.Controllers
         {
             command.ItemId = id;
             var result = await _resourceMutationService.UpdatePermissionAsync(id, command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpDelete("permissions/{id}")]
@@ -71,7 +72,7 @@ namespace Api.Controllers
         public async Task<IActionResult> ArchivePermission([FromRoute] string id, [FromQuery] bool confirmRevokeFromUsers = false)
         {
             var result = await _resourceMutationService.ArchivePermissionAsync(id, confirmRevokeFromUsers);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("roles/create")]
@@ -79,7 +80,7 @@ namespace Api.Controllers
         public async Task<IActionResult> CreateRole([FromBody] CreateRoleRequest command)
         {
             var result = await _resourceMutationService.CreateRoleAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("roles/update")]
@@ -87,7 +88,7 @@ namespace Api.Controllers
         public async Task<IActionResult> UpdateRole([FromBody] UpdateRoleRequest command)
         {
             var result = await _resourceMutationService.UpdateRoleAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpDelete("roles/{id}")]
@@ -95,7 +96,7 @@ namespace Api.Controllers
         public async Task<IActionResult> ArchiveRole([FromRoute] string id, [FromQuery] bool confirmRevokeFromUsers = false)
         {
             var result = await _resourceMutationService.ArchiveRoleAsync(id, confirmRevokeFromUsers);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("permissions")]
@@ -106,7 +107,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("permissions/by-severity")]
-        [Authorize]
+        [ProtectedEndPoint("blocks-iam::iam::permissions")]
         public async Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverity()
         {
             return await _resourceQueryService.GetPermissionsGroupBySeverityAsync();
@@ -172,7 +173,7 @@ namespace Api.Controllers
         public async Task<IActionResult> AssignRolePermissions([FromBody] SetRolesRequest command)
         {
             var result = await _resourceMutationService.SetRolesAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpGet("roles/assignable")]
@@ -180,6 +181,24 @@ namespace Api.Controllers
         public async Task<GetAssignableRolesResponse> GetAssignableRoles()
         {
             return await _resourceQueryService.GetAssignableRolesAsync();
+        }
+
+        /// <summary>
+        /// What the caller may administer in its token organization (access grant):
+        /// whether it is the system user, the mode, the roles it holds and manages, the roles it may
+        /// assign, and the permissions it holds. Read from the database, never from the token.
+        /// </summary>
+        /// <remarks>
+        /// Guarded by the roles read permission, like <c>roles/assignable</c>: every screen that
+        /// uses it already lists roles. The service is taken per action so the controller's
+        /// constructor does not grow.
+        /// </remarks>
+        [HttpGet("grant-scope")]
+        [ProtectedEndPoint("blocks-iam::iam::roles")]
+        public async Task<GrantScopeResponse> GetGrantScope([FromServices] IAccessGrantService accessGrant)
+        {
+            ArgumentNullException.ThrowIfNull(accessGrant);
+            return await accessGrant.GetGrantScopeAsync().ConfigureAwait(false);
         }
 
         [HttpGet("resource-groups")]
@@ -205,7 +224,7 @@ namespace Api.Controllers
         public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest command)
         {
             var result = await _userManagementMutationService.CreateUserAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("users/{id}")]
@@ -214,7 +233,7 @@ namespace Api.Controllers
         {
             command.ItemId = id;
             var result = await _userManagementMutationService.UpdateUserAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("users/deactivate")]
@@ -222,7 +241,7 @@ namespace Api.Controllers
         public async Task<IActionResult> DeactivateUser([FromBody] DeactivateUserRequest request)
         {
             var result = await _userManagementMutationService.DeactivateUserAsync(request);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("users/activate")]
@@ -230,7 +249,7 @@ namespace Api.Controllers
         public async Task<IActionResult> ActivateUser([FromBody] ActivateUserByAdminRequest request)
         {
             var result = await _userManagementMutationService.ActivateUserAsync(request);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("users")]
@@ -261,7 +280,7 @@ namespace Api.Controllers
         {
             DomainResolver.ResetToOriginalBlocksContextForImpersonation();
             var result = await _userManagementMutationService.UpdateMyAccountAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("users/access")]
@@ -269,7 +288,40 @@ namespace Api.Controllers
         public async Task<IActionResult> UpdateUserAccessControl(UpdateUserAccessControlRequest command)
         {
             var result = await _userManagementMutationService.UpdateUserAccessControlAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
+        }
+
+        /// <summary>
+        /// Dry-run a bulk role delta. Writes nothing; answers how many users would change.
+        /// </summary>
+        [HttpPost("users/roles/bulk/preview")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        public async Task<IActionResult> PreviewBulkRoleChange(BulkRoleChangeRequest command)
+        {
+            var result = await _userManagementMutationService.PreviewBulkRoleChangeAsync(command);
+            if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
+            return result.Errors is { Count: > 0 } ? BadRequest(result) : Ok(result);
+        }
+
+        /// <summary>
+        /// Queue a bulk role delta. 202 rather than 200: the status code is the only place the
+        /// contract can say the change has not happened yet.
+        /// </summary>
+        [HttpPost("users/roles/bulk")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        public async Task<IActionResult> SubmitBulkRoleChange(BulkRoleChangeRequest command)
+        {
+            var result = await _userManagementMutationService.SubmitBulkRoleChangeAsync(command);
+            if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
+            return result.Errors is { Count: > 0 } ? BadRequest(result) : Accepted(result);
         }
 
         [HttpPost("users/revoke-access")]
@@ -277,30 +329,11 @@ namespace Api.Controllers
         public async Task<IActionResult> RevokeUserAccessControl(RevokeUserAccessControlRequest command)
         {
             var result = await _userManagementMutationService.RevokeUserAccessControlAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
-        [HttpGet("email/available")]
-        [AllowAnonymous]
-        public async Task<IActionResult> IsEmailAvailable([FromQuery] IsEmailAvailableRequest query)
-        {
-            var result = await _userManagementQueryService.IsUserAvailableAsync(query);
-            return Ok(new IsEmailAvailableResponse
-            {
-                IsAvailable = result
-            });
-        }
-
-        [HttpGet("users/exists")]
-        [Authorize]
-        public async Task<IActionResult> IsUserExist([FromQuery] string? email)
-        {
-            if (string.IsNullOrWhiteSpace(email))
-                return BadRequest(new { error = "email is required" });
-
-            var result = await _userManagementQueryService.IsUserExistAsync(email);
-            return Ok(result);
-        }
+        // Email availability / existence endpoints live in EmailAvailabilityController
+        // (POST bodies keep addresses out of URLs — ZAP 10024 / CWE-598).
 
         #endregion
 
@@ -396,9 +429,15 @@ namespace Api.Controllers
         /// </remarks>
         [HttpPost("organizations/create")]
         [ProtectedEndPoint("blocks-iam::iam::create-organizations")]
-        public async Task<BaseMutationResponse> CreateOrganization([FromBody] CreateOrganizationRequest request)
+        public async Task<ActionResult<BaseMutationResponse>> CreateOrganization([FromBody] CreateOrganizationRequest request)
         {
-            return await _resourceMutationService.CreateOrganizationAsync(request);
+            var result = await _resourceMutationService.CreateOrganizationAsync(request);
+            if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
+            return result;
         }
 
         [HttpPost("organizations/{id}")]
@@ -434,9 +473,15 @@ namespace Api.Controllers
 
         [HttpPost("organizations/config")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-tenant-configs")]
-        public async Task<BaseResponse> SaveOrganizationConfig([FromBody] SaveOrganizationConfigRequest request)
+        public async Task<ActionResult<BaseResponse>> SaveOrganizationConfig([FromBody] SaveOrganizationConfigRequest request)
         {
-            return await _resourceMutationService.SaveOrganizationConfigAsync(request);
+            var result = await _resourceMutationService.SaveOrganizationConfigAsync(request);
+            if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -464,11 +509,36 @@ namespace Api.Controllers
             return await _resourceMutationService.GetOrganizationConfigAsync();
         }
 
+        /// <summary>
+        /// Authenticated read of the organization config, for portals such as Blocks OS.
+        /// <para>
+        /// The anonymous <c>GET organizations/config</c> above resolves its tenant from
+        /// X-Blocks-Key, which in a portal names the root tenant. With no or an expired token it
+        /// therefore answers 200 with the root tenant's config instead of the project's. Here the
+        /// tenant comes from the token, and a missing or expired one is a 401 the client refreshes
+        /// on. Any signed-in caller may read it -- the portal's users, roles, invite and
+        /// credential screens all branch on it -- so it takes no permission beyond sign-in.
+        /// </para>
+        /// </summary>
+        [HttpGet("organizations/config/admin")]
+        [Authorize]
+        public async Task<Dictionary<string, object>> GetAdminOrganizationConfig()
+        {
+            // The admin read alone carries the sign-up auto-join target; the anonymous read above must never.
+            return await _resourceMutationService.GetAdminOrganizationConfigAsync();
+        }
+
         [HttpPost("signup-settings")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-tenant-configs")]
-        public async Task<SaveSignUpSettingResponse> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
+        public async Task<ActionResult<SaveSignUpSettingResponse>> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
         {
-            return await _accountService.SaveSignUpSettingAsync(request);
+            var result = await _accountService.SaveSignUpSettingAsync(request);
+            if (AccessGrantErrors.IsGrantNotAllowed(result.Errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
+            return result;
         }
 
         [HttpGet("signup-settings")]
@@ -491,6 +561,43 @@ namespace Api.Controllers
             return await _accountService.GetSignUpSettingAsync();
         }
 
+        /// <summary>
+        /// Authenticated read of the signup settings, for the portal's settings editor.
+        /// <para>
+        /// Same reason as <see cref="GetAdminOrganizationConfig"/>: the anonymous read falls
+        /// back to the X-Blocks-Key (root) tenant without a valid token, and the editor would then
+        /// load -- and on save write -- the root tenant's settings into the project. Guarded by the
+        /// permission that already guards saving them, so no new permission has to be seeded.
+        /// </para>
+        /// </summary>
+        [HttpGet("signup-settings/admin")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-tenant-configs")]
+        public async Task<Dictionary<string, object>> GetAdminSignUpSetting()
+        {
+            return await _accountService.GetSignUpSettingAsync();
+        }
+
         #endregion
+
+        /// <summary>
+        /// The answer every mutation endpoint gives: 200 on success, 403 for a access grant
+        /// refusal (<c>Access_Grant_Not_Allowed</c>), 400 for any other failure.
+        /// </summary>
+        private IActionResult MutationResult(object result, bool isSuccess, IDictionary<string, string>? errors)
+        {
+            if (isSuccess)
+            {
+                return Ok(result);
+            }
+
+            if (AccessGrantErrors.IsGrantNotAllowed(errors))
+            {
+                return GrantNotAllowed(result);
+            }
+
+            return BadRequest(result);
+        }
+
+        private ObjectResult GrantNotAllowed(object result) => StatusCode(StatusCodes.Status403Forbidden, result);
     }
 }

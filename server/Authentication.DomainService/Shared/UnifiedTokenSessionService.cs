@@ -1,5 +1,6 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Services;
@@ -16,13 +17,41 @@ using Authentication.DomainService.Shared.Services;
 using Authentication.DomainService.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Shared
 {
+    /// <summary>The refresh token a rotation replaces, with its cached session when one was found. <see cref="None"/> for a first sign-in.</summary>
+    public readonly record struct RefreshTokenPredecessor(string? Token, RefreshTokenCache? Cache)
+    {
+        public static RefreshTokenPredecessor None => default;
+    }
+
     public sealed class UnifiedTokenSessionService
     {
         internal const string SupersededByRotationReason = "superseded_by_rotation";
+        internal const string SupersededByImpersonationReason = "superseded_by_impersonation";
         internal const string SupersededByLoginReason = "superseded_by_login";
+
+        /// <summary>
+        /// Why a rotation replaced its predecessor. Impersonation start, stop and switch move the lineage
+        /// to another tenant or organization, so they are recorded apart from a plain refresh: a refresh
+        /// replaying the predecessor must not be handed the moved session (see RefreshSessionResolver).
+        /// </summary>
+        private static string SupersededReasonFor(TokenRequest tokenRequest)
+            => string.Equals(tokenRequest.GrantType, GrantTypes.ImpersonationCloud, StringComparison.Ordinal)
+                ? SupersededByImpersonationReason
+                : SupersededByRotationReason;
+
+        /// <summary>A lost claim can arrive before the winner has stored its successor: up to ~200 ms of short waits.</summary>
+        private const int LostClaimSuccessorChecks = 5;
+        private static readonly TimeSpan LostClaimSuccessorDelay = TimeSpan.FromMilliseconds(50);
+
+        private static readonly Action<ILogger, string, string, string, string, Exception?> LogClientMismatch =
+            LoggerMessage.Define<string, string, string, string>(
+                LogLevel.Warning,
+                new EventId(6240, "RefreshTokenClientMismatch"),
+                "Refresh token rotation kept the lineage client instead of the requested one. reason=client_mismatch refreshTokenSessionId={RefreshTokenSessionId} tokenFingerprint={TokenFingerprint} lineageClientId={LineageClientId} requestedClientId={RequestedClientId}");
 
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationDomainService _authenticationDomainService;
@@ -32,6 +61,8 @@ namespace Authentication.DomainService.Shared
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IUserRepository _userRepository;
         private readonly ILogger<UnifiedTokenSessionService> _logger;
+        private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
+        private readonly IRefreshSessionResolver? _refreshSessionResolver;
 
         public UnifiedTokenSessionService(
             ICacheClient cacheClient,
@@ -41,8 +72,12 @@ namespace Authentication.DomainService.Shared
             IIdpSessionService idpSessionService,
             IHttpContextAccessor httpContextAccessor,
             IUserRepository userRepository,
-            ILogger<UnifiedTokenSessionService> logger)
+            ILogger<UnifiedTokenSessionService> logger,
+            IOidcClientTokenLifetimeService? clientTokenLifetimes = null,
+            IRefreshSessionResolver? refreshSessionResolver = null)
         {
+            _clientTokenLifetimes = clientTokenLifetimes;
+            _refreshSessionResolver = refreshSessionResolver;
             _cacheClient = cacheClient;
             _authenticationDomainService = authenticationDomainService;
             _refreshTokenRepository = refreshTokenRepository;
@@ -54,8 +89,7 @@ namespace Authentication.DomainService.Shared
         }
 
         public async Task<(string RefreshToken, DateTime SlidingExpiry, DateTime AbsoluteExpiry, string RefreshTokenSessionId)> CreateOrRotateRefreshToken(
-            string? oldRefreshToken,
-            RefreshTokenCache? oldRefreshTokenCache,
+            RefreshTokenPredecessor previousToken,
             TokenRequest tokenRequest,
             IdentityConfiguration authenticationConfiguration,
             Tenant tenant,
@@ -63,16 +97,17 @@ namespace Authentication.DomainService.Shared
             IEnumerable<string> visitorsIpAddresses,
             bool impersoanted)
         {
+            var oldRefreshToken = previousToken.Token;
+            var oldRefreshTokenCache = previousToken.Cache;
             var now = DateTime.UtcNow;
             string refreshTokenId = Guid.NewGuid().ToString("N");
-            var (refreshTokenLifetime, absoluteLifetime) =
-                RefreshTokenLifetimeResolver.Resolve(authenticationConfiguration, _logger);
-
-            DateTime refreshTokenExpireOn = now.AddMinutes(refreshTokenLifetime);
-            DateTime absoluteRefreshTokenExpireOn = now.AddMinutes(absoluteLifetime);
+            DateTime? inheritedAbsoluteExpiry = null;
 
             var isRotation = !string.IsNullOrWhiteSpace(oldRefreshToken);
             string refreshTokenSessionId = refreshTokenId;
+            string? successorClientId = tokenRequest.ClientId;
+
+            PreserveLinkAuthenticationOnRotation(isRotation, oldRefreshTokenCache, tokenRequest);
 
             if (isRotation)
             {
@@ -89,13 +124,31 @@ namespace Authentication.DomainService.Shared
                 }
 
                 refreshTokenSessionId = predecessor.Value.RefreshTokenSessionId;
-                absoluteRefreshTokenExpireOn = predecessor.Value.AbsoluteExpiry;
+                inheritedAbsoluteExpiry = predecessor.Value.AbsoluteExpiry;
+                successorClientId = ResolveSuccessorClientId(
+                    predecessor.Value.ClientId,
+                    tokenRequest.ClientId,
+                    refreshTokenSessionId,
+                    oldRefreshToken!);
             }
 
+            // The lineage's client decides the lifetimes when it has its own set; otherwise the project
+            // configuration instance is used unchanged. A rotation never re-anchors the absolute cap.
+            var effectiveConfiguration = _clientTokenLifetimes == null
+                ? authenticationConfiguration
+                : await _clientTokenLifetimes.ApplyAsync(authenticationConfiguration, successorClientId);
+            var (refreshTokenLifetime, absoluteLifetime) =
+                RefreshTokenLifetimeResolver.Resolve(effectiveConfiguration, _logger);
+
+            DateTime refreshTokenExpireOn = now.AddMinutes(refreshTokenLifetime);
+            DateTime absoluteRefreshTokenExpireOn = inheritedAbsoluteExpiry ?? now.AddMinutes(absoluteLifetime);
+
             var httpContext = _httpContextAccessor.HttpContext;
-            var userAgent = tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent")
-                ? tokenRequest.Request.Headers["User-Agent"].ToString()
-                : string.Empty;
+            var userAgent = !string.IsNullOrWhiteSpace(tokenRequest.SignInUserAgent)
+                ? tokenRequest.SignInUserAgent
+                : tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent")
+                    ? tokenRequest.Request.Headers["User-Agent"].ToString()
+                    : string.Empty;
             var deviceInformation = _authenticationDomainService.GetDeviceInfo(userAgent);
             var ipAddress = string.Join(",", visitorsIpAddresses);
 
@@ -120,7 +173,7 @@ namespace Authentication.DomainService.Shared
                 RefreshToken = refreshTokenId,
                 TenantId = tenant.TenantId,
                 OrganizationId = tokenRequest.OrganizationId,
-                ClientId = tokenRequest.ClientId,
+                ClientId = successorClientId,
                 SessionId = sessionId,
                 RefreshTokenSessionId = refreshTokenSessionId,
                 IssuedUtc = now,
@@ -134,19 +187,15 @@ namespace Authentication.DomainService.Shared
                 RememberMeExpiresUtc = tokenRequest.RememberMe ? absoluteRefreshTokenExpireOn : null,
                 Scope = tokenRequest.Scope,
                 Impersonated = impersoanted,
-                ImpersonationId = tokenRequest.ImpersonationSessionId
+                ImpersonationId = tokenRequest.ImpersonationSessionId,
+                IsLinkAuthentication = tokenRequest.IsLinkAuthentication,
+                RestrictedRoles = tokenRequest.RestrictedRoles?.ToList() ?? [],
+                RestrictedPermissions = tokenRequest.RestrictedPermissions?.ToList() ?? [],
+                Amr = tokenRequest.Amr?.ToList() ?? [],
+                Audience = tokenRequest.Audience
             };
 
-            // Persist to Redis cache. The TTL never reaches past the lineage's cap, so no cached entry
-            // can outlive the session it belongs to.
-            var cacheTtlSeconds = RefreshTokenLifetimeResolver.ResolveCacheTtlSeconds(
-                refreshTokenLifetime,
-                absoluteRefreshTokenExpireOn,
-                now);
-            await _cacheClient.AddStringValueAsync(refreshTokenCache.RefreshToken!, JsonSerializer.Serialize(refreshTokenCache), cacheTtlSeconds);
-
-            // Persist to MongoDB. Validation in CreateAsync rejects empty TokenId/UserId/TenantId/ClientId/SessionId.
-            var refreshTokenModel = new Idp.DomainService.Oidc.Contracts.RefreshTokenModel
+            var refreshTokenModel = new Blocks.Genesis.Entities.Iam.RefreshTokenModel
             {
                 TokenId = refreshTokenCache.RefreshToken!,
                 UserId = refreshTokenCache.UserId!,
@@ -165,9 +214,30 @@ namespace Authentication.DomainService.Shared
                 IsRevoked = false,
                 Impersonated = impersoanted,
                 ImpersonationId = tokenRequest.ImpersonationSessionId,
-                UserAgent = userAgent
+                UserAgent = userAgent,
+                IsLinkAuthentication = tokenRequest.IsLinkAuthentication,
+                RestrictedRoles = tokenRequest.RestrictedRoles?.ToList() ?? [],
+                RestrictedPermissions = tokenRequest.RestrictedPermissions?.ToList() ?? [],
+                Amr = tokenRequest.Amr?.ToList() ?? [],
+                Audience = tokenRequest.Audience
             };
-            await _refreshTokenRepository.CreateAsync(refreshTokenModel);
+
+            // One atomic claim decides which concurrent rotation may mint, so the lineage cannot fork.
+            if (isRotation && !await _refreshTokenRepository.TryClaimForRotationAsync(oldRefreshToken!, refreshTokenId, SupersededReasonFor(tokenRequest)))
+            {
+                return await ResolveLostRotationClaimAsync(oldRefreshToken!, tokenRequest, authenticationConfiguration);
+            }
+
+            // Persist to MongoDB. Validation in CreateAsync rejects empty TokenId/UserId/TenantId/ClientId/SessionId.
+            await PersistSuccessorAsync(refreshTokenModel, isRotation ? oldRefreshToken : null);
+
+            // Persist to Redis cache. The TTL never reaches past the lineage's cap, so no cached entry
+            // can outlive the session it belongs to.
+            var cacheTtlSeconds = RefreshTokenLifetimeResolver.ResolveCacheTtlSeconds(
+                refreshTokenLifetime,
+                absoluteRefreshTokenExpireOn,
+                now);
+            await _cacheClient.AddStringValueAsync(refreshTokenCache.RefreshToken!, JsonSerializer.Serialize(refreshTokenCache), cacheTtlSeconds);
 
             // First-issue user-login counters update (replaces the old RefreshTokenWorkerService async path).
             // Rotation — including impersonate start/stop and switch-organization — never runs this.
@@ -192,10 +262,6 @@ namespace Authentication.DomainService.Shared
             if (isRotation)
             {
                 await _cacheClient.RemoveKeyAsync(oldRefreshToken!);
-                await _refreshTokenRepository.RevokeByTokenIdAsync(
-                    oldRefreshToken!,
-                    SupersededByRotationReason,
-                    refreshTokenId);
                 if (oldRefreshTokenCache != null)
                 {
                     await SendSupersededTokenActivityEventAsync(oldRefreshTokenCache, tokenRequest, impersoanted);
@@ -205,12 +271,99 @@ namespace Authentication.DomainService.Shared
             return (refreshTokenId, refreshTokenExpireOn, absoluteRefreshTokenExpireOn, refreshTokenSessionId);
         }
 
+        /// <summary>A failed store releases the claim, so the presented token keeps working.</summary>
+        private async Task PersistSuccessorAsync(Blocks.Genesis.Entities.Iam.RefreshTokenModel successor, string? claimedPredecessor)
+        {
+            try
+            {
+                await _refreshTokenRepository.CreateAsync(successor);
+            }
+            catch (Exception) when (!string.IsNullOrWhiteSpace(claimedPredecessor))
+            {
+                await _refreshTokenRepository.ReleaseRotationClaimAsync(claimedPredecessor!, successor.TokenId);
+                throw;
+            }
+        }
+
         /// <summary>
-        /// Resolves the lineage id and absolute expiry a rotation must inherit. Redis answers when it can;
-        /// MongoDB is the system of record and decides when it cannot. A predecessor written before
-        /// lineage tracking shipped is read as a lineage of one keyed by its own token id.
+        /// Another rotation won: mint nothing and resolve the token again like a grace-window replay (outside
+        /// grace that is reuse). Only a plain refresh takes the successor; other grants change context, so they fail.
         /// </summary>
-        private async Task<(string RefreshTokenSessionId, DateTime AbsoluteExpiry)?> ResolvePredecessorAsync(
+        private async Task<(string RefreshToken, DateTime SlidingExpiry, DateTime AbsoluteExpiry, string RefreshTokenSessionId)> ResolveLostRotationClaimAsync(
+            string presentedToken,
+            TokenRequest tokenRequest,
+            IdentityConfiguration configuration)
+        {
+            // Revoked now, so its cache entry must not answer for it again.
+            await _cacheClient.RemoveKeyAsync(presentedToken);
+
+            var resolution = await ResolveAfterLostClaimAsync(presentedToken, configuration);
+            var successor = resolution.Session;
+            var handBack = successor != null
+                           && !string.IsNullOrWhiteSpace(successor.RefreshToken)
+                           && !string.Equals(successor.RefreshToken, presentedToken, StringComparison.Ordinal)
+                           && string.Equals(tokenRequest.GrantType, GrantTypes.RefreshToken, StringComparison.Ordinal);
+
+            // A refresh that lost to an impersonation change: the winner moved the session, so there is
+            // nothing in this caller's tenant to hand back. Reported as such rather than as an invalid token,
+            // so the client can look at its cookie before signing the user out.
+            tokenRequest.SessionChanged = resolution.SessionChanged;
+
+            _logger.LogInformation(
+                "Refresh token rotation lost the claim on its predecessor. reason=rotation_claim_lost tokenFingerprint={TokenFingerprint} grantType={GrantType} successorReturned={SuccessorReturned}",
+                Fingerprint(presentedToken),
+                tokenRequest.GrantType,
+                handBack);
+
+            if (!handBack)
+            {
+                return (string.Empty, default, default, string.Empty);
+            }
+
+            return (successor!.RefreshToken!, successor.ExpiresUtc, successor.AbsoluteExpiresUtc, successor.RefreshTokenSessionId ?? string.Empty);
+        }
+
+        private async Task<RefreshSessionResolution> ResolveAfterLostClaimAsync(string presentedToken, IdentityConfiguration configuration)
+        {
+            if (_refreshSessionResolver == null)
+            {
+                return RefreshSessionResolution.None;
+            }
+
+            await WaitForWinningSuccessorAsync(presentedToken);
+            return await _refreshSessionResolver.ResolveRefreshSessionAsync(presentedToken, configuration, followImpersonationTransitions: false);
+        }
+
+        /// <summary>Waits for the winner's successor so the grace chain reaches it and reuse handling revokes it too.</summary>
+        private async Task WaitForWinningSuccessorAsync(string presentedToken)
+        {
+            var predecessor = await _refreshTokenRepository.GetByTokenIdAsync(presentedToken);
+            var successorId = predecessor?.SupersededByTokenId;
+            if (string.IsNullOrWhiteSpace(successorId))
+            {
+                return;
+            }
+
+            for (var attempt = 0; attempt < LostClaimSuccessorChecks; attempt++)
+            {
+                if (attempt > 0)
+                {
+                    await Task.Delay(LostClaimSuccessorDelay);
+                }
+
+                if (await _refreshTokenRepository.GetByTokenIdAsync(successorId!) != null)
+                {
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Resolves the lineage id, absolute expiry and OIDC client a rotation must inherit. Redis answers
+        /// when it can; MongoDB is the system of record and decides when it cannot. A predecessor written
+        /// before lineage tracking shipped is read as a lineage of one keyed by its own token id.
+        /// </summary>
+        private async Task<(string RefreshTokenSessionId, DateTime AbsoluteExpiry, string? ClientId)?> ResolvePredecessorAsync(
             string oldRefreshToken,
             RefreshTokenCache? oldRefreshTokenCache)
         {
@@ -219,7 +372,7 @@ namespace Authentication.DomainService.Shared
                 var lineageFromCache = string.IsNullOrWhiteSpace(oldRefreshTokenCache.RefreshTokenSessionId)
                     ? (oldRefreshTokenCache.RefreshToken ?? oldRefreshToken)
                     : oldRefreshTokenCache.RefreshTokenSessionId!;
-                return (lineageFromCache, oldRefreshTokenCache.AbsoluteExpiresUtc);
+                return (lineageFromCache, oldRefreshTokenCache.AbsoluteExpiresUtc, oldRefreshTokenCache.ClientId);
             }
 
             var persisted = await _refreshTokenRepository.GetByTokenIdAsync(oldRefreshToken);
@@ -228,7 +381,47 @@ namespace Authentication.DomainService.Shared
                 return null;
             }
 
-            return (persisted.EffectiveRefreshTokenSessionId, persisted.AbsoluteExpiry);
+            return (persisted.EffectiveRefreshTokenSessionId, persisted.AbsoluteExpiry, persisted.ClientId);
+        }
+
+        /// <summary>
+        /// A lineage belongs to one OIDC client for its whole life. Rotation grants that do not speak for a
+        /// client (switch-organization, /auth/refresh) used to store an empty client on the successor, after
+        /// which /oidc/token refused the lineage as invalid_client and the browser was signed out. The
+        /// predecessor's client therefore wins; the request's client is used only for a lineage that never
+        /// had one, which is today's behaviour and does not repair a lineage already stored empty.
+        /// </summary>
+        private string? ResolveSuccessorClientId(
+            string? lineageClientId,
+            string? requestedClientId,
+            string refreshTokenSessionId,
+            string oldRefreshToken)
+        {
+            if (string.IsNullOrWhiteSpace(lineageClientId))
+            {
+                return requestedClientId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(requestedClientId)
+                && !string.Equals(lineageClientId, requestedClientId, StringComparison.Ordinal))
+            {
+                LogClientMismatch(
+                    _logger,
+                    refreshTokenSessionId,
+                    TokenPrefix(oldRefreshToken),
+                    lineageClientId,
+                    requestedClientId!,
+                    null);
+            }
+
+            return lineageClientId;
+        }
+
+        /// <summary>At most the first 8 characters of a token id: enough to correlate, never the token.</summary>
+        private static string TokenPrefix(string token)
+        {
+            const int visibleLength = 8;
+            return token.Length <= visibleLength ? token : token[..visibleLength];
         }
 
         /// <summary>
@@ -238,7 +431,7 @@ namespace Authentication.DomainService.Shared
         /// an otherwise valid login is the worse outcome.
         /// </summary>
         private async Task SupersedePreviousLoginLineagesAsync(
-            Idp.DomainService.Oidc.Contracts.RefreshTokenModel newToken,
+            Blocks.Genesis.Entities.Iam.RefreshTokenModel newToken,
             string refreshTokenSessionId)
         {
             try
@@ -279,23 +472,19 @@ namespace Authentication.DomainService.Shared
         {
             try
             {
-                var existing = await _userRepository.GetUserByIdAsync(userId);
-                if (existing == null)
+                // One atomic $inc rather than read-increment-replace. The old shape lost a login
+                // whenever two writes to the same user overlapped, and a whole-document replace also
+                // reverted whatever another request had changed in between.
+                var recorded = await _userRepository.RecordSuccessfulLoginAsync(
+                    userId,
+                    JsonSerializer.Serialize(deviceInformation),
+                    DateTime.UtcNow);
+
+                if (!recorded)
                 {
                     _logger.LogError("User not found by this user id: {Id}", userId);
                     return;
                 }
-
-                if (existing.LogInCount == 0)
-                {
-                    existing.FirstLoggedInTime = DateTime.UtcNow;
-                }
-
-                existing.LogInCount += 1;
-                existing.LastLoggedInTime = DateTime.UtcNow;
-                existing.LastLoggedInDeviceInfo = JsonSerializer.Serialize(deviceInformation);
-
-                await _userRepository.UpdateUserAsync(existing);
 
                 _logger.LogInformation("User login info updated for {UserId}", userId);
             }
@@ -391,7 +580,7 @@ namespace Authentication.DomainService.Shared
                         { "grantType", tokenRequest.GrantType ?? string.Empty },
                         { "tokenId", oldRefreshTokenCache.RefreshToken ?? string.Empty },
                         { "impersonated", impersoanted ? "true" : "false" },
-                        { "reason", "superseded_by_rotation" }
+                        { "reason", SupersededReasonFor(tokenRequest) }
                     }
                 });
             }
@@ -410,6 +599,27 @@ namespace Authentication.DomainService.Shared
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
             await _refreshTokenRepository.DeleteAsync(refreshToken);
+        }
+
+        private static void PreserveLinkAuthenticationOnRotation(
+            bool isRotation,
+            RefreshTokenCache? oldRefreshTokenCache,
+            TokenRequest tokenRequest)
+        {
+            if (!isRotation || oldRefreshTokenCache is not { IsLinkAuthentication: true })
+            {
+                return;
+            }
+
+            tokenRequest.IsLinkAuthentication = true;
+            tokenRequest.RestrictedRoles = oldRefreshTokenCache.RestrictedRoles?.ToList() ?? [];
+            tokenRequest.RestrictedPermissions = oldRefreshTokenCache.RestrictedPermissions?.ToList() ?? [];
+            tokenRequest.Amr = oldRefreshTokenCache.Amr?.ToList() ?? ["link"];
+
+            // Audience is deliberately not restored. It now comes from the tenant on every
+            // mint, and a refresh token stored before that change still holds the old
+            // client-narrowed value -- carrying it forward would re-narrow the rotated token
+            // and break the session the rotation was meant to keep alive.
         }
     }
 }

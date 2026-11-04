@@ -99,6 +99,7 @@ export const mockUserServiceFactory = () => ({
     getUserById: vi.fn(),
     addUser: vi.fn(),
     updateUser: vi.fn(),
+    updateMe: vi.fn(),
     getSignUpSetting: vi.fn(),
     saveSignUpSetting: vi.fn(),
     saveRolesAndPermissions: vi.fn(),
@@ -123,8 +124,6 @@ export const mockSecurityServiceFactory = () => ({
     revokeSession: vi.fn(),
     revokeRefreshToken: vi.fn(),
     getActivities: vi.fn(),
-    getPats: vi.fn(),
-    generatePats: vi.fn(),
   },
 });
 

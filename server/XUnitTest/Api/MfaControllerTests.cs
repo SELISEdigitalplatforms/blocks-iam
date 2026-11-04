@@ -1,4 +1,5 @@
-using Api.Controllers;
+﻿using Api.Controllers;
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using FluentAssertions;
@@ -14,7 +15,7 @@ using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Moq;
-using StorageDriver;
+using Blocks.Genesis.Entities.Iam;
 using MfaConfiguration = Mfa.DomainService.Configuration.Configuration;
 using UserActivityEvent = Iam.DomainService.Dtos.UserActivityEvent;
 
@@ -33,16 +34,20 @@ namespace XUnitTest.ApiTests
 
         private readonly Mock<IMfaManagementService> _mfaManagement = new();
         private readonly Mock<IMfaConfigurationService> _mfaConfig = new();
-        private readonly Mock<IMfaBackupCodeService> _backupCodes = new();
         private readonly Mock<IMfaAuditService> _audit = new();
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
         private readonly Mock<IUserActivityDispatcher> _dispatcher = new();
         private readonly Mock<IMfaManagementRepository> _totpRepo = new();
+        private readonly Mock<IMfaDisableService> _mfaDisable = new();
 
         public MfaControllerTests()
         {
             BlocksContext.IsTestMode = true;
             SetAuthenticatedContext();
+            // The real gate over the mocked repository: a free slot, given back when the code is right.
+            _authRepo.Setup(r => r.TryReserveMfaAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync((string id, int _, DateTime _) => new Blocks.Genesis.Entities.Iam.User { ItemId = id, FailedMfaCount = 1 });
+            _authRepo.Setup(r => r.ReleaseMfaAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>())).ReturnsAsync(true);
         }
 
         public void Dispose()
@@ -72,7 +77,7 @@ namespace XUnitTest.ApiTests
                 new Mock<ICacheClient>().Object,
                 new Mock<IValidator<VerifyOtpRequest>>().Object,
                 new Mock<ITenants>().Object,
-                new Mock<IStorageDriverService>().Object);
+                new Mock<ITotpSecretResolver>().Object);
         }
 
         private MfaController CreateController()
@@ -80,11 +85,12 @@ namespace XUnitTest.ApiTests
             var controller = new MfaController(
                 _mfaManagement.Object,
                 _mfaConfig.Object,
-                _backupCodes.Object,
                 _audit.Object,
                 _authRepo.Object,
                 BuildTotpService(),
-                _dispatcher.Object);
+                _dispatcher.Object,
+                _mfaDisable.Object,
+                new MfaAttemptGate(_authRepo.Object));
             controller.ControllerContext = new ControllerContext
             {
                 HttpContext = new DefaultHttpContext()
@@ -283,26 +289,122 @@ namespace XUnitTest.ApiTests
             result.Should().BeOfType<BadRequestObjectResult>();
         }
 
+        private void OwnerIs(string? owner) =>
+            _mfaManagement.Setup(m => m.GetChallengeOwnerAsync(It.IsAny<string>())).ReturnsAsync(owner);
+
+        private void CallerIs(Blocks.Genesis.Entities.Iam.User user) =>
+            _authRepo.Setup(r => r.GetUserByIdAsync(ActorUserId)).ReturnsAsync(user);
+
         [Fact]
-        public async Task VerifyOtp_InvalidCode_ReturnsBadRequest()
+        public async Task VerifyOtp_InvalidCode_ReturnsBadRequest_AndCountsTheFailureForTheCaller()
         {
+            OwnerIs(ActorUserId);
+            CallerIs(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId });
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync())
+                .ReturnsAsync(new IdentityConfiguration { GetNumberOfWrongAttemptsToLockTheAccount = 4, AccountLockDurationInMinutes = 11 });
             _mfaManagement.Setup(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()))
                 .ReturnsAsync(new OtpVerificationResponse { IsValid = false, Errors = new Dictionary<string, string> { { "e", "x" } } });
 
             var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
 
             result.Should().BeOfType<BadRequestObjectResult>();
+            // Counted before the check, with the tenant's threshold; not given back.
+            _authRepo.Verify(r => r.TryReserveMfaAttemptAsync(ActorUserId, 4, It.IsAny<DateTime>()), Times.Once);
+            _authRepo.Verify(r => r.ReleaseMfaAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
         }
 
         [Fact]
-        public async Task VerifyOtp_Valid_ReturnsOk()
+        public async Task VerifyOtp_Valid_ReturnsOk_AndDoesNotCountAFailure()
         {
+            OwnerIs(ActorUserId);
+            CallerIs(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId });
             _mfaManagement.Setup(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()))
-                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "u-9" });
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = ActorUserId });
 
             var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
 
             result.Should().BeOfType<OkObjectResult>();
+            _authRepo.Verify(r => r.ReleaseMfaAttemptAsync(ActorUserId, It.IsAny<DateTime>()), Times.Once);
+        }
+
+        [Theory]
+        [InlineData("someone-else")]   // another user's mfa id
+        [InlineData(null)]             // unknown / expired id
+        [InlineData("")]
+        public async Task VerifyOtp_AnotherUsersOrUnknownMfaId_GetsTheSameInvalidAnswer_AndNeverVerifies(string? owner)
+        {
+            OwnerIs(owner);
+
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            System.Text.Json.JsonSerializer.Serialize(bad.Value).Should().Contain("invalid_two_factor_id");
+            _mfaManagement.Verify(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task VerifyOtp_OwnerCheckIsCaseSensitive()
+        {
+            OwnerIs(ActorUserId.ToUpperInvariant());
+
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+            _mfaManagement.Verify(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task VerifyOtp_LockedCaller_IsRefusedWith423_EvenForTheRightCode()
+        {
+            OwnerIs(ActorUserId);
+            CallerIs(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId, LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) });
+
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(423);
+            _mfaManagement.Verify(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task VerifyOtp_WrongCodeThatTriggersLock_Returns423()
+        {
+            OwnerIs(ActorUserId);
+            CallerIs(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId });
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
+            _authRepo.Setup(r => r.TryReserveMfaAttemptAsync(ActorUserId, It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId, FailedMfaCount = 100 });
+            _authRepo.Setup(r => r.LockAccountIfMfaThresholdReachedAsync(ActorUserId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new Blocks.Genesis.Entities.Iam.User { ItemId = ActorUserId, LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15) });
+            _mfaManagement.Setup(m => m.VerifyOTPAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = false, Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_code" } } });
+
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "000000" });
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(423);
+        }
+
+        [Fact]
+        public async Task VerifyOtp_NoCurrentUser_ReturnsUnauthorized()
+        {
+            BlocksContext.SetContext(null);
+
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = "mfa-1", VerificationCode = "123456" });
+
+            result.Should().BeOfType<UnauthorizedResult>();
+        }
+
+        [Theory]
+        [InlineData(null, "123456")]
+        [InlineData("", "123456")]
+        [InlineData("   ", "123456")]
+        [InlineData("mfa-1", "")]
+        [InlineData("mfa-1", "   ")]
+        public async Task VerifyOtp_EmptyOrBlankInputs_AreBadRequest_BeforeAnyLookup(string? mfaId, string code)
+        {
+            var result = await CreateController().VerifyOtp(new VerifyOtpApiRequest { MfaId = mfaId!, VerificationCode = code });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+            _mfaManagement.Verify(m => m.GetChallengeOwnerAsync(It.IsAny<string>()), Times.Never);
         }
 
         // ---------- SetMfaMethod ----------
@@ -374,45 +476,47 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
-        public async Task SetMfaMethod_Totp_Enrolled_SetsPreferredAndAudits()
+        public async Task SetMfaMethod_Totp_FromEmail_IsRefused_SetupIsTheOnlyWayIn()
         {
             _authRepo.Setup(r => r.GetUserByIdAsync(ActorUserId))
                 .ReturnsAsync(new User { ItemId = ActorUserId, MfaEnabled = true, UserMfaType = UserMfaType.Email });
 
             var result = await CreateController().SetMfaMethod(new SetMfaMethodRequest { MfaType = UserMfaType.TOTP });
 
-            result.Should().BeOfType<OkObjectResult>();
-            _authRepo.Verify(r => r.UpdatePartialAsync<User>(ActorUserId,
-                It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()), Times.Once);
-            _audit.Verify(a => a.WriteAsync(It.IsAny<MfaAuditEvent>(), It.IsAny<CancellationToken>()), Times.Once);
+            result.Should().BeOfType<BadRequestObjectResult>();
+            _authRepo.Verify(r => r.UpdatePartialAsync<User>(It.IsAny<string>(),
+                It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
-        public async Task SetMfaMethod_None_DisablesAndDispatches()
+        public async Task SetMfaMethod_None_PassesTheProofToTheDisableCheck()
         {
             _authRepo.Setup(r => r.GetUserByIdAsync(ActorUserId))
-                .ReturnsAsync(new User { ItemId = ActorUserId, UserMfaType = UserMfaType.Email });
-            _mfaManagement.Setup(m => m.DisableUserMfa(It.IsAny<DisableUserMfaRequest>()))
-                .ReturnsAsync(new BaseResponse { IsSuccess = true });
+                .ReturnsAsync(new User { ItemId = ActorUserId, MfaEnabled = true, UserMfaType = UserMfaType.Email });
+            _mfaDisable.Setup(m => m.DisableAsync(ActorUserId, It.Is<MfaDisableRequest>(r =>
+                    r.Password == "pw" && r.MfaId == "mfa-1" && r.VerificationCode == "123456")))
+                .ReturnsAsync(MfaDisableResult.Success(UserMfaType.Email));
 
-            var result = await CreateController().SetMfaMethod(new SetMfaMethodRequest { MfaType = UserMfaType.None });
+            var result = await CreateController().SetMfaMethod(new SetMfaMethodRequest
+            {
+                MfaType = UserMfaType.None, Password = "pw", MfaId = "mfa-1", VerificationCode = "123456"
+            });
 
             result.Should().BeOfType<OkObjectResult>();
-            _mfaManagement.Verify(m => m.DisableUserMfa(It.IsAny<DisableUserMfaRequest>()), Times.Once);
             _dispatcher.Verify(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
         }
 
         [Fact]
-        public async Task SetMfaMethod_None_DisableReturnsErrors_ReturnsBadRequest()
+        public async Task SetMfaMethod_None_WithoutProof_ReturnsTheCheckStatus_AndDoesNotDispatch()
         {
             _authRepo.Setup(r => r.GetUserByIdAsync(ActorUserId))
-                .ReturnsAsync(new User { ItemId = ActorUserId, UserMfaType = UserMfaType.Email });
-            _mfaManagement.Setup(m => m.DisableUserMfa(It.IsAny<DisableUserMfaRequest>()))
-                .ReturnsAsync(new BaseResponse { Errors = new Dictionary<string, string> { { "e", "x" } } });
+                .ReturnsAsync(new User { ItemId = ActorUserId, MfaEnabled = true, UserMfaType = UserMfaType.Email });
+            _mfaDisable.Setup(m => m.DisableAsync(ActorUserId, It.IsAny<MfaDisableRequest>()))
+                .ReturnsAsync(MfaDisableResult.Fail(StatusCodes.Status400BadRequest, MfaDisableService.InvalidRequest, "x"));
 
             var result = await CreateController().SetMfaMethod(new SetMfaMethodRequest { MfaType = UserMfaType.None });
 
-            result.Should().BeOfType<BadRequestObjectResult>();
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
             _dispatcher.Verify(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Never);
         }
 
@@ -423,151 +527,48 @@ namespace XUnitTest.ApiTests
         {
             BlocksContext.SetContext(null);
 
-            var result = await CreateController().DisableMfa();
+            var result = await CreateController().DisableMfa(null);
 
             result.Should().BeOfType<UnauthorizedResult>();
         }
 
         [Fact]
-        public async Task DisableMfa_ServiceErrors_ReturnsBadRequest()
+        public async Task DisableMfa_WrongPassword_Returns401_AndDoesNotDispatch()
         {
-            _mfaManagement.Setup(m => m.DisableUserMfa(It.IsAny<DisableUserMfaRequest>()))
-                .ReturnsAsync(new BaseResponse { Errors = new Dictionary<string, string> { { "e", "x" } } });
+            _mfaDisable.Setup(m => m.DisableAsync(ActorUserId, It.IsAny<MfaDisableRequest>()))
+                .ReturnsAsync(MfaDisableResult.Fail(StatusCodes.Status401Unauthorized, "invalid_username_password", "x"));
 
-            var result = await CreateController().DisableMfa();
+            var result = await CreateController().DisableMfa(new MfaDisableRequest { Password = "bad", MfaId = "m", VerificationCode = "1" });
 
-            result.Should().BeOfType<BadRequestObjectResult>();
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
             _dispatcher.Verify(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Never);
         }
 
         [Fact]
         public async Task DisableMfa_Success_ReturnsOkAndDispatches()
         {
-            _mfaManagement.Setup(m => m.DisableUserMfa(It.IsAny<DisableUserMfaRequest>()))
-                .ReturnsAsync(new BaseResponse { IsSuccess = true });
+            _mfaDisable.Setup(m => m.DisableAsync(ActorUserId, It.IsAny<MfaDisableRequest>()))
+                .ReturnsAsync(MfaDisableResult.Success(UserMfaType.TOTP));
 
-            var result = await CreateController().DisableMfa();
+            var result = await CreateController().DisableMfa(new MfaDisableRequest { Password = "pw", MfaId = "m", VerificationCode = "1" });
 
             result.Should().BeOfType<OkObjectResult>();
             _dispatcher.Verify(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
         }
 
-        // ---------- GetBackupCodesStatus ----------
+        // ---------- backup codes removed (owner decision 2026-10-14) ----------
 
         [Fact]
-        public async Task GetBackupCodesStatus_NoUser_ReturnsUnauthorized()
+        public void BackupCodeRoutes_AreGone()
         {
-            BlocksContext.SetContext(null);
+            var templates = typeof(MfaController).GetMethods()
+                .SelectMany(m => m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute), false)
+                    .Cast<Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute>())
+                .Select(a => a.Template ?? string.Empty)
+                .ToList();
 
-            var result = await CreateController().GetBackupCodesStatus();
-
-            result.Should().BeOfType<UnauthorizedResult>();
-        }
-
-        [Fact]
-        public async Task GetBackupCodesStatus_ReturnsOkWithRemaining()
-        {
-            _backupCodes.Setup(b => b.GetRemainingCountAsync(ActorUserId, It.IsAny<CancellationToken>())).ReturnsAsync(4);
-
-            var result = await CreateController().GetBackupCodesStatus();
-
-            result.Should().BeOfType<OkObjectResult>();
-        }
-
-        // ---------- GenerateBackupCodes ----------
-
-        [Fact]
-        public async Task GenerateBackupCodes_NoUser_ReturnsUnauthorized()
-        {
-            BlocksContext.SetContext(null);
-
-            var result = await CreateController().GenerateBackupCodes();
-
-            result.Should().BeOfType<UnauthorizedResult>();
-        }
-
-        [Fact]
-        public async Task GenerateBackupCodes_BackupDisabled_ReturnsBadRequest()
-        {
-            _mfaConfig.Setup(c => c.GetAsync()).ReturnsAsync(new MfaConfiguration { AllowBackupCodes = false });
-
-            var result = await CreateController().GenerateBackupCodes();
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task GenerateBackupCodes_NotEnrolled_ReturnsBadRequest()
-        {
-            _mfaConfig.Setup(c => c.GetAsync()).ReturnsAsync(new MfaConfiguration { AllowBackupCodes = true, BackupCodesCount = 5 });
-            _authRepo.Setup(r => r.GetUserByIdAsync(ActorUserId))
-                .ReturnsAsync(new User { ItemId = ActorUserId, MfaEnabled = false });
-
-            var result = await CreateController().GenerateBackupCodes();
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task GenerateBackupCodes_GenerateFails_ReturnsBadRequest()
-        {
-            _mfaConfig.Setup(c => c.GetAsync()).ReturnsAsync(new MfaConfiguration { AllowBackupCodes = true, BackupCodesCount = 5 });
-            _authRepo.Setup(r => r.GetUserByIdAsync(ActorUserId))
-                .ReturnsAsync(new User { ItemId = ActorUserId, MfaEnabled = true });
-            _backupCodes.Setup(b => b.GenerateAsync(ActorUserId, 5, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new MfaBackupCodeGenerationResult { IsSuccess = false, Errors = new Dictionary<string, string> { { "e", "x" } } });
-
-            var result = await CreateController().GenerateBackupCodes();
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task GenerateBackupCodes_Success_ReturnsOkWithCodes()
-        {
-            _mfaConfig.Setup(c => c.GetAsync()).ReturnsAsync(new MfaConfiguration { AllowBackupCodes = true, BackupCodesCount = 3 });
-            _authRepo.Setup(r => r.GetUserByIdAsync(ActorUserId))
-                .ReturnsAsync(new User { ItemId = ActorUserId, MfaEnabled = true });
-            _backupCodes.Setup(b => b.GenerateAsync(ActorUserId, 3, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new MfaBackupCodeGenerationResult { IsSuccess = true, PlainCodes = new List<string> { "a", "b", "c" } });
-
-            var result = await CreateController().GenerateBackupCodes();
-
-            result.Should().BeOfType<OkObjectResult>();
-            _backupCodes.Verify(b => b.GenerateAsync(ActorUserId, 3, It.IsAny<CancellationToken>()), Times.Once);
-        }
-
-        // ---------- ConsumeBackupCode ----------
-
-        [Fact]
-        public async Task ConsumeBackupCode_MissingFields_ReturnsBadRequest()
-        {
-            var result = await CreateController().ConsumeBackupCode(new ConsumeBackupCodeRequest { UserId = "", Code = "" });
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task ConsumeBackupCode_Invalid_ReturnsBadRequest()
-        {
-            _backupCodes.Setup(b => b.ConsumeAsync("u-1", "code-1", It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new MfaBackupCodeConsumeResult { IsValid = false, Errors = new Dictionary<string, string> { { "e", "x" } } });
-
-            var result = await CreateController().ConsumeBackupCode(new ConsumeBackupCodeRequest { UserId = "u-1", Code = "code-1" });
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-        }
-
-        [Fact]
-        public async Task ConsumeBackupCode_Valid_ReturnsOk()
-        {
-            _backupCodes.Setup(b => b.ConsumeAsync("u-1", "code-1", It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new MfaBackupCodeConsumeResult { IsValid = true, UserId = "u-1" });
-
-            var result = await CreateController().ConsumeBackupCode(new ConsumeBackupCodeRequest { UserId = "u-1", Code = "code-1" });
-
-            result.Should().BeOfType<OkObjectResult>();
-            _backupCodes.Verify(b => b.ConsumeAsync("u-1", "code-1", It.IsAny<CancellationToken>()), Times.Once);
+            templates.Should().NotBeEmpty();
+            templates.Should().NotContain(t => t.Contains("backup", StringComparison.OrdinalIgnoreCase));
         }
     }
 }

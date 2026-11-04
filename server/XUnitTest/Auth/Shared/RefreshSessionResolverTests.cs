@@ -6,8 +6,10 @@ using Authentication.DomainService.Shared.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {
@@ -148,13 +150,29 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
+        public async Task CacheEvictedAfterAuthorizationCodeReuse_GoesToMongo_AndIsRejected_WithoutReuseHandling()
+        {
+            // iam SPEC2: the reuse revoke evicts the cache entry, so the next refresh reads MongoDB and
+            // finds the token revoked for a reason other than rotation.
+            CacheMiss();
+            Persisted(Token("rt-1", isRevoked: true, revokeReason: "authorization_code_reuse", revokedAt: DateTime.UtcNow));
+
+            var result = await Sut().TryResolveRefreshSessionAsync("rt-1", Config());
+
+            result.Should().BeNull();
+            _repo.Verify(r => r.GetByTokenIdAsync("rt-1"), Times.Once);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+        }
+
+        [Fact]
         public async Task CacheMiss_NotFound_IsRejectedWithoutRevokingAnything()
         {
             CacheMiss();
             _repo.Setup(r => r.GetByTokenIdAsync("A")).ReturnsAsync((RefreshTokenModel)null!);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         // ==================== SPEC1 H2, H3, H5 — grace-window replay ====================
@@ -173,7 +191,7 @@ namespace XUnitTest.Auth.Shared
             result.Should().NotBeNull();
             result!.RefreshToken.Should().Be("B");
             // A retry is an already-counted use: nothing is revoked and no new token is minted.
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _repo.Verify(r => r.CreateAsync(It.IsAny<RefreshTokenModel>()), Times.Never);
         }
 
@@ -247,7 +265,7 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.GetByTokenIdAsync("B")).ReturnsAsync((RefreshTokenModel)null!);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
@@ -259,7 +277,7 @@ namespace XUnitTest.Auth.Shared
                 Token("B", isRevoked: true, revokeReason: "logout", revokedAt: DateTime.UtcNow.AddSeconds(-30)));
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
@@ -271,7 +289,7 @@ namespace XUnitTest.Auth.Shared
                 Token("B", absoluteExpiry: DateTime.UtcNow.AddMinutes(-1)));
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         // ==================== SPEC1 C1 / SPEC2 C4 — replay past the grace window ====================
@@ -282,11 +300,11 @@ namespace XUnitTest.Auth.Shared
             CacheMiss();
             Persisted(Token("A", isRevoked: true, revokeReason: Rotation,
                 revokedAt: DateTime.UtcNow.AddMinutes(-6), supersededBy: "B"));
-            _repo.Setup(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(3);
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(3);
             _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected"), Times.Once);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected"), Times.Once);
             _cache.Verify(c => c.RemoveKeyAsync("A"), Times.Once);
         }
 
@@ -296,11 +314,11 @@ namespace XUnitTest.Auth.Shared
             CacheMiss();
             Persisted(Token("A", isRevoked: true, revokeReason: Rotation,
                 revokedAt: DateTime.UtcNow.AddMinutes(-6), supersededBy: "B", lineage: null));
-            _repo.Setup(r => r.RevokeAllByRefreshTokenSessionIdAsync("A", "token_reuse_detected")).ReturnsAsync(1);
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("A", "token_reuse_detected")).ReturnsAsync(1);
             _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync("A", "token_reuse_detected"), Times.Once);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("A", "token_reuse_detected"), Times.Once);
         }
 
         // ==================== SPEC1 C2 — no successor pointer ====================
@@ -311,11 +329,11 @@ namespace XUnitTest.Auth.Shared
             CacheMiss();
             Persisted(Token("A", isRevoked: true, revokeReason: Rotation,
                 revokedAt: DateTime.UtcNow.AddMinutes(-1), supersededBy: null));
-            _repo.Setup(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(1);
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(1);
             _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected"), Times.Once);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected"), Times.Once);
         }
 
         // ==================== SPEC1 C4 — other revocation reasons never escalate ====================
@@ -330,7 +348,7 @@ namespace XUnitTest.Auth.Shared
             Persisted(Token("A", isRevoked: true, revokeReason: reason, revokedAt: DateTime.UtcNow.AddMinutes(-1)));
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _repo.Verify(r => r.GetByTokenIdAsync("B"), Times.Never);
         }
 
@@ -345,11 +363,11 @@ namespace XUnitTest.Auth.Shared
             Persisted(
                 Token("A", isRevoked: true, revokeReason: Rotation, revokedAt: DateTime.UtcNow.AddSeconds(-1), supersededBy: "B"),
                 Token("B"));
-            _repo.Setup(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(2);
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(2);
             _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config(graceMinutes: graceMinutes))).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected"), Times.Once);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected"), Times.Once);
         }
 
         [Fact]
@@ -357,11 +375,11 @@ namespace XUnitTest.Auth.Shared
         {
             CacheMiss();
             Persisted(Token("A", isRevoked: true, revokeReason: Rotation, revokedAt: null, supersededBy: "B"));
-            _repo.Setup(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(1);
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(1);
             _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected"), Times.Once);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected"), Times.Once);
         }
 
         // ==================== SPEC1 C6 — concurrent replay ====================
@@ -393,7 +411,7 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.GetByTokenIdAsync("A")).ThrowsAsync(new TimeoutException("mongo down"));
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _repo.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _cache.Verify(c => c.RemoveKeyAsync(It.IsAny<string>()), Times.Never);
         }
@@ -406,7 +424,7 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.GetByTokenIdAsync("B")).ThrowsAsync(new TimeoutException("mongo down"));
 
             (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
-            _repo.Verify(r => r.RevokeAllByRefreshTokenSessionIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
@@ -414,6 +432,129 @@ namespace XUnitTest.Auth.Shared
         {
             (await Sut().TryResolveRefreshSessionAsync("", Config())).Should().BeNull();
             _repo.Verify(r => r.GetByTokenIdAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        // ==================== Impersonation changes are a session boundary ====================
+        //
+        // Impersonation start, stop and switch replace the token with one in another tenant or organization.
+        // A refresh replaying the replaced token was handed that token, so a page in one tenant carried on
+        // under another tenant's token behind an ordinary 200.
+
+        private const string Impersonation = "superseded_by_impersonation";
+
+        private RefreshSessionResolver SutWithSettings(Dictionary<string, string?> settings) =>
+            new(_cache.Object, _repo.Object, NullLogger<RefreshSessionResolver>.Instance,
+                appConfiguration: new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+
+        [Fact]
+        public async Task ReplacedByImpersonation_RefreshInsideGrace_IsRefusedAsSessionChangedAndRevokesNothing()
+        {
+            CacheMiss();
+            Persisted(
+                Token("A", isRevoked: true, revokeReason: Impersonation, revokedAt: DateTime.UtcNow.AddMinutes(-1), supersededBy: "B"),
+                Token("B"));
+
+            var result = await Sut().ResolveRefreshSessionAsync("A", Config(), followImpersonationTransitions: false);
+
+            result.Session.Should().BeNull();
+            result.SessionChanged.Should().BeTrue();
+            // Not theft: the client's cookie may already hold B, and the lineage must keep working.
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.GetByTokenIdAsync("B"), Times.Never);
+        }
+
+        [Fact]
+        public async Task ReplacedByImpersonation_TryResolve_IsRejected()
+        {
+            CacheMiss();
+            Persisted(
+                Token("A", isRevoked: true, revokeReason: Impersonation, revokedAt: DateTime.UtcNow.AddMinutes(-1), supersededBy: "B"),
+                Token("B"));
+
+            (await Sut().TryResolveRefreshSessionAsync("A", Config())).Should().BeNull();
+        }
+
+        [Fact]
+        public async Task ReplacedByImpersonation_ImpersonationCallers_ResolveToTheSuccessor()
+        {
+            // Start and stop move the session on purpose; a retry whose first answer was lost must reach
+            // the session that answer created.
+            CacheMiss();
+            Persisted(
+                Token("A", isRevoked: true, revokeReason: Impersonation, revokedAt: DateTime.UtcNow.AddMinutes(-1), supersededBy: "B"),
+                Token("B"));
+            _cache.Setup(c => c.AddStringValueAsync("B", It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+
+            var result = await Sut().ResolveRefreshSessionAsync("A", Config(), followImpersonationTransitions: true);
+
+            result.SessionChanged.Should().BeFalse();
+            result.Session!.RefreshToken.Should().Be("B");
+        }
+
+        [Fact]
+        public async Task RotationThenImpersonation_RefreshReplayOfTheFirstToken_StopsAtTheChange()
+        {
+            CacheMiss();
+            var justNow = DateTime.UtcNow.AddMinutes(-1);
+            Persisted(
+                Token("A", isRevoked: true, revokeReason: Rotation, revokedAt: justNow, supersededBy: "B"),
+                Token("B", isRevoked: true, revokeReason: Impersonation, revokedAt: justNow, supersededBy: "C"),
+                Token("C"));
+
+            var result = await Sut().ResolveRefreshSessionAsync("A", Config(), followImpersonationTransitions: false);
+
+            result.Session.Should().BeNull();
+            result.SessionChanged.Should().BeTrue();
+            _repo.Verify(r => r.GetByTokenIdAsync("C"), Times.Never);
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ImpersonationThenRotation_ReplayOfTheTokenTheChangeIssued_StillResolves()
+        {
+            // B was issued by the impersonation change, then refreshed into C: same tenant, so a second tab
+            // replaying B is the ordinary grace-window case.
+            CacheMiss();
+            var justNow = DateTime.UtcNow.AddMinutes(-1);
+            Persisted(
+                Token("B", isRevoked: true, revokeReason: Rotation, revokedAt: justNow, supersededBy: "C"),
+                Token("C"));
+            _cache.Setup(c => c.AddStringValueAsync("C", It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+
+            var result = await Sut().ResolveRefreshSessionAsync("B", Config(), followImpersonationTransitions: false);
+
+            result.Session!.RefreshToken.Should().Be("C");
+        }
+
+        [Fact]
+        public async Task ReplacedByImpersonation_PastGrace_IsStillReuse()
+        {
+            CacheMiss();
+            Persisted(Token("A", isRevoked: true, revokeReason: Impersonation,
+                revokedAt: DateTime.UtcNow.AddMinutes(-6), supersededBy: "B"));
+            _repo.Setup(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected")).ReturnsAsync(2);
+            _cache.Setup(c => c.RemoveKeyAsync("A")).ReturnsAsync(true);
+
+            var result = await Sut().ResolveRefreshSessionAsync("A", Config(), followImpersonationTransitions: false);
+
+            result.Session.Should().BeNull();
+            result.SessionChanged.Should().BeFalse();
+            _repo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", "token_reuse_detected"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ReplacedByImpersonation_OperatorSwitch_LetsARefreshFollowAsBefore()
+        {
+            CacheMiss();
+            Persisted(
+                Token("A", isRevoked: true, revokeReason: Impersonation, revokedAt: DateTime.UtcNow.AddMinutes(-1), supersededBy: "B"),
+                Token("B"));
+            _cache.Setup(c => c.AddStringValueAsync("B", It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+            var sut = SutWithSettings(new() { ["RefreshTokens:RefreshFollowsImpersonationTransitions"] = "true" });
+
+            var result = await sut.TryResolveRefreshSessionAsync("A", Config());
+
+            result!.RefreshToken.Should().Be("B");
         }
     }
 }

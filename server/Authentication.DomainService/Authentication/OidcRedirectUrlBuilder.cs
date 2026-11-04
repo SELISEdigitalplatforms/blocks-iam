@@ -85,29 +85,18 @@ namespace Authentication.DomainService.Authentication
         /// on our own host is not a redirect to the client.
         /// </para>
         /// </summary>
-        public static string BuildLoginErrorUrl(
-            string clientId,
-            string responseType,
-            string redirectUri,
-            string scope,
-            string state,
-            string nonce,
-            string codeChallenge,
-            string codeChallengeMethod,
-            string? tenantId,
-            string error,
-            string errorDescription)
+        public static string BuildLoginErrorUrl(OidcLoginUrlRequest login, string error, string errorDescription)
         {
             var loginUrl = BuildLoginUrl(
-                clientId,
-                responseType,
-                redirectUri,
-                scope,
-                state,
-                nonce,
-                codeChallenge,
-                codeChallengeMethod,
-                tenantId);
+                login.ClientId,
+                login.ResponseType,
+                login.RedirectUri,
+                login.Scope,
+                login.State,
+                login.Nonce,
+                login.CodeChallenge,
+                login.CodeChallengeMethod,
+                login.TenantId);
 
             return BuildRedirectUri(loginUrl, new Dictionary<string, string>
             {
@@ -250,5 +239,19 @@ namespace Authentication.DomainService.Authentication
             }
             return value.EndsWith('/') ? value[..^1] : value;
         }
+    }
+
+    /// <summary>The OIDC request parameters that identify a login page, as passed to <see cref="OidcRedirectUrlBuilder.BuildLoginErrorUrl"/>.</summary>
+    public sealed class OidcLoginUrlRequest
+    {
+        public string ClientId { get; init; } = string.Empty;
+        public string ResponseType { get; init; } = string.Empty;
+        public string RedirectUri { get; init; } = string.Empty;
+        public string Scope { get; init; } = string.Empty;
+        public string State { get; init; } = string.Empty;
+        public string Nonce { get; init; } = string.Empty;
+        public string CodeChallenge { get; init; } = string.Empty;
+        public string CodeChallengeMethod { get; init; } = string.Empty;
+        public string? TenantId { get; init; }
     }
 }

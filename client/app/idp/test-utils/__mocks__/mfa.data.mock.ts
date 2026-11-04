@@ -3,7 +3,7 @@ import type {
   IMFAConfiguration,
   IGetConfigurationPayload,
   IMFAConfigurationSavePayload,
-  IGenerateUserMFA_OtpPayload,
+  IGenerateUserMfaOtpPayload,
   IConfigureUserMFAPayload,
   ISetupUserTotpPayload,
   IVerifyMfaOtpPayload,
@@ -47,7 +47,7 @@ export const mockSaveMfaConfigPayload: IMFAConfigurationSavePayload = {
 
 // ─── MFA Operation Mocks ────────────────────────────────────────────────────
 
-export const mockGenerateOtpPayload: IGenerateUserMFA_OtpPayload = {
+export const mockGenerateOtpPayload: IGenerateUserMfaOtpPayload = {
   userId: MOCK_MFA_USER_ID,
   projectKey: TEST_PROJECT_KEY,
   mfaType: 1,
@@ -97,5 +97,7 @@ export const mockResendOtpPayload: IResendMfaOtpPayload = {
 };
 
 export const mockDisableMfaPayload: IDisableMFAPayload = {
-  userId: MOCK_MFA_USER_ID,
+  password: "Passw0rd!",
+  mfaId: "mfa-1",
+  verificationCode: "123456",
 };

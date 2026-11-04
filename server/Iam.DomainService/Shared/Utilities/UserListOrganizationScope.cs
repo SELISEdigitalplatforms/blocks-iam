@@ -84,18 +84,9 @@ namespace Iam.DomainService.Utilities
                 return [];
             }
 
+            // First occurrence wins, so the order the caller gave is kept.
             var seen = new HashSet<string>(StringComparer.Ordinal);
-            var result = new List<string>();
-
-            foreach (var organizationId in organizationIds)
-            {
-                if (!string.IsNullOrWhiteSpace(organizationId) && seen.Add(organizationId))
-                {
-                    result.Add(organizationId);
-                }
-            }
-
-            return result;
+            return organizationIds.Where(id => !string.IsNullOrWhiteSpace(id) && seen.Add(id)).ToList();
         }
     }
 }

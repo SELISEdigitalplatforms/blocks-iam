@@ -1,44 +1,45 @@
+import type { TFunction } from "@seliseblocks/genesis-os/i18n";
 import type { OidcPanelConfig } from "@blocks-idp/authentication/pages/oidc/nodes-panel-oidc";
 
-export const DEVICE_ENTRY_PANEL: OidcPanelConfig = {
-  heading: "Device Sign-In Pipeline",
+export const buildDeviceEntryPanel = (t: TFunction): OidcPanelConfig => ({
+  heading: t("PANEL_CONFIG.ENTRY_HEADING"),
   subtext:
-    "Your verification code is matched against an active device authorization request. Once resolved, the browser is redirected to consent or to the OIDC login flow.",
+    t("PANEL_CONFIG.ENTRY_SUBTEXT"),
 
-  idleBadge:       "Awaiting Code",
-  submittingBadge: "Validating",
-  successBadge:    "Resolved",
-  failedBadge:     "Rejected",
+  idleBadge:       t("PANEL_CONFIG.ENTRY_IDLE_BADGE"),
+  submittingBadge: t("PANEL_CONFIG.ENTRY_SUBMITTING_BADGE"),
+  successBadge:    t("PANEL_CONFIG.ENTRY_SUCCESS_BADGE"),
+  failedBadge:     t("PANEL_CONFIG.ENTRY_FAILED_BADGE"),
 
   idleNode: {
     icon:        "cursor",
-    title:       "Awaiting Verification Code",
-    description: "Enter the code displayed on your device to continue.",
+    title:       t("PANEL_CONFIG.ENTRY_IDLE_TITLE"),
+    description: t("PANEL_CONFIG.ENTRY_IDLE_DESCRIPTION"),
   },
 
   validatingNode: {
     icon:         "key",
     service:      "Device Service",
-    title:        "Resolving User Code",
+    title:        t("PANEL_CONFIG.ENTRY_VALIDATING_TITLE"),
     activeLabel:  "POST /api/device …",
-    successLabel: "User code resolved",
-    failLabel:    "Code rejected by Device Service",
+    successLabel: t("PANEL_CONFIG.ENTRY_VALIDATING_SUCCESS"),
+    failLabel:    t("PANEL_CONFIG.ENTRY_VALIDATING_FAIL"),
   },
 
   successNodes: [
     {
       icon:         "shield-check",
       service:      "Device Service",
-      title:        "Preparing Interaction",
-      activeLabel:  "Allocating interactionId…",
-      successLabel: "Interaction prepared",
+      title:        t("PANEL_CONFIG.ENTRY_PREPARING_TITLE"),
+      activeLabel:  t("PANEL_CONFIG.ENTRY_PREPARING_ACTIVE"),
+      successLabel: t("PANEL_CONFIG.ENTRY_PREPARING_SUCCESS"),
     },
     {
       icon:         "external",
       service:      "Browser",
-      title:        "Continuing",
-      activeLabel:  "Redirecting to consent or sign-in…",
-      successLabel: "Redirect delivered",
+      title:        t("PANEL_CONFIG.ENTRY_CONTINUING_TITLE"),
+      activeLabel:  t("PANEL_CONFIG.ENTRY_CONTINUING_ACTIVE"),
+      successLabel: t("PANEL_CONFIG.ENTRY_CONTINUING_SUCCESS"),
     },
   ],
 
@@ -56,47 +57,47 @@ export const DEVICE_ENTRY_PANEL: OidcPanelConfig = {
     { text: "$ POST /api/device",                color: "var(--accent2)" },
     { text: "  > X-Blocks-Key: <tenantId>",      color: "var(--muted)"  },
   ],
-};
+});
 
-export const DEVICE_CONSENT_PANEL: OidcPanelConfig = {
-  heading: "Device Consent Pipeline",
+export const buildDeviceConsentPanel = (t: TFunction): OidcPanelConfig => ({
+  heading: t("PANEL_CONFIG.CONSENT_HEADING"),
   subtext:
-    "The browser fetches the consent payload for the device interaction. After approval the request is marked Approved and the device is authorized to exchange its code for tokens.",
+    t("PANEL_CONFIG.CONSENT_SUBTEXT"),
 
-  idleBadge:       "Awaiting Decision",
-  submittingBadge: "Recording",
-  successBadge:    "Authorized",
-  failedBadge:     "Authorization Failed",
+  idleBadge:       t("PANEL_CONFIG.CONSENT_IDLE_BADGE"),
+  submittingBadge: t("PANEL_CONFIG.CONSENT_SUBMITTING_BADGE"),
+  successBadge:    t("PANEL_CONFIG.CONSENT_SUCCESS_BADGE"),
+  failedBadge:     t("PANEL_CONFIG.CONSENT_FAILED_BADGE"),
 
   idleNode: {
     icon:        "cursor",
-    title:       "Awaiting User Decision",
-    description: "Allow or deny the device's request to act on your behalf.",
+    title:       t("PANEL_CONFIG.CONSENT_IDLE_TITLE"),
+    description: t("PANEL_CONFIG.CONSENT_IDLE_DESCRIPTION"),
   },
 
   validatingNode: {
     icon:         "key",
     service:      "Device Service",
-    title:        "Loading Consent",
+    title:        t("PANEL_CONFIG.CONSENT_VALIDATING_TITLE"),
     activeLabel:  "GET /api/device/continue/{id} …",
-    successLabel: "Consent payload loaded",
-    failLabel:    "Consent payload rejected",
+    successLabel: t("PANEL_CONFIG.CONSENT_VALIDATING_SUCCESS"),
+    failLabel:    t("PANEL_CONFIG.CONSENT_VALIDATING_FAIL"),
   },
 
   successNodes: [
     {
       icon:         "shield-check",
       service:      "Device Service",
-      title:        "Recording Approval",
-      activeLabel:  "Marking device authorization request…",
-      successLabel: "Approval recorded",
+      title:        t("PANEL_CONFIG.CONSENT_RECORDING_TITLE"),
+      activeLabel:  t("PANEL_CONFIG.CONSENT_RECORDING_ACTIVE"),
+      successLabel: t("PANEL_CONFIG.CONSENT_RECORDING_SUCCESS"),
     },
     {
       icon:         "external",
       service:      "Browser",
-      title:        "Marking Device Authorized",
-      activeLabel:  "Notifying browser of result…",
-      successLabel: "Authorization delivered",
+      title:        t("PANEL_CONFIG.CONSENT_MARKING_TITLE"),
+      activeLabel:  t("PANEL_CONFIG.CONSENT_MARKING_ACTIVE"),
+      successLabel: t("PANEL_CONFIG.CONSENT_MARKING_SUCCESS"),
     },
   ],
 
@@ -115,4 +116,4 @@ export const DEVICE_CONSENT_PANEL: OidcPanelConfig = {
     { text: "$ POST /api/device/approve",         color: "var(--accent2)" },
     { text: "  > decision=allow",                 color: "var(--muted)"  },
   ],
-};
+});

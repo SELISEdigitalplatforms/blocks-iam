@@ -10,15 +10,18 @@ namespace Authentication.DomainService.OAuth.SocialServices
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ICacheClient _cacheClient;
         private readonly IHttpService _httpService;
+        private readonly IIdentityProviderSecretResolver _secretResolver;
 
         public LinkedinLogInService(
             ILogger<LinkedinLogInService> logger,
             IAuthenticationRepository authenticationRepository,
-            IHttpService httpService)
+            IHttpService httpService,
+            IIdentityProviderSecretResolver secretResolver)
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
             _httpService = httpService;
+            _secretResolver = secretResolver;
         }
 
         public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
@@ -32,11 +35,18 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 return new SocialCallbackResult { ExternalUserData = new LinkedinUserData() };
             }
 
+            // False when a referenced secret cannot be read (the resolver logs it): fail without calling the provider.
+            var (resolved, clientSecret) = await _secretResolver.TryGetClientSecretAsync(identityProvider);
+            if (!resolved)
+            {
+                return new SocialCallbackResult { ExternalUserData = new LinkedinUserData() };
+            }
+
             var postData = new Dictionary<string, string>
             {
                 { "code", stateInfo.Code },
                 { "client_id", identityProvider.ClientId },
-                { "client_secret", identityProvider.ClientSecret },
+                { "client_secret", clientSecret ?? string.Empty },
                 { "redirect_uri", stateInfo.RedirectUri },
                 { "grant_type", GrantTypes.AuthCode }
             };

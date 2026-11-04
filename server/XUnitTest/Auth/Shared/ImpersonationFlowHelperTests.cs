@@ -3,6 +3,7 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.Services;
 using FluentAssertions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Shared
 {

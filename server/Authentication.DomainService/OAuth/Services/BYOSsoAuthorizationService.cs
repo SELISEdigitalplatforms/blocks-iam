@@ -3,6 +3,7 @@ using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth.Services
 {

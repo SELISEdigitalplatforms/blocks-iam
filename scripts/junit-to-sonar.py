@@ -17,8 +17,9 @@ report if any path is unknown.
 
 import os
 import sys
-import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape, quoteattr
+
+import defusedxml.ElementTree as ET
 
 
 def duration_ms(node):

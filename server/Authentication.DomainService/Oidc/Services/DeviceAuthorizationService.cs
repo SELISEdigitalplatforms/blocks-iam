@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Services
 {
@@ -101,7 +102,8 @@ namespace Authentication.DomainService.Oidc.Services
             DeviceAuthorizationRequestModel entity;
             string deviceCode;
             string userCode;
-            for (var attempt = 0; ; attempt++)
+            var attempt = 0;
+            while (true)
             {
                 deviceCode = _codeGenerator.GenerateDeviceCode();
                 userCode = await GenerateUniqueUserCodeAsync(ct);
@@ -132,6 +134,8 @@ namespace Authentication.DomainService.Oidc.Services
                 {
                     _logger.LogWarning(ex, "Device authorization code collision while creating request; retrying.");
                 }
+
+                attempt++;
             }
 
             var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpRequest); 

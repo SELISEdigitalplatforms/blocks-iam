@@ -19,9 +19,15 @@ namespace Authentication.DomainService.Authentication
 
         public bool Verify(string? password, string? passwordHash, string? optionalSalt = null)
         {
-            if (string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(passwordHash))
+            if (string.IsNullOrWhiteSpace(password))
             {
                 return false;
+            }
+
+            // An account without a password (social only) costs the same time as one with.
+            if (string.IsNullOrWhiteSpace(passwordHash))
+            {
+                return UnknownUserLoginGuard.VerifyAgainstDummy(password, optionalSalt);
             }
 
             try

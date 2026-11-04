@@ -1,5 +1,8 @@
+using Iam.DomainService.Notifications;
 ﻿using Blocks.Genesis;
 using FluentValidation;
+using Iam.DomainService.Accounts;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
@@ -14,13 +17,20 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Users
 {
     public class UserManagementMutationService : IUserManagementMutationService
     {
         private const string DefaultOrganizationId = "default";
+        private const string NotFoundMessage = "Not found";
+        private const string OrganizationIdKey = "organizationId";
+        private const string RolesKey = "Roles";
         private const int MaxPermissionsPerUser = 5;
+
+        /// <summary>The log target for a user that has no id yet; the email is kept out of the log.</summary>
+        private const string NewUserTarget = "(new user)";
         private readonly ILogger<UserManagementMutationService> _logger;
         private readonly IValidator<CreateUserRequest> _createValidator;
         private readonly IValidator<UpdateUserRequest> _updateValidator;
@@ -36,6 +46,9 @@ namespace Iam.DomainService.Users
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
         private readonly IConfiguration? _configuration;
+        private readonly IUserSessionTerminator? _userSessionTerminator;
+        private readonly IBuiltInNotificationSender? _notificationSender;
+        private readonly IAccessGrantService? _accessGrant;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -51,7 +64,12 @@ namespace Iam.DomainService.Users
             IResourceRepository? resourceRepository = null,
             IHttpContextAccessor? httpContextAccessor = null,
             IDefaultOidcClientResolver? defaultOidcClientResolver = null,
-            IConfiguration? configuration = null
+            IConfiguration? configuration = null,
+            IUserSessionTerminator? userSessionTerminator = null,
+            IBuiltInNotificationSender? notificationSender = null,
+            // Trailing and optional like the dependencies above; DI always supplies it. Without it
+            // no access grant rule runs.
+            IAccessGrantService? accessGrant = null
         )
         {
             _logger = logger;
@@ -69,6 +87,9 @@ namespace Iam.DomainService.Users
             _httpContextAccessor = httpContextAccessor;
             _defaultOidcClientResolver = defaultOidcClientResolver;
             _configuration = configuration;
+            _userSessionTerminator = userSessionTerminator;
+            _notificationSender = notificationSender;
+            _accessGrant = accessGrant;
         }
 
         public async Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command)
@@ -104,7 +125,13 @@ namespace Iam.DomainService.Users
                 return permissionCountFailure;
             }
 
-            var existingUser = await TryGrantOrganizationToExistingUserAsync(
+            var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (!await AuthorizeCreateUserAsync(grantScope, command).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
+            var (existingUser, addedToOrganization, removedAccess) = await TryGrantOrganizationToExistingUserAsync(
                 command.Email,
                 organizationId,
                 command.Roles,
@@ -112,9 +139,19 @@ namespace Iam.DomainService.Users
 
             if (existingUser != null)
             {
+                await EndSessionsIfAccessRemovedAsync(grantScope, existingUser.ItemId, removedAccess, "access_replaced").ConfigureAwait(false);
+
                 _logger.LogInformation(
                     "User creation end -- email already has an account; granted organization {OrganizationId} instead of creating a duplicate",
                     organizationId);
+
+                // Only for an admin acting through the API. Anonymous signup and queue consumers also
+                // land here, and an "added to organization" mail would be noise on those paths.
+                if (command.NotifyUser && addedToOrganization && BlocksContext.GetContext()?.IsAuthenticated == true)
+                {
+                    await NotifyOrganizationMembershipChangedAsync(
+                        existingUser, organizationId, null, IdpConstants.OrganizationMemberAddedMailPurpose);
+                }
 
                 return new BaseMutationResponse
                 {
@@ -137,7 +174,10 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            await SendEvent(itemId, MutationEventType.Create, command.ClientId, command.RedirectUri);
+            var inviter = BlocksContext.GetContext();
+            await SendEvent(
+                itemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail,
+                inviter is { IsAuthenticated: true } ? inviter.UserId : null, organizationId);
             var bc = BlocksContext.GetContext();
 
             _logger.LogInformation("User creation end -- Success");
@@ -148,11 +188,71 @@ namespace Iam.DomainService.Users
             };
         }
 
+        public async Task<BaseMutationResponse> CreateSignupUserWithoutOrganizationAsync(CreateUserRequest command)
+        {
+            ArgumentNullException.ThrowIfNull(command);
+            _logger.LogInformation("Signup user creation without organization start");
+
+            // The organization rule is the only one skipped: on a multi-org tenant it insists on an organization,
+            // and having none is the whole point of this path. Every other rule (email, password, names) applies.
+            var validationResult = await _createValidator.ValidateAsync(command);
+            var validationErrors = validationResult.Errors
+                .Where(x => x.PropertyName != nameof(CreateUserRequest.OrganizationId))
+                .ToList();
+            if (validationErrors.Count > 0)
+            {
+                _logger.LogInformation("Signup user creation without organization end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    Errors = validationErrors
+                        .GroupBy(x => x.PropertyName)
+                        .ToDictionary(g => g.Key, g => g.First().ErrorMessage)
+                };
+            }
+
+            // An account that appeared since the caller's own lookup is left exactly as it is: nothing is granted
+            // and no second document is written for the email.
+            var existingUser = await _userRepository.GetUserByEmailAsync(command.Email);
+            if (existingUser != null)
+            {
+                _logger.LogInformation("Signup user creation without organization end -- email already has an account; nothing changed");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = true,
+                    ItemId = existingUser.ItemId
+                };
+            }
+
+            // MapUser keys roles and permissions by OrganizationId and cannot take a null key, so it is given an
+            // empty one and the three membership collections are then cleared together.
+            command.OrganizationId = string.Empty;
+            command.Roles = [];
+            command.Permissions = [];
+
+            var user = MapUser(command);
+            user.OrganizationIds = [];
+            user.Roles = new Dictionary<string, List<string>>();
+            user.Permissions = new Dictionary<string, List<string>>();
+
+            await _userRepository.CreateUserAsync(user);
+            await SendEvent(user.ItemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail);
+
+            _logger.LogInformation("Signup user creation without organization end -- Success");
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = user.ItemId
+            };
+        }
+
         private async Task SendEvent(
             string itemId,
             MutationEventType mutationEventType,
             string? clientId = null,
-            string? redirectUri = null)
+            string? redirectUri = null,
+            bool sendMail = true,
+            string? invitedBy = null,
+            string? organizationId = null)
         {
             _logger.LogInformation("User mutation event -- initiate");
             await _messageClient.SendToConsumerAsync(
@@ -166,7 +266,10 @@ namespace Iam.DomainService.Users
                         // The email is built by the consumer, which only loads the User —
                         // so the originating app's OIDC context has to travel on the message.
                         ClientId = clientId,
-                        RedirectUri = redirectUri
+                        RedirectUri = redirectUri,
+                        SendMail = sendMail,
+                        InvitedBy = invitedBy,
+                        OrganizationId = organizationId
                     }
                 }
             );
@@ -216,7 +319,8 @@ namespace Iam.DomainService.Users
         /// </para>
         /// <para>
         /// Returns the existing account with the requested organization granted, or <c>null</c> when the
-        /// email is new and the caller should go on to create one.
+        /// email is new and the caller should go on to create one. <c>AddedToOrganization</c> is true
+        /// only when the account did not already belong to the organization.
         /// </para>
         /// <para>
         /// Account lifecycle is deliberately not consulted here. There is no way to disable an account
@@ -224,7 +328,7 @@ namespace Iam.DomainService.Users
         /// than refuse -- so the decision belongs with that feature, not with this lookup.
         /// </para>
         /// </summary>
-        private async Task<User?> TryGrantOrganizationToExistingUserAsync(
+        private async Task<(User? User, bool AddedToOrganization, bool RemovedAccess)> TryGrantOrganizationToExistingUserAsync(
             string email,
             string organizationId,
             List<string>? roles,
@@ -233,8 +337,11 @@ namespace Iam.DomainService.Users
             var existingUser = await _userRepository.GetUserByEmailAsync(email);
             if (existingUser == null)
             {
-                return null;
+                return (null, false, false);
             }
+
+            var addedToOrganization = !IsOrganizationMember(existingUser, organizationId);
+            var removedAccess = RemovesAccess(existingUser, organizationId, roles, permissions);
 
             GrantOrganization(existingUser, organizationId, roles, permissions);
 
@@ -243,7 +350,85 @@ namespace Iam.DomainService.Users
 
             await _userRepository.UpdateUserAsync(existingUser);
 
-            return existingUser;
+            return (existingUser, addedToOrganization, removedAccess);
+        }
+
+        /// <summary>
+        /// The same three-way membership test as <c>OrganizationAccessResolver.HasOrganizationAccess</c>,
+        /// which lives in the Authentication project and so cannot be called from here.
+        /// </summary>
+        private static bool IsOrganizationMember(User user, string organizationId) =>
+            user.OrganizationIds.Contains(organizationId)
+            || user.Roles.ContainsKey(organizationId)
+            || user.Permissions.ContainsKey(organizationId);
+
+        /// <summary>
+        /// Tells <paramref name="user"/> they were added to or removed from an organization. It is
+        /// informational and goes out after the change is saved, so it must never fail the caller:
+        /// any error here is logged and swallowed. A tenant with no template for the purpose is the
+        /// mail service's concern, which then sends nothing.
+        /// </summary>
+        private async Task NotifyOrganizationMembershipChangedAsync(
+            User user,
+            string organizationId,
+            Organization? organization,
+            string mailPurpose)
+        {
+            if (string.IsNullOrWhiteSpace(user.Email))
+            {
+                _logger.LogInformation("Organization membership mail skipped for {UserId} -- no email", user.ItemId);
+                return;
+            }
+
+            try
+            {
+                var context = BlocksContext.GetContext();
+                var isDefaultOrganization = string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal);
+
+                if (organization == null && !isDefaultOrganization && _resourceRepository != null)
+                {
+                    organization = await _resourceRepository.GetOrganizationById(organizationId);
+                }
+
+                var applicationName = string.IsNullOrWhiteSpace(context?.TenantId)
+                    ? null
+                    : _tenants.GetTenantByID(context.TenantId)?.Name;
+
+                var displayName = $"{user.FirstName} {user.LastName}".Trim();
+
+                // BlocksContext stores an absent claim as "", so ?? alone would never reach UserName.
+                var changedBy = string.IsNullOrWhiteSpace(context?.DisplayName) ? context?.UserName : context.DisplayName;
+
+                var dataContext = new Dictionary<string, string>
+                {
+                    { "DisplayName", string.IsNullOrWhiteSpace(displayName) ? user.Email : displayName },
+                    { "UserName", user.UserName ?? user.Email },
+                    { "Email", user.Email },
+                    { "OrganizationId", organizationId },
+                    { "OrganizationName", organization?.Name ?? (isDefaultOrganization ? "Default" : organizationId) },
+                    { "ApplicationName", applicationName ?? string.Empty },
+                    { "ChangedBy", changedBy ?? string.Empty }
+                };
+
+                await _identityAccessManagementService.SendEmailAsync(new SendMail
+                {
+                    Cc = Array.Empty<string>(),
+                    Bcc = Array.Empty<string>(),
+                    SubjectDataContext = new Dictionary<string, string>(dataContext),
+                    BodyDataContext = dataContext,
+                    Language = user.Language ?? "en-US",
+                    Purpose = mailPurpose,
+                    To = new[] { NormalizeEmail(user.Email) }
+                });
+
+                _logger.LogInformation("Organization membership mail {Purpose} queued for {UserId} in {OrganizationId}",
+                    mailPurpose, user.ItemId, organizationId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Organization membership mail {Purpose} could not be queued for {UserId} in {OrganizationId}",
+                    mailPurpose, user.ItemId, organizationId);
+            }
         }
 
         /// <summary>
@@ -272,6 +457,76 @@ namespace Iam.DomainService.Users
             user.Permissions[organizationId] = permissions?.Count > 0
                 ? permissions
                 : user.Permissions.GetValueOrDefault(organizationId, []);
+        }
+
+        /// <summary>The access grant refusal; the controller answers it with 403.</summary>
+        private static BaseMutationResponse GrantNotAllowed() =>
+            new() { IsSuccess = false, Errors = AccessGrantErrors.Create() };
+
+        /// <summary>
+        /// True when writing these lists through <see cref="GrantOrganization"/> would take at least
+        /// one role or permission away from the user in the organization (R12). An empty list keeps
+        /// what is stored, so it removes nothing.
+        /// </summary>
+        private static bool RemovesAccess(User user, string organizationId, List<string>? roles, List<string>? permissions) =>
+            AccessGrantRules.Delta(AccessGrantRules.GrantsIn(user.Roles, organizationId), roles).Removed.Count > 0
+            || AccessGrantRules.Delta(AccessGrantRules.GrantsIn(user.Permissions, organizationId), permissions).Removed.Count > 0;
+
+        /// <summary>True when the user holds at least one role or permission in the organization.</summary>
+        private static bool HoldsAccessIn(User user, string organizationId) =>
+            AccessGrantRules.GrantsIn(user.Roles, organizationId).Any()
+            || AccessGrantRules.GrantsIn(user.Permissions, organizationId).Any();
+
+        /// <summary>
+        /// R4 with R3 for a list replace of the user's access in the scope's organization, plus the
+        /// R11 warning for the roles it adds.
+        /// </summary>
+        private async Task<bool> AuthorizeAccessChangeAsync(GrantScope? scope, User user, List<string>? roles, List<string>? permissions)
+        {
+            if (scope is null || scope.IsSystem)
+            {
+                return true;
+            }
+
+            var (addedRoles, _) = AccessGrantRules.Delta(
+                AccessGrantRules.GrantsIn(user.Roles, scope.OrganizationId), roles);
+            await _accessGrant.WarnOnPolicyPowerIfWiredAsync(scope, addedRoles).ConfigureAwait(false);
+            return _accessGrant.AuthorizeScopeIfWired(scope, s =>
+                AccessGrantRules.CheckAccessChange(s, user, roles, permissions));
+        }
+
+        /// <summary>R12 for one user, when the write took at least one role or permission away.</summary>
+        private Task EndSessionsIfAccessRemovedAsync(GrantScope? scope, string userId, bool removedAccess, string reason) =>
+            removedAccess
+                ? _accessGrant.EndSessionsAfterRemovalIfWiredAsync(scope, [userId], reason)
+                : Task.CompletedTask;
+
+        /// <summary>The bag exactly as it would be stored, so R10 compares what will actually land.</summary>
+        private static Dictionary<string, object>? NormalizeAttributes(Dictionary<string, object>? attributes) =>
+            attributes is null ? null : AttributeNormalizer.Normalize(attributes, AttributePolicy.Internal);
+
+        /// <summary>
+        /// The access grant gate for users/create. A new account is a plain grant: R1 on
+        /// its roles, R2 on its permissions, R10 on its access attributes. An email that already has
+        /// an account is not created but has its access in the organization replaced, so it is
+        /// checked like users/access: R4 on the delta and R3 on the account as stored.
+        /// </summary>
+        private async Task<bool> AuthorizeCreateUserAsync(GrantScope? scope, CreateUserRequest command)
+        {
+            if (scope is null || scope.IsSystem)
+            {
+                return true;
+            }
+
+            var existing = await _userRepository.GetUserByEmailAsync(command.Email).ConfigureAwait(false);
+            if (existing is not null)
+            {
+                return await AuthorizeAccessChangeAsync(scope, existing, command.Roles, command.Permissions).ConfigureAwait(false);
+            }
+
+            return _accessGrant.AuthorizeScopeIfWired(scope, s =>
+                    AccessGrantRules.CheckAccessAttributes(s, NewUserTarget, null, NormalizeAttributes(command.Attributes)))
+                && await _accessGrant.AuthorizeGrantIfWiredAsync(scope, command.Roles, command.Permissions).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -445,9 +700,17 @@ namespace Iam.DomainService.Users
                 {
                     Errors = new Dictionary<string, string>
                     {
-                        { "ItemId", "Not found" }
+                        { "ItemId", NotFoundMessage }
                     }
                 };
+            }
+
+            // R3 on the user, and R10 on any access attribute the new bag would change.
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope =>
+                    AccessGrantRules.CheckManageUser(scope, user)
+                    ?? AccessGrantRules.CheckAccessAttributes(scope, user.ItemId, user.Attributes, NormalizeAttributes(command.Attributes))).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
             }
 
             var blocksContext = BlocksContext.GetContext();
@@ -472,16 +735,18 @@ namespace Iam.DomainService.Users
 
             WarnOnRetiredFields(command.UnmappedFields, command.ItemId);
 
-            ApplyProfileFields(user, new ProfilePatch(
+            var patch = new ProfilePatch(
                 command.Salutation, command.FirstName, command.LastName, command.PhoneNumber,
                 command.Language, command.ProfileImageUrl, command.ProfileImageId,
-                command.Tags, command.Attributes));
+                command.Tags, command.Attributes);
+            var changedFields = ChangedProfileFields(user, patch);
+            ApplyProfileFields(user, patch);
 
             user.LastUpdatedDate = DateTime.UtcNow;
             user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
 
             // Membership is not a side effect of editing a profile. Adding the context
-            // organization here enrolled users as a by-product of a name change;
+            // organization here enrolled users as a by-product of a name change.
             // UpdateUserAccessControlAsync owns OrganizationIds.
 
             var result = await _userRepository.UpdateUserAsync(user);
@@ -494,11 +759,76 @@ namespace Iam.DomainService.Users
 
             _logger.LogInformation("User update end -- Success");
 
+            await NotifyUserUpdatedAsync(user, blocksContext, changedFields);
+
             return new BaseMutationResponse
             {
                 IsSuccess = true,
                 ItemId = user.ItemId
             };
+        }
+
+        /// <summary>
+        /// Tells a user an admin changed their profile. Only the field names go out, never the
+        /// values. Not sent when nothing changed or the actor is the user. Best effort.
+        /// </summary>
+        private Task NotifyUserUpdatedAsync(User user, BlocksContext? blocksContext, IReadOnlyList<string> changedFields)
+        {
+            if (changedFields.Count == 0 || string.Equals(user.ItemId, blocksContext?.UserId, StringComparison.Ordinal))
+            {
+                return Task.CompletedTask;
+            }
+
+            return _notificationSender.TrySendAsync(new BuiltInNotification(
+                blocksContext?.TenantId,
+                BuiltInNotificationNames.UserUpdated,
+                BuiltInNotificationSender.Recipients(user.ItemId),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.UserUpdated,
+                    "Your profile was updated",
+                    "An admin updated your profile.",
+                    fields: new Dictionary<string, object?>
+                    {
+                        ["userId"] = user.ItemId,
+                        ["changedFields"] = changedFields
+                    }),
+                blocksContext?.OrganizationId,
+                IncludeImpersonatedActor: false));
+        }
+
+        /// <summary>The names (never the values) of the fields the patch really changes.</summary>
+        private static List<string> ChangedProfileFields(User user, ProfilePatch patch)
+        {
+            var changed = new List<string>();
+            AddIfChanged(changed, "salutation", patch.Salutation, user.Salutation);
+            AddIfChanged(changed, "firstName", patch.FirstName, user.FirstName);
+            AddIfChanged(changed, "lastName", patch.LastName, user.LastName);
+            AddIfChanged(changed, "phoneNumber", patch.PhoneNumber, user.PhoneNumber);
+            AddIfChanged(changed, "language", patch.Language, user.Language);
+            AddIfChanged(changed, "profileImageUrl", patch.ProfileImageUrl, user.ProfileImageUrl);
+            AddIfChanged(changed, "profileImageId", patch.ProfileImageId, user.ProfileImageId);
+
+            if (patch.Tags is not null && !patch.Tags.SequenceEqual(user.Tags ?? new List<string>(), StringComparer.Ordinal))
+            {
+                changed.Add("tags");
+            }
+
+            if (patch.Attributes is not null
+                && JsonSerializer.Serialize(AttributeNormalizer.Normalize(patch.Attributes, AttributePolicy.Internal))
+                   != JsonSerializer.Serialize(user.Attributes))
+            {
+                changed.Add("attributes");
+            }
+
+            return changed;
+        }
+
+        private static void AddIfChanged(List<string> changed, string name, string? incoming, string? current)
+        {
+            if (incoming is not null && !string.Equals(incoming, current, StringComparison.Ordinal))
+            {
+                changed.Add(name);
+            }
         }
 
         /// <summary>
@@ -520,7 +850,7 @@ namespace Iam.DomainService.Users
                 _logger.LogInformation("My account update end -- No authenticated user");
                 return new BaseMutationResponse
                 {
-                    Errors = new Dictionary<string, string> { { "ItemId", "Not found" } }
+                    Errors = new Dictionary<string, string> { { "ItemId", NotFoundMessage } }
                 };
             }
 
@@ -540,8 +870,16 @@ namespace Iam.DomainService.Users
                 _logger.LogInformation("My account update end -- Not found");
                 return new BaseMutationResponse
                 {
-                    Errors = new Dictionary<string, string> { { "ItemId", "Not found" } }
+                    Errors = new Dictionary<string, string> { { "ItemId", NotFoundMessage } }
                 };
+            }
+
+            // R10: the caller's own access attributes are power over data, so it may only give up
+            // values here, never add ones it does not already hold.
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope =>
+                    AccessGrantRules.CheckAccessAttributes(scope, user.ItemId, user.Attributes, NormalizeAttributes(command.Attributes))).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
             }
 
             WarnOnRetiredFields(command.UnmappedFields, userId);
@@ -627,7 +965,7 @@ namespace Iam.DomainService.Users
         }
 
         private static readonly HashSet<string> RetiredUpdateFields =
-            new(StringComparer.OrdinalIgnoreCase) { "roles", "permissions", "mfaEnabled", "userMfaType", "itemId", "organizationId" };
+            new(StringComparer.OrdinalIgnoreCase) { "roles", "permissions", "mfaEnabled", "userMfaType", "itemId", OrganizationIdKey };
 
         public async Task<BaseResponse> DeactivateUserAsync(DeactivateUserRequest request)
         {
@@ -635,6 +973,11 @@ namespace Iam.DomainService.Users
             if (user == null)
             {
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "user_not_found", $"No user found with id {request.UserId}" } } };
+            }
+
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckManageUser(scope, user)).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
             }
 
             user.Active = false;
@@ -645,8 +988,9 @@ namespace Iam.DomainService.Users
             user.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? request.UserId;
             user.LastUpdatedDate = DateTime.Now;
 
+            var update = _userRepository.UpdateUserAsync(user);
             await Task.WhenAll(
-            _userRepository.UpdateUserAsync(user),
+            update,
             _messageClient.SendToConsumerAsync(new ConsumerMessage<UserStatusChangedEvent>
             {
                 ConsumerName = IdpConstants.IamUserQueue,
@@ -656,7 +1000,59 @@ namespace Iam.DomainService.Users
                     IsActive = false
                 }
             }));
+
+            // A deactivated account keeps no live session: its refresh tokens and IdP session
+            // accounts end now, the same way password reset / change end them.
+            await EndAllSessionsAsync(request.UserId, "user_deactivated");
+
+            if (update.Result)
+            {
+                await _notificationSender.TrySendAsync(new BuiltInNotification(
+                    BlocksContext.GetContext()?.TenantId,
+                    BuiltInNotificationNames.UserDeactivated,
+                    BuiltInNotificationSender.Recipients(user.ItemId),
+                    BuiltInNotificationSender.Payload(
+                        BuiltInNotificationNames.UserDeactivated,
+                        "Account deactivated",
+                        "An admin deactivated your account.",
+                        fields: new Dictionary<string, object?> { ["userId"] = user.ItemId }),
+                    BlocksContext.GetContext()?.OrganizationId));
+            }
+
             return new BaseResponse { IsSuccess = true };
+        }
+
+        // Inline, so the sessions are dead before the response goes out; the logout-all queue is
+        // only the backup for when that fails (or no terminator is wired). Same pattern as
+        // AccountService.EndAllSessionsAsync.
+        private async Task EndAllSessionsAsync(string userId, string reason)
+        {
+            if (_userSessionTerminator != null)
+            {
+                try
+                {
+                    await _userSessionTerminator.EndAllSessionsAsync(userId, reason);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Ending sessions inline failed for user {UserId}; queueing logout-all", userId);
+                }
+            }
+
+            try
+            {
+                await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
+                {
+                    UserId = userId
+                });
+            }
+            catch (Exception ex)
+            {
+                // The account is already deactivated and every refresh is refused by the account-state
+                // guard, so a lost logout-all only leaves dead sessions behind; it must not fail the call.
+                _logger.LogError(ex, "Queueing logout-all failed for deactivated user {UserId}", userId);
+            }
         }
 
         public async Task<BaseMutationResponse> ActivateUserAsync(ActivateUserByAdminRequest request)
@@ -704,6 +1100,11 @@ namespace Iam.DomainService.Users
                         { nameof(request.UserId), "User is already active" }
                     }
                 };
+            }
+
+            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckManageUser(scope, user)).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
             }
 
             var blocksContext = BlocksContext.GetContext();
@@ -920,11 +1321,48 @@ namespace Iam.DomainService.Users
 
             var user = await _userRepository.GetUserByIdAsync(command.ItemId);
 
-            await SendActivationAsync(user, command.ClientId, command.RedirectUri);
+            // The activation mail belongs to account creation only. Update is also raised by
+            // revoke-access and the activate paths, for users who already exist (and are
+            // usually active), and mailing them a fresh activation link there reads as a
+            // re-invitation. A caller can also opt out of it on create with SendMail = false; the
+            // activity event below is published either way.
+            if (command.Action == MutationEventType.Create && command.SendMail)
+            {
+                await SendInvitationMailAsync(user, command);
+            }
+
             await PublishUserActivityAsync(user, command.Action);
         }
 
-        private async Task<bool> SendActivationAsync(User user, string? clientId = null, string? redirectUri = null)
+        /// <summary>
+        /// Sends the activation mail and, when it cannot be queued, tells the inviter. The notification is
+        /// fire-and-forget and never changes the outcome: a queue error still reaches the consumer's retry.
+        /// </summary>
+        private async Task SendInvitationMailAsync(User user, UserMutationEvent command)
+        {
+            string? failure;
+            try
+            {
+                failure = await SendActivationAsync(user, command.ClientId, command.RedirectUri);
+            }
+            catch
+            {
+                await NotifyInvitationMailFailedAsync(user, command, InvitationMailFailureReasons.QueueError);
+                throw;
+            }
+
+            if (failure != null)
+            {
+                await NotifyInvitationMailFailedAsync(user, command, failure);
+            }
+        }
+
+        private Task NotifyInvitationMailFailedAsync(User user, UserMutationEvent command, string reason) =>
+            _notificationSender.InvitationMailFailedAsync(
+                BlocksContext.GetContext()?.TenantId, command.InvitedBy, command.OrganizationId, user.ItemId, reason);
+
+        /// <returns>Null when the mail was queued, otherwise the failure reason code.</returns>
+        private async Task<string?> SendActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {
             _logger.LogInformation("Send Activation for {Id}", user.ItemId);
             var config = await _userRepository.GetIamConfigurationAsync();
@@ -944,10 +1382,10 @@ namespace Iam.DomainService.Users
                     logger: _logger, appConfiguration: _configuration))
             {
                 _logger.LogWarning("Activation URL could not be built for user {Id}", user.ItemId);
-                return false;
+                return InvitationMailFailureReasons.LinkNotBuilt;
             }
 
-            await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
+            await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Activation, key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
             var emailPurpose = string.IsNullOrWhiteSpace(user.MailPurpose) ? "AccountActivation" : user.MailPurpose;
             var result = await _identityAccessManagementService.SendActivationToEmailAsync(user, accountActivationUri, emailPurpose);
@@ -964,7 +1402,14 @@ namespace Iam.DomainService.Users
             });
 
             _logger.LogInformation("Send Activation for {Id} is {Send}", user.ItemId, result ? "sent" : "not sent");
-            return result;
+            if (result)
+            {
+                return null;
+            }
+
+            return string.IsNullOrWhiteSpace(user.Email)
+                ? InvitationMailFailureReasons.NoEmailAddress
+                : InvitationMailFailureReasons.NotQueued;
         }
 
         private async Task<bool> PublishUserActivityAsync(User user, MutationEventType mutationEventType)
@@ -993,7 +1438,7 @@ namespace Iam.DomainService.Users
                 {
                     Errors = new Dictionary<string, string>
                     {
-                        { nameof(command.UserId), "Not found" }
+                        { nameof(command.UserId), NotFoundMessage }
                     }
                 };
             }
@@ -1030,9 +1475,10 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            Organization? organization = null;
             if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal))
             {
-                var organization = await _resourceRepository.GetOrganizationById(organizationId);
+                organization = await _resourceRepository.GetOrganizationById(organizationId);
                 if (organization == null)
                 {
                     _logger.LogInformation("Update User Access Control end -- Validation Error");
@@ -1058,6 +1504,15 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (!await AuthorizeAccessChangeAsync(grantScope, user, command.Roles, command.Permissions).ConfigureAwait(false))
+            {
+                return GrantNotAllowed();
+            }
+
+            var addedToOrganization = !IsOrganizationMember(user, organizationId);
+            var removedAccess = RemovesAccess(user, organizationId, command.Roles, command.Permissions);
+
             GrantOrganization(user, organizationId, command.Roles, command.Permissions);
 
             user.LastUpdatedDate = DateTime.UtcNow;
@@ -1070,23 +1525,16 @@ namespace Iam.DomainService.Users
                 return new BaseMutationResponse();
             }
 
-            //await SendEvent(user.ItemId, MutationEventType.Update);
+            await EndSessionsIfAccessRemovedAsync(grantScope, user.ItemId, removedAccess, "access_replaced").ConfigureAwait(false);
 
-            //await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
-            //{
-            //    UserId = user.ItemId,
-            //    Category = UserActivityCategory.Resource,
-            //    Event = isAddToOrganization ? "USER_ACCESS_UPDATED" : "USER_ACCESS_REVOKED",
-            //    Source = "iam-user-access-control",
-            //    Entity = "User",
-            //    EntityId = user.ItemId,
-            //    Metadata = new Dictionary<string, string>
-            //    {
-            //        { "organizationId", organizationId ?? string.Empty },
-            //        { "rolesAdded", string.Join(",", command.Roles ?? new List<string>()) },
-            //        { "permissionsAdded", string.Join(",", command.Permissions ?? new List<string>()) }
-            //    }
-            //});
+            if (command.NotifyUser && addedToOrganization)
+            {
+                await NotifyOrganizationMembershipChangedAsync(
+                    user, organizationId, organization, IdpConstants.OrganizationMemberAddedMailPurpose);
+            }
+
+            await NotifyRolesChangedAsync(user.ItemId, blocksContext?.UserId, organizationId, "updated");
+
 
             _logger.LogInformation("Update User Access Control end -- Success");
             return new BaseMutationResponse
@@ -1122,7 +1570,7 @@ namespace Iam.DomainService.Users
                     IsSuccess = false,
                     Errors = new Dictionary<string, string>
                     {
-                        { nameof(command.UserId), "Not found" }
+                        { nameof(command.UserId), NotFoundMessage }
                     }
                 };
             }
@@ -1172,9 +1620,10 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            Organization? organization = null;
             if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal))
             {
-                var organization = await _resourceRepository.GetOrganizationById(organizationId);
+                organization = await _resourceRepository.GetOrganizationById(organizationId);
                 if (organization == null)
                 {
                     _logger.LogInformation("Revoke User Access Control end -- Validation Error");
@@ -1188,6 +1637,20 @@ namespace Iam.DomainService.Users
                     };
                 }
             }
+
+            // R3: revoking takes away every role and permission the user holds here, so each must
+            // be one the caller could grant. A non-member holds nothing here, so it passes.
+            var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
+            if (!_accessGrant.AuthorizeScopeIfWired(grantScope, scope =>
+                    AccessGrantRules.CheckManageUser(scope, user, requireMembership: false)))
+            {
+                return GrantNotAllowed();
+            }
+
+            // Revoking an organization the user never belonged to still succeeds, but must not tell
+            // them they were removed from it.
+            var wasMember = IsOrganizationMember(user, organizationId);
+            var removedAccess = HoldsAccessIn(user, organizationId);
 
             user.OrganizationIds.Remove(organizationId);
             user.Roles.Remove(organizationId);
@@ -1210,6 +1673,8 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            await EndSessionsIfAccessRemovedAsync(grantScope, user.ItemId, removedAccess, "access_revoked").ConfigureAwait(false);
+
             await SendEvent(user.ItemId, MutationEventType.Update);
 
             await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
@@ -1222,9 +1687,17 @@ namespace Iam.DomainService.Users
                 EntityId = user.ItemId,
                 Metadata = new Dictionary<string, string>
                 {
-                    { "organizationId", organizationId }
+                    { OrganizationIdKey, organizationId }
                 }
             });
+
+            if (command.NotifyUser && wasMember)
+            {
+                await NotifyOrganizationMembershipChangedAsync(
+                    user, organizationId, organization, IdpConstants.OrganizationMemberRemovedMailPurpose);
+            }
+
+            await NotifyRolesChangedAsync(user.ItemId, blocksContext?.UserId, organizationId, "revoked");
 
             _logger.LogInformation("Revoke User Access Control end -- Success");
             return new BaseMutationResponse
@@ -1257,7 +1730,7 @@ namespace Iam.DomainService.Users
             // Inviting an email that already has an account is a join, not a signup: the invited
             // organization is granted on that account rather than opening a second one for the
             // same person.
-            var existingUser = await TryGrantOrganizationToExistingUserAsync(email, organizationId, roles, permissions);
+            var (existingUser, _, _) = await TryGrantOrganizationToExistingUserAsync(email, organizationId, roles, permissions);
 
             if (existingUser != null)
             {
@@ -1340,7 +1813,7 @@ namespace Iam.DomainService.Users
             var key = Guid.NewGuid().ToString("n");
             var expiresAtUtc = DateTime.UtcNow.AddMinutes(config.ActivationUrlLifetimeInMinutes);
 
-            await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
+            await AccountCodes.IssueAsync(_cacheClient, AccountCodes.Activation, key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
             await _userRepository.InsertUserKeyMapAsync(new UserKeyMap
             {
@@ -1392,7 +1865,7 @@ namespace Iam.DomainService.Users
             // SSO consent reaches this method on every exchange, not only for unknown emails, so
             // without a lookup here each sign-in minted another account. An email that already has
             // one is signing in, not signing up: grant the organization and skip the welcome mail.
-            var existingUser = await TryGrantOrganizationToExistingUserAsync(
+            var (existingUser, _, _) = await TryGrantOrganizationToExistingUserAsync(
                 command.Email,
                 command.OrganizationId,
                 command.Roles,
@@ -1547,6 +2020,667 @@ namespace Iam.DomainService.Users
                 _ => "USER_ACTIVITY"
             };
         }
+
+        #region Bulk role change
+
+        /// <summary>Request-shape guard, not a business rule: nobody may hold "only 50" roles.</summary>
+        private const int MaxRolesPerBulkRequest = 50;
+
+        /// <summary>Upper bound on a hand-picked target, so one payload cannot be unbounded.</summary>
+        private const int MaxUserIdsPerBulkRequest = 1000;
+
+        /// <summary>
+        /// The blast radius one submit may have. A truncated count would be a number the operator
+        /// acts on that does not describe what would happen, so over-cap is a rejection rather than a
+        /// partial success.
+        /// </summary>
+        private const int MaxBulkMatchedUsers = 5000;
+
+        /// <summary>Resolved ids per queue message. Bounds message size and per-message time.</summary>
+        private const int BulkRoleChunkSize = 500;
+
+        /// <summary>Page size used while walking the matched set; an implementation detail only.</summary>
+        private const int BulkResolutionPageSize = 1000;
+
+        /// <summary>
+        /// Apply a role delta to one user, in memory. <strong>Pure</strong>: it touches nothing but the
+        /// <paramref name="user"/> instance handed to it and never persists.
+        /// <para>
+        /// The preview and the worker both call this one function, which is the only way to guarantee
+        /// the count the operator approved is the change the worker writes. It is public rather than
+        /// internal because the worker lives in another assembly and the test project has no
+        /// <c>InternalsVisibleTo</c>.
+        /// </para>
+        /// <para>
+        /// Idempotent by construction: applying the same add/remove lists twice produces no change
+        /// the second time, so a redelivered queue message converges instead of double-writing.
+        /// </para>
+        /// </summary>
+        /// <returns><c>true</c> when the user's role list for this organization actually changed.</returns>
+        public static bool ApplyRoleDelta(
+            User user,
+            string organizationId,
+            IReadOnlyList<string> addRoles,
+            IReadOnlyList<string> removeRoles)
+        {
+            var current = user.Roles.TryGetValue(organizationId, out var existing) && existing is not null
+                ? new List<string>(existing)
+                : new List<string>();
+
+            var next = current.Where(r => !removeRoles.Contains(r, StringComparer.Ordinal)).ToList();
+
+            // Append-only, so a user's existing order survives and re-running the same delta is a
+            // no-op rather than a reshuffle.
+            foreach (var role in addRoles.Where(r => !next.Contains(r, StringComparer.Ordinal)))
+            {
+                next.Add(role);
+            }
+
+            if (next.SequenceEqual(current, StringComparer.Ordinal))
+            {
+                return false;
+            }
+
+            // Matching the single-user grant path: writing a role into an organization implies
+            // membership of it, rather than silently dropping the write.
+            if (!user.OrganizationIds.Contains(organizationId))
+            {
+                user.OrganizationIds.Add(organizationId);
+            }
+
+            user.Roles[organizationId] = next;
+            return true;
+        }
+
+        public async Task<BulkRoleChangePreviewResponse> PreviewBulkRoleChangeAsync(BulkRoleChangeRequest command)
+        {
+            _logger.LogInformation("Bulk role change preview start");
+
+            var (errors, plan) = await ValidateBulkRoleChangeAsync(command);
+            if (errors is not null)
+            {
+                _logger.LogInformation("Bulk role change preview end -- Validation Error");
+                return new BulkRoleChangePreviewResponse { Errors = errors };
+            }
+
+            var (users, overCap) = await ResolveBulkRoleTargetAsync(plan!);
+            if (overCap)
+            {
+                _logger.LogInformation("Bulk role change preview end -- over the matched cap");
+                return new BulkRoleChangePreviewResponse { Errors = OverMatchedCapError() };
+            }
+
+            // Safe to mutate: these are documents loaded into memory and thrown away. Nothing on
+            // this path writes, which a collection diff in the E2E steps proves.
+            long affected = users.Count(user => ApplyRoleDelta(user, plan!.OrganizationId, plan.AddRoles, plan.RemoveRoles));
+
+            // Counted from the set actually evaluated rather than from CountDocuments, so the
+            // matched == affected + unchanged invariant holds even if the collection moves between
+            // the count and the pages.
+            long matched = users.Count;
+
+            _logger.LogInformation(
+                "Bulk role change preview end -- matched {Matched}, affected {Affected}",
+                matched,
+                affected);
+
+            return new BulkRoleChangePreviewResponse
+            {
+                IsSuccess = true,
+                MatchedCount = matched,
+                AffectedCount = affected,
+                UnchangedCount = matched - affected
+            };
+        }
+
+        public async Task<BulkRoleChangeSubmitResponse> SubmitBulkRoleChangeAsync(BulkRoleChangeRequest command)
+        {
+            _logger.LogInformation("Bulk role change submit start");
+
+            // Re-run rather than trust the preview: a console may submit without previewing, and the
+            // data can move between the two calls. Sharing one validator is what keeps the two
+            // endpoints' error strings identical.
+            var (errors, plan) = await ValidateBulkRoleChangeAsync(command);
+            if (errors is not null)
+            {
+                _logger.LogInformation("Bulk role change submit end -- Validation Error");
+                return new BulkRoleChangeSubmitResponse { Errors = errors };
+            }
+
+            var (users, overCap) = await ResolveBulkRoleTargetAsync(plan!);
+            if (overCap)
+            {
+                _logger.LogInformation("Bulk role change submit end -- over the matched cap");
+                return new BulkRoleChangeSubmitResponse { Errors = OverMatchedCapError() };
+            }
+
+            var userIds = users
+                .Select(u => u.ItemId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var batchId = $"b_{Guid.NewGuid():N}"[..10];
+            var tenantId = BlocksContext.GetContext()?.TenantId;
+            var requestedBy = BlocksContext.GetContext()?.UserId;
+            var submitter = _accessGrant?.CurrentCaller();
+            var parts = (userIds.Count + BulkRoleChunkSize - 1) / BulkRoleChunkSize;
+
+            try
+            {
+                for (var offset = 0; offset < userIds.Count; offset += BulkRoleChunkSize)
+                {
+                    var chunk = userIds.Skip(offset).Take(BulkRoleChunkSize).ToList();
+
+                    await _messageClient.SendToConsumerAsync(
+                        new ConsumerMessage<BulkUserRoleChangeEvent>
+                        {
+                            ConsumerName = IdpConstants.IamBulkRoleQueue,
+                            Payload = new BulkUserRoleChangeEvent
+                            {
+                                BatchId = batchId,
+                                OrganizationId = plan!.OrganizationId,
+                                TenantId = tenantId,
+                                AddRoles = plan.AddRoles,
+                                RemoveRoles = plan.RemoveRoles,
+                                UserIds = chunk,
+                                RequestedBy = requestedBy,
+                                RequestedByOrganizationId = submitter?.OrganizationId,
+                                RequestedBySystemCaller = submitter?.IsSystem,
+                                RequestedByClientId = submitter is { IsClient: true } ? submitter.ClientId : null,
+                                Part = offset / BulkRoleChunkSize + 1,
+                                Parts = parts
+                            }
+                        });
+                }
+            }
+            catch (Exception ex)
+            {
+                // The console must never show "submitted" for work that was never queued. Chunks
+                // already published are left to run -- they are legitimate work -- and this response
+                // deliberately does not claim otherwise.
+                _logger.LogError(
+                    ex,
+                    "Bulk role change submit end -- publishing failed for batch {BatchId}",
+                    batchId);
+
+                return new BulkRoleChangeSubmitResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "Queue", "The bulk role change could not be queued. Try again." }
+                    }
+                };
+            }
+
+            _logger.LogInformation(
+                "Bulk role change submit end -- batch {BatchId} queued for {Matched} users",
+                batchId,
+                userIds.Count);
+
+            return new BulkRoleChangeSubmitResponse
+            {
+                IsSuccess = true,
+                BatchId = batchId,
+                MatchedCount = userIds.Count
+            };
+        }
+
+        public async Task ApplyBulkRoleChangeAsync(BulkUserRoleChangeEvent command)
+        {
+            _logger.LogInformation(
+                "Bulk role change apply start -- batch {BatchId}, {Count} users",
+                command.BatchId,
+                command.UserIds.Count);
+
+            var applied = new List<string>();
+            var removedFrom = new List<string>();
+            var unchanged = 0;
+            var failed = 0;
+
+            // The submitter's power is re-read now, not trusted from submit time: roles and
+            // permissions can change while the batch waits in the queue.
+            var grantScope = await GetBulkSubmitterScopeAsync(command).ConfigureAwait(false);
+            var deltaAllowed = _accessGrant.AuthorizeScopeIfWired(grantScope, scope =>
+                AccessGrantRules.CheckRoleDelta(scope, command.AddRoles, command.RemoveRoles));
+
+            foreach (var userId in command.UserIds)
+            {
+                switch (await ApplyBulkRoleChangeToUserAsync(command, userId, grantScope, deltaAllowed).ConfigureAwait(false))
+                {
+                    case BulkUserOutcome.Applied:
+                        applied.Add(userId);
+                        break;
+                    case BulkUserOutcome.AppliedWithRemoval:
+                        applied.Add(userId);
+                        removedFrom.Add(userId);
+                        break;
+                    case BulkUserOutcome.Unchanged:
+                        unchanged++;
+                        break;
+                    default:
+                        failed++;
+                        break;
+                }
+            }
+
+            await _accessGrant.EndSessionsAfterRemovalIfWiredAsync(grantScope, removedFrom, "bulk_role_change").ConfigureAwait(false);
+
+            _logger.LogInformation("Bulk role change apply end -- batch {BatchId}", command.BatchId);
+
+            await NotifyBulkRoleChangeAsync(command, applied, unchanged, failed);
+        }
+
+        private enum BulkUserOutcome
+        {
+            Applied,
+            AppliedWithRemoval,
+            Unchanged,
+            Failed
+        }
+
+        /// <summary>
+        /// The submitter as the batch recorded it. A message queued before the submitter was
+        /// recorded reads as the system user, so it applies exactly as it did when it was queued.
+        /// A client submitter (no user) is rebuilt on the client path: its credential is re-read,
+        /// and an inactive, missing or other-organization client holds nothing.
+        /// </summary>
+        private async Task<GrantScope?> GetBulkSubmitterScopeAsync(BulkUserRoleChangeEvent command)
+        {
+            if (_accessGrant is null)
+            {
+                return null;
+            }
+
+            var isSystem = command.RequestedBySystemCaller != false;
+            var clientId = !isSystem && string.IsNullOrWhiteSpace(command.RequestedBy)
+                ? command.RequestedByClientId ?? string.Empty
+                : string.Empty;
+            var submitter = new GrantCaller(
+                command.RequestedBy ?? string.Empty,
+                command.OrganizationId,
+                isSystem,
+                clientId);
+            return await _accessGrant.GetScopeAsync(submitter).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// One user of a chunk. Per-user failures are logged and swallowed: rethrowing would have
+        /// the broker redeliver the whole chunk, re-scanning hundreds of healthy users for one bad id
+        /// and looping forever on a permanently failing one.
+        /// </summary>
+        private async Task<BulkUserOutcome> ApplyBulkRoleChangeToUserAsync(
+            BulkUserRoleChangeEvent command,
+            string userId,
+            GrantScope? grantScope,
+            bool deltaAllowed)
+        {
+            try
+            {
+                var user = await _userRepository.GetUserByIdAsync(userId);
+                if (user is null)
+                {
+                    _logger.LogWarning(
+                        "Bulk role change -- batch {BatchId}, user {UserId}: failed (not found)",
+                        command.BatchId,
+                        userId);
+                    return BulkUserOutcome.Failed;
+                }
+
+                // R3 per user, against the submitter's power: a user who holds more than the
+                // submitter is left alone, as the single-user endpoint would leave them.
+                if (!deltaAllowed || !_accessGrant.AuthorizeScopeIfWired(grantScope, scope =>
+                        AccessGrantRules.CheckManageUser(scope, user, requireMembership: false)))
+                {
+                    return BulkUserOutcome.Failed;
+                }
+
+                var removesRole = AccessGrantRules.GrantsIn(user.Roles, command.OrganizationId)
+                    .Any(role => command.RemoveRoles.Contains(role, StringComparer.Ordinal));
+
+                if (!ApplyRoleDelta(user, command.OrganizationId, command.AddRoles, command.RemoveRoles))
+                {
+                    _logger.LogInformation(
+                        "Bulk role change -- batch {BatchId}, user {UserId}: no-op",
+                        command.BatchId,
+                        userId);
+                    return BulkUserOutcome.Unchanged;
+                }
+
+                user.LastUpdatedDate = DateTime.UtcNow;
+                user.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? user.ItemId;
+
+                if (!await _userRepository.UpdateUserAsync(user))
+                {
+                    _logger.LogWarning(
+                        "Bulk role change -- batch {BatchId}, user {UserId}: failed (update rejected)",
+                        command.BatchId,
+                        userId);
+                    return BulkUserOutcome.Failed;
+                }
+
+                _logger.LogInformation(
+                    "Bulk role change -- batch {BatchId}, user {UserId}: applied",
+                    command.BatchId,
+                    userId);
+                return removesRole ? BulkUserOutcome.AppliedWithRemoval : BulkUserOutcome.Applied;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Bulk role change -- batch {BatchId}, user {UserId}: failed",
+                    command.BatchId,
+                    userId);
+                return BulkUserOutcome.Failed;
+            }
+        }
+
+        /// <summary>
+        /// One call for every user whose roles this chunk changed, then one "finished" call to the
+        /// submitter with this chunk's counts. Best effort: never fails the chunk.
+        /// </summary>
+        private async Task NotifyBulkRoleChangeAsync(BulkUserRoleChangeEvent command, List<string> applied, int unchanged, int failed)
+        {
+            var tenantId = !string.IsNullOrWhiteSpace(command.TenantId) ? command.TenantId : BlocksContext.GetContext()?.TenantId;
+
+            if (applied.Count > 0)
+            {
+                await _notificationSender.TrySendAsync(new BuiltInNotification(
+                    tenantId,
+                    BuiltInNotificationNames.UserRolesChanged,
+                    BuiltInNotificationSender.Recipients(applied.Where(id => !string.Equals(id, command.RequestedBy, StringComparison.Ordinal))),
+                    BuiltInNotificationSender.Payload(
+                        BuiltInNotificationNames.UserRolesChanged,
+                        "Your roles changed",
+                        "An admin changed your roles.",
+                        fields: new Dictionary<string, object?>
+                        {
+                            [OrganizationIdKey] = command.OrganizationId,
+                            ["change"] = "updated",
+                            ["batchId"] = command.BatchId
+                        }),
+                    command.OrganizationId));
+            }
+
+            if (string.IsNullOrWhiteSpace(command.RequestedBy))
+            {
+                _logger.LogDebug("Bulk role change -- batch {BatchId}: no submitter, finished notification skipped", command.BatchId);
+                return;
+            }
+
+            var parts = command.Parts > 0 ? command.Parts : 1;
+            var part = command.Part > 0 ? command.Part : 1;
+            await _notificationSender.TrySendAsync(new BuiltInNotification(
+                tenantId,
+                BuiltInNotificationNames.BulkRoleChangeFinished,
+                BuiltInNotificationSender.Recipients(command.RequestedBy),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.BulkRoleChangeFinished,
+                    "Bulk role change finished",
+                    failed == 0
+                        ? $"Part {part} of {parts}: {applied.Count} changed, {unchanged} unchanged."
+                        : $"Part {part} of {parts}: {applied.Count} changed, {unchanged} unchanged, {failed} failed.",
+                    isSuccess: failed == 0,
+                    fields: new Dictionary<string, object?>
+                    {
+                        ["batchId"] = command.BatchId,
+                        [OrganizationIdKey] = command.OrganizationId,
+                        ["part"] = part,
+                        ["parts"] = parts,
+                        ["applied"] = applied.Count,
+                        ["unchanged"] = unchanged,
+                        ["failed"] = failed
+                    }),
+                command.OrganizationId));
+        }
+
+        /// <summary>
+        /// Tells a user an admin changed their access in one organization. Not sent when the
+        /// actor is the user. Best effort.
+        /// </summary>
+        private Task NotifyRolesChangedAsync(string userId, string? actorUserId, string organizationId, string change)
+        {
+            if (string.Equals(userId, actorUserId, StringComparison.Ordinal))
+            {
+                return Task.CompletedTask;
+            }
+
+            return _notificationSender.TrySendAsync(new BuiltInNotification(
+                BlocksContext.GetContext()?.TenantId,
+                BuiltInNotificationNames.UserRolesChanged,
+                BuiltInNotificationSender.Recipients(userId),
+                BuiltInNotificationSender.Payload(
+                    BuiltInNotificationNames.UserRolesChanged,
+                    "Your roles changed",
+                    change == "revoked"
+                        ? "An admin removed your access to an organization."
+                        : "An admin changed your roles.",
+                    fields: new Dictionary<string, object?>
+                    {
+                        ["userId"] = userId,
+                        [OrganizationIdKey] = organizationId,
+                        ["change"] = change
+                    }),
+                organizationId));
+        }
+
+        /// <summary>
+        /// A validated request, with the lists normalised once so the preview and the submit path
+        /// cannot normalise them differently.
+        /// </summary>
+        private sealed record BulkRoleChangePlan(
+            string OrganizationId,
+            List<string> AddRoles,
+            List<string> RemoveRoles,
+            BulkRoleTarget Target);
+
+        private static Dictionary<string, string> OverMatchedCapError() =>
+            new()
+            {
+                { "Matched", $"This filter matches more than {MaxBulkMatchedUsers} users. Narrow it and try again." }
+            };
+
+        /// <summary>
+        /// The single validator both bulk endpoints run. Shared rather than duplicated so the submit
+        /// response can never disagree with the preview the operator approved.
+        /// </summary>
+        private async Task<(IDictionary<string, string>? Errors, BulkRoleChangePlan? Plan)> ValidateBulkRoleChangeAsync(
+            BulkRoleChangeRequest command)
+        {
+            var organizationId = command.OrganizationId;
+
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                return (BulkError(nameof(command.OrganizationId), "OrganizationId is required"), null);
+            }
+
+            // Reused verbatim from the single-user path, so the cross-organization rule cannot drift
+            // between the two.
+            var callerGuard = ValidateCallerMayWriteToOrganization(organizationId);
+            if (callerGuard is not null)
+            {
+                return (callerGuard.Errors, null);
+            }
+
+            // Blank entries are dropped rather than rejected: the contract has no error string for
+            // them, and an empty string is not a role anyone can hold. If dropping empties both
+            // lists, the "at least one role" rule below reports it.
+            var addRoles = Clean(command.AddRoles);
+            var removeRoles = Clean(command.RemoveRoles);
+
+            var rolesError = ValidateBulkRoleLists(addRoles, removeRoles);
+            if (rolesError is not null)
+            {
+                return (rolesError, null);
+            }
+
+            // R1 on every role the batch adds or removes, with the R11 warning for the added ones.
+            // Each user is checked again (R3) by the worker that applies the change.
+            var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
+            await _accessGrant.WarnOnPolicyPowerIfWiredAsync(grantScope, addRoles).ConfigureAwait(false);
+            if (!_accessGrant.AuthorizeScopeIfWired(grantScope, scope =>
+                    AccessGrantRules.CheckRoleDelta(scope, addRoles, removeRoles)))
+            {
+                return (AccessGrantErrors.Create(), null);
+            }
+
+            var target = command.Target;
+            var userIds = Clean(target?.UserIds);
+            var hasUserIds = userIds.Count > 0;
+            var hasFilter = target?.Filter is not null;
+
+            var targetError = ValidateBulkTarget(userIds, hasUserIds, hasFilter);
+            if (targetError is not null)
+            {
+                return (targetError, null);
+            }
+
+            // "default" is the tenant-wide organization and has no Organization document, exactly as
+            // the single-user path already assumes.
+            if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal)
+                && _resourceRepository is not null)
+            {
+                var organization = await _resourceRepository.GetOrganizationById(organizationId);
+                if (organization is null)
+                {
+                    return (BulkError(nameof(command.OrganizationId), "Organization not found"), null);
+                }
+            }
+
+            var plan = new BulkRoleChangePlan(
+                organizationId,
+                addRoles,
+                removeRoles,
+                new BulkRoleTarget { UserIds = hasUserIds ? userIds : null, Filter = target!.Filter });
+
+            return (null, plan);
+
+            static List<string> Clean(List<string>? values) =>
+                values is null
+                    ? new List<string>()
+                    : values.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+        }
+
+        private static Dictionary<string, string> BulkError(string field, string message) =>
+            new() { { field, message } };
+
+        private static bool HasDuplicates(List<string> values) =>
+            values.Distinct(StringComparer.Ordinal).Count() != values.Count;
+
+        private static Dictionary<string, string>? ValidateBulkRoleLists(List<string> addRoles, List<string> removeRoles)
+        {
+            if (addRoles.Count == 0 && removeRoles.Count == 0)
+            {
+                return BulkError(RolesKey, "At least one role to add or remove is required");
+            }
+
+            if (addRoles.Count > MaxRolesPerBulkRequest || removeRoles.Count > MaxRolesPerBulkRequest)
+            {
+                return BulkError(RolesKey, $"A maximum of {MaxRolesPerBulkRequest} roles is allowed per request");
+            }
+
+            if (HasDuplicates(addRoles) || HasDuplicates(removeRoles))
+            {
+                return BulkError(RolesKey, "Duplicate role in the same request");
+            }
+
+            if (addRoles.Intersect(removeRoles, StringComparer.Ordinal).Any())
+            {
+                return BulkError(RolesKey, "The same role cannot be both added and removed");
+            }
+
+            return null;
+        }
+
+        private static Dictionary<string, string>? ValidateBulkTarget(List<string> userIds, bool hasUserIds, bool hasFilter)
+        {
+            if (hasUserIds == hasFilter)
+            {
+                return BulkError("Target", "Exactly one of userIds or filter is required");
+            }
+
+            if (hasUserIds)
+            {
+                if (userIds.Count > MaxUserIdsPerBulkRequest)
+                {
+                    return BulkError("Target", $"A maximum of {MaxUserIdsPerBulkRequest} userIds is allowed per request");
+                }
+
+                if (HasDuplicates(userIds))
+                {
+                    return BulkError("Target", "Duplicate userId in the same request");
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Walk the matched set through the same filter/scope path the user list uses, so the console
+        /// and the mutation can never disagree about who matched.
+        /// </summary>
+        /// <returns>
+        /// Every matched user, and whether the match exceeded <see cref="MaxBulkMatchedUsers"/> -- in
+        /// which case the list is deliberately empty, because partial counts are worse than none.
+        /// </returns>
+        private async Task<(List<User> Users, bool OverCap)> ResolveBulkRoleTargetAsync(BulkRoleChangePlan plan)
+        {
+            // The requested organization is passed explicitly rather than taken from the filter body,
+            // so a filter can never widen the scope beyond the one organization the caller named and
+            // was authorised for.
+            var scope = UserListOrganizationScope.Resolve(
+                BlocksContext.GetContext()?.OrganizationId,
+                [plan.OrganizationId]);
+
+            if (scope.Kind == UserListScopeKind.Denied)
+            {
+                // A token carrying no organization is answered without touching the database, the way
+                // the user list already answers it.
+                return (new List<User>(), false);
+            }
+
+            var filter = plan.Target.Filter ?? new GetUsersFilter { UserIds = plan.Target.UserIds! };
+
+            var users = new List<User>();
+            long totalCount = 0;
+
+            var page = 0;
+            while (true)
+            {
+                var query = new GetUsersRequest
+                {
+                    Filter = filter,
+                    Page = page,
+                    PageSize = BulkResolutionPageSize
+                };
+
+                var (data, count) = await _userRepository.GetUsersAsync<User, GetUsersRequest>(query, scope);
+
+                if (page == 0)
+                {
+                    totalCount = count;
+                    if (totalCount > MaxBulkMatchedUsers)
+                    {
+                        return (new List<User>(), true);
+                    }
+                }
+
+                var items = data?.ToList() ?? new List<User>();
+                users.AddRange(items);
+
+                if (items.Count < BulkResolutionPageSize || users.Count >= totalCount)
+                {
+                    break;
+                }
+
+                page++;
+            }
+
+            return (users, false);
+        }
+
+        #endregion
 
         private async Task<bool> SendPostEventAsync(User user, string mailPurpose)
         {

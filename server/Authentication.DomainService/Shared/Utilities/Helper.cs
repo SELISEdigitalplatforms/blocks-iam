@@ -1,6 +1,7 @@
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using HandlebarsDotNet;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Utilities
 {

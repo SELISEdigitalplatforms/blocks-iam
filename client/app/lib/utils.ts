@@ -54,19 +54,18 @@ export type DebouncedFunction<T extends (...args: never[]) => void> = T & {
 
 export function debounce<T extends (...args: never[]) => void>(fn: T, ms = 300): DebouncedFunction<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  let lastThis: unknown;
-  let lastArgs: Parameters<T> | null = null;
+  // The latest call, bound to its own `this` and arguments; null when nothing is pending.
+  let pendingCall: (() => void) | null = null;
 
   const flushPending = () => {
-    if (lastArgs === null) return;
-    const args = lastArgs;
-    lastArgs = null;
-    fn.apply(lastThis, args);
+    if (pendingCall === null) return;
+    const call = pendingCall;
+    pendingCall = null;
+    call();
   };
 
   const debounced = function (this: unknown, ...args: Parameters<T>) {
-    lastThis = this;
-    lastArgs = args;
+    pendingCall = () => fn.apply(this, args);
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => {
       timeoutId = null;
@@ -79,11 +78,11 @@ export function debounce<T extends (...args: never[]) => void>(fn: T, ms = 300):
       clearTimeout(timeoutId);
       timeoutId = null;
     }
-    lastArgs = null;
+    pendingCall = null;
   };
 
   debounced.flush = () => {
-    if (timeoutId === null || lastArgs === null) return;
+    if (timeoutId === null || pendingCall === null) return;
     clearTimeout(timeoutId);
     timeoutId = null;
     flushPending();
@@ -190,4 +189,77 @@ export function formatSize(
   }
 
   return `${parseFloat(bytes.toFixed(decimals))} ${UNITS[unitIndex]}`;
+}
+
+const APP_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*$/;
+const FORBIDDEN_APP_SCHEMES = new Set([
+  "http",
+  "https",
+  "javascript",
+  "data",
+  "file",
+  "vbscript",
+  "blob",
+  "about",
+]);
+
+/**
+ * Whether `url` is a native-app redirect URI (RFC 8252 §7.1 private-use scheme), using the same
+ * rule the server applies when the client is registered: an absolute URI whose scheme is a
+ * reverse domain name (contains a dot), is not a web or script-capable scheme, and carries no
+ * fragment. The scheme is read from the raw string, before any URL normalisation.
+ */
+export function isAppRedirectUrl(url: string): boolean {
+  if (typeof url !== "string" || !url.trim()) return false;
+  if (url.includes("#")) return false;
+  const colon = url.indexOf(":");
+  if (colon <= 0) return false;
+  const scheme = url.slice(0, colon);
+  if (!APP_SCHEME_PATTERN.test(scheme) || !scheme.includes(".")) return false;
+  if (FORBIDDEN_APP_SCHEMES.has(scheme.toLowerCase())) return false;
+  try {
+    new URL(url);
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Full-page navigation away from the SPA to a server-provided URL (for example an OIDC
+ * `redirect_uri` the backend has already validated against the client). Only http(s) URLs and
+ * native-app redirect URIs (see `isAppRedirectUrl`) are followed, so a `javascript:` or `data:`
+ * value can never run in this origin. Returns false, without navigating, when the URL is refused.
+ */
+export function navigateToUrl(url: string): boolean {
+  if (isAppRedirectUrl(url)) {
+    globalThis.location.href = url;
+    return true;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url, globalThis.location.origin);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+  globalThis.location.href = url;
+  return true;
+}
+
+/**
+ * Full-page navigation to a URL that must stay on this origin, such as a `returnUrl` read from
+ * the query string. Anything pointing at another origin (or not parseable) is refused, so the
+ * value cannot be used as an open redirect. Returns false, without navigating, when refused.
+ */
+export function navigateToSameOrigin(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url, globalThis.location.origin);
+  } catch {
+    return false;
+  }
+  if (parsed.origin !== globalThis.location.origin) return false;
+  globalThis.location.href = `${globalThis.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`;
+  return true;
 }

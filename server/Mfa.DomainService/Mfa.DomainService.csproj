@@ -9,7 +9,6 @@
 	  <PackageReference Include="FluentValidation" />
 	  <PackageReference Include="Otp.NET"  />
 	  <PackageReference Include="QRCoder" />
-	  <PackageReference Include="SeliseBlocks.MailDriver.OS" />
   </ItemGroup>
 
   <ItemGroup>

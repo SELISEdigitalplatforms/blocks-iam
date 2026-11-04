@@ -33,7 +33,9 @@ namespace XUnitTest.IamTests.Shared
                 "IUserManagementQueryService",
                 "IResourceQueryService",
                 "IAccountService",
-                "IIamConfigurationRepository"
+                "IIamConfigurationRepository",
+                // AccountService now requires it.
+                "ISignupOrganizationResolver"
             })
             {
                 services.Should().Contain(

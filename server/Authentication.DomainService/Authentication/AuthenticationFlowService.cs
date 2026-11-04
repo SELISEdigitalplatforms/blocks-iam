@@ -1,4 +1,5 @@
-using Authentication.DomainService.Dtos;
+﻿using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Authentication.LoginPolicies;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
@@ -16,6 +17,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using System.Security.Claims;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -30,6 +32,8 @@ namespace Authentication.DomainService.Authentication
         private readonly ILogger<AuthenticationFlowService> _logger;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IRefreshSessionResolver _refreshSessionResolver;
+        private readonly IUnknownUserLoginGuard _unknownUserLoginGuard;
+        private readonly ILoginPolicyService _loginPolicy;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
@@ -40,7 +44,9 @@ namespace Authentication.DomainService.Authentication
             OidcLoginAuditWriter auditWriter,
             ILogger<AuthenticationFlowService> logger,
             IRefreshTokenRepository refreshTokenRepository,
-            IRefreshSessionResolver refreshSessionResolver)
+            IRefreshSessionResolver refreshSessionResolver,
+            IUnknownUserLoginGuard unknownUserLoginGuard,
+            ILoginPolicyService loginPolicy)
         {
             _authenticationRepository = authenticationRepository;
             _authStrategy = authStrategy;
@@ -51,6 +57,8 @@ namespace Authentication.DomainService.Authentication
             _logger = logger;
             _refreshTokenRepository = refreshTokenRepository;
             _refreshSessionResolver = refreshSessionResolver;
+            _unknownUserLoginGuard = unknownUserLoginGuard;
+            _loginPolicy = loginPolicy;
         }
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
@@ -63,6 +71,13 @@ namespace Authentication.DomainService.Authentication
                     StatusCode = StatusCodes.Status400BadRequest,
                     Error = OAuthError.AuthConfigMissing
                 };
+            }
+
+            // Checked before MFA completion too: a method turned off between the two steps stops here.
+            var policy = await _loginPolicy.CheckAsync(LoginChannel.Embedded, LoginMethods.Password);
+            if (!policy.IsAllowed)
+            {
+                return LoginNotAllowed(policy);
             }
 
             // MFA verification is identified solely by the mfa_id/mfa_code, and the account is
@@ -83,11 +98,17 @@ namespace Authentication.DomainService.Authentication
 
             var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
 
-            if (user != null
-                && user.LockoutUntilUtc.HasValue
-                && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            // Only an account that can sign in keeps its lock and failure count on the user. Any
+            // other name (unknown, pending, disabled) reads them from the unknown-user guard, so
+            // the lock and captcha answers come at the same thresholds whether it exists or not.
+            var (usable, failedLoginCount, locked) = await ResolveEmbeddedLoginLockStateAsync(user, request.Username);
+            if (locked)
             {
-                await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "embedded_login_account_locked");
+                if (usable)
+                {
+                    await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "embedded_login_account_locked");
+                }
+
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status423Locked,
@@ -96,7 +117,7 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
+            var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(failedLoginCount, request.CaptchaCode);
             if (captchaValidationResult != null)
             {
                 if (user != null
@@ -120,6 +141,28 @@ namespace Authentication.DomainService.Authentication
 
             var tokenResponse = await _authStrategy.AuthenticatePasswordAsync(tokenRequest, configuration);
 
+            await WriteEmbeddedLoginOutcomeAuditAsync(user, tokenResponse, httpRequest);
+
+            return new AuthenticationFlowResult
+            {
+                TokenResponse = tokenResponse
+            };
+        }
+
+        private async Task<(bool Usable, int FailedLoginCount, bool Locked)> ResolveEmbeddedLoginLockStateAsync(User? user, string username)
+        {
+            var usable = user is { Active: true, IsVerified: true };
+            if (usable)
+            {
+                return (true, user!.FailedLoginCount, user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow);
+            }
+
+            var state = await _unknownUserLoginGuard.GetStateAsync(username);
+            return (false, state.FailedCount, state.Locked);
+        }
+
+        private async Task WriteEmbeddedLoginOutcomeAuditAsync(User? user, TokenResponse tokenResponse, HttpRequest httpRequest)
+        {
             if (user != null && !string.IsNullOrWhiteSpace(tokenResponse.Error)
                 && string.Equals(tokenResponse.Error, OAuthError.InValidUseNamePassword, StringComparison.OrdinalIgnoreCase))
             {
@@ -129,11 +172,6 @@ namespace Authentication.DomainService.Authentication
             {
                 await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.LoginSuccess, tokenResponse.ErrorDescription);
             }
-
-            return new AuthenticationFlowResult
-            {
-                TokenResponse = tokenResponse
-            };
         }
 
         public async Task<AuthenticationFlowResult> ExecuteSocialLoginAsync(SocialLoginRequest request, HttpRequest httpRequest)
@@ -146,6 +184,12 @@ namespace Authentication.DomainService.Authentication
                     StatusCode = StatusCodes.Status400BadRequest,
                     Error = OAuthError.AuthConfigMissing
                 };
+            }
+
+            var policy = await _loginPolicy.CheckAsync(LoginChannel.Embedded, LoginMethods.Social);
+            if (!policy.IsAllowed)
+            {
+                return LoginNotAllowed(policy);
             }
 
             if (IsSocialMfaVerificationRequest(request))
@@ -202,6 +246,13 @@ namespace Authentication.DomainService.Authentication
             };
         }
 
+        private static AuthenticationFlowResult LoginNotAllowed(LoginPolicyDecision decision) => new()
+        {
+            StatusCode = StatusCodes.Status403Forbidden,
+            Error = LoginPolicyRules.Error,
+            ErrorDescription = decision.Message
+        };
+
         private static bool IsEmbeddedMfaVerificationRequest(EmbeddedLoginRequest request)
         {
             return !string.IsNullOrWhiteSpace(request.MfaId)
@@ -252,9 +303,9 @@ namespace Authentication.DomainService.Authentication
             };
         }
 
-        private async Task<AuthenticationFlowResult?> ValidateCaptchaIfRequiredAsync(User? user, string? captchaCode)
+        private async Task<AuthenticationFlowResult?> ValidateCaptchaIfRequiredAsync(int failedLoginCount, string? captchaCode)
         {
-            if (!CaptchaGate.IsCaptchaRequired(user))
+            if (!CaptchaGate.IsCaptchaRequired(failedLoginCount))
             {
                 return null;
             }
@@ -356,14 +407,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var user = await _authenticationRepository.GetUserByIdAsync(userId);
-            var hasOrganizationAccess = user != null
-                && (
-                    user.OrganizationIds.Contains(request.OrganizationId)
-                    || user.Roles.ContainsKey(request.OrganizationId)
-                    || user.Permissions.ContainsKey(request.OrganizationId)
-                );
-
-            if (!hasOrganizationAccess)
+            if (!HasOrganizationAccess(user, request.OrganizationId))
             {
                 return new AuthenticationFlowResult
                 {
@@ -430,10 +474,29 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
+            // Switching organization is a rotation of the same lineage: a deactivated or suspended
+            // account is refused exactly as a refresh is, and the lineage is revoked.
+            if (BlockedUserRefreshGuard.IsBlocked(user!))
+            {
+                _logger.LogWarning(
+                    "Switch organization refused for a blocked account. reason=user_inactive userId={UserId} tenantId={TenantId}",
+                    userId,
+                    tenantId);
+                await BlockedUserRefreshGuard.RevokeLineageAsync(_refreshTokenRepository, refreshCache, _logger);
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status401Unauthorized,
+                    Error = OAuthError.SessionExpired
+                };
+            }
+
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.SwitchOrganization,
                 OrganizationId = request.OrganizationId,
+                // The lineage keeps its OIDC client across the switch, as /oidc/token does. Without it the
+                // successor was stored client-less and the next /oidc/token refresh failed invalid_client.
+                ClientId = refreshCache.ClientId,
                 RefreshToken = refreshToken,
                 Request = httpRequest
             };
@@ -445,9 +508,29 @@ namespace Authentication.DomainService.Authentication
             // oidc authorize endpoint — but switch-org, whose entire purpose is choosing an
             // organization, did not: a logout and login silently reverted the user to whichever
             // organization they last signed in through.
+            await PersistLastUsedOrganizationAsync(user!, request.OrganizationId, tokenResponse);
+
+            return new AuthenticationFlowResult
+            {
+                TokenResponse = tokenResponse
+            };
+        }
+
+        private static bool HasOrganizationAccess(User? user, string organizationId)
+        {
+            return user != null
+                && (
+                    user.OrganizationIds.Contains(organizationId)
+                    || user.Roles.ContainsKey(organizationId)
+                    || user.Permissions.ContainsKey(organizationId)
+                );
+        }
+
+        private async Task PersistLastUsedOrganizationAsync(User user, string organizationId, TokenResponse? tokenResponse)
+        {
             if (tokenResponse != null
                 && string.IsNullOrWhiteSpace(tokenResponse.Error)
-                && !string.Equals(user!.LastUsedOrganizationId, request.OrganizationId, StringComparison.OrdinalIgnoreCase))
+                && !string.Equals(user.LastUsedOrganizationId, organizationId, StringComparison.OrdinalIgnoreCase))
             {
                 try
                 {
@@ -455,7 +538,7 @@ namespace Authentication.DomainService.Authentication
                         user.ItemId,
                         new Dictionary<string, object>
                         {
-                            { nameof(User.LastUsedOrganizationId), request.OrganizationId },
+                            { nameof(User.LastUsedOrganizationId), organizationId },
                             { nameof(User.LastUpdatedDate), DateTime.UtcNow },
                             { nameof(User.LastUpdatedBy), user.ItemId }
                         });
@@ -468,14 +551,25 @@ namespace Authentication.DomainService.Authentication
                     // the old organization at the next login, which is the worse of the two outcomes.
                     _logger.LogWarning(ex,
                         "Failed to persist last used organization {OrganizationId} for user {UserId} after switch",
-                        request.OrganizationId, user.ItemId);
+                        organizationId, user.ItemId);
                 }
             }
+        }
 
-            return new AuthenticationFlowResult
+        private string? ResolvePresentedRefreshToken(RefreshRequest request, HttpRequest httpRequest)
+        {
+            // Order: body refresh_token, then the session cookie, then the client's camelCase field.
+            // The last one only fills the case that otherwise answers "Refresh token is required"
+            // (a caller with no cookie), so every request that resolved a token before resolves the same one.
+            var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
+                ? _authenticationService.CookieToken(httpRequest)
+                : request.RefreshToken;
+            if (string.IsNullOrWhiteSpace(refreshToken))
             {
-                TokenResponse = tokenResponse
-            };
+                refreshToken = request.ClientRefreshToken;
+            }
+
+            return refreshToken;
         }
 
         public async Task<IActionResult> ExecuteRefreshAsync(RefreshRequest request, ClaimsPrincipal principal, HttpRequest httpRequest, HttpResponse httpResponse)
@@ -486,10 +580,7 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = OAuthError.AuthConfigMissing });
             }
 
-            var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
-                ? _authenticationService.CookieToken(httpRequest)
-                : request.RefreshToken;
-
+            var refreshToken = ResolvePresentedRefreshToken(request, httpRequest);
             if (string.IsNullOrWhiteSpace(refreshToken))
             {
                 return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is required" });
@@ -498,7 +589,14 @@ namespace Authentication.DomainService.Authentication
             // One shared check decides validity: unrevoked, inside the sliding window and inside the
             // absolute cap. A cache miss is not evidence of replay, and a token rotated away moments ago
             // resolves to its successor rather than failing.
-            var tokenCache = await _refreshSessionResolver.TryResolveRefreshSessionAsync(refreshToken, configuration);
+            var resolution = await _refreshSessionResolver.ResolveRefreshSessionAsync(refreshToken, configuration, followImpersonationTransitions: false);
+            var tokenCache = resolution.Session;
+
+            if (resolution.SessionChanged)
+            {
+                // Not cleared: the cookie may already hold the token the impersonation change issued.
+                return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = OAuthError.SessionChanged });
+            }
 
             if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
             {
@@ -511,6 +609,26 @@ namespace Authentication.DomainService.Authentication
             var graceReplayTokenId = string.Equals(tokenCache.RefreshToken, refreshToken, StringComparison.Ordinal)
                 ? null
                 : tokenCache.RefreshToken;
+
+            // This endpoint mints a plain, non-impersonated pair: nothing below carries IsImpersonation,
+            // so continuing here would silently rotate an impersonated session back to its root tenant and
+            // overwrite the browser's cookies with root-scoped ones -- an HTTP 200 the caller cannot tell
+            // apart from a correct refresh. An impersonated lineage rotates only through /api/oidc/token,
+            // which restores the impersonation as part of the same rotation.
+            if (tokenCache.Impersonated)
+            {
+                _logger.LogWarning(
+                    "Impersonated refresh rejected on the non-impersonating refresh endpoint. reason=impersonated_session_wrong_endpoint userId={UserId} tenantId={TenantId} impersonationId={ImpersonationId}",
+                    tokenCache.UserId,
+                    tokenCache.TenantId,
+                    tokenCache.ImpersonationId);
+
+                return new BadRequestObjectResult(new
+                {
+                    error = OAuthError.InvalidRefreshToken,
+                    error_description = "An impersonated session must be refreshed through the OIDC token endpoint"
+                });
+            }
 
             var currentTenantId = BlocksContext.GetContext()?.TenantId;
 
@@ -525,22 +643,32 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
             }
 
-            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            // A lock stops new sign-ins (password guessing), not sessions that already exist: otherwise
+            // anyone who knows an email could sign that user out everywhere with a few wrong passwords.
+
+            // A deactivated or suspended account must not mint new tokens from a refresh token it
+            // obtained while still active (same guard as /oidc/token).
+            if (BlockedUserRefreshGuard.IsBlocked(user))
             {
-                return new ObjectResult(new
-                {
-                    error = OAuthError.AccountLocked,
-                    error_description = "Account is temporarily locked due to failed authentication attempts"
-                })
-                {
-                    StatusCode = StatusCodes.Status423Locked
-                };
+                _logger.LogWarning(
+                    "Refresh refused for a blocked account. reason=user_inactive userId={UserId} tenantId={TenantId}",
+                    tokenCache.UserId,
+                    tokenCache.TenantId);
+                await BlockedUserRefreshGuard.RevokeLineageAsync(_refreshTokenRepository, tokenCache, _logger);
+                ClearSessionCookies(httpRequest, httpResponse);
+                return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = BlockedUserRefreshGuard.ErrorDescription });
             }
 
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.RefreshToken,
-                OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
+                // A hint, re-resolved against current membership at mint, as on /oidc/token. A blank
+                // stays blank: collapsing it to "default" would move a lineage that lost its
+                // organization into the tenant-wide scope for any user who holds "default", now that
+                // a requested "default" is honoured for its members.
+                OrganizationId = tokenCache.OrganizationId ?? string.Empty,
+                // Keep the lineage's OIDC client on the successor (empty stays empty: nothing is repaired).
+                ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,
                 Request = httpRequest,
                 GraceReplayTokenId = graceReplayTokenId,
@@ -551,33 +679,44 @@ namespace Authentication.DomainService.Authentication
 
             if (!string.IsNullOrWhiteSpace(response.Error))
             {
-                var statusCode = response.StatusCode > 0 ? response.StatusCode : StatusCodes.Status400BadRequest;
-                return new ObjectResult(new
-                {
-                    error = response.Error,
-                    error_description = response.ErrorDescription,
-                    redirect_url = response.SsoUserRedirectUrl
-                })
-                {
-                    StatusCode = statusCode
-                };
+                return BuildRefreshErrorResult(response);
             }
 
             var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
             var tenant = await _tokenRefresher.GetTenantByIDAsync(tenantId);
             var (domain, _, _) = DomainResolver.ResolveDomain(tenant, httpRequest);
-            AppendCookies(response, httpResponse, domain);
 
-            return new OkObjectResult(new
+            // Same rule as login: tokens go in cookies or in the body, never both. A client that opted
+            // out of cookies, or a caller with no app domain (CLI, server), gets them in the body.
+            var cookiesSet = await UsesTokensCookieAsync(tokenCache.ClientId)
+                && AppendCookies(response, httpResponse, domain);
+
+            return new OkObjectResult(TokenResponsePayload.Build(response, cookiesSet));
+        }
+
+        private async Task<bool> UsesTokensCookieAsync(string? clientId)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
             {
-                access_token = response.AccessToken,
-                refresh_token = response.RefreshToken,
-                token_type = response.TokenType,
-                expires_in = response.ExpiresIn,
-                scope = response.Scope,
-                id_token = response.IdToken,
-                cookie_set = true
-            });
+                return true;
+            }
+
+            var registration = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
+            return registration?.UseTokensCookie ?? true;
+        }
+
+        private static ObjectResult BuildRefreshErrorResult(TokenResponse response)
+        {
+            var statusCode = response.StatusCode > 0 ? response.StatusCode : StatusCodes.Status400BadRequest;
+            return new ObjectResult(new
+            {
+                error = response.Error,
+                error_description = response.ErrorDescription,
+                redirect_url = response.SsoUserRedirectUrl
+            })
+            {
+                StatusCode = statusCode
+            };
         }
 
         /// <summary>
@@ -606,7 +745,7 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
+        private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string? domain)
         {
             return CookieHelper.AppendCookies(response, httpResponse, domain);
         }

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Authentication.DomainService.Shared.ResponseModel;
 using Authentication.DomainService.Shared.RequestModel;
 using Iam.DomainService.Dtos;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Services
 {
@@ -20,11 +21,11 @@ namespace Authentication.DomainService.Services
         Task<OidcUiTemplate?> GetOidcTemplateForManagementAsync();
         Task<SaveOidcUiTemplateResponse> SaveOidcUiTemplateRequestAsync(SaveOidcUiTemplateRequest request);
         Task<BaseResponse> DeleteOidcClientAsync(DeleteOIDCClientRequest request);
-        Task<BaseResponse> GenerateUserCodeByClientAsync(GenerateUserCodeRequest request);
         Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId);
         Task<GetOIDCClientsResponse> GetOidcClientsAsync();
-        Task<BaseResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request);
+        Task<SaveClientCredentialResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request);
         Task<BaseResponse> DeleteClientCredentialAsync(DeleteClientCredentialRequest request);
+        Task<RotateClientCredentialSecretResponse> RotateClientCredentialSecretAsync(string itemId);
         Task<List<ClientCredential>> GetClientCredentialsAsync(GetAllClientCredentialsRequest request);
         Task<BaseResponse> CreateIdentityProviderAsync(SaveIdentityProviderRequest request);
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider);

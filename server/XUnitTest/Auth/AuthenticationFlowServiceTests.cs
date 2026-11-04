@@ -1,3 +1,5 @@
+﻿using Authentication.DomainService.Authentication.LoginPolicies;
+using XUnitTest.TestSupport;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Dtos;
@@ -21,6 +23,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using System.Security.Claims;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {
@@ -35,6 +38,8 @@ namespace XUnitTest.Auth
         private readonly Mock<IRefreshSessionResolver> _sessionResolver = new();
         private readonly Mock<IAuthenticationDomainService> _authDomain = new();
         private readonly Mock<IUserActivityDispatcher> _activity = new();
+        private readonly Mock<IUnknownUserLoginGuard> _guard = XUnitTest.TestSupport.UnknownLoginGuardStub.Create();
+        private FakeLoginPolicy LoginPolicy { get; } = new();
         private readonly OidcLoginAuditWriter _auditWriter;
 
         private const string TenantId = "tenant-1";
@@ -51,6 +56,13 @@ namespace XUnitTest.Auth
 
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
+
+            // /auth/refresh asks the resolver through ResolveRefreshSessionAsync. Routing it through the
+            // TryResolveRefreshSessionAsync setups lets each test state its session once.
+            _sessionResolver
+                .Setup(r => r.ResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>(), It.IsAny<bool>()))
+                .Returns(async (string token, IdentityConfiguration configuration, bool _) =>
+                    new RefreshSessionResolution(await _sessionResolver.Object.TryResolveRefreshSessionAsync(token, configuration), false));
             _authDomain.Setup(d => d.GetDeviceInfo(It.IsAny<string>())).Returns((DeviceInformation)null!);
 
             _auditWriter = new OidcLoginAuditWriter(_authDomain.Object, _activity.Object, NullLogger<OidcLoginAuditWriter>.Instance);
@@ -64,7 +76,7 @@ namespace XUnitTest.Auth
 
         private AuthenticationFlowService Create() =>
             new(_repo.Object, _strategy.Object, _refresher.Object, _authService.Object, _captcha.Object,
-                _auditWriter, NullLogger<AuthenticationFlowService>.Instance, _refreshRepo.Object, _sessionResolver.Object);
+                _auditWriter, NullLogger<AuthenticationFlowService>.Instance, _refreshRepo.Object, _sessionResolver.Object, _guard.Object, LoginPolicy);
 
         private static HttpRequest Req() => new DefaultHttpContext().Request;
 
@@ -81,6 +93,47 @@ namespace XUnitTest.Auth
         // ==================== ExecuteEmbeddedLoginAsync ====================
 
         [Fact]
+        public async Task EmbeddedLogin_RefusedByLoginPolicy_Returns403_BeforeAnyUserLookup()
+        {
+            LoginPolicy.Decide = (_, _, _, _) => LoginPolicyDecision.Denied("Password sign-in is turned off for this project.");
+
+            var result = await Create().ExecuteEmbeddedLoginAsync(new EmbeddedLoginRequest { Username = "u", Password = "p" }, Req());
+
+            result.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            result.Error.Should().Be(LoginPolicyRules.Error);
+            result.ErrorDescription.Should().Be("Password sign-in is turned off for this project.");
+            LoginPolicy.Checks.Should().Equal((LoginChannel.Embedded, LoginMethods.Password));
+            _repo.Verify(r => r.GetUserByUsernameAsync(It.IsAny<string>()), Times.Never);
+            _strategy.Verify(s => s.AuthenticatePasswordAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task EmbeddedMfaCompletion_RefusedByLoginPolicy_Returns403()
+        {
+            LoginPolicy.Decide = (_, _, _, _) => LoginPolicyDecision.Denied("off");
+
+            var result = await Create().ExecuteEmbeddedLoginAsync(new EmbeddedLoginRequest { MfaId = "m", MfaCode = "123456" }, Req());
+
+            result.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            _strategy.Verify(s => s.AuthenticateMfaAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task EmbeddedSocialLogin_RefusedByLoginPolicy_Returns403_BeforeCodeExchange()
+        {
+            LoginPolicy.Decide = (_, method, _, _) => method == LoginMethods.Social
+                ? LoginPolicyDecision.Denied("Social sign-in is turned off for this project.")
+                : LoginPolicyDecision.Allowed;
+
+            var result = await Create().ExecuteSocialLoginAsync(new SocialLoginRequest { Code = "c", State = "s", Provider = "google" }, Req());
+
+            result.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            result.Error.Should().Be(LoginPolicyRules.Error);
+            LoginPolicy.Checks.Should().Equal((LoginChannel.Embedded, LoginMethods.Social));
+            _strategy.Verify(s => s.AuthenticateSocialAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>()), Times.Never);
+        }
+
+        [Fact]
         public async Task EmbeddedLogin_ConfigMissing_Returns400()
         {
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
@@ -95,7 +148,7 @@ namespace XUnitTest.Auth
         public async Task EmbeddedLogin_AccountLocked_Returns423_AndAudits()
         {
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) });
+                .ReturnsAsync(new User { ItemId = "user-1", Active = true, IsVerified = true, LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) });
 
             var result = await Create().ExecuteEmbeddedLoginAsync(new EmbeddedLoginRequest { Username = "u", Password = "p" }, Req());
 
@@ -133,7 +186,7 @@ namespace XUnitTest.Auth
         public async Task EmbeddedLogin_CaptchaRequired_NoCode_ReturnsCaptchaEnabled()
         {
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync(new User { ItemId = "user-1", FailedLoginCount = CaptchaGate.FailedAttemptsBeforeCaptcha });
+                .ReturnsAsync(new User { ItemId = "user-1", Active = true, IsVerified = true, FailedLoginCount = CaptchaGate.FailedAttemptsBeforeCaptcha });
             _captcha.Setup(c => c.GetConfigurationAsync()).ReturnsAsync(new CaptchaConfiguration { IsEnable = true, CaptchaKey = "site-key" });
 
             var result = await Create().ExecuteEmbeddedLoginAsync(new EmbeddedLoginRequest { Username = "u", Password = "p" }, Req());
@@ -147,7 +200,7 @@ namespace XUnitTest.Auth
         public async Task EmbeddedLogin_CaptchaInvalid_ReturnsCaptchaInvalid_AndAudits()
         {
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync(new User { ItemId = "user-1", FailedLoginCount = CaptchaGate.FailedAttemptsBeforeCaptcha });
+                .ReturnsAsync(new User { ItemId = "user-1", Active = true, IsVerified = true, FailedLoginCount = CaptchaGate.FailedAttemptsBeforeCaptcha });
             _captcha.Setup(c => c.GetConfigurationAsync()).ReturnsAsync(new CaptchaConfiguration { IsEnable = true, CaptchaKey = "site-key" });
             _captcha.Setup(c => c.VerifyAsync("wrong", It.IsAny<string>())).ReturnsAsync((object)new { Verified = false });
 
@@ -298,6 +351,9 @@ namespace XUnitTest.Auth
                 new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
 
             result.Error.Should().Be("organization_not_available");
+            // C6: rejected before the refresh token is even read, so nothing rotates and no cookie changes.
+            VerifyNoRotation();
+            _sessionResolver.Verify(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()), Times.Never);
         }
 
         [Fact]
@@ -326,6 +382,7 @@ namespace XUnitTest.Auth
                 new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
 
             result.Error.Should().Be(OAuthError.SessionExpired);
+            VerifyNoRotation();
         }
 
         [Fact]
@@ -361,6 +418,7 @@ namespace XUnitTest.Auth
                 new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
 
             result.Error.Should().Be(OAuthError.SessionExpired);
+            VerifyNoRotation();
         }
 
         [Fact]
@@ -380,6 +438,26 @@ namespace XUnitTest.Auth
             // reverted by the next refresh. One retry is the cheaper failure.
             result.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
             result.Error.Should().Be(OAuthError.SessionExpired);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SwitchOrg_DeactivatedUser_ReturnsSessionExpired_RevokesTheLineage_AndDoesNotRotate()
+        {
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User
+            {
+                ItemId = "user-1", OrganizationIds = new() { "org-x" },
+                Active = false, IsVerified = true, Status = UserLifecycleStatus.Disabled, DeactivatedAtUtc = DateTime.UtcNow
+            });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            Resolves(Session());
+
+            var result = await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            result.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+            result.Error.Should().Be(OAuthError.SessionExpired);
+            _refreshRepo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", BlockedUserRefreshGuard.RevokeReason), Times.Once);
             _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
         }
 
@@ -480,6 +558,95 @@ namespace XUnitTest.Auth
             result.TokenResponse!.AccessToken.Should().Be("switch-at");
         }
 
+        // ==================== blocks-iam#624 — switch-org keeps the lineage's OIDC client ====================
+
+        private void VerifyNoRotation() =>
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+
+        private List<TokenRequest> CaptureRotations(TokenResponse response)
+        {
+            var captured = new List<TokenRequest>();
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .Callback<TokenRequest, IdentityConfiguration, User>((t, _, _) => captured.Add(t))
+                .ReturnsAsync(response);
+            return captured;
+        }
+
+        [Fact]
+        public async Task SwitchOrg_HappyPath_CarriesTheLineageClientIntoTheRotation()
+        {
+            // H1/H2/H6/H8: the rotation request names the lineage client and the requested organization;
+            // lineage and cap are inherited downstream from the same predecessor (RefreshTokenLineageTests).
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            Resolves(Session());
+            var rotations = CaptureRotations(new TokenResponse { AccessToken = "switch-at" });
+
+            var result = await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            result.TokenResponse!.AccessToken.Should().Be("switch-at");
+            var request = rotations.Should().ContainSingle().Subject;
+            request.ClientId.Should().Be("client-1");
+            request.OrganizationId.Should().Be("org-x");
+            request.GrantType.Should().Be(GrantTypes.SwitchOrganization);
+            request.RefreshToken.Should().Be("rt");
+        }
+
+        [Fact]
+        public async Task SwitchOrg_LineageWithAStaleAudience_DoesNotCarryTheAudienceIntoTheRotation()
+        {
+            // C12: aud comes from the tenant at mint time; the rotation request must not re-narrow it.
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            var session = Session();
+            session.Audience = "stale-client-audience";
+            Resolves(session);
+            var rotations = CaptureRotations(new TokenResponse { AccessToken = "switch-at" });
+
+            await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            rotations.Should().ContainSingle().Which.Audience.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task SwitchOrg_ClientLessLineage_RotatesWithoutInventingAClient()
+        {
+            // Out of scope to repair: an already client-less lineage passes no client.
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            var session = Session();
+            session.ClientId = string.Empty;
+            Resolves(session);
+            var rotations = CaptureRotations(new TokenResponse { AccessToken = "switch-at" });
+
+            await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            rotations.Should().ContainSingle().Which.ClientId.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task SwitchOrg_ForeignUserInSession_ReturnsSessionExpiredWithoutRotating()
+        {
+            // C8 (user half): a refresh token belonging to someone else is rejected before any rotation.
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            Resolves(Session(userId: "user-other"));
+
+            var result = await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            result.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+            result.Error.Should().Be(OAuthError.SessionExpired);
+            VerifyNoRotation();
+        }
+
         // ==================== ExecuteRefreshAsync ====================
 
         [Fact]
@@ -504,6 +671,40 @@ namespace XUnitTest.Auth
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error").Should().Be(OAuthError.InvalidRefreshToken);
+        }
+
+        [Theory]
+        // body refresh_token, cookie, body refreshToken → the token that is resolved
+        [InlineData("body", "cookie", "client", "body")]
+        [InlineData(null, "cookie", "client", "cookie")]
+        [InlineData(null, null, "client", "client")]
+        [InlineData("body", null, null, "body")]
+        public async Task Refresh_PicksTokenInOrder_BodyThenCookieThenClientField(
+            string? body, string? cookie, string? client, string expected)
+        {
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns(cookie!);
+            _sessionResolver
+                .Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync((RefreshTokenCache?)null);
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
+            var ctx = new DefaultHttpContext();
+
+            await Create().ExecuteRefreshAsync(
+                new RefreshRequest { RefreshToken = body, ClientRefreshToken = client }, Principal(), ctx.Request, ctx.Response);
+
+            _sessionResolver.Verify(r => r.TryResolveRefreshSessionAsync(expected, It.IsAny<IdentityConfiguration>()), Times.Once);
+        }
+
+        [Fact]
+        public void RefreshRequest_BindsBothBodyNames()
+        {
+            var snake = System.Text.Json.JsonSerializer.Deserialize<RefreshRequest>("{\"refresh_token\":\"a\"}")!;
+            var camel = System.Text.Json.JsonSerializer.Deserialize<RefreshRequest>("{\"refreshToken\":\"b\"}")!;
+
+            snake.RefreshToken.Should().Be("a");
+            snake.ClientRefreshToken.Should().BeNull();
+            camel.ClientRefreshToken.Should().Be("b");
+            camel.RefreshToken.Should().BeNull();
         }
 
         /// <summary>
@@ -544,6 +745,45 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task Refresh_TokenReplacedByAnImpersonationChange_SaysSoAndLeavesTheCookiesAlone()
+        {
+            // The cookie may already hold the token the impersonation change issued -- set by another tab --
+            // so clearing it would sign that tab out too.
+            _sessionResolver
+                .Setup(r => r.ResolveRefreshSessionAsync("rt", It.IsAny<IdentityConfiguration>(), false))
+                .ReturnsAsync(RefreshSessionResolution.Changed);
+            var ctx = new DefaultHttpContext();
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be(OAuthError.InvalidRefreshToken);
+            Prop(bad.Value, "error_description").Should().Be(OAuthError.SessionChanged);
+            // ClearSessionCookies resolves the tenant's cookie domain first; it never got that far.
+            _refresher.Verify(r => r.GetTenantByIDAsync(It.IsAny<string>()), Times.Never);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Refresh_ImpersonatedSession_IsRejectedBeforeRotating()
+        {
+            // Nothing below this point carries IsImpersonation, so rotating here would hand the browser
+            // root-scoped cookies for a session the UI still shows as a project -- behind an HTTP 200.
+            var impersonated = Session();
+            impersonated.Impersonated = true;
+            impersonated.ImpersonationId = "imp-1";
+            Resolves(impersonated);
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
+            var ctx = new DefaultHttpContext();
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be(OAuthError.InvalidRefreshToken);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
         public async Task Refresh_SharedCheckAccepts_RotatesNormally()
         {
             Resolves(Session());
@@ -562,6 +802,69 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task Refresh_DeactivatedUser_IsRefused_RevokesTheLineage_AndDoesNotRotate()
+        {
+            Resolves(Session());
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User
+            {
+                ItemId = "user-1", Active = false, IsVerified = true,
+                Status = UserLifecycleStatus.Disabled, DeactivatedAtUtc = DateTime.UtcNow
+            });
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
+            var ctx = new DefaultHttpContext();
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be(OAuthError.InvalidRefreshToken);
+            Prop(bad.Value, "error_description").Should().Be("Refresh token is invalid or expired");
+            _refreshRepo.Verify(r => r.RevokeLineageAndEvictAsync("lineage-1", BlockedUserRefreshGuard.RevokeReason), Times.Once);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Refresh_ActiveUser_RotatesAndRevokesNothing()
+        {
+            Resolves(Session());
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User
+            {
+                ItemId = "user-1", Active = true, IsVerified = true, Status = UserLifecycleStatus.Active
+            });
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
+            var ctx = new DefaultHttpContext();
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            result.Should().BeOfType<OkObjectResult>();
+            _refreshRepo.Verify(r => r.RevokeLineageAndEvictAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Theory] // The lineage's organization is only a hint; a blank one must not become "default"
+        [InlineData("org-a", "org-a")]
+        [InlineData("default", "default")]
+        [InlineData("", "")]
+        [InlineData(null, "")]
+        public async Task Refresh_PassesTheLineageOrganizationThrough_WithoutCollapsingBlankToDefault(string? stored, string expected)
+        {
+            var session = Session();
+            session.OrganizationId = stored;
+            Resolves(session);
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
+            var ctx = new DefaultHttpContext();
+
+            await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            _refresher.Verify(r => r.AuthenticateAsync(
+                It.Is<TokenRequest>(t => t.OrganizationId == expected),
+                It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
+        }
+
+        [Fact]
         public async Task Refresh_GraceWindowReplay_PassesSuccessorThroughWithoutRotating()
         {
             // The shared check resolved the presented token onto its rotation successor.
@@ -576,7 +879,8 @@ namespace XUnitTest.Auth
             var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-            Prop(ok.Value, "refresh_token").Should().Be("successor-rt");
+            ok.Value.Should().BeAssignableTo<IDictionary<string, object?>>()
+                .Which["refresh_token"].Should().Be("successor-rt");
             _refresher.Verify(r => r.AuthenticateAsync(
                 It.Is<TokenRequest>(t => t.GraceReplayTokenId == "successor-rt"
                                       && t.GraceReplayAbsoluteExpiry == successor.AbsoluteExpiresUtc),
@@ -605,6 +909,7 @@ namespace XUnitTest.Auth
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error_description").Should().Be("Refresh token tenant mismatch");
+            VerifyNoRotation();
         }
 
         [Fact]
@@ -621,16 +926,18 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task Refresh_UserLocked_Returns423()
+        public async Task Refresh_UserLocked_StillRefreshes_SoALockCannotSignSomeoneOut()
         {
             Resolves(Session());
-            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) });
+            var locked = new User { ItemId = "user-1", Active = true, IsVerified = true, LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) };
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(locked);
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { Error = "invalid_grant", StatusCode = 400 });
             var ctx = new DefaultHttpContext();
 
-            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+            await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
 
-            var obj = result.Should().BeOfType<ObjectResult>().Subject;
-            obj.StatusCode.Should().Be(StatusCodes.Status423Locked);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), locked), Times.Once);
         }
 
         [Fact]
@@ -650,20 +957,116 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task Refresh_HappyPath_ReturnsOkWithTokens()
+        public async Task Refresh_NoAppDomain_ReturnsTokensInBody()
+        {
+            var body = await RefreshOkBody(tenant: null, origin: null);
+
+            body["access_token"].Should().Be("new-at");
+            body["refresh_token"].Should().Be("new-rt");
+            body["cookie_set"].Should().Be(false);
+        }
+
+        [Fact]
+        public async Task Refresh_CookiesSet_OmitsTokensFromBody()
+        {
+            var ctx = new DefaultHttpContext();
+
+            var body = await RefreshOkBody(AppTenant(), "https://app.example.com", ctx);
+
+            body["cookie_set"].Should().Be(true);
+            body.Should().NotContainKey("access_token");
+            body.Should().NotContainKey("refresh_token");
+            ctx.Response.Headers.Should().ContainKey("Set-Cookie");
+        }
+
+        [Fact]
+        public async Task Refresh_ClientOptedOutOfCookies_ReturnsTokensInBodyAndSetsNoCookie()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("client-1"))
+                .ReturnsAsync(new OidcClientRegistration { ClientId = "client-1", UseTokensCookie = false });
+            var ctx = new DefaultHttpContext();
+
+            var body = await RefreshOkBody(AppTenant(), "https://app.example.com", ctx);
+
+            body["access_token"].Should().Be("new-at");
+            body["cookie_set"].Should().Be(false);
+            ctx.Response.Headers.Should().NotContainKey("Set-Cookie");
+        }
+
+        private async Task<IDictionary<string, object?>> RefreshOkBody(Tenant? tenant, string? origin, DefaultHttpContext? ctx = null)
         {
             Resolves(Session());
             _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
             _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
-                .ReturnsAsync(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });
+                .ReturnsAsync(new TokenResponse
+                {
+                    AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600,
+                    ExpiresUtc = DateTime.UtcNow.AddHours(1), RefreshExpiresUtc = DateTime.UtcNow.AddHours(5)
+                });
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync(tenant!);
+            ctx ??= new DefaultHttpContext();
+            if (origin != null)
+            {
+                ctx.Request.Headers["Origin"] = origin;
+            }
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            return ok.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
+        }
+
+        private static Tenant AppTenant() => new()
+        {
+            TenantId = TenantId,
+            DbConnectionString = "",
+            Applications = new List<Applications> { new() { Domain = "app.example.com", CookieDomain = ".example.com", IsDomainVerified = true } },
+            JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = "", IssueDate = DateTime.UtcNow }
+        };
+
+        // ==================== blocks-iam#624 — /auth/refresh keeps the lineage's OIDC client ====================
+
+        [Fact]
+        public async Task Refresh_HostedLineage_CarriesTheLineageClientAndNoAudienceIntoTheRotation()
+        {
+            // H4 + C12: the client is carried; the stored audience is not.
+            var session = Session();
+            session.Audience = "stale-client-audience";
+            Resolves(session);
+            // The browser shape: an empty body, the refresh token in the rt_ cookie.
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
+            var rotations = CaptureRotations(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
+            var ctx = new DefaultHttpContext();
+
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest(), Principal(), ctx.Request, ctx.Response);
+
+            result.Should().BeOfType<OkObjectResult>();
+            var request = rotations.Should().ContainSingle().Subject;
+            request.ClientId.Should().Be("client-1");
+            request.Audience.Should().BeNull();
+            request.GrantType.Should().Be(GrantTypes.RefreshToken);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        public async Task Refresh_ClientLessLineage_StillRotatesWith200(string? lineageClient)
+        {
+            // C3: embedded /auth/login lineages (and ones broken before the fix) keep refreshing here.
+            var session = Session();
+            session.ClientId = lineageClient;
+            Resolves(session);
+            _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
+            var rotations = CaptureRotations(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });
             _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
             var ctx = new DefaultHttpContext();
 
             var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
 
-            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-            Prop(ok.Value, "access_token").Should().Be("new-at");
-            Prop(ok.Value, "cookie_set").Should().Be(true);
+            result.Should().BeOfType<OkObjectResult>();
+            rotations.Should().ContainSingle().Which.ClientId.Should().BeNullOrEmpty();
         }
 
         // ==================== Impersonation pass-throughs ====================

@@ -9,11 +9,13 @@ namespace Authentication.DomainService.OAuth
     /// <summary>Validates the complete replacement payload for an OIDC UI template.</summary>
     public sealed class SaveOidcUiTemplateRequestValidator : AbstractValidator<SaveOidcUiTemplateRequest>
     {
+        private const string RequiredMessage = "is required";
+
         public SaveOidcUiTemplateRequestValidator()
         {
-            RuleFor(x => x.Branding).NotNull().WithMessage("is required");
-            RuleFor(x => x.Theme).NotNull().WithMessage("is required");
-            RuleFor(x => x.Pages).NotNull().WithMessage("is required");
+            RuleFor(x => x.Branding).NotNull().WithMessage(RequiredMessage);
+            RuleFor(x => x.Theme).NotNull().WithMessage(RequiredMessage);
+            RuleFor(x => x.Pages).NotNull().WithMessage(RequiredMessage);
 
             When(x => x.Branding is not null, () =>
                 RuleFor(x => x.Branding!).SetValidator(new BrandingValidator()));
@@ -41,8 +43,8 @@ namespace Authentication.DomainService.OAuth
         {
             public ThemeValidator()
             {
-                RuleFor(x => x.Light).NotNull().WithMessage("is required");
-                RuleFor(x => x.Dark).NotNull().WithMessage("is required");
+                RuleFor(x => x.Light).NotNull().WithMessage(RequiredMessage);
+                RuleFor(x => x.Dark).NotNull().WithMessage(RequiredMessage);
 
                 When(x => x.Light is not null, () =>
                     RuleFor(x => x.Light!).SetValidator(new ThemePaletteValidator()));
@@ -75,14 +77,14 @@ namespace Authentication.DomainService.OAuth
         {
             public PagesValidator()
             {
-                RuleFor(x => x.Login).NotNull().WithMessage("is required");
-                RuleFor(x => x.Signup).NotNull().WithMessage("is required");
-                RuleFor(x => x.ForgotPassword).NotNull().WithMessage("is required");
-                RuleFor(x => x.ResetPassword).NotNull().WithMessage("is required");
-                RuleFor(x => x.Activation).NotNull().WithMessage("is required");
-                RuleFor(x => x.Mfa).NotNull().WithMessage("is required");
-                RuleFor(x => x.AccountSelector).NotNull().WithMessage("is required");
-                RuleFor(x => x.Shared).NotNull().WithMessage("is required");
+                RuleFor(x => x.Login).NotNull().WithMessage(RequiredMessage);
+                RuleFor(x => x.Signup).NotNull().WithMessage(RequiredMessage);
+                RuleFor(x => x.ForgotPassword).NotNull().WithMessage(RequiredMessage);
+                RuleFor(x => x.ResetPassword).NotNull().WithMessage(RequiredMessage);
+                RuleFor(x => x.Activation).NotNull().WithMessage(RequiredMessage);
+                RuleFor(x => x.Mfa).NotNull().WithMessage(RequiredMessage);
+                RuleFor(x => x.AccountSelector).NotNull().WithMessage(RequiredMessage);
+                RuleFor(x => x.Shared).NotNull().WithMessage(RequiredMessage);
 
                 When(x => x.Login is not null, () => RuleFor(x => x.Login!).SetValidator(new LoginValidator()));
                 When(x => x.Signup is not null, () => RuleFor(x => x.Signup!).SetValidator(new SignupValidator()));

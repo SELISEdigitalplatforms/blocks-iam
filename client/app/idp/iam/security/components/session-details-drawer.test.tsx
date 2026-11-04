@@ -119,9 +119,21 @@ describe("SessionDetailsDrawer", () => {
     await waitFor(() =>
       expect(h.mutateAsync).toHaveBeenCalledWith({ sessionId: "sess-1" }),
     );
-    expect(h.showSuccessToast).toHaveBeenCalled();
+    expect(h.showSuccessToast).toHaveBeenCalledWith({ description: "Device signed out successfully" });
     await waitFor(() => expect(onRevoked).toHaveBeenCalled());
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("says the device was already signed out when nothing was live", async () => {
+    h.mutateAsync.mockResolvedValue({ alreadyRevoked: true, revokedRefreshTokens: 0, warnings: [] });
+    renderDrawer();
+
+    fireEvent.click(screen.getByRole("button", { name: /sign out of this device/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^sign out$/i }));
+
+    await waitFor(() =>
+      expect(h.showSuccessToast).toHaveBeenCalledWith({ description: "This device was already signed out" }),
+    );
   });
 
   it("surfaces an error toast when revoking fails", async () => {

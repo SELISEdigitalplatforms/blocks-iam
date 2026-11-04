@@ -8,8 +8,9 @@ import { z } from "zod";
 import { useNavigate } from "react-router";
 import { Captcha } from "@/components/captcha";
 import { useEffect, useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";
-import { isErrorWithErrors } from "@/lib/error";
+import { firstErrorText, isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import {
@@ -28,7 +29,10 @@ import {
   FormMessage,
 } from "@/components/ui-kits/form/form";
 
+const SOMETHING_WENT_WRONG_KEY = "OIDC_FORGOT_PASSWORD_FORM.SOMETHING_WENT_WRONG";
+
 export const OIDCForgotPasswordForm = () => {
+  const { t } = useT("iam.password");
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const tenantId =
@@ -37,8 +41,13 @@ export const OIDCForgotPasswordForm = () => {
     undefined;
   const [serverError, setServerError] = useState<string | null>(null);
 
+  // mode: "onChange" so the submit button can flip from disabled → enabled as
+  // the user types; the default "onSubmit" mode only re-evaluates isValid on
+  // submit, leaving the button disabled the whole time even after a valid
+  // email has been entered.
   const form = useForm({
     defaultValues: forgotPasswordFormDefaultValue,
+    mode: "onChange",
     resolver: zodResolver(forgotPasswordFormSchema),
   });
   const { isPending, mutateAsync } = useAccountRecover();
@@ -63,11 +72,7 @@ export const OIDCForgotPasswordForm = () => {
       const res = await mutateAsync({ ...values, captchaCode, tenantId, clientId, redirectUri });
       if (!res.isSuccess) {
         resetCaptcha();
-        const msg = Array.isArray(res.errors)
-          ? res.errors[0]
-          : res.errors && typeof res.errors === "object"
-          ? (Object.values(res.errors as Record<string, string>)[0] ?? "Something went wrong")
-          : (res.errors as string) || "Something went wrong";
+        const msg = firstErrorText(res.errors, t(SOMETHING_WENT_WRONG_KEY));
         setServerError(msg);
         return;
       }
@@ -86,14 +91,10 @@ export const OIDCForgotPasswordForm = () => {
     } catch (error) {
       resetCaptcha();
       if (isErrorWithErrors(error)) {
-        const msg = Array.isArray(error.errors)
-          ? (error.errors[0] as string)
-          : error.errors && typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
-          : (error.errors as unknown as string) || "Something went wrong";
+        const msg = firstErrorText(error.errors, t(SOMETHING_WENT_WRONG_KEY));
         setServerError(msg);
       } else {
-        setServerError("Something went wrong");
+        setServerError(t(SOMETHING_WENT_WRONG_KEY));
       }
     }
   };
@@ -108,10 +109,10 @@ export const OIDCForgotPasswordForm = () => {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold mb-2 font-sans text-[var(--fg)]">
+        <h2 className="text-xl font-semibold mb-2 font-sans text-(--fg)">
           {forgotPasswordCopy.heading}
         </h2>
-        <p className="text-sm font-sans text-[var(--muted)]">
+        <p className="text-sm font-sans text-(--muted)">
           {forgotPasswordCopy.introText}
         </p>
       </div>
@@ -127,13 +128,13 @@ export const OIDCForgotPasswordForm = () => {
                 <FormControl>
                   <input
                     type="email"
-                    placeholder="name@company.com"
+                    placeholder={t("OIDC_FORGOT_PASSWORD_FORM.EMAIL_PLACEHOLDER")}
                     autoComplete="email"
                     className="oidc-sci-fi-input"
                     {...field}
                   />
                 </FormControl>
-                <FormMessage className="text-xs text-[var(--danger)]" />
+                <FormMessage className="text-xs text-(--danger)" />
               </FormItem>
             )}
           />
@@ -141,7 +142,7 @@ export const OIDCForgotPasswordForm = () => {
           {captchaEnabled && isValid && <Captcha {...captcha} />}
 
           {serverError && (
-            <p className="text-sm font-sans text-[var(--danger)]">{serverError}</p>
+            <p className="text-sm font-sans text-(--danger)">{serverError}</p>
           )}
 
           {isPending ? (

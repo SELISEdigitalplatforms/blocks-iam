@@ -1,3 +1,4 @@
+using Authentication.DomainService.Authentication.LoginPolicies;
 using Authentication.DomainService.Entities;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
@@ -13,6 +14,7 @@ using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -48,6 +50,10 @@ namespace Authentication.DomainService.Authentication
         private readonly OidcCaptchaEvaluator _captchaEvaluator;
         private readonly OidcAuthorizationEndpoint _authorizationEndpoint;
         private readonly ILogger<OidcLoginOrchestrator> _logger;
+        private readonly IUnknownUserLoginGuard _unknownUserLoginGuard;
+
+        private readonly IMfaAttemptGate _mfaAttemptGate;
+        private readonly ILoginPolicyService _loginPolicy;
 
         public OidcLoginOrchestrator(
             IAuthenticationRepository authenticationRepository,
@@ -60,9 +66,14 @@ namespace Authentication.DomainService.Authentication
             OidcLoginAuditWriter auditWriter,
             OidcCaptchaEvaluator captchaEvaluator,
             OidcAuthorizationEndpoint authorizationEndpoint,
-            ILogger<OidcLoginOrchestrator> logger)
+            ILogger<OidcLoginOrchestrator> logger,
+            IUnknownUserLoginGuard unknownUserLoginGuard,
+            ILoginPolicyService loginPolicy,
+            IMfaAttemptGate? mfaAttemptGate = null)
         {
+            _loginPolicy = loginPolicy;
             _authenticationRepository = authenticationRepository;
+            _mfaAttemptGate = mfaAttemptGate ?? new MfaAttemptGate(authenticationRepository);
             _mfaChallengeIssuer = mfaChallengeIssuer;
             _authenticationService = authenticationService;
             _tenants = tenants;
@@ -73,6 +84,7 @@ namespace Authentication.DomainService.Authentication
             _captchaEvaluator = captchaEvaluator;
             _authorizationEndpoint = authorizationEndpoint;
             _logger = logger;
+            _unknownUserLoginGuard = unknownUserLoginGuard;
         }
 
         public async Task<IActionResult> ExecuteAsync(OidcLoginRequest request, HttpRequest httpRequest, HttpResponse httpResponse)
@@ -121,6 +133,11 @@ namespace Authentication.DomainService.Authentication
                 return inputError;
             }
 
+            if (user == null)
+            {
+                return await ExecuteUnknownUserPasswordLoginAsync(request, tenant);
+            }
+
             var captchaResult = await _captchaEvaluator.EvaluateAsync(user!, request.CaptchaCode);
             if (captchaResult.Required)
             {
@@ -134,9 +151,24 @@ namespace Authentication.DomainService.Authentication
                 return OidcCaptchaEvaluator.BuildResult(captchaResult);
             }
 
-            if (!VerifyPassword(request, user!, tenant))
+            // Reserve the password check atomically before BCrypt (see PasswordCredentialVerifier):
+            // parallel requests share the stale user read above.
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
+            var reserved = await _authenticationRepository.TryReserveLoginAttemptAsync(
+                user!.ItemId, authConfiguration.GetNumberOfWrongAttemptsToLockTheAccount, DateTime.UtcNow);
+            if (reserved == null)
             {
-                return await HandleInvalidPasswordAsync(request, user!, httpRequest);
+                return await AccountLockedAsync(request, user, httpRequest);
+            }
+
+            if (!VerifyPassword(request, user, tenant))
+            {
+                return await HandleInvalidPasswordAsync(request, user, reserved, authConfiguration, httpRequest);
+            }
+
+            if (!await _authenticationRepository.ReleaseLoginAttemptAsync(user.ItemId, DateTime.UtcNow))
+            {
+                return await AccountLockedAsync(request, user, httpRequest);
             }
 
             if (await _mfaChallengeIssuer.IsRequiredAsync(user!))
@@ -161,7 +193,8 @@ namespace Authentication.DomainService.Authentication
                 httpRequest.HttpContext.Response,
                 user!.ItemId,
                 false,
-                mfaCompleted: false);
+                mfaCompleted: false,
+                loginMethod: LoginMethods.Password);
 
             await _auditWriter.WriteAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
 
@@ -192,26 +225,66 @@ namespace Authentication.DomainService.Authentication
                 return (new BadRequestObjectResult(new { error = "invalid_request", error_description = "redirect_uri is required" }), null, null, null);
             }
 
-            if (oidcClient == null)
+            // An inactive client gets the same answer as an unknown one, before any user lookup,
+            // password check or session cookie.
+            if (oidcClient == null || !oidcClient.IsActive)
             {
                 return (new BadRequestObjectResult(new { error = "invalid_client", error_description = $"OIDC client '{request.ClientId}' not found or not configured" }), null, null, null);
+            }
+
+            // Tenant login policy, before any user lookup or password check.
+            var policy = await _loginPolicy.CheckAsync(LoginChannel.Oidc, LoginMethods.Password, oidcClient);
+            if (!policy.IsAllowed)
+            {
+                return (LoginNotAllowed(policy), null, null, null);
             }
 
             var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
             var tenant = _tenants.GetTenantByID(request.TenantId);
 
+            // No usable account (unknown, pending, disabled): no error here, a null user. The
+            // caller answers it like a wrong password on a real account.
             if (user == null || !user.Active || !user.IsVerified)
             {
-                return (new UnauthorizedObjectResult(new { error = "invalid_credentials" }), null, null, null);
+                return (null, null, tenant, request.TenantId);
             }
 
             if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
             {
-                return (new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked }, null, null, null);
+                return (LockedResult(), null, null, null);
             }
 
             return (null, user, tenant, request.TenantId);
         }
+
+        /// <summary>
+        /// The password leg for a name with no usable account, step for step like a real account
+        /// with a wrong password: lock check, captcha gate, a counted attempt with a BCrypt check,
+        /// then 423 when this attempt locked it (or found no free slot), otherwise 401.
+        /// </summary>
+        private async Task<IActionResult> ExecuteUnknownUserPasswordLoginAsync(OidcLoginRequest request, Tenant? tenant)
+        {
+            var state = await _unknownUserLoginGuard.GetStateAsync(request.Username);
+            if (state.Locked)
+            {
+                return LockedResult();
+            }
+
+            var captchaResult = await _captchaEvaluator.EvaluateAsync(state.FailedCount, request.CaptchaCode);
+            if (captchaResult.Required)
+            {
+                return OidcCaptchaEvaluator.BuildResult(captchaResult);
+            }
+
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
+            var attempt = await _unknownUserLoginGuard.FailAsync(request.Username, request.Password, tenant?.TenantSalt, authConfiguration);
+            return !attempt.Reserved || attempt.LockedNow
+                ? LockedResult()
+                : new UnauthorizedObjectResult(new { error = "invalid_credentials" });
+        }
+
+        private static IActionResult LockedResult() =>
+            new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
 
         private bool VerifyPassword(OidcLoginRequest request, User user, Tenant? tenant)
         {
@@ -225,24 +298,32 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        private async Task<IActionResult> HandleInvalidPasswordAsync(OidcLoginRequest request, User user, HttpRequest httpRequest)
+        private async Task<IActionResult> HandleInvalidPasswordAsync(
+            OidcLoginRequest request, User user, User reserved, IdentityConfiguration authConfiguration, HttpRequest httpRequest)
         {
-            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
-            var updatedUser = await _authenticationRepository.IncrementFailedLoginAndApplyLockoutAsync(
-                user.ItemId,
-                authConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
-                authConfiguration.AccountLockDurationInMinutes,
-                DateTime.UtcNow);
+            // The attempt is already counted by the reservation; only the one that took the last slot can lock.
+            var threshold = authConfiguration.GetNumberOfWrongAttemptsToLockTheAccount;
+            var lockedUser = reserved.FailedLoginCount >= threshold
+                ? await _authenticationRepository.LockAccountIfLoginThresholdReachedAsync(
+                    user.ItemId,
+                    threshold,
+                    authConfiguration.AccountLockDurationInMinutes,
+                    DateTime.UtcNow)
+                : null;
 
-            var accountLocked = updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow;
-            if (accountLocked)
+            if (lockedUser != null)
             {
-                await _auditWriter.WriteAsync(request, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, LoginAuditEvents.OidcLoginAccountLocked);
-                return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
+                return await AccountLockedAsync(request, user, httpRequest);
             }
 
             await _auditWriter.WriteAsync(request, user, httpRequest, LoginAuditEvents.LoginFailure, LoginAuditEvents.OidcLoginFailure);
             return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
+        }
+
+        private async Task<IActionResult> AccountLockedAsync(OidcLoginRequest request, User user, HttpRequest httpRequest)
+        {
+            await _auditWriter.WriteAsync(request, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, LoginAuditEvents.OidcLoginAccountLocked);
+            return LockedResult();
         }
 
         private async Task<IActionResult> StartMfaChallengeAsync(User user, OidcLoginRequest request, string? tenantId)
@@ -299,6 +380,9 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
+        private static ObjectResult LoginNotAllowed(LoginPolicyDecision decision) =>
+            new(new { error = LoginPolicyRules.Error, error_description = decision.Message }) { StatusCode = StatusCodes.Status403Forbidden };
+
         private async Task<IActionResult> CompleteMfaLoginAsync(OidcLoginRequest request, HttpRequest httpRequest, HttpResponse httpResponse)
         {
             if (string.IsNullOrWhiteSpace(request.MfaId) || string.IsNullOrWhiteSpace(request.MfaCode))
@@ -316,6 +400,16 @@ namespace Authentication.DomainService.Authentication
             if (mfaContext == null || string.IsNullOrWhiteSpace(mfaContext.UserId))
             {
                 return new BadRequestObjectResult(new { error = "invalid_mfa_session", error_description = "Mfa login session is invalid" });
+            }
+
+            // A method turned off between the password step and the code step stops here.
+            var mfaClient = string.IsNullOrWhiteSpace(mfaContext.ClientId)
+                ? null
+                : await _authenticationRepository.GetOidcClientRegistrationAsync(mfaContext.ClientId);
+            var policy = await _loginPolicy.CheckAsync(LoginChannel.Oidc, LoginMethods.Password, mfaClient);
+            if (!policy.IsAllowed)
+            {
+                return LoginNotAllowed(policy);
             }
 
             var user = await _authenticationRepository.GetUserByIdAsync(mfaContext.UserId);
@@ -338,25 +432,21 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            var verificationResponse = await otpService.VerifyAsync(new VerifyOtpRequest
-            {
-                AuthType = user.UserMfaType,
-                MfaId = request.MfaId,
-                VerificationCode = request.MfaCode
-            });
+            // Counted before it is checked, so parallel codes get no more checks than the lock threshold.
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
+            var attempt = await _mfaAttemptGate.CheckAsync(user.ItemId, authConfiguration, async () =>
+                (await otpService.VerifyAsync(new VerifyOtpRequest
+                {
+                    AuthType = user.UserMfaType,
+                    MfaId = request.MfaId,
+                    VerificationCode = request.MfaCode
+                })).IsValid);
 
-            if (!verificationResponse.IsValid)
+            if (!attempt.IsValid)
             {
-                var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
-                var updatedUser = await _authenticationRepository.IncrementFailedMfaAndApplyLockoutAsync(
-                    user.ItemId,
-                    authConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
-                    authConfiguration.AccountLockDurationInMinutes,
-                    DateTime.UtcNow);
-
                 await _mfaChallengeIssuer.WriteAuditAsync(new MfaAuditEvent
                 {
-                    EventType = updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow
+                    EventType = attempt.IsLocked
                         ? LoginAuditEvents.MfaAccountLocked
                         : LoginAuditEvents.MfaVerificationFailure,
                     UserId = user.ItemId,
@@ -366,7 +456,7 @@ namespace Authentication.DomainService.Authentication
                     Status = IdpConstants.StatusFailure
                 });
 
-                if (updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow)
+                if (attempt.IsLocked)
                 {
                     return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
                 }
@@ -401,7 +491,8 @@ namespace Authentication.DomainService.Authentication
                 httpResponse,
                 user.ItemId,
                 false,
-                mfaCompleted: true);
+                mfaCompleted: true,
+                loginMethod: LoginMethods.Password);
 
             await _auditWriter.WriteAsync(mfaContext.TenantId, mfaContext.ClientId, user, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
 
@@ -410,28 +501,9 @@ namespace Authentication.DomainService.Authentication
 
         private async Task ResetAuthFailureCountersAsync(User user)
         {
-            if (user.FailedLoginCount <= 0
-                && !user.LastFailedLoginUtc.HasValue
-                && user.FailedMfaCount <= 0
-                && !user.LastFailedMfaUtc.HasValue
-                && !user.LockoutUntilUtc.HasValue)
-            {
-                return;
-            }
-
-            await _authenticationRepository.UpdatePartialAsync<User>(
-                user.ItemId,
-                new Dictionary<string, object>
-                {
-                    { nameof(User.FailedLoginCount), 0 },
-                    { nameof(User.LastFailedLoginUtc), null! },
-                    { nameof(User.FailedMfaCount), 0 },
-                    { nameof(User.LastFailedMfaUtc), null! },
-                    { nameof(User.LockoutUntilUtc), null! },
-                    { nameof(User.LockoutCount), 0 },
-                    { nameof(User.LastUpdatedDate), DateTime.UtcNow },
-                    { nameof(User.LastUpdatedBy), user.ItemId }
-                });
+            // Atomic and conditional: never clears an active lock, and never forgives a wrong password counted
+            // after this sign-in read the user.
+            await _authenticationRepository.ResetFailureCountersAfterSuccessAsync(user, DateTime.UtcNow).ConfigureAwait(false);
         }
 
         internal sealed class OidcMfaLoginContext

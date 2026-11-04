@@ -1,5 +1,6 @@
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth.RequestModel
 {
@@ -35,14 +36,26 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? BiometricKey { get; set; }
         public string? ClientId { get; set; }
         public string? ClientSecret { get; set; }
-        public string? UserCode { get; set; }
         public string? OrganizationId { get; set; }
         public bool IsImpersonation { get; set; }
         public string? ImpersonatorUserId { get; set; }
         public string? TargetTenantId { get; set; }
         public string? OriginalTenantId { get; set; }
         public string? ImpersonationSessionId { get; set; }
+
+        public bool IsLinkAuthentication { get; set; }
+        public List<string> RestrictedRoles { get; set; } = [];
+        public List<string> RestrictedPermissions { get; set; } = [];
+        public List<string> Amr { get; set; } = [];
+        public string? Audience { get; set; }
         public string? IdpSessionId { get; set; }
+
+        /// <summary>
+        /// The user agent of the browser that signed in, when the token is minted on a request from
+        /// someone else (a server redeeming an authorization code). Used for the refresh token's device
+        /// instead of the redeeming request's User-Agent.
+        /// </summary>
+        public string? SignInUserAgent { get; set; }
 
         /// <summary>
         /// RFC 8693 parameters, set only for <see cref="OAuth.GrantTypes.TokenExchange"/>.
@@ -62,5 +75,11 @@ namespace Authentication.DomainService.OAuth.RequestModel
         /// the original issuance did.
         /// </summary>
         public DateTime? GraceReplayAbsoluteExpiry { get; set; }
+
+        /// <summary>
+        /// Set when a refresh lost its rotation to an impersonation start, stop or switch: the session
+        /// moved to another tenant or organization, so no token is issued and the refusal says why.
+        /// </summary>
+        public bool SessionChanged { get; set; }
     }
 }

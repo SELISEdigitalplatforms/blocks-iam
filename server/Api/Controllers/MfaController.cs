@@ -1,5 +1,6 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using Authentication.DomainService.Authentication;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Dtos;
@@ -11,7 +12,8 @@ using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using UserEntity = Iam.DomainService.Entities.User;
+using Blocks.Genesis.Entities.Iam;
+using UserEntity = Blocks.Genesis.Entities.Iam.User;
 
 namespace Api.Controllers;
 
@@ -23,28 +25,33 @@ public class MfaController : ControllerBase
 {
     private readonly IMfaManagementService _mfaManagementService;
     private readonly IMfaConfigurationService _mfaConfigurationService;
-    private readonly IMfaBackupCodeService _backupCodeService;
     private readonly IMfaAuditService _auditService;
     private readonly IAuthenticationRepository _authenticationRepository;
     private readonly TotpService _totpService;
     private readonly IUserActivityDispatcher _userActivityDispatcher;
+    private readonly IMfaDisableService _mfaDisableService;
+    private readonly IMfaAttemptGate _mfaAttemptGate;
+
+    private const string InvalidRequestError = "invalid_request";
 
     public MfaController(
         IMfaManagementService mfaManagementService,
         IMfaConfigurationService mfaConfigurationService,
-        IMfaBackupCodeService backupCodeService,
         IMfaAuditService auditService,
         IAuthenticationRepository authenticationRepository,
         TotpService totpService,
-        IUserActivityDispatcher userActivityDispatcher)
+        IUserActivityDispatcher userActivityDispatcher,
+        IMfaDisableService mfaDisableService,
+        IMfaAttemptGate mfaAttemptGate)
     {
+        _mfaAttemptGate = mfaAttemptGate;
         _mfaManagementService = mfaManagementService;
         _mfaConfigurationService = mfaConfigurationService;
-        _backupCodeService = backupCodeService;
         _auditService = auditService;
         _authenticationRepository = authenticationRepository;
         _totpService = totpService;
         _userActivityDispatcher = userActivityDispatcher;
+        _mfaDisableService = mfaDisableService;
     }
 
     [HttpGet("config")]
@@ -119,7 +126,7 @@ public class MfaController : ControllerBase
         var userId = GetCurrentUserId();
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(request?.Code))
         {
-            return BadRequest(new { error = "invalid_request", error_description = "userId and code are required" });
+            return BadRequest(new { error = InvalidRequestError, error_description = "userId and code are required" });
         }
 
         var verification = await _totpService.VerifyForUserAsync(userId, request.Code);
@@ -187,14 +194,14 @@ public class MfaController : ControllerBase
     // Anonymous: this is invoked during the login MFA step, before the user holds an access
     // token. The live mfa_id (a short-lived, single-challenge Redis key) is the authorization
     // — possession of a valid one proves a challenge is in flight, the same model used by
-    // "backup-codes/use" and the login verify itself.
+    // the login verify itself.
     [HttpPost("resend")]
     [AllowAnonymous]
     public async Task<IActionResult> ResendOtp([FromBody] ResendOtpApiRequest request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.MfaId))
         {
-            return BadRequest(new { error = "invalid_request", error_description = "mfaId is required" });
+            return BadRequest(new { error = InvalidRequestError, error_description = "mfaId is required" });
         }
 
         var result = await _mfaManagementService.ResendOtpAsync(request.MfaId, request.SendPhoneNumberAsEmailDomain ?? string.Empty);
@@ -222,20 +229,57 @@ public class MfaController : ControllerBase
             || string.IsNullOrWhiteSpace(request.MfaId)
             || string.IsNullOrWhiteSpace(request.VerificationCode))
         {
-            return BadRequest(new { error = "invalid_request", error_description = "mfaId and verificationCode are required" });
+            return BadRequest(new { error = InvalidRequestError, error_description = "mfaId and verificationCode are required" });
         }
 
-        var result = await _mfaManagementService.VerifyOTPAsync(new VerifyOtpRequest
+        var callerId = GetCurrentUserId();
+        if (string.IsNullOrWhiteSpace(callerId))
         {
-            MfaId = request.MfaId,
-            VerificationCode = request.VerificationCode,
-            AuthType = request.AuthType,
-            IsFromTokenCall = request.IsFromTokenCall
+            return Unauthorized();
+        }
+
+        // A caller may only verify a challenge issued to themselves. Someone else's id gets the
+        // same answer as an unknown id, so ids cannot be probed.
+        var owner = await _mfaManagementService.GetChallengeOwnerAsync(request.MfaId);
+        if (!string.Equals(owner, callerId, StringComparison.Ordinal))
+        {
+            return BadRequest(new { valid = false, errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } } });
+        }
+
+        var caller = await _authenticationRepository.GetUserByIdAsync(callerId);
+        if (caller == null)
+        {
+            return Unauthorized();
+        }
+
+        if (IsLocked(caller))
+        {
+            return LockedResult();
+        }
+
+        // Same counter and lockout settings the login mfa step uses, counted before the check.
+        var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
+        OtpVerificationResponse? result = null;
+        var attempt = await _mfaAttemptGate.CheckAsync(callerId, authConfiguration, async () =>
+        {
+            result = await _mfaManagementService.VerifyOTPAsync(new VerifyOtpRequest
+            {
+                MfaId = request.MfaId,
+                VerificationCode = request.VerificationCode,
+                AuthType = request.AuthType,
+                IsFromTokenCall = request.IsFromTokenCall
+            });
+            return result.IsValid;
         });
 
-        if (!result.IsValid)
+        if (attempt.IsLocked)
         {
-            return BadRequest(new { valid = false, errors = result.Errors });
+            return LockedResult();
+        }
+
+        if (!attempt.IsValid || result == null)
+        {
+            return BadRequest(new { valid = false, errors = result?.Errors });
         }
 
         return Ok(new { valid = true, userId = result.UserId });
@@ -249,7 +293,7 @@ public class MfaController : ControllerBase
         var userId = GetCurrentUserId();
         if (string.IsNullOrWhiteSpace(userId) || request == null)
         {
-            return BadRequest(new { error = "invalid_request" });
+            return BadRequest(new { error = InvalidRequestError });
         }
 
         var user = await _authenticationRepository.GetUserByIdAsync(userId);
@@ -298,56 +342,35 @@ public class MfaController : ControllerBase
 
         if (request.MfaType == UserMfaType.TOTP)
         {
-            if (!user.MfaEnabled)
+            // TOTP becomes the method only through totp/setup + totp/verify-setup, which prove the
+            // user holds the new authenticator.
+            if (!user.MfaEnabled || previousType != UserMfaType.TOTP)
             {
                 return BadRequest(new { error = "mfa_not_enrolled", error_description = "Complete TOTP setup before choosing TOTP as preferred method" });
-            }
-
-            await _authenticationRepository.UpdatePartialAsync<UserEntity>(userId, new Dictionary<string, object>
-            {
-                { nameof(UserEntity.UserMfaType), UserMfaType.TOTP },
-                { nameof(UserEntity.LastUpdatedDate), DateTime.UtcNow },
-                { nameof(UserEntity.LastUpdatedBy), userId }
-            });
-
-            if (previousType != UserMfaType.TOTP)
-            {
-                await AuditUserEventAsync(LoginAuditEvents.MfaMethodChanged, userId, UserMfaType.TOTP,
-                    new Dictionary<string, string> { { "previous", previousType.ToString() }, { "new", UserMfaType.TOTP.ToString() } });
             }
 
             return Ok(new { enabled = true, method = UserMfaType.TOTP.ToString() });
         }
 
-        var result = await _mfaManagementService.DisableUserMfa(new DisableUserMfaRequest { UserId = userId });
-        if (result.Errors != null && result.Errors.Count > 0)
+        var disabled = await DisableWithProofAsync(userId, new MfaDisableRequest
         {
-            return BadRequest(new { errors = result.Errors });
-        }
-
-        if (previousType != UserMfaType.None)
+            Password = request.Password,
+            MfaId = request.MfaId,
+            VerificationCode = request.VerificationCode
+        });
+        if (disabled != null)
         {
-            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
-            {
-                UserId = userId,
-                Category = UserActivityCategory.Auth,
-                Event = LoginAuditEvents.MfaRemoved,
-                Source = "auth-mfa-enrollment",
-                Outcome = "success",
-                Metadata = new Dictionary<string, string>
-                {
-                    { "previous", previousType.ToString() }
-                }
-            });
+            return disabled;
         }
 
         return Ok(new { enabled = false, method = UserMfaType.None.ToString() });
     }
 
-    // Self-service: a user disables their own MFA. Own-identity enforced via GetCurrentUserId().
+    // Self-service: a user disables their own MFA. Own-identity enforced via GetCurrentUserId();
+    // the password and a fresh code of the current method are required as well.
     [HttpPost("disable")]
     [Authorize]
-    public async Task<IActionResult> DisableMfa()
+    public async Task<IActionResult> DisableMfa([FromBody] MfaDisableRequest? request)
     {
         var userId = GetCurrentUserId();
         if (string.IsNullOrWhiteSpace(userId))
@@ -355,10 +378,16 @@ public class MfaController : ControllerBase
             return Unauthorized();
         }
 
-        var result = await _mfaManagementService.DisableUserMfa(new DisableUserMfaRequest { UserId = userId });
-        if (result.Errors != null && result.Errors.Count > 0)
+        return await DisableWithProofAsync(userId, request ?? new MfaDisableRequest()) ?? Ok(new { disabled = true });
+    }
+
+    // Null when MFA was turned off; otherwise the error to return.
+    private async Task<IActionResult?> DisableWithProofAsync(string userId, MfaDisableRequest request)
+    {
+        var result = await _mfaDisableService.DisableAsync(userId, request);
+        if (!result.Succeeded)
         {
-            return BadRequest(new { errors = result.Errors });
+            return StatusCode(result.StatusCode, new { error = result.Error, error_description = result.ErrorDescription });
         }
 
         await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
@@ -367,72 +396,20 @@ public class MfaController : ControllerBase
             Category = UserActivityCategory.Auth,
             Event = LoginAuditEvents.MfaRemoved,
             Source = "auth-mfa-enrollment",
-            Outcome = "success"
+            Outcome = "success",
+            Metadata = new Dictionary<string, string> { { "previous", result.PreviousMethod.ToString() } }
         });
-        return Ok(new { disabled = true });
+        return null;
     }
 
-    [HttpGet("backup-codes")]
-    [Authorize]
-    public async Task<IActionResult> GetBackupCodesStatus()
-    {
-        var userId = GetCurrentUserId();
-        if (string.IsNullOrWhiteSpace(userId))
+    private static bool IsLocked(UserEntity user) =>
+        user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow;
+
+    private static ObjectResult LockedResult() =>
+        new(new { error = OAuthError.AccountLocked, error_description = "Account is temporarily locked due to failed authentication attempts" })
         {
-            return Unauthorized();
-        }
-
-        var count = await _backupCodeService.GetRemainingCountAsync(userId);
-        return Ok(new { remaining = count });
-    }
-
-    [HttpPost("backup-codes/generate")]
-    [Authorize]
-    public async Task<IActionResult> GenerateBackupCodes()
-    {
-        var userId = GetCurrentUserId();
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            return Unauthorized();
-        }
-
-        var config = await _mfaConfigurationService.GetAsync() ?? new Configuration();
-        if (!config.AllowBackupCodes)
-        {
-            return BadRequest(new { error = "backup_codes_disabled" });
-        }
-
-        var user = await _authenticationRepository.GetUserByIdAsync(userId);
-        if (user == null || !user.MfaEnabled)
-        {
-            return BadRequest(new { error = "mfa_not_enrolled", error_description = "Enroll in MFA before generating backup codes" });
-        }
-
-        var result = await _backupCodeService.GenerateAsync(userId, config.BackupCodesCount);
-        if (!result.IsSuccess)
-        {
-            return BadRequest(new { errors = result.Errors });
-        }
-
-        return Ok(new { codes = result.PlainCodes });
-    }
-
-    [HttpPost("backup-codes/use")]
-    [AllowAnonymous]
-    public async Task<IActionResult> ConsumeBackupCode([FromBody] ConsumeBackupCodeRequest request)
-    {
-        if (request == null || string.IsNullOrWhiteSpace(request.UserId) || string.IsNullOrWhiteSpace(request.Code))
-        {
-            return BadRequest(new { error = "invalid_request" });
-        }
-
-        var result = await _backupCodeService.ConsumeAsync(request.UserId, request.Code);
-        if (!result.IsValid)
-        {
-            return BadRequest(new { error = "invalid_backup_code", errors = result.Errors });
-        }
-        return Ok(new { valid = true });
-    }
+            StatusCode = StatusCodes.Status423Locked
+        };
 
     private string? GetCurrentUserId()
     {
@@ -448,18 +425,6 @@ public class MfaController : ControllerBase
             UserId = GetCurrentUserId(),
             Status = "success",
             Details = $"enableMfa={request.EnableMfa},requireAll={request.RequireMfaForAllUsers}"
-        });
-    }
-
-    private Task AuditUserEventAsync(string eventType, string userId, UserMfaType? mfaType, Dictionary<string, string> details)
-    {
-        return _auditService.WriteAsync(new MfaAuditEvent
-        {
-            EventType = eventType,
-            UserId = userId,
-            MfaType = mfaType,
-            Status = "success",
-            Details = string.Join(",", details.Select(kv => $"{kv.Key}={kv.Value}"))
         });
     }
 }
@@ -520,13 +485,14 @@ public class SetMfaMethodRequest
 {
     [JsonPropertyName("mfaType")]
     public UserMfaType MfaType { get; set; }
-}
 
-public class ConsumeBackupCodeRequest
-{
-    [JsonPropertyName("userId")]
-    public string UserId { get; set; } = string.Empty;
+    // Needed only to turn MFA off (MfaType None): same proof as POST mfa/disable.
+    [JsonPropertyName("password")]
+    public string? Password { get; set; }
 
-    [JsonPropertyName("code")]
-    public string Code { get; set; } = string.Empty;
+    [JsonPropertyName("mfaId")]
+    public string? MfaId { get; set; }
+
+    [JsonPropertyName("verificationCode")]
+    public string? VerificationCode { get; set; }
 }

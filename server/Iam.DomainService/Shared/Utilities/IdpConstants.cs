@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 
 namespace Iam.DomainService.Utilities
 {
@@ -11,9 +11,27 @@ namespace Iam.DomainService.Utilities
         public const string IamResourceQueue = "blocks_iam_listener_resource";
         public const string IamPermissionQueue = "blocks_iam_listener_permission";
         public const string IamOrgQueue = "blocks_iam_org_listener";
+
+        // A dedicated queue rather than IamUserQueue: a 5000-user batch on the shared user queue
+        // would head-of-line-block ordinary per-user mutation events behind it.
+        public const string IamBulkRoleQueue = "blocks_iam_listener_bulk_role";
         public const string MailQueue = "blocks_email_listener";
         public const string MfaQueueName = "blocks_mfa_listener";
         public const string UserActivityQueue = "blocks_user_activity_listener";
+
+        #endregion
+
+        #region Mail Purposes
+
+        // Informational only: the change has already been applied when these go out, so a
+        // tenant with no template for either purpose simply sends nothing.
+        public const string OrganizationMemberAddedMailPurpose = "OrganizationMemberAdded";
+        public const string OrganizationMemberRemovedMailPurpose = "OrganizationMemberRemoved";
+
+        // Owned by blocks-os (IdentifierConstants.ProjectPeopleInvitationMailPurpose) and stored on the
+        // invited user's MailPurpose. Users invited before the rename still carry the legacy value.
+        public const string ProjectInvitationMailPurpose = "ProjectInvitation";
+        public const string LegacyProjectInvitationMailPurpose = "project_invitation";
 
         #endregion
 
@@ -27,6 +45,15 @@ namespace Iam.DomainService.Utilities
             return string.IsNullOrWhiteSpace(tenantId)
                 ? IdpSessionCookieName
                 : $"{IdpSessionCookieName}_{tenantId}";
+        }
+
+        public const string LinkSessionCookieName = "blocks-link-session";
+
+        public static string BuildLinkSessionCookieKey(string? tenantId)
+        {
+            return string.IsNullOrWhiteSpace(tenantId)
+                ? LinkSessionCookieName
+                : $"{LinkSessionCookieName}-{tenantId}";
         }
 
         #endregion
@@ -56,6 +83,24 @@ namespace Iam.DomainService.Utilities
         /// </para>
         /// </summary>
         public const string NoOrganizationId = "no-org";
+
+        #endregion
+
+        #region Signup auto-join
+
+        /// <summary>
+        /// Error key when a new sign-up's auto-join organization is deleted or disabled, and when a config save
+        /// names such a target. Shared by the email sign-up, both SSO first-login routes and the config save.
+        /// </summary>
+        public const string SignupOrganizationUnavailableError = "signup_organization_unavailable";
+
+        /// <summary>Error key when a config save would leave auto-join on without a target.</summary>
+        public const string SignupAutoJoinOrganizationRequiredError = "signup_auto_join_organization_required";
+
+        public const string SignupOrganizationUnavailableMessage = "This project's organization isn't available right now.";
+        public const string SignupOrganizationUnavailableOidcMessage = "This project's organization isn't available right now. Contact your administrator.";
+        public const string SignupAutoJoinTargetUnavailableMessage = "The selected organization does not exist or is disabled.";
+        public const string SignupAutoJoinOrganizationRequiredMessage = "Choose the organization new sign-ups join.";
 
         #endregion
 
@@ -99,6 +144,9 @@ namespace Iam.DomainService.Utilities
         public const int DefaultIdpSessionIdleHours = 24;
         public const int DefaultIdpSessionAbsoluteHours = 5;
 
+        /// <summary>Restricted signup-link session lifetime (minutes). Independent of IdP session timeouts.</summary>
+        public const int LinkSessionLifetimeMinutes = 30;
+
         #endregion
 
         #region Backchannel retry / timeout
@@ -115,6 +163,30 @@ namespace Iam.DomainService.Utilities
         public const int OidcAuthorizationCodeCacheTtlSeconds = 600;
         public const int OidcStateCacheTtlSeconds = 300;
         public const int IdpFlowCacheTtlSeconds = 600;
+
+        // Same lifetime as the oidc_context it points at: a shorter one expired the social state
+        // while the user was still at the provider (MFA, account picker), ending on invalid_state.
+        public const int OidcSocialStateCacheTtlSeconds = OidcAuthorizationCodeCacheTtlSeconds;
+
+        // How long a finished social callback is remembered, so opening it again (Back, refresh)
+        // gets "already completed" rather than "invalid or expired".
+        public const int OidcSocialStateUsedCacheTtlSeconds = 600;
+
+        #endregion
+
+        #region Signup link password step
+
+        /// <summary>signup_link_auth:{redemptionId} -> pending password step context.</summary>
+        public const string SignupLinkAuthCachePrefix = "signup_link_auth:";
+
+        /// <summary>SETNX key that makes a redemption id single use.</summary>
+        public const string SignupLinkAuthClaimCachePrefix = "signup_link_auth_claim:";
+
+        /// <summary>SETNX key that makes a pending-grant MFA completion single use.</summary>
+        public const string SignupLinkMfaClaimCachePrefix = "signup_link_mfa_claim:";
+
+        /// <summary>Wrong passwords allowed on one redemption id before it is discarded.</summary>
+        public const int SignupLinkAuthMaxAttempts = 5;
 
         #endregion
 
@@ -195,6 +267,7 @@ namespace Iam.DomainService.Utilities
                 {
                     ConsumerSubscriptions = [ConsumerSubscription.BindToQueue(AuthenticationQueue),
                                              ConsumerSubscription.BindToQueue(IamUserQueue),
+                                             ConsumerSubscription.BindToQueue(IamBulkRoleQueue),
                                              ConsumerSubscription.BindToQueue(IamResourceQueue),
                                              ConsumerSubscription.BindToQueue(MfaQueueName),
                                              ConsumerSubscription.BindToQueue(IamOrgQueue),
@@ -210,7 +283,7 @@ namespace Iam.DomainService.Utilities
             {
                 AzureServiceBusConfiguration = new AzureServiceBusConfiguration
                 {
-                    Queues = [AuthenticationQueue, IamUserQueue, IamResourceQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue, UserActivityQueue],
+                    Queues = [AuthenticationQueue, IamUserQueue, IamBulkRoleQueue, IamResourceQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue, UserActivityQueue],
                     Topics = []
                 }
             };

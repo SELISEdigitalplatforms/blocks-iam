@@ -15,6 +15,9 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Oidc.Services;
+using Blocks.Genesis.Entities.Iam;
+using Authentication.DomainService.Shared.Services;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -28,6 +31,8 @@ namespace Authentication.DomainService.OAuth
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
         private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
+        private readonly IIdpSessionService _idpSessionService;
+        private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
 
         private static readonly HashSet<string> MfaCheckpointExemptGrantTypes = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -53,9 +58,12 @@ namespace Authentication.DomainService.OAuth
             ICacheClient cacheClient,
             ITenants tenants,
             IOtpServiceFactory otpServiceFactory,
-            UnifiedTokenSessionService unifiedTokenSessionService
+            UnifiedTokenSessionService unifiedTokenSessionService,
+            IIdpSessionService idpSessionService,
+            IOidcClientTokenLifetimeService? clientTokenLifetimes = null
         )
         {
+            _clientTokenLifetimes = clientTokenLifetimes;
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
             _authenticationDomainService = authenticationDomainService;
             _authenticationRepository = authenticationRepository;
@@ -64,6 +72,7 @@ namespace Authentication.DomainService.OAuth
             _tenants = tenants;
             _otpServiceFactory = otpServiceFactory;
             _unifiedTokenSessionService = unifiedTokenSessionService;
+            _idpSessionService = idpSessionService;
         }
 
         public async Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, IdentityConfiguration authenticationConfiguration, User user, StateInfo? stateInfo = null)
@@ -87,8 +96,21 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
+            // The IdP session has to be settled before the access token is assembled, because the
+            // access token is a self-contained JWT and cannot be re-pointed afterwards. This used to
+            // happen further down, inside ManageRefreshTokenAsync, which left the access token with no
+            // session to name. Resolving here also means CreateOrRotateRefreshToken takes the id as
+            // explicit rather than re-deriving it from the request cookie.
+            tokenRequest.IdpSessionId = await ResolveEffectiveIdpSessionIdAsync(tokenRequest, tenant, user);
+
+            // Access token lifetime: the client's own value when set, else the project value (same instance).
+            // The refresh token resolves its own lifetimes inside UnifiedTokenSessionService.
+            var accessConfiguration = _clientTokenLifetimes == null
+                ? authenticationConfiguration
+                : (await _clientTokenLifetimes.ApplyAsync(authenticationConfiguration, tokenRequest.ClientId))!;
+
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
-                authenticationConfiguration,
+                accessConfiguration,
                 tenant,
                 user,
                 tokenRequest,
@@ -104,7 +126,9 @@ namespace Authentication.DomainService.OAuth
                 return new TokenResponse
                 {
                     Error = OAuthError.InvalidRefreshToken,
-                    ErrorDescription = "Refresh token is invalid or expired",
+                    ErrorDescription = tokenRequest.SessionChanged
+                        ? OAuthError.SessionChanged
+                        : "Refresh token is invalid or expired",
                     StatusCode = 400
                 };
             }
@@ -112,7 +136,7 @@ namespace Authentication.DomainService.OAuth
             var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, tokenRequest.Request);
 
             var accessTokenLifetimeSeconds = Math.Max(
-                authenticationConfiguration.AccessTokenValidForNumberMinutes * IdpConstants.SecondsPerMinute,
+                accessConfiguration.AccessTokenValidForNumberMinutes * IdpConstants.SecondsPerMinute,
                 IdpConstants.MinAccessTokenLifetimeSeconds);
 
             return new TokenResponse
@@ -125,6 +149,47 @@ namespace Authentication.DomainService.OAuth
                 CookieDomain = cookieDomain,
                 StatusCode = 200
             };
+        }
+
+        /// <summary>
+        /// Settles which IdP session this issuance belongs to.
+        ///
+        /// Order: an id the caller already established (the OIDC refresh leg passes the lineage's
+        /// own session) wins, then the predecessor recorded on the refresh token being rotated,
+        /// and only if neither names a live session do we resolve-or-create from the request.
+        /// A candidate is checked for liveness first, so a revoked or expired session is never
+        /// stamped onto a freshly minted token.
+        /// </summary>
+        private async Task<string?> ResolveEffectiveIdpSessionIdAsync(TokenRequest tokenRequest, Tenant tenant, User user)
+        {
+            // client_credentials and token exchange mint through their own services and never reach
+            // here; anything without a user still must not be given a session.
+            if (string.IsNullOrWhiteSpace(user?.ItemId) || string.IsNullOrWhiteSpace(tenant?.TenantId))
+            {
+                return null;
+            }
+
+            var candidate = tokenRequest.IdpSessionId;
+
+            if (string.IsNullOrWhiteSpace(candidate) && !string.IsNullOrWhiteSpace(tokenRequest.RefreshToken))
+            {
+                var cached = await _cacheClient.GetStringValueAsync(tokenRequest.RefreshToken);
+                if (!string.IsNullOrWhiteSpace(cached))
+                {
+                    candidate = JsonSerializer.Deserialize<RefreshTokenCache>(cached)?.SessionId;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(candidate) && await _idpSessionService.IsSessionActiveAsync(candidate))
+            {
+                return candidate;
+            }
+
+            return await _idpSessionService.ResolveOrCreateAsync(
+                tokenRequest.Request?.HttpContext,
+                user.ItemId,
+                tenant.TenantId,
+                tokenRequest.Request?.HttpContext?.Connection?.RemoteIpAddress?.ToString());
         }
 
         private async Task<IReadOnlyCollection<string>> ResolveClientAllowedScopesAsync(string? clientId)
@@ -270,8 +335,7 @@ namespace Authentication.DomainService.OAuth
                 }
 
                 var rotated = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
-                    tokenRequest.RefreshToken,
-                    oldRefreshTokenCache,
+                    new RefreshTokenPredecessor(tokenRequest.RefreshToken, oldRefreshTokenCache),
                     tokenRequest,
                     authenticationConfiguration,
                     tenant,
@@ -285,8 +349,7 @@ namespace Authentication.DomainService.OAuth
 
             // Initial auth flow: no old token
             var issued = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
-                null,
-                null,
+                RefreshTokenPredecessor.None,
                 tokenRequest,
                 authenticationConfiguration,
                 tenant,

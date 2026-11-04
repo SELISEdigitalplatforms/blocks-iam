@@ -44,8 +44,6 @@ namespace Authentication.DomainService.Authentication
         public const string MfaReset = "mfa_reset";
         public const string MfaMethodChanged = "mfa_method_changed";
         public const string MfaAccountLocked = "mfa_account_locked";
-        public const string MfaBackupCodesGenerated = "mfa_backup_codes_generated";
-        public const string MfaBackupCodeUsed = "mfa_backup_code_used";
         public const string MfaPolicyUpdated = "mfa_policy_updated";
 
         #endregion

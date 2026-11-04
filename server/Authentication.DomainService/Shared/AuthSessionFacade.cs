@@ -8,6 +8,7 @@ using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Entities;
 using Idp.DomainService.Oidc.Contracts;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Shared
 {
@@ -75,7 +76,7 @@ namespace Authentication.DomainService.Shared
         public Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, IdentityConfiguration authConfiguration, User? user)
             => _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, authConfiguration, user);
 
-        public Task<RefreshTokenCache?> TryResolveRefreshSessionAsync(string presentedTokenId, IdentityConfiguration configuration)
-            => _refreshSessionResolver.TryResolveRefreshSessionAsync(presentedTokenId, configuration);
+        public async Task<RefreshTokenCache?> TryResolveRefreshSessionAsync(string presentedTokenId, IdentityConfiguration configuration)
+            => (await _refreshSessionResolver.ResolveRefreshSessionAsync(presentedTokenId, configuration, followImpersonationTransitions: true)).Session;
     }
 }

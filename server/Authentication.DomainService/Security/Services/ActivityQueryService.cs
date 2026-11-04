@@ -2,6 +2,7 @@ using Authentication.DomainService.Security.Models;
 using Iam.DomainService.Activity.RequestModel;
 using Iam.DomainService.Activity.Services;
 using Iam.DomainService.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Security.Services
 {

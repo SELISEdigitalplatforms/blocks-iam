@@ -2,6 +2,7 @@
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Users
 {
@@ -14,7 +15,15 @@ namespace Iam.DomainService.Users
         Task<User> GetUserByIdAsync(string itemId);
         Task<T> GetUserByIdAsync<T>(string itemId);
         Task<bool> UpdateUserAsync(User user);
+
+        /// <summary>
+        /// Atomically records one successful login. See
+        /// <see cref="Iam.DomainService.Services.IIdentityAccessManagementRepository.RecordSuccessfulLoginAsync"/>.
+        /// </summary>
+        Task<bool> RecordSuccessfulLoginAsync(string userId, string deviceInformationJson, DateTime nowUtc);
         Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter>;
+        /// <summary>As the caller may see them: properties a View column rule hides are cleared. Never save them back.</summary>
+        Task<(IQueryable<T>?, long)> GetUsersForViewAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter>;
         Task<IamConfiguration> GetIamConfigurationAsync();
         Task<bool> InsertUserKeyMapAsync(UserKeyMap userKeyMap);
         Task<List<GetUserPermission>> GetPermissionsByResourcesAsync(string id);

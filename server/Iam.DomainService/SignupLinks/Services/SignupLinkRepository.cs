@@ -1,0 +1,233 @@
+using Iam.DomainService.Services;
+using Microsoft.Extensions.Logging;
+using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
+
+namespace Iam.DomainService.SignupLinks;
+
+public class SignupLinkRepository : ISignupLinkRepository
+{
+    public const string CollectionName = "SignupLinks";
+    private const string CodeHashIndex = "ix_codehash_unique";
+    private const string StatusExpiryIndex = "ix_tenant_status_expires";
+    private const string ConfigurationIndex = "ix_tenant_configuration";
+    private const string ConfigurationCreatedIndex = "ix_tenant_configuration_created";
+
+    private readonly IIdentityAccessManagementRepository _iamRepository;
+    private readonly ILogger<SignupLinkRepository> _logger;
+    private readonly IIamDataAccess _dataAccess;
+
+    public SignupLinkRepository(
+        IIdentityAccessManagementRepository iamRepository,
+        ILogger<SignupLinkRepository> logger,
+        IIamDataAccess dataAccess)
+    {
+        _iamRepository = iamRepository;
+        _logger = logger;
+        _dataAccess = dataAccess;
+    }
+
+    private IMongoCollection<SignupLink> Collection =>
+        _iamRepository.GetCollectionByName<SignupLink>(CollectionName);
+
+    public async Task EnsureIndexesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            // Drop Phase 2 prefix index; replaced by TenantId+ConfigurationId+CreatedDate.
+            try
+            {
+                await Collection.Indexes.DropOneAsync(ConfigurationIndex, cancellationToken: ct);
+            }
+            catch (Exception dropEx)
+            {
+                _logger.LogDebug(dropEx,
+                    "SignupLinkRepository: {Index} already absent or drop skipped.", ConfigurationIndex);
+            }
+
+            var keys = Builders<SignupLink>.IndexKeys;
+            var models = new[]
+            {
+                new CreateIndexModel<SignupLink>(
+                    keys.Ascending(x => x.CodeHash),
+                    new CreateIndexOptions { Name = CodeHashIndex, Unique = true }),
+                new CreateIndexModel<SignupLink>(
+                    keys.Ascending(x => x.TenantId).Ascending(x => x.Status).Ascending(x => x.ExpiresAtUtc),
+                    new CreateIndexOptions { Name = StatusExpiryIndex }),
+                new CreateIndexModel<SignupLink>(
+                    keys.Ascending(x => x.TenantId).Ascending(x => x.ConfigurationId).Descending(x => x.CreatedDate),
+                    new CreateIndexOptions { Name = ConfigurationCreatedIndex }),
+            };
+            await Collection.Indexes.CreateManyAsync(models, cancellationToken: ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "SignupLinkRepository.EnsureIndexesAsync failed; index creation is idempotent and will be retried.");
+        }
+    }
+
+    public Task InsertAsync(SignupLink entity) =>
+        _dataAccess.InsertOneAsync(Collection, IamSchemas.SignupLink, entity, "SignupLinkRepository.InsertAsync");
+
+    public async Task<bool> ReplaceAsync(SignupLink entity)
+    {
+        var result = await _dataAccess.ReplaceOneAsync(
+            Collection,
+            IamSchemas.SignupLink,
+            Builders<SignupLink>.Filter.Where(x => x.ItemId == entity.ItemId && x.TenantId == entity.TenantId),
+            entity,
+            "SignupLinkRepository.ReplaceAsync");
+        return result is not null && result.IsAcknowledged && result.MatchedCount > 0;
+    }
+
+    public async Task<SignupLink?> GetByIdAsync(string itemId, string tenantId)
+    {
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.ItemId, itemId)
+            & Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId);
+        return await _dataAccess.FindFirstAsync(Collection, IamSchemas.SignupLink, filter, "SignupLinkRepository.GetByIdAsync");
+    }
+
+
+
+    public async Task<SignupLink?> GetByItemIdAsync(string itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return null;
+        }
+
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.ItemId, itemId);
+        return await _dataAccess.FindFirstAsync(Collection, IamSchemas.SignupLink, filter, "SignupLinkRepository.GetByItemIdAsync");
+    }
+
+    public async Task<SignupLink?> GetByCodeHashAsync(string codeHash)
+    {
+        if (string.IsNullOrWhiteSpace(codeHash))
+        {
+            return null;
+        }
+
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.CodeHash, codeHash);
+        return await _dataAccess.FindFirstAsync(Collection, IamSchemas.SignupLink, filter, "SignupLinkRepository.GetByCodeHashAsync");
+    }
+
+    public async Task<SignupLink?> TryIncrementRedemptionAsync(
+        string linkId,
+        string tenantId,
+        string createdUserId,
+        DateTime nowUtc)
+    {
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.ItemId, linkId)
+            & Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId)
+            & Builders<SignupLink>.Filter.Eq(x => x.Status, SignupLinkStatus.Active)
+            & Builders<SignupLink>.Filter.Gt(x => x.ExpiresAtUtc, nowUtc)
+            // MaxRedemptions 0 means no cap. The comparison alone would read that as
+            // "already exhausted", which is the opposite of what it means.
+            & Builders<SignupLink>.Filter.Where(x =>
+                x.MaxRedemptions == SignupLink.UnlimitedMaxRedemptions
+                || x.RedemptionCount < x.MaxRedemptions);
+
+        var update = Builders<SignupLink>.Update
+            .Inc(x => x.RedemptionCount, 1)
+            .Set(x => x.LastUpdatedDate, nowUtc)
+            .Set(x => x.LastUpdatedBy, string.IsNullOrWhiteSpace(createdUserId) ? "signup-link" : createdUserId);
+
+        // Only stamp CreatedUserId when this redemption created (or owns) the account.
+        // Pre-existing org-join / redirect branches must not overwrite it (Phase 4 C1/H2).
+        if (!string.IsNullOrWhiteSpace(createdUserId))
+        {
+            update = update.Set(x => x.CreatedUserId, createdUserId);
+        }
+
+        var redeemed = await _dataAccess.FindOneAndUpdateAsync(
+            Collection,
+            IamSchemas.SignupLink,
+            filter,
+            update,
+            "SignupLinkRepository.TryIncrementRedemptionAsync",
+            new FindOneAndUpdateOptions<SignupLink>
+            {
+                ReturnDocument = ReturnDocument.After
+            });
+
+        // Status is flipped afterwards rather than inside the guarded update, because a
+        // multi-use link has to stay Active while budget remains and Mongo cannot express
+        // that conditionally in a plain $set. It is bookkeeping, not a control: the count
+        // guard above is what prevents over-redemption, so a failure here cannot let an
+        // exhausted link through.
+        if (redeemed != null
+            && !SignupLink.HasRedemptionBudget(
+                redeemed.RedemptionCount, redeemed.MaxRedemptions))
+        {
+            await _dataAccess.UpdateOneAsync(
+                Collection,
+                IamSchemas.SignupLink,
+                Builders<SignupLink>.Filter.Eq(x => x.ItemId, redeemed.ItemId)
+                    & Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId)
+                    & Builders<SignupLink>.Filter.Eq(x => x.Status, SignupLinkStatus.Active),
+                Builders<SignupLink>.Update.Set(x => x.Status, SignupLinkStatus.Redeemed),
+                "SignupLinkRepository.TryIncrementRedemptionAsync.Status");
+
+            redeemed.Status = SignupLinkStatus.Redeemed;
+        }
+
+        return redeemed;
+    }
+
+    public async Task<(List<SignupLink> Items, long TotalCount)> QueryAsync(
+        string tenantId,
+        QuerySignupLinksRequest request)
+    {
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId);
+        if (!string.IsNullOrWhiteSpace(request.ConfigurationId))
+        {
+            filter &= Builders<SignupLink>.Filter.Eq(x => x.ConfigurationId, request.ConfigurationId);
+        }
+
+        var scope = await _dataAccess.ReadAsync(IamSchemas.SignupLink, filter, "SignupLinkRepository.QueryAsync", useProjection: false);
+        if (!scope.Granted) return ([], 0);
+        var total = await Collection.CountDocumentsAsync(scope.Filter);
+        var items = await scope.Apply(Collection)
+            .Sort(Builders<SignupLink>.Sort.Descending(x => x.CreatedDate))
+            .Skip(request.Page * request.PageSize)
+            .Limit(request.PageSize)
+            .ToListAsync();
+        return (scope.ForView(items), total);
+    }
+
+    public async Task<long> RevokeActiveByConfigurationAsync(
+        string tenantId,
+        string configurationId,
+        string revokedBy,
+        DateTime revokedAtUtc)
+    {
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId)
+            & Builders<SignupLink>.Filter.Eq(x => x.ConfigurationId, configurationId)
+            & Builders<SignupLink>.Filter.Eq(x => x.Status, SignupLinkStatus.Active);
+
+        var update = Builders<SignupLink>.Update
+            .Set(x => x.Status, SignupLinkStatus.Revoked)
+            .Set(x => x.RevokedAtUtc, revokedAtUtc)
+            .Set(x => x.RevokedBy, revokedBy)
+            .Set(x => x.LastUpdatedDate, revokedAtUtc)
+            .Set(x => x.LastUpdatedBy, revokedBy);
+
+        var result = await _dataAccess.UpdateManyAsync(Collection, IamSchemas.SignupLink, filter, update, "SignupLinkRepository.RevokeActiveByConfigurationAsync");
+        return result?.ModifiedCount ?? 0;
+    }
+
+    public async Task<List<SignupLink>> FindForSummaryAsync(
+        string tenantId,
+        string configurationId,
+        DateTime fromUtc,
+        DateTime toUtc)
+    {
+        var filter = Builders<SignupLink>.Filter.Eq(x => x.TenantId, tenantId)
+            & Builders<SignupLink>.Filter.Eq(x => x.ConfigurationId, configurationId)
+            & Builders<SignupLink>.Filter.Gte(x => x.CreatedDate, fromUtc)
+            & Builders<SignupLink>.Filter.Lt(x => x.CreatedDate, toUtc);
+
+        return await _dataAccess.FindListAsync(Collection, IamSchemas.SignupLink, filter, "SignupLinkRepository.FindForSummaryAsync");
+    }
+}

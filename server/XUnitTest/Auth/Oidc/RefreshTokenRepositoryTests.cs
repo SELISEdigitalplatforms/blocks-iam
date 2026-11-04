@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Oidc
 {
@@ -33,7 +34,7 @@ namespace XUnitTest.Auth.Oidc
         }
 
         private RefreshTokenRepository Sut() =>
-            new(_db.Object, _cache.Object, NullLogger<RefreshTokenRepository>.Instance);
+            new(_db.Object, _cache.Object, NullLogger<RefreshTokenRepository>.Instance, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         private static RefreshTokenModel Token(string id = "t1", string user = "u1", string tenant = "tenant1", string session = "s1") =>
             new()

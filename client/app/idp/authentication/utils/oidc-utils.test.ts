@@ -119,6 +119,58 @@ describe("oidc-utils", () => {
       expect(url).toContain("/oidc/login");
     });
 
+    // The way back from MFA (or an error page) re-enters /oidc/login. Without the relying party's
+    // own challenge the login form mints one, and the OS console's or construct app's exchange fails.
+    it("should carry the relying party's PKCE challenge through the flow, MFA included", () => {
+      const search =
+        "?clientId=os-client&tenant_id=t1&state=s&redirect_uri=https%3A%2F%2Fos.example.com%2Fcb" +
+        "&code_challenge=rp-challenge&code_challenge_method=S256";
+      Object.defineProperty(window, "location", {
+        value: { search, hash: "", href: `http://localhost:3000/oidc/login${search}` },
+        writable: true,
+        configurable: true,
+      });
+
+      const mfa = new URL(buildOIDCNavigationUrl("/oidc/mfa-check?mfa_id=m1&mfa_type=1"), "http://x");
+      expect(mfa.pathname).toBe("/oidc/mfa-check");
+      expect(mfa.searchParams.get("mfa_id")).toBe("m1");
+      expect(mfa.searchParams.get("code_challenge")).toBe("rp-challenge");
+      expect(mfa.searchParams.get("code_challenge_method")).toBe("S256");
+
+      // Now on the MFA page: its way back keeps the same client, tenant, state and challenge.
+      const mfaSearch = mfa.search;
+      Object.defineProperty(window, "location", {
+        value: { search: mfaSearch, hash: "", href: `http://localhost:3000/oidc/mfa-check${mfaSearch}` },
+        writable: true,
+        configurable: true,
+      });
+      const back = new URL(buildOIDCNavigationUrl("/oidc/login"), "http://x");
+      expect(back.pathname).toBe("/oidc/login");
+      expect(back.searchParams.get("clientId")).toBe("os-client");
+      expect(back.searchParams.get("tenant_id")).toBe("t1");
+      expect(back.searchParams.get("state")).toBe("s");
+      expect(back.searchParams.get("redirect_uri")).toBe("https://os.example.com/cb");
+      expect(back.searchParams.get("code_challenge")).toBe("rp-challenge");
+      expect(back.searchParams.get("code_challenge_method")).toBe("S256");
+      expect(back.searchParams.get("mfa_id")).toBeNull();
+    });
+
+    it("should default the challenge method to S256 and add nothing without a challenge", () => {
+      Object.defineProperty(window, "location", {
+        value: { search: "?clientId=c&code_challenge=x", hash: "", href: "http://localhost:3000/oidc/login?clientId=c&code_challenge=x" },
+        writable: true,
+        configurable: true,
+      });
+      expect(new URL(buildOIDCNavigationUrl("/oidc/login"), "http://x").searchParams.get("code_challenge_method")).toBe("S256");
+
+      Object.defineProperty(window, "location", {
+        value: { search: "?clientId=c", hash: "", href: "http://localhost:3000/oidc/login?clientId=c" },
+        writable: true,
+        configurable: true,
+      });
+      expect(buildOIDCNavigationUrl("/oidc/login")).not.toContain("code_challenge");
+    });
+
     it("should reject unsafe navigation paths", () => {
       const url = buildOIDCNavigationUrl("//evil.com");
       expect(url.startsWith("/oidc/login")).toBe(true);
@@ -185,6 +237,22 @@ describe("oidc-utils", () => {
       expect(params).toBeInstanceOf(URLSearchParams);
       expect(params.get("x-blocks-key")).toBe("test-key");
       expect(params.get("state")).toBe("abc");
+    });
+
+    it("should forward the relying party's PKCE challenge unchanged", () => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "?state=abc&code_challenge=rp-challenge&code_challenge_method=S256",
+          hash: "",
+          href: "http://localhost:3000/oidc/login?state=abc&code_challenge=rp-challenge&code_challenge_method=S256",
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      const params = getCurrentOIDCParams();
+      expect(params.get("code_challenge")).toBe("rp-challenge");
+      expect(params.get("code_challenge_method")).toBe("S256");
     });
 
     it("should return empty URLSearchParams when no params exist", () => {

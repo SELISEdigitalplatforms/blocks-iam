@@ -7,6 +7,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests
 {

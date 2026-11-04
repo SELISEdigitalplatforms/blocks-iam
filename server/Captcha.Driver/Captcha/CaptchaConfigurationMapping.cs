@@ -1,3 +1,5 @@
+using Blocks.Genesis.Entities.Iam;
+
 namespace Blocks.CaptchaDriver;
 
 /// <summary>

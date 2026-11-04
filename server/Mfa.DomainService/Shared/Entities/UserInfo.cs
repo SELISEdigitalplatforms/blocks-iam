@@ -1,5 +1,6 @@
 ﻿using Iam.DomainService.Entities;
 using MongoDB.Bson.Serialization.Attributes;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Mfa.DomainService.Entities
 {

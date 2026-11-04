@@ -138,6 +138,28 @@ describe("useOidcUiConfig", () => {
     });
   });
 
+  it("falls back to the default copy for fields the stored template returns as null", async () => {
+    const legacyTemplate = {
+      ...OIDC_UI_TEMPLATE_FIXTURE,
+      pages: {
+        ...OIDC_UI_TEMPLATE_FIXTURE.pages,
+        signup: { ...OIDC_UI_TEMPLATE_FIXTURE.pages.signup, heading: "Create Your KLAX Account", emailSentSubtitle: null },
+        forgotPassword: { ...OIDC_UI_TEMPLATE_FIXTURE.pages.forgotPassword, successSubtitle: null },
+      },
+    };
+    vi.mocked(http.get).mockResolvedValue({ captcha: null, template: legacyTemplate });
+
+    const { result } = renderHook(() => useOidcUiConfig("tenant-x"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const pages = result.current.data.template!.pages;
+    expect(pages.signup.heading).toBe("Create Your KLAX Account");
+    expect(pages.signup.emailSentSubtitle).toBe(DEFAULT_OIDC_UI_TEMPLATE.pages.signup.emailSentSubtitle);
+    expect(pages.forgotPassword.successSubtitle).toBe(DEFAULT_OIDC_UI_TEMPLATE.pages.forgotPassword.successSubtitle);
+  });
+
   it("uses the template returned by the public endpoint", async () => {
     const customTemplate = {
       ...OIDC_UI_TEMPLATE_FIXTURE,

@@ -1,10 +1,32 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
 import {
+  dateLocale,
   formatRelative,
   formatAbsolute,
   formatAbsoluteWithSeconds,
   formatAbsoluteUtcWithSeconds,
 } from "./date-format";
+
+// Any non-English UI language is formatted through Intl in that language; "xx" stands for one.
+describe("non-English UI language", () => {
+  afterEach(() => useAppSettingsStore.getState().setSettings({ language: "en" }));
+
+  it("uses the UI language as the date locale, and the browser's for English", () => {
+    expect(dateLocale()).toBeUndefined();
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
+    expect(dateLocale()).toBe("xx");
+  });
+
+  it("formats relative and absolute dates without throwing", () => {
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
+    const past = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    expect(formatRelative(past)).not.toBe(past);
+    expect(formatRelative("not-a-real-date")).toBe("not-a-real-date");
+    expect(formatAbsolute("2026-03-09T14:03:00Z")).toContain("2026");
+    expect(formatAbsoluteUtcWithSeconds("2026-03-09T14:03:05Z")).toContain("UTC");
+  });
+});
 
 describe("formatRelative", () => {
   it("returns an em dash for nullish input", () => {

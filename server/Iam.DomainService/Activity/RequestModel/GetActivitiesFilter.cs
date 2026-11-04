@@ -1,4 +1,5 @@
 using Iam.DomainService.Dtos;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Iam.DomainService.Activity.RequestModel
 {

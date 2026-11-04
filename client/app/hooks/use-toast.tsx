@@ -1,6 +1,9 @@
 import * as React from "react";
 import type { ToastActionElement, ToastProps } from "@/components/ui-kits/toaster/toast";
 import { handleErrorMessages } from "@/lib/error";
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
+
+const IAM_SHARED_MODULE = "iam.shared";
 
 const TOAST_LIMIT = 1;
 const TOAST_REMOVE_DELAY = 1000000;
@@ -12,12 +15,14 @@ type ToasterToast = ToastProps & {
   action?: ToastActionElement;
 };
 
-const actionTypes = {
-  ADD_TOAST: "ADD_TOAST",
-  UPDATE_TOAST: "UPDATE_TOAST",
-  DISMISS_TOAST: "DISMISS_TOAST",
-  REMOVE_TOAST: "REMOVE_TOAST",
-} as const;
+// Only ever consumed via `typeof` to build ActionTypes, never read at runtime, so it is
+// declared as a type rather than a const object.
+type ActionTypes = {
+  ADD_TOAST: "ADD_TOAST";
+  UPDATE_TOAST: "UPDATE_TOAST";
+  DISMISS_TOAST: "DISMISS_TOAST";
+  REMOVE_TOAST: "REMOVE_TOAST";
+};
 
 let count = 0;
 
@@ -26,23 +31,21 @@ function genId() {
   return count.toString();
 }
 
-type ActionType = typeof actionTypes;
-
 type Action =
   | {
-      type: ActionType["ADD_TOAST"];
+      type: ActionTypes["ADD_TOAST"];
       toast: ToasterToast;
     }
   | {
-      type: ActionType["UPDATE_TOAST"];
+      type: ActionTypes["UPDATE_TOAST"];
       toast: Partial<ToasterToast>;
     }
   | {
-      type: ActionType["DISMISS_TOAST"];
+      type: ActionTypes["DISMISS_TOAST"];
       toastId?: ToasterToast["id"];
     }
   | {
-      type: ActionType["REMOVE_TOAST"];
+      type: ActionTypes["REMOVE_TOAST"];
       toastId?: ToasterToast["id"];
     };
 
@@ -178,7 +181,7 @@ type ErrorToastOptions = {
   customMessages?: Record<string, string>;
 };
 
-export const showSuccessToast = ({ title = "Success", description }: SuccessToastOptions) => {
+export const showSuccessToast = ({ title = tStatic(IAM_SHARED_MODULE, "common:SUCCESS"), description }: SuccessToastOptions) => {
   toast({
     variant: "success",
     title,
@@ -186,7 +189,7 @@ export const showSuccessToast = ({ title = "Success", description }: SuccessToas
   });
 };
 
-export const showInfoToast = ({ title = "Info", description }: InfoToastOptions) => {
+export const showInfoToast = ({ title = tStatic(IAM_SHARED_MODULE, "USE_TOAST.INFO"), description }: InfoToastOptions) => {
   toast({
     variant: "info",
     title,
@@ -195,7 +198,7 @@ export const showInfoToast = ({ title = "Info", description }: InfoToastOptions)
 };
 
 export const showErrorToast = ({
-  title = "Failed",
+  title = tStatic(IAM_SHARED_MODULE, "USE_TOAST.FAILED"),
   errors,
   customMessages,
 }: ErrorToastOptions) => {

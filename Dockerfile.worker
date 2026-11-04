@@ -47,3 +47,6 @@ RUN chown -R app:app /app
 USER app
 
 ENTRYPOINT ["dotnet", "Worker.dll"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD pgrep -x dotnet || exit 1

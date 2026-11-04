@@ -27,6 +27,10 @@ on:
         type: string
         default: ""
 
+    secrets:
+      INCEPTION_DT_API_KEY:
+        required: true
+
 permissions:
   contents: read
 
@@ -36,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Trivy
         run: |
@@ -52,37 +56,43 @@ jobs:
           trivy --version
 
       - name: Generate CycloneDX SBOM (server + client)
+        env:
+          INPUTS_SPEC_VERSION: ${{ inputs.SPEC_VERSION }}
         run: |
           set -euo pipefail
           trivy fs --quiet --format cyclonedx --output sbom.cdx.json .
           # Dependency-Track rejects spec versions it does not know yet.
-          sed -E 's/"specVersion"[[:space:]]*:[[:space:]]*"1\.7"/"specVersion": "${{ inputs.SPEC_VERSION }}"/' \
-            sbom.cdx.json > sbom.upload.json
-          python3 -c "import json;d=json.load(open('sbom.upload.json'));print('components:',len(d.get('components',[])))"
+          # Use python (not single-quoted sed) so INPUTS_SPEC_VERSION expands.
+          python3 -c "import json,os;d=json.load(open('sbom.cdx.json'));d['specVersion']=os.environ['INPUTS_SPEC_VERSION'];json.dump(d,open('sbom.upload.json','w'));print('components:',len(d.get('components',[])),'specVersion:',d['specVersion'])"
 
       - name: Upload SBOM to SCA portal
         env:
           DT_API_KEY: ${{ secrets.INCEPTION_DT_API_KEY }}
+          INPUTS_DT_URL: ${{ inputs.DT_URL }}
+          INPUTS_PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
+          INPUTS_PROJECT_VERSION: ${{ inputs.PROJECT_VERSION }}
         run: |
           set -euo pipefail
           [ -n "${DT_API_KEY:-}" ] || { echo "::error::secret DT_API_KEY is not set"; exit 1; }
           code=$(curl -sS -o /tmp/dt.out -w '%{http_code}' \
-            -X POST "${{ inputs.DT_URL }}/api/v1/bom" \
+            -X POST "${INPUTS_DT_URL}/api/v1/bom" \
             -H "X-Api-Key: $DT_API_KEY" \
             -F autoCreate=true \
-            -F projectName="${{ inputs.PROJECT_NAME }}" \
-            -F projectVersion="${{ inputs.PROJECT_VERSION }}" \
+            -F projectName="${INPUTS_PROJECT_NAME}" \
+            -F projectVersion="${INPUTS_PROJECT_VERSION}" \
             -F "bom=@sbom.upload.json")
           echo "HTTP $code"
           case "$code" in
-            2*) echo "SBOM published: ${{ inputs.DT_URL }}" ;;
+            2*) echo "SBOM published: ${INPUTS_DT_URL}" ;;
             *)  echo "::error::SBOM upload failed (HTTP $code)"; head -c 500 /tmp/dt.out; exit 1 ;;
           esac
 
       - name: Vulnerability report
+        env:
+          INPUTS_SEVERITY_FAIL: ${{ inputs.SEVERITY_FAIL }}
         run: |
           set -euo pipefail
-          sev="${{ inputs.SEVERITY_FAIL }}"
+          sev="${INPUTS_SEVERITY_FAIL}"
           if [ -n "$sev" ]; then
             trivy fs --quiet --scanners vuln --severity "$sev" --exit-code 1 .
           else

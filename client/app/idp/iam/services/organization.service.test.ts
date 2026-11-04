@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { serviceInstances } from "@/lib/http-client";
 import { OrganizationService } from "./organization.service";
 import { ORGANIZATION_ENDPOINTS } from "../constants/endpoint.constant";
 import {

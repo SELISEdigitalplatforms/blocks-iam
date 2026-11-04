@@ -1,8 +1,9 @@
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { activationFormDefaultValue, activationFormSchema, buildActivationFormSchema } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { Captcha } from "@/components/captcha";
 import { useNavigate } from "react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +21,7 @@ import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authenticati
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { resolveActivationCodeStatus } from "./activation-status";
 import { PASSWORD_MAX_INPUT_LENGTH } from "@blocks-idp/authentication/utils/password-policy.util";
+import type { IAccountActivationResponse } from "@blocks-idp/iam/models/user";
 
 /** Pulls a readable message out of the several shapes an activation failure arrives in. */
 const readErrorMessage = (source: unknown, fallback: string): string => {
@@ -29,6 +31,60 @@ const readErrorMessage = (source: unknown, fallback: string): string => {
   }
   return (source as string) || fallback;
 };
+
+type AutoActivationViewProps = Readonly<{
+  error: string | null;
+  waitingForCaptcha: boolean;
+  captchaProps: React.ComponentProps<typeof Captcha>;
+  captchaText: React.ReactNode;
+  progressText: React.ReactNode;
+  activatingLabel: React.ReactNode;
+  backToLoginLabel: React.ReactNode;
+}>;
+
+const pickAutoStatusText = (
+  error: string | null,
+  waitingForCaptcha: boolean,
+  captchaText: React.ReactNode,
+  progressText: React.ReactNode,
+): React.ReactNode => {
+  if (error) return error;
+  return waitingForCaptcha ? captchaText : progressText;
+};
+
+const AutoActivationView = ({
+  error,
+  waitingForCaptcha,
+  captchaProps,
+  captchaText,
+  progressText,
+  activatingLabel,
+  backToLoginLabel,
+}: AutoActivationViewProps) => (
+  <div className="flex flex-col gap-5">
+    <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
+      {pickAutoStatusText(error, waitingForCaptcha, captchaText, progressText)}
+    </p>
+
+    {waitingForCaptcha && !error && <Captcha {...captchaProps} />}
+
+    {!waitingForCaptcha && !error && (
+      <output
+        className="flex items-center justify-center gap-2 py-2 text-sm"
+        style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}
+      >
+        <Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} />
+        <span>{activatingLabel}</span>
+      </output>
+    )}
+
+    {error && (
+      <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
+        {backToLoginLabel}
+      </LoginReturnLink>
+    )}
+  </div>
+);
 
 type ActivationFormProps = {
   code: string;
@@ -41,6 +97,11 @@ type ActivationFormProps = {
    * configuration; when false, confirming this form is all the activation needs.
    */
   collectPassword?: boolean;
+  /**
+   * Takes over after a successful activation when it returns true; otherwise the success page
+   * follows as usual.
+   */
+  onActivated?: (response: IAccountActivationResponse) => boolean;
 };
 
 export const ActivationForm = ({
@@ -49,7 +110,9 @@ export const ActivationForm = ({
   firstName,
   lastName,
   collectPassword = true,
+  onActivated,
 }: ActivationFormProps) => {
+  const { t } = useT("iam.activation");
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const formRef = useRef<HTMLFormElement>(null);
@@ -124,7 +187,7 @@ export const ActivationForm = ({
             navigate(successUrl, { replace: true });
             return;
           }
-          const alreadyActive = "This account is already active. Please sign in to continue.";
+          const alreadyActive = t("ACTIVATION_FORM.ALREADY_ACTIVE");
           report(alreadyActive);
           await animCtx?.failAnimation(alreadyActive);
           return;
@@ -136,7 +199,7 @@ export const ActivationForm = ({
       report(message);
       await animCtx?.failAnimation(message);
     },
-    [revalidateCode, code, tenantId, collectPassword, animCtx, navigate, successUrl],
+    [revalidateCode, code, tenantId, collectPassword, animCtx, navigate, successUrl, t],
   );
 
   // Without a password there are no strength requirements to meet, and this guard would
@@ -152,8 +215,10 @@ export const ActivationForm = ({
     }
   }, [code, navigate]);
 
-  const password = form.watch("password");
-  const confirmPassword = form.watch("confirmPassword");
+  const [password, confirmPassword] = useWatch({
+    control: form.control,
+    name: ["password", "confirmPassword"],
+  });
   const { isValid } = form.formState;
 
   /** Nothing to satisfy when the password step is off. */
@@ -220,10 +285,11 @@ export const ActivationForm = ({
         });
         if (!res.isSuccess) {
           onFailure?.();
-          await settleFailure(readErrorMessage(res.errors, "Activation failed"));
+          await settleFailure(readErrorMessage(res.errors, t("ACTIVATION_FORM.ACTIVATION_FAILED")));
           return;
         }
         await animCtx?.succeedAnimation();
+        if (onActivated?.(res)) return;
         // The activation link carries the originating app's clientId/redirect_uri; keep
         // them so the success page's "Log in" re-enters that OIDC flow. tenantId is a
         // path segment here, which buildOIDCNavigationUrl cannot see, so add it by hand.
@@ -232,12 +298,12 @@ export const ActivationForm = ({
         onFailure?.();
         await settleFailure(
           isErrorWithErrors(error)
-            ? readErrorMessage(error.errors, "Something went wrong")
-            : "Something went wrong",
+            ? readErrorMessage(error.errors, t("ACTIVATION_FORM.SOMETHING_WENT_WRONG"))
+            : t("ACTIVATION_FORM.SOMETHING_WENT_WRONG"),
         );
       }
     },
-    [animCtx, mutateAsync, code, captchaCode, tenantId, settleFailure, navigate, successUrl],
+    [animCtx, mutateAsync, code, captchaCode, tenantId, settleFailure, onActivated, navigate, successUrl, t],
   );
 
   /**
@@ -279,47 +345,23 @@ export const ActivationForm = ({
   // Nothing is asked for when the password step is off, so there is no form to render: either the
   // captcha is waiting for its one gesture, or the activation is already on its way.
   if (!collectPassword) {
-    const waitingForCaptcha = captchaEnabled && !captchaCode;
-
     return (
-      <div className="flex flex-col gap-5">
-        <p
-          className="text-sm"
-          style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}
-        >
-          {autoActivationError
-            ? autoActivationError
-            : waitingForCaptcha
-              ? activationCopy.autoConfirmCaptchaText
-              : activationCopy.autoConfirmProgressText}
-        </p>
-
-        {waitingForCaptcha && !autoActivationError && <Captcha {...captcha} />}
-
-        {!waitingForCaptcha && !autoActivationError && (
-          <div
-            className="flex items-center justify-center gap-2 py-2 text-sm"
-            style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}
-            role="status"
-          >
-            <Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} />
-            <span>{activationCopy.autoActivatingLabel}</span>
-          </div>
-        )}
-
-        {autoActivationError && (
-          <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
-            {activationCopy.backToLoginButton}
-          </LoginReturnLink>
-        )}
-      </div>
+      <AutoActivationView
+        error={autoActivationError}
+        waitingForCaptcha={captchaEnabled && !captchaCode}
+        captchaProps={captcha}
+        captchaText={activationCopy.autoConfirmCaptchaText}
+        progressText={activationCopy.autoConfirmProgressText}
+        activatingLabel={activationCopy.autoActivatingLabel}
+        backToLoginLabel={activationCopy.backToLoginButton}
+      />
     );
   }
 
   return (
     <form
       ref={formRef}
-      onSubmit={form.handleSubmit(onSubmitHandler, shake)}
+      onSubmit={(event) => form.handleSubmit(onSubmitHandler, shake)(event)}
       onInput={() => {
         if (animCtx?.phase === "failed") animCtx?.resetAnimation();
       }}
@@ -329,7 +371,7 @@ export const ActivationForm = ({
         <label className="oidc-sci-fi-label">{activationCopy.firstNameLabel}</label>
         <input
           type="text"
-          placeholder="First name"
+          placeholder={t("ACTIVATION_FORM.FIRST_NAME_PLACEHOLDER")}
           autoComplete="given-name"
           className="oidc-sci-fi-input"
           aria-invalid={!!form.formState.errors.firstname}
@@ -347,7 +389,7 @@ export const ActivationForm = ({
         <label className="oidc-sci-fi-label">{activationCopy.lastNameLabel}</label>
         <input
           type="text"
-          placeholder="Last name"
+          placeholder={t("ACTIVATION_FORM.LAST_NAME_PLACEHOLDER")}
           autoComplete="family-name"
           className="oidc-sci-fi-input"
           aria-invalid={!!form.formState.errors.lastname}
@@ -383,7 +425,7 @@ export const ActivationForm = ({
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2"
                 style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-label={showPassword ? t("ACTIVATION_FORM.HIDE_PASSWORD") : t("ACTIVATION_FORM.SHOW_PASSWORD")}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -415,7 +457,7 @@ export const ActivationForm = ({
                 onClick={() => setShowConfirmPassword((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2"
                 style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                aria-label={showConfirmPassword ? t("ACTIVATION_FORM.HIDE_PASSWORD") : t("ACTIVATION_FORM.SHOW_PASSWORD")}
               >
                 {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>

@@ -6,6 +6,7 @@ using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -23,7 +24,7 @@ namespace Authentication.DomainService.Authentication
         bool DeleteCookie(HttpRequest request);
         bool DeleteAllCookies(HttpRequest request);
         Task AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null);
-        Task<IActionResult> GetLoginOptionsAsync();
+        Task<IActionResult> GetLoginOptionsAsync(string? oidcClientId = null);
         Task<IActionResult> GetSocialAuthorizationUrlAsync(string clientId, string redirectUri);
         Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string providerClientId, string oidcState, string providerRedirectUri);
         Task<OidcClientRegistration> GetClientCredentialAsync(string clientId);
@@ -40,6 +41,13 @@ namespace Authentication.DomainService.Authentication
         Task<BaseResponse> DeleteIdentityProviderAsync(string id);
         Task<BaseResponse> UpdateIdentityProviderStatusAsync(string id, bool isActive);
         Task<RotateOidcClientSecretResponse> RotateOidcClientSecretAsync(string itemId);
+        /// <summary>
+        /// Whether <paramref name="targetTenantId"/> is shared with <paramref name="userId"/> through
+        /// ProjectPeoples. Re-checked on impersonation start AND on every impersonated refresh, so a
+        /// revoked share ends the session at the next rotation rather than surviving to the absolute cap.
+        /// Fails closed: an error reading the share reads as "not shared".
+        /// </summary>
+        Task<bool> IsTenantSharedWithUserAsync(string userId, string targetTenantId);
         Task<IActionResult> ExecuteImpersonateAsync(ImpersonateRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
         Task<IActionResult> ExecuteStopImpersonationAsync(StopImpersonationRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
     }

@@ -1,4 +1,5 @@
 import { useGetMe } from "@blocks-idp/iam/hooks/use-user";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { UserProfileShell } from "@blocks-idp/iam/components/user-profile-shell";
 import { Shield, Smartphone, Clock } from "lucide-react";
@@ -7,7 +8,7 @@ import { ProfileDetails } from "@blocks-idp/iam/components/profile-details";
 import { UserHistories } from "../user-histories";
 import { UserDevices } from "../user-devices";
 
-const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
+const xBlocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
 
 const ProfileSkeleton = () => (
   <div className="mx-auto w-full max-w-7xl p-6 md:p-8">
@@ -27,24 +28,25 @@ export const Profile = () => {
 };
 
 export const UserProfile = ({ id }: { id: string }) => {
+  const { t } = useT("iam.profile");
   const tabs = [
     {
       value: "security",
-      label: "Security",
+      label: t("PROFILE.SECURITY"),
       icon: <Shield className="h-3.5 w-3.5" />,
       render: () => <ProfileDetails id={id} own />,
     },
     {
       value: "devices",
-      label: "Sessions",
+      label: t("PROFILE.SESSIONS"),
       icon: <Smartphone className="h-3.5 w-3.5" />,
-      render: () => <UserDevices id={id} projectKey={x_blocks_key} />,
+      render: () => <UserDevices id={id} projectKey={xBlocksKey} />,
     },
     {
       value: "history",
-      label: "History",
+      label: t("PROFILE.HISTORY"),
       icon: <Clock className="h-3.5 w-3.5" />,
-      render: () => <UserHistories id={id} projectKey={x_blocks_key} />,
+      render: () => <UserHistories id={id} projectKey={xBlocksKey} />,
     },
     // {
     //   value: "personalAccessTokens",
@@ -57,7 +59,7 @@ export const UserProfile = ({ id }: { id: string }) => {
   return (
     <UserProfileShell
       id={id}
-      projectKey={x_blocks_key}
+      projectKey={xBlocksKey}
       defaultTab="security"
       tabs={tabs}
       own

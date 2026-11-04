@@ -1,6 +1,7 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Services;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Mfa.Shared.Services
 {
@@ -49,23 +50,35 @@ namespace XUnitTest.Mfa.Shared.Services
         }
 
         [Fact]
-        public void GenerateSecureRandomNumber_Returns5DigitString()
+        public void GenerateSecureRandomNumber_Returns6DigitString()
         {
-            var code = MfaAuthenticationContext.GenerateSecureRandomNumber();
-
-            code.Should().NotBeNullOrEmpty();
-            code.Length.Should().Be(5);
-            int.TryParse(code, out _).Should().BeTrue();
+            for (var i = 0; i < 2000; i++)
+            {
+                MfaAuthenticationContext.GenerateSecureRandomNumber().Should().MatchRegex("^[0-9]{6}$");
+            }
         }
 
         [Fact]
-        public void GenerateSecureRandomNumber_GeneratesInExpectedRange()
+        public void GenerateSecureRandomNumber_IsUniformOverFullRange_IncludingLeadingZeros()
         {
-            for (var i = 0; i < 100; i++)
+            const int samples = 60000;
+            var firstDigit = new int[10];
+            var distinct = new HashSet<string>();
+            for (var i = 0; i < samples; i++)
             {
-                var value = int.Parse(MfaAuthenticationContext.GenerateSecureRandomNumber());
-                value.Should().BeInRange(11111, 99999);
+                var code = MfaAuthenticationContext.GenerateSecureRandomNumber();
+                firstDigit[code[0] - '0']++;
+                distinct.Add(code);
             }
+
+            // Old generator never produced a leading 0 (range 11111-76646). Each leading digit
+            // should hold ~10% of samples (6000 +- a generous 5 sigma ~ 700).
+            foreach (var count in firstDigit)
+            {
+                count.Should().BeInRange(5200, 6800);
+            }
+
+            distinct.Count.Should().BeGreaterThan(samples * 9 / 10 - 2000);
         }
 
         [Fact]

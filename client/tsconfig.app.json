@@ -18,13 +18,7 @@
     "paths": {
       "@/*": ["./app/*"],
       "@blocks-idp/*": ["./app/idp/*"],
-      "@blocks-lmt/*": ["./app/cross-modules/lmt/*"],
       "@blocks-storage/*": ["./app/cross-modules/storage/*"],
-      "@blocks-communication/*": ["./app/cross-modules/communication/*"],
-      "@blocks-identifier/*": ["./app/cross-modules/identifier/*"],
-      "@blocks-localization/*": ["./app/cross-modules/localization/*"],
-      "@blocks-utilities/*": ["./app/cross-modules/utilities/*"],
-      "@blocks-ai/*": ["./app/cross-modules/ai/*"]
     }
   },
   "include": ["app"],

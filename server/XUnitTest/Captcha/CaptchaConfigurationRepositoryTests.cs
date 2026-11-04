@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Captcha
 {

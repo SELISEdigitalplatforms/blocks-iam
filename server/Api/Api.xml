@@ -23,7 +23,7 @@
             Issues access and refresh tokens on success
             </summary>
         </member>
-        <member name="M:Api.Controllers.AuthenticationController.RetrieveLoginOptions">
+        <member name="M:Api.Controllers.AuthenticationController.RetrieveLoginOptions(System.String)">
             <summary>
             Retrieve available login options (identity providers and their metadata)
             No authentication required - public discovery endpoint
@@ -166,7 +166,7 @@
             <summary>
             Get identity provider by ID
             Retrieves specific provider configuration
-            Does NOT return sensitive credentials (client_secret)
+            Does NOT return sensitive credentials (client_secret, private key)
             </summary>
         </member>
         <member name="M:Api.Controllers.AuthenticationController.UpdateIdentityProvider(System.String,Authentication.DomainService.Shared.RequestModel.UpdateIdentityProviderRequest)">
@@ -188,6 +188,12 @@
             Enable or disable identity provider
             Toggles provider activation status without deleting configuration
             Preferred over deletion for temporary disabling
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.GrantNotAllowed(Blocks.Genesis.BaseResponse)">
+            <summary>
+            A access grant refusal (R8): 403 with the generic error, in the response shape
+            the endpoint always returns.
             </summary>
         </member>
         <member name="T:Api.Controllers.DeviceController">
@@ -238,13 +244,10 @@
             </summary>
         </member>
         <!-- Badly formed XML comment ignored for member "M:Api.Controllers.DiscoveryController.JwksJson" -->
-        <member name="M:Api.Controllers.DiscoveryController.ExecutePasswordLogin(Authentication.DomainService.OAuth.RequestModel.EmbeddedLoginRequest)">
+        <member name="T:Api.Controllers.EmailAvailabilityController">
             <summary>
-            Temporary anonymous password-login surface. The absolute route <c>/auth-login</c>
-            deliberately escapes the discovery prefix and mirrors <c>POST /api/auth/login</c>.
-            DEPRECATED: this is a temporary compatibility route pending the device-code flow
-            replacement and is slated for removal once that flow ships. Do not build new clients
-            against it.
+            Email availability / existence checks. Kept separate from <see cref="T:Api.Controllers.IamController"/>
+            so addresses are handled on their own surface (POST bodies — ZAP 10024 / CWE-598).
             </summary>
         </member>
         <member name="M:Api.Controllers.IamController.GetRolePermissionChangeImpact(Iam.DomainService.Resources.RolePermissionChangeImpactRequest)">
@@ -258,6 +261,29 @@
             nothing, and a reader who can open the role should be able to see the consequence of a
             change before deciding to ask someone else to make it.
             </remarks>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetGrantScope(Iam.DomainService.AccessGrant.IAccessGrantService)">
+            <summary>
+            What the caller may administer in its token organization (access grant):
+            whether it is the system user, the mode, the roles it holds and manages, the roles it may
+            assign, and the permissions it holds. Read from the database, never from the token.
+            </summary>
+            <remarks>
+            Guarded by the roles read permission, like <c>roles/assignable</c>: every screen that
+            uses it already lists roles. The service is taken per action so the controller's
+            constructor does not grow.
+            </remarks>
+        </member>
+        <member name="M:Api.Controllers.IamController.PreviewBulkRoleChange(Iam.DomainService.Users.BulkRoleChangeRequest)">
+            <summary>
+            Dry-run a bulk role delta. Writes nothing; answers how many users would change.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IamController.SubmitBulkRoleChange(Iam.DomainService.Users.BulkRoleChangeRequest)">
+            <summary>
+            Queue a bulk role delta. 202 rather than 200: the status code is the only place the
+            contract can say the change has not happened yet.
+            </summary>
         </member>
         <member name="M:Api.Controllers.IamController.IsOrganizationNameAvailable(Iam.DomainService.Resources.RequestModel.IsOrganizationNameAvailableRequest)">
             <summary>
@@ -332,6 +358,36 @@
             X-Blocks-Key header, as with the signup-settings endpoint below.
             </summary>
         </member>
+        <member name="M:Api.Controllers.IamController.GetAdminOrganizationConfig">
+            <summary>
+            Authenticated read of the organization config, for portals such as Blocks OS.
+            <para>
+            The anonymous <c>GET organizations/config</c> above resolves its tenant from
+            X-Blocks-Key, which in a portal names the root tenant. With no or an expired token it
+            therefore answers 200 with the root tenant's config instead of the project's. Here the
+            tenant comes from the token, and a missing or expired one is a 401 the client refreshes
+            on. Any signed-in caller may read it -- the portal's users, roles, invite and
+            credential screens all branch on it -- so it takes no permission beyond sign-in.
+            </para>
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetAdminSignUpSetting">
+            <summary>
+            Authenticated read of the signup settings, for the portal's settings editor.
+            <para>
+            Same reason as <see cref="M:Api.Controllers.IamController.GetAdminOrganizationConfig"/>: the anonymous read falls
+            back to the X-Blocks-Key (root) tenant without a valid token, and the editor would then
+            load -- and on save write -- the root tenant's settings into the project. Guarded by the
+            permission that already guards saving them, so no new permission has to be seeded.
+            </para>
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IamController.MutationResult(System.Object,System.Boolean,System.Collections.Generic.IDictionary{System.String,System.String})">
+            <summary>
+            The answer every mutation endpoint gives: 200 on success, 403 for a access grant
+            refusal (<c>Access_Grant_Not_Allowed</c>), 400 for any other failure.
+            </summary>
+        </member>
         <member name="T:Api.Controllers.IdpController">
             <summary>
             IDP Controller
@@ -380,6 +436,9 @@
         <member name="T:Api.Controllers.PasswordCheckRequest">
             <summary>Body of <see cref="M:Api.Controllers.IdpController.PasswordCheck(Api.Controllers.PasswordCheckRequest)"/>.</summary>
         </member>
+        <member name="T:Api.Controllers.LoginPolicyController">
+            <summary>The tenant's sign-in policy: where (embedded, OIDC) and how (password, social) users may sign in.</summary>
+        </member>
         <member name="T:Api.Controllers.OidcClientsController">
             <summary>
             OIDC Client Management Controller
@@ -416,7 +475,7 @@
             Create or update OIDC client configuration (Upsert)
             Registers new OIDC client or updates existing configuration
             Validates client metadata and OAuth/OIDC compliance
-            Returns generated or existing client_secret
+            On create only, returns the generated client_secret once; it is never returned again
             </summary>
             <param name="request">OIDC client configuration request</param>
             <returns>Saved OIDC client with credentials</returns>
@@ -441,7 +500,7 @@
             <summary>
             Rotate OIDC client secret
             Generates a new client_secret for the existing client and returns it exactly once.
-            The new secret is not stored anywhere else and subsequent GETs mask it as usual.
+            GETs never return the secret.
             </summary>
             <param name="clientId">OIDC client identifier</param>
             <returns>The newly rotated client_secret (one-time disclosure)</returns>
@@ -463,6 +522,176 @@
             Self-service security endpoints.
             All routes live under <c>/security</c>.
             </summary>
+        </member>
+        <member name="M:Api.Controllers.SecurityController.MayActForAsync(System.String)">
+            <summary>
+            Whose sessions and activity a call may read or revoke. A user may always act on themselves.
+            Acting on another user is managing that user (access grant, R3), and only the Blocks OS console
+            may do it: a project's own token, as an app such as Construct holds, acts on its own user alone.
+            A token with no user, such as a client credential, acts on no one.
+            </summary>
+        </member>
+        <member name="T:Api.Controllers.UserPasswordResetController">
+            <summary>
+            An administrator sends a user the password-reset mail. Protected by its own permission and
+            asks no captcha; the public forgot-password flow (auth/recover) keeps its captcha.
+            </summary>
+        </member>
+        <member name="T:Api.Middleware.DataValidationExceptionFilter">
+            <summary>
+            A save refused by a system schema's validation rules (IIamDataAccess PrepareWriteAsync / CheckUpdateAsync)
+            is the caller's mistake, not a server error: 400 with one message per property, the field's path as key.
+            </summary>
+        </member>
+        <member name="T:Api.Middleware.SecurityHeadersMiddleware">
+            <summary>
+            Browser security headers via Response.OnStarting so Genesis/OIDC Set-Cookie
+            still works on PR previews. Skips Cache-Control on cookie-issuing auth paths.
+            </summary>
+        </member>
+        <member name="F:Api.Middleware.SecurityHeadersMiddleware.StyleNonceItemKey">
+            <summary><see cref="P:Microsoft.AspNetCore.Http.HttpContext.Items"/> key for the response's style nonce.</summary>
+        </member>
+        <member name="M:Api.Middleware.SecurityHeadersMiddleware.DisableCaching(Microsoft.AspNetCore.Http.IHeaderDictionary)">
+            <summary>
+            Marks a response as not cacheable. The SPA shell calls this itself so it is never cached,
+            whatever path the fallback answered (including /api/oidc, /api/idp and /login, where
+            <see cref="M:Api.Middleware.SecurityHeadersMiddleware.Apply(Microsoft.AspNetCore.Http.HttpContext,System.String)"/> leaves Cache-Control to the auth handlers).
+            </summary>
+        </member>
+        <member name="T:Api.Security.ContentSecurityPolicy">
+            <summary>
+            Builds the SPA's Content-Security-Policy from configuration.
+            <para>
+            The origins come from the same <c>FrontendRuntime</c> section that fills the SPA's
+            runtime config, so the policy describes whatever environment the host is actually
+            running in. They used to be a hardcoded list of <c>dev-*</c> hosts compiled into the
+            middleware, which was correct on dev and would have blocked the SPA from reaching its
+            own API and every sibling service everywhere else. This mirrors the same fix already
+            made in blocks-os (<c>server/Api/Security/ContentSecurityPolicy.cs</c>).
+            </para>
+            </summary>
+        </member>
+        <member name="F:Api.Security.ContentSecurityPolicy.ConnectOriginKeys">
+            <summary>
+            <c>FrontendRuntime</c> keys holding an origin the SPA makes requests to. Anything
+            not derivable from these (a CDN, a third-party service) goes in
+            <c>Csp:ExtraConnectSrc</c> / <c>Csp:ExtraImgSrc</c> rather than back into code.
+            </summary>
+        </member>
+        <member name="F:Api.Security.ContentSecurityPolicy.WebSocketOriginKeys">
+            <summary>
+            Origins the SPA opens a WebSocket to. A CSP source is scheme-sensitive, so
+            <c>https://host</c> does not permit <c>wss://host</c> and the ws form has to be
+            emitted separately -- the hardcoded policy listed <c>wss://dev-logic...</c> for
+            exactly this reason.
+            </summary>
+        </member>
+        <member name="F:Api.Security.ContentSecurityPolicy.FormActionOriginKeys">
+            <summary>Where a login POST may be sent: the identity host and the portal.</summary>
+        </member>
+        <member name="F:Api.Security.ContentSecurityPolicy.CaptchaScriptSources">
+            <summary>
+            reCAPTCHA is loaded by <c>client/app/components/captcha/reCaptcha.tsx</c>, which
+            injects <c>https://www.google.com/recaptcha/api.js</c> and renders the widget in an
+            iframe. These are fixed Google sources, identical in every environment, so they stay
+            in code rather than in per-environment configuration. Without them the previous
+            policy blocked captcha on login and signup in every environment.
+            They are limited to the /recaptcha/ path: a whole Google host would also allow its
+            other endpoints, some of which return script built from the request.
+            They skip <see cref="M:Api.Security.ContentSecurityPolicy.Normalize(System.Collections.Generic.IEnumerable{System.String})"/>, which would cut the path off.
+            </summary>
+        </member>
+        <member name="F:Api.Security.ContentSecurityPolicy.StyleNoncePlaceholder">
+            <summary>
+            Stands in for the style nonce (see <see cref="T:Api.Security.StyleNonce"/>): in the policy built at
+            startup and in the built index.html (meta[name=csp-nonce]). Replaced on every response.
+            </summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.WithStyleNonce(System.String,System.String)">
+            <summary>The policy for one response, with the placeholder swapped for its nonce.</summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.RenderIndex(System.String,System.String)">
+            <summary>The SPA shell for one response, carrying the same nonce as its header.</summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.BuildPolicy(System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String})">
+            <summary>
+            The policy itself, separated from configuration so it can be asserted directly.
+            Public rather than internal because the test project has no InternalsVisibleTo.
+            </summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.Normalize(System.Collections.Generic.IEnumerable{System.String})">
+            <summary>Reduce configured values to distinct, sorted origins.</summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.WebSocketOrigins(Microsoft.Extensions.Configuration.IConfiguration,System.Collections.Generic.IEnumerable{System.String})">
+            <summary>Same origins as <see cref="M:Api.Security.ContentSecurityPolicy.Origins(Microsoft.Extensions.Configuration.IConfiguration,System.Collections.Generic.IEnumerable{System.String})"/>, re-scheme'd to ws/wss.</summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.ToOrigin(System.String)">
+            <summary>
+            A CSP source is an origin, so any path, query or trailing slash is dropped. A value
+            that is not an absolute http(s)/ws(s) URL is ignored rather than emitted verbatim, so
+            a malformed secret cannot inject a directive. ws/wss are accepted because
+            <see cref="M:Api.Security.ContentSecurityPolicy.ToWebSocketOrigin(System.String)"/> feeds its output back through here.
+            </summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.ToWebSocketOrigin(System.String)">
+            <summary>
+            The wss origin a browser uses to open a socket to an https host, or null. Plain http and
+            ws hosts get no socket allowance: an unencrypted socket would carry the session token and
+            notification payloads in clear text.
+            </summary>
+        </member>
+        <member name="M:Api.Security.ContentSecurityPolicy.Split(System.String)">
+            <summary>Space- or comma-separated list, for origins no runtime key describes.</summary>
+        </member>
+        <member name="T:Api.Security.SecretFieldsJsonModifier">
+            <summary>
+            Keeps client secrets out of every API response. When a client credential, OIDC client or
+            identity provider is written as JSON, its secret properties are left out entirely (no key,
+            not even null), whatever endpoint returns it. A new secret is returned only by create and
+            rotate-secret, through their own response classes, which this does not touch.
+            Only writing is affected: request bodies are read as before.
+            </summary>
+        </member>
+        <member name="T:Api.Security.StyleNonce">
+            <summary>
+            The CSP style nonce for a browser.
+            <para>
+            A fresh nonce on every response changes the HTML body on every request, and a scanner
+            comparing two responses for the same page (ZAP rule 10104, User Agent Fuzzer) then reports
+            every page. So the nonce is derived from a random per-browser seed held in an HttpOnly
+            cookie, keyed with a secret that never leaves the process. The same browser gets the same
+            shell; another browser, or the same one after the cookie expires, gets a different nonce.
+            A page cannot read the seed, and the nonce itself is hidden from CSS and the DOM.
+            </para>
+            </summary>
+        </member>
+        <member name="F:Api.Security.StyleNonce.SeedCookieName">
+            <summary>Host-only, Secure, HttpOnly cookie carrying the per-browser seed.</summary>
+        </member>
+        <member name="F:Api.Security.StyleNonce.SeedLifetime">
+            <summary>The seed is rotated by expiry, which also rotates the nonce.</summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.CreateWithRandomKey">
+            <summary>A process-local key: every response from this process uses it.</summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.NewSeed">
+            <summary>A new random seed, base64url without padding (cookie-safe).</summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.IsValidSeed(System.String)">
+            <summary>True for a value <see cref="M:Api.Security.StyleNonce.NewSeed"/> could have produced.</summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.For(System.String)">
+            <summary>The nonce for a seed: 128 bits of HMAC-SHA256(key, seed), base64.</summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.ForRequest(Microsoft.AspNetCore.Http.HttpContext)">
+            <summary>
+            The nonce for one response. A request without a valid seed that may render the SPA shell
+            gets a new seed cookie; API calls and static files get a throwaway nonce and no cookie.
+            </summary>
+        </member>
+        <member name="M:Api.Security.StyleNonce.MayServeShell(System.String)">
+            <summary>True for "/index.html" and extension-less paths outside /api (SPA routes).</summary>
         </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">
             <summary>
@@ -576,6 +805,13 @@
             <summary>
             RFC 7662: Token Introspection Endpoint
             Allows authorized clients to introspect tokens and get claims/metadata
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.AuthenticateClientAsync(System.String,System.String)">
+            <summary>
+            The authenticated client id, or null when the client is unknown, inactive or presented the
+            wrong secret. <c>SecretUnavailable</c> is true when the client's secret cannot be read from
+            the secret store: the caller answers 503, never "wrong secret".
             </summary>
         </member>
         <member name="T:Program">

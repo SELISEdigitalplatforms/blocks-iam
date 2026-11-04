@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle } from "lucide-react";
 
@@ -28,17 +28,32 @@ export const OidcErrorDialog = ({
 }: OidcErrorDialogProps) => {
   const actionRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
 
-  // Resolved after mount rather than during render: the shell is this component's parent, so on
-  // the first render pass its root is not in the document yet. Falling back to the body keeps a
+  // Resolved at commit rather than during render: the shell is this component's parent, so on
+  // the first render pass its root is not in the document yet. A placeholder is rendered until
+  // then and its ref resolves the host once it is attached. Falling back to the body keeps a
   // message the user must read on screen even unthemed, which beats showing nothing.
-  useEffect(() => {
+  const resolveHost = useCallback((placeholder: HTMLSpanElement | null) => {
+    if (!placeholder) return;
     setHost(document.querySelector<HTMLElement>(".oidc-scifi-root") ?? document.body);
   }, []);
 
   useEffect(() => {
     actionRef.current?.focus();
+  }, [host]);
+
+  // Swallow backdrop presses rather than treating them as a dismissal. Guarded on the
+  // target so a press on the dialog itself still reaches the button.
+  useEffect(() => {
+    const backdrop = backdropRef.current;
+    if (!backdrop) return;
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.target === event.currentTarget) event.preventDefault();
+    };
+    backdrop.addEventListener("mousedown", onMouseDown);
+    return () => backdrop.removeEventListener("mousedown", onMouseDown);
   }, [host]);
 
   useEffect(() => {
@@ -77,17 +92,13 @@ export const OidcErrorDialog = ({
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, []);
 
-  if (!host) return null;
+  if (!host) return <span ref={resolveHost} hidden />;
 
   return createPortal(
     <div
+      ref={backdropRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "color-mix(in srgb, var(--bg) 82%, transparent)" }}
-      // Swallow backdrop presses rather than treating them as a dismissal. Guarded on the
-      // target so a press on the dialog itself still reaches the button.
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) event.preventDefault();
-      }}
     >
       <div
         ref={dialogRef}

@@ -8,7 +8,6 @@ import {
   mockUploadDmsFilePayload,
   mockCreateDmsFolderPayload,
 } from "../test-utils/__mocks__";
-import { serviceInstances } from "@/lib/http-client";
 import { StorageService } from "./storage.service";
 import { StorageConfiguration } from "./storage-configuration.service";
 import { StorageFile } from "./storage-file.service";

@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import fs from "fs";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { defineConfig, loadEnv } from "vite";
@@ -44,18 +45,12 @@ export default defineConfig(({ mode }) => {
   return {
     envPrefix: ["BLOCKS_"],
     publicDir: path.resolve(__dirname, "public"),
-    plugins: [react()],
+    plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./app"),
         "@blocks-idp": path.resolve(__dirname, "./app/idp"),
-        "@blocks-lmt": path.resolve(__dirname, "./app/cross-modules/lmt"),
         "@blocks-storage": path.resolve(__dirname, "./app/cross-modules/storage"),
-        "@blocks-communication": path.resolve(__dirname, "./app/cross-modules/communication"),
-        "@blocks-identifier": path.resolve(__dirname, "./app/cross-modules/identifier"),
-        "@blocks-localization": path.resolve(__dirname, "./app/cross-modules/localization"),
-        "@blocks-utilities": path.resolve(__dirname, "./app/cross-modules/utilities"),
-        "@blocks-ai": path.resolve(__dirname, "./app/cross-modules/ai"),
       },
     },
     build: {
@@ -69,7 +64,7 @@ export default defineConfig(({ mode }) => {
       coverage: {
         all: true,
         provider: "v8",
-        reporter: ["text", "json", "json-summary", "html"],
+        reporter: ["text", "json", "json-summary", "html", "lcov"],
         include: ["app/**/*.{ts,tsx}"],
         exclude: [
           "app/**/*.test.*",
@@ -94,6 +89,20 @@ export default defineConfig(({ mode }) => {
         // order, so a bare "@seliseblocks/genesis-os" key placed above these would
         // rewrite ".../genesis-os/providers" to ".../blocks-kit.tsx/providers" and
         // the subpath entries would never match.
+        // The i18n runtime and its settings store stay real in tests (English is
+        // registered by the test setup); they sit before the bare package key.
+        "@seliseblocks/genesis-os/i18n": path.resolve(
+          __dirname,
+          "./node_modules/@seliseblocks/genesis-os/dist/i18n/index.js",
+        ),
+        "@seliseblocks/genesis-os/components": path.resolve(
+          __dirname,
+          "./app/test-utils/stubs/genesis-components.tsx",
+        ),
+        "@seliseblocks/genesis-os/store": path.resolve(
+          __dirname,
+          "./node_modules/@seliseblocks/genesis-os/dist/store/index.js",
+        ),
         "@seliseblocks/genesis-os/observability": path.resolve(
           __dirname,
           "./app/test-utils/stubs/observability.tsx",
@@ -116,13 +125,7 @@ export default defineConfig(({ mode }) => {
         ),
         "@": path.resolve(__dirname, "./app"),
         "@blocks-idp": path.resolve(__dirname, "./app/idp"),
-        "@blocks-lmt": path.resolve(__dirname, "./app/cross-modules/lmt"),
         "@blocks-storage": path.resolve(__dirname, "./app/cross-modules/storage"),
-        "@blocks-communication": path.resolve(__dirname, "./app/cross-modules/communication"),
-        "@blocks-identifier": path.resolve(__dirname, "./app/cross-modules/identifier"),
-        "@blocks-localization": path.resolve(__dirname, "./app/cross-modules/localization"),
-        "@blocks-utilities": path.resolve(__dirname, "./app/cross-modules/utilities"),
-        "@blocks-ai": path.resolve(__dirname, "./app/cross-modules/ai"),
       },
     } as InlineConfig,
     server: {

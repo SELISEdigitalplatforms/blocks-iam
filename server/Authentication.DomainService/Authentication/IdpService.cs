@@ -1,4 +1,4 @@
-﻿using Authentication.DomainService.Entities;
+﻿﻿using Authentication.DomainService.Entities;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -28,6 +29,9 @@ namespace Authentication.DomainService.Authentication
     /// </summary>
     public sealed class IdpService : IIdpService
     {
+        private const string ErrorInvalidRequest = "invalid_request";
+        private const string ErrorServerError = "server_error";
+
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IAuthenticationFlowService _authenticationFlowService;
@@ -37,6 +41,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ICaptchaConfigurationRepository _captchaConfigurationRepository;
         private readonly IIdentityAccessManagementRepository _iamRepository;
         private readonly ILogger<IdpService> _logger;
+        private readonly IIdentityProviderSecretResolver _secretResolver;
 
         public IdpService(
             IAuthenticationRepository authenticationRepository,
@@ -47,8 +52,10 @@ namespace Authentication.DomainService.Authentication
             ITenants tenants,
             ICaptchaConfigurationRepository captchaConfigurationRepository,
             IIdentityAccessManagementRepository iamRepository,
-            ILogger<IdpService> logger)
+            ILogger<IdpService> logger,
+            IIdentityProviderSecretResolver secretResolver)
         {
+            _secretResolver = secretResolver;
             _authenticationRepository = authenticationRepository;
             _authCodeRepo = authCodeRepo;
             _authenticationFlowService = authenticationFlowService;
@@ -138,7 +145,7 @@ namespace Authentication.DomainService.Authentication
 
                 if (string.IsNullOrWhiteSpace(redirectUri))
                 {
-                    return new BadRequestObjectResult(new { error = "invalid_request", error_description = "redirectUri is required" });
+                    return new BadRequestObjectResult(new { error = ErrorInvalidRequest, error_description = "redirectUri is required" });
                 }
 
                 var allowedRedirectUris = identityProvider.RedirectUris ?? [];
@@ -151,8 +158,10 @@ namespace Authentication.DomainService.Authentication
                 var state = GenerateRandomBase64Url(16);
                 var nonce = GenerateRandomBase64Url(16);
 
-                var codeVerifier = identityProvider.RequirePkce ? GenerateRandomBase64Url(32) : null;
-                var codeChallenge = codeVerifier != null ? GenerateCodeChallenge(codeVerifier) : null;
+                // Always: IAM is both ends of this leg, and the authorize endpoint refuses a client that
+                // requires PKCE when no challenge is sent, whatever this provider row says.
+                var codeVerifier = GenerateRandomBase64Url(32);
+                var codeChallenge = GenerateCodeChallenge(codeVerifier);
 
                 // Store flow context in cache (10 minute TTL)
                 var flowContext = new
@@ -192,7 +201,7 @@ namespace Authentication.DomainService.Authentication
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error starting authentication flow");
-                return new ObjectResult(new { error = "server_error", error_description = "Failed to start authentication flow" })
+                return new ObjectResult(new { error = ErrorServerError, error_description = "Failed to start authentication flow" })
                 {
                     StatusCode = 500
                 };
@@ -232,6 +241,21 @@ namespace Authentication.DomainService.Authentication
                     );
 
                     await _cacheClient.RemoveKeyAsync(cacheKey);
+
+                    // The result is returned, not discarded. This used to answer a flat
+                    // { Impersonated = true } whatever came back, so a 403/400/500 from impersonation
+                    // reached the caller as success and left it rendering a project it never entered.
+                    if (impersonatedResult is ObjectResult { StatusCode: >= 400 } failed)
+                    {
+                        _logger.LogWarning(
+                            "IdP callback impersonation failed. reason=callback_impersonation_failed statusCode={StatusCode} targetTenantId={TargetTenantId} userId={UserId}",
+                            failed.StatusCode,
+                            authCode.TargetedTenantId,
+                            authCode.ImpersonatedUserId);
+
+                        return impersonatedResult;
+                    }
+
                     return new OkObjectResult(new { Impersonated = true });
                 }
 
@@ -294,7 +318,7 @@ namespace Authentication.DomainService.Authentication
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error handling IdP callback");
-                return new ObjectResult(new { error = "server_error", error_description = "Authentication failed" })
+                return new ObjectResult(new { error = ErrorServerError, error_description = "Authentication failed" })
                 {
                     StatusCode = 500
                 };
@@ -322,13 +346,13 @@ namespace Authentication.DomainService.Authentication
             if (string.IsNullOrWhiteSpace(code))
             {
                 _logger.LogWarning("Callback received without authorization code");
-                return (new BadRequestObjectResult(new { error = "invalid_request", error_description = "code is required" }), null, null, string.Empty);
+                return (new BadRequestObjectResult(new { error = ErrorInvalidRequest, error_description = "code is required" }), null, null, string.Empty);
             }
 
             if (string.IsNullOrWhiteSpace(state))
             {
                 _logger.LogWarning("Callback received without state parameter");
-                return (new BadRequestObjectResult(new { error = "invalid_request", error_description = "state is required" }), null, null, string.Empty);
+                return (new BadRequestObjectResult(new { error = ErrorInvalidRequest, error_description = "state is required" }), null, null, string.Empty);
             }
 
             // Retrieve flow context from cache
@@ -346,7 +370,7 @@ namespace Authentication.DomainService.Authentication
             if (flowContext == null)
             {
                 _logger.LogWarning("Failed to deserialize flow context for state: {State}", state);
-                return (new BadRequestObjectResult(new { error = "server_error", error_description = "Invalid flow context" }), null, null, cacheKey);
+                return (new BadRequestObjectResult(new { error = ErrorServerError, error_description = "Invalid flow context" }), null, null, cacheKey);
             }
 
             if (string.IsNullOrWhiteSpace(flowContext.Provider))
@@ -372,12 +396,19 @@ namespace Authentication.DomainService.Authentication
             FlowContext flowContext,
             HttpRequest httpRequest)
         {
+            // False when a referenced secret cannot be read (the resolver logs it): fail without calling the provider.
+            var (resolved, clientSecret) = await _secretResolver.TryGetClientSecretAsync(identityProvider, httpRequest.HttpContext.RequestAborted);
+            if (!resolved)
+            {
+                return (new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" }), null);
+            }
+
             var form = new Dictionary<string, string>
             {
                 { "grant_type", GrantTypes.AuthCode },
                 { "code", code },
                 { "client_id", identityProvider.ClientId ?? string.Empty },
-                { "client_secret", identityProvider.ClientSecret ?? string.Empty },
+                { "client_secret", clientSecret ?? string.Empty },
                 { "redirect_uri", flowContext.RedirectUri ?? string.Empty }
             };
 
@@ -494,13 +525,13 @@ namespace Authentication.DomainService.Authentication
         {
             if (string.IsNullOrWhiteSpace(tenantId))
             {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Tenant could not be resolved for this request" });
+                return new BadRequestObjectResult(new { error = ErrorInvalidRequest, error_description = "Tenant could not be resolved for this request" });
             }
 
             if (httpRequest == null)
             {
                 _logger.LogError("Signup flow requested without an HttpRequest; cannot resolve the public IAM base URL");
-                return new ObjectResult(new { error = "server_error", error_description = "Failed to start signup flow" })
+                return new ObjectResult(new { error = ErrorServerError, error_description = "Failed to start signup flow" })
                 {
                     StatusCode = 500
                 };
@@ -569,7 +600,7 @@ namespace Authentication.DomainService.Authentication
                 { "nonce", nonce }
             };
 
-            if (provider.RequirePkce && !string.IsNullOrEmpty(codeChallenge))
+            if (!string.IsNullOrEmpty(codeChallenge))
             {
                 queryParams["code_challenge"] = codeChallenge;
                 queryParams["code_challenge_method"] = IdpConstants.PkceMethodS256;

@@ -2,6 +2,7 @@ using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Accounts.TestHelpers
 {
@@ -70,13 +71,13 @@ namespace XUnitTest.IamTests.Accounts.TestHelpers
             };
         }
 
-        public static TenantConfiguration CreateTenantConfiguration(
+        public static IamTenantConfiguration CreateTenantConfiguration(
             bool isEmailPasswordSignUpEnabled = true,
             bool isSsoSignUpEnabled = false,
             List<string>? defaultRoles = null,
             List<string>? defaultPermissions = null)
         {
-            return new TenantConfiguration
+            return new IamTenantConfiguration
             {
                 ItemId = "tenantConfig-1",
                 IsEmailPasswordSignUpEnabled = isEmailPasswordSignUpEnabled,

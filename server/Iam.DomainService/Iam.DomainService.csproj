@@ -3,6 +3,9 @@
   <ItemGroup>
 	  <PackageReference Include="Grpc.AspNetCore" />
 	  <PackageReference Include="BCrypt.Net-Next" />
+	  <PackageReference Include="FluentValidation" />
+	  <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+	  <PackageReference Include="MongoDB.Driver" />
   </ItemGroup>
 
   <ItemGroup>

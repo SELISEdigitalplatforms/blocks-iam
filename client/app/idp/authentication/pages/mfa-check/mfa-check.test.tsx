@@ -1,17 +1,24 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { useI18nStore } from "@seliseblocks/genesis-os/i18n";
+import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ mfaType: 0, oidcUiConfig: undefined as unknown }));
+const h = vi.hoisted(() => ({ mfaType: 0, mfaId: "mfa-1", oidcUiConfig: undefined as unknown }));
 
 vi.mock("nuqs", () => ({
   parseAsInteger: { withDefault: (d: number) => ({ _d: d }) },
-  useQueryStates: () => [{ mfa_type: h.mfaType }],
+  parseAsString: { withDefault: (d: string) => ({ _d: d }) },
+  useQueryStates: () => [{ mfa_type: h.mfaType, mfa_id: h.mfaId }],
 }));
 vi.mock("../oidc/sci-fi-background-oidc", () => ({
   SciFiBackgroundOidc: () => <div data-testid="scifi-bg" />,
 }));
 vi.mock("./mfa-check-form", () => ({
-  MfaCheckFrom: () => <div data-testid="mfa-check-form" />,
+  MfaCheckFrom: ({ onSessionExpired }: { onSessionExpired?: () => void }) => (
+    <button type="button" data-testid="mfa-check-form" onClick={onSessionExpired}>
+      expire
+    </button>
+  ),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
   useOidcUiConfig: () => ({ data: h.oidcUiConfig }),
@@ -25,6 +32,7 @@ import {
 
 beforeEach(() => {
   h.mfaType = 0;
+  h.mfaId = "mfa-1";
   h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
@@ -56,5 +64,36 @@ describe("MfaCheck", () => {
     render(<MfaCheck />);
     expect(screen.getByText("Confirm your identity")).toBeInTheDocument();
     expect(screen.getByText("Acme Identity")).toBeInTheDocument();
+  });
+
+  it.each([1, 2])("swaps the heading and drops the instructions once the sign-in expires (mfa_type %i)", (type) => {
+    h.mfaType = type;
+    render(<MfaCheck />);
+    fireEvent.click(screen.getByTestId("mfa-check-form"));
+    expect(screen.getByRole("heading", { name: "Sign-in expired" })).toBeInTheDocument();
+    expect(screen.queryByText(/Open your authenticator app/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Check your email for the verification code/)).not.toBeInTheDocument();
+  });
+
+  it("treats a link without a challenge as expired", () => {
+    h.mfaId = "";
+    render(<MfaCheck />);
+    expect(screen.getByRole("heading", { name: "Sign-in expired" })).toBeInTheDocument();
+    expect(screen.queryByText(/Check your email for the verification code/)).not.toBeInTheDocument();
+  });
+});
+
+describe("iam.mfa-check language", () => {
+  afterEach(() => {
+    useAppSettingsStore.getState().setSettings({ language: "en" });
+  });
+
+  it("shows the remote text for another language", () => {
+    useI18nStore.getState().setRemote("xx", "iam.mfa-check", {
+      "MFA_CHECK.MESSAGE_EMAIL": "[xx] Check your email for the verification code and enter it here to continue.",
+    });
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
+    render(<MfaCheck />);
+    expect(screen.getByText("[xx] Check your email for the verification code and enter it here to continue.")).toBeInTheDocument();
   });
 });

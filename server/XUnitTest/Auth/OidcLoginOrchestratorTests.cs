@@ -1,3 +1,5 @@
+﻿using Authentication.DomainService.Authentication.LoginPolicies;
+using XUnitTest.TestSupport;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Repositories;
@@ -18,6 +20,7 @@ using Mfa.DomainService.Shared;
 using Moq;
 using System.Text.Json;
 using Iam.DomainService.Resources;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {
@@ -32,6 +35,8 @@ namespace XUnitTest.Auth
         private readonly Mock<ICaptchaEvaluator> _captcha = new();
         private readonly Mock<IAuthenticationDomainService> _authDomain = new();
         private readonly Mock<IUserActivityDispatcher> _activity = new();
+        private readonly Mock<IUnknownUserLoginGuard> _guard = XUnitTest.TestSupport.UnknownLoginGuardStub.Create();
+        private readonly FakeLoginPolicy _loginPolicy = new();
 
         private readonly PasswordHasher _passwordHasher;
         private readonly OidcLoginAuditWriter _auditWriter;
@@ -43,6 +48,10 @@ namespace XUnitTest.Auth
 
         public OidcLoginOrchestratorTests()
         {
+            // A free MFA slot, given back when the code is right.
+            _repo.Setup(r => r.TryReserveMfaAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync((string id, int _, DateTime _) => new User { ItemId = id, FailedMfaCount = 1 });
+            _repo.Setup(r => r.ReleaseMfaAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>())).ReturnsAsync(true);
             BlocksContext.IsTestMode = true;
             BlocksContext.SetContext(BlocksContext.Create(
                 tenantId: TenantId, roles: null, userId: "actor-1", impersonated: false,
@@ -54,20 +63,28 @@ namespace XUnitTest.Auth
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
             _authDomain.Setup(d => d.GetDeviceInfo(It.IsAny<string>())).Returns((DeviceInformation)null!);
             _mfaIssuer.Setup(m => m.WriteAuditAsync(It.IsAny<MfaAuditEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.TryReserveLoginAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "user-1", FailedLoginCount = 1 });
+            _repo.Setup(r => r.ReleaseLoginAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>())).ReturnsAsync(true);
 
             _passwordHasher = new PasswordHasher(NullLogger<PasswordHasher>.Instance);
             _auditWriter = new OidcLoginAuditWriter(_authDomain.Object, _activity.Object, NullLogger<OidcLoginAuditWriter>.Instance);
             _captchaEvaluator = new OidcCaptchaEvaluator(_captcha.Object);
             _authorizationEndpoint = new OidcAuthorizationEndpoint(
-                new Mock<IAuthorizationCodeRepository>().Object,
-                new Mock<IIdpSessionRepository>().Object,
-                new Mock<IPkceService>().Object,
-                _userRepo.Object,
-                _repo.Object,
-                _authService.Object,
-                _tenants.Object,
-                _cache.Object,
-                new Mock<IResourceRepository>().Object,
+                new OidcAuthorizationSessionStores(
+                    new Mock<IAuthorizationCodeRepository>().Object,
+                    new Mock<IIdpSessionRepository>().Object,
+                    new Mock<Authentication.DomainService.Oidc.Services.IIdpSessionService>().Object,
+                    new Mock<IPkceService>().Object,
+                    new Mock<ILinkSessionRepository>().Object),
+                new OidcAuthorizationIdentityStores(
+                    _userRepo.Object,
+                    _repo.Object,
+                    _authService.Object,
+                    _tenants.Object,
+                    _cache.Object,
+                    new Mock<IResourceRepository>().Object,
+                    _loginPolicy),
                 NullLogger<OidcAuthorizationEndpoint>.Instance);
         }
 
@@ -80,7 +97,7 @@ namespace XUnitTest.Auth
         private OidcLoginOrchestrator Create() =>
             new(_repo.Object, _mfaIssuer.Object, _authService.Object, _tenants.Object, _cache.Object,
                 _userRepo.Object, _passwordHasher, _auditWriter, _captchaEvaluator, _authorizationEndpoint,
-                NullLogger<OidcLoginOrchestrator>.Instance);
+                NullLogger<OidcLoginOrchestrator>.Instance, _guard.Object, _loginPolicy);
 
         private static object? Prop(object? value, string name) =>
             value?.GetType().GetProperty(name)?.GetValue(value);
@@ -175,6 +192,24 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task ExecuteAsync_InactiveClient_GetsTheNotFoundAnswer_BeforeAnyUserLookup()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
+                .ReturnsAsync((OidcClientRegistration)null!);
+            var notFound = await Create().ExecuteAsync(PasswordRequest(), Req(), Res());
+
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
+                .ReturnsAsync(new OidcClientRegistration { ClientId = "client-1", IsActive = false });
+            var inactive = await Create().ExecuteAsync(PasswordRequest(), Req(), Res());
+
+            var bad = inactive.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_client");
+            JsonSerializer.Serialize(bad.Value).Should().Be(JsonSerializer.Serialize(((BadRequestObjectResult)notFound).Value));
+            _repo.Verify(r => r.GetUserByUsernameAsync(It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.TryReserveLoginAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+        }
+
+        [Fact]
         public async Task ExecuteAsync_ReturnsUnauthorized_WhenUserNull()
         {
             SetupOidcClientExists();
@@ -241,14 +276,14 @@ namespace XUnitTest.Auth
             var user = ValidUser();
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(user);
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
-                .ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = null });
 
             var result = await Create().ExecuteAsync(PasswordRequest(password: "wrong-password"), Req(), Res());
 
             var unauth = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
             Prop(unauth.Value, "error").Should().Be("invalid_credentials");
-            _repo.Verify(r => r.IncrementFailedLoginAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Once);
+            _repo.Verify(r => r.TryReserveLoginAttemptAsync("user-1", 5, It.IsAny<DateTime>()), Times.Once);
+            _repo.Verify(r => r.LockAccountIfLoginThresholdReachedAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()), Times.Never);
+            _repo.Verify(r => r.ReleaseLoginAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
         }
 
         [Fact]
@@ -258,13 +293,41 @@ namespace XUnitTest.Auth
             var user = ValidUser();
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(user);
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+            _repo.Setup(r => r.TryReserveLoginAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "user-1", FailedLoginCount = 5 });
+            _repo.Setup(r => r.LockAccountIfLoginThresholdReachedAsync("user-1", 5, It.IsAny<int>(), It.IsAny<DateTime>()))
                 .ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15) });
 
             var result = await Create().ExecuteAsync(PasswordRequest(password: "wrong-password"), Req(), Res());
 
             var obj = result.Should().BeOfType<ObjectResult>().Subject;
             obj.StatusCode.Should().Be(StatusCodes.Status423Locked);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_ReturnsLocked_WithoutPasswordCheck_WhenReservationRefused()
+        {
+            SetupOidcClientExists();
+            _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _repo.Setup(r => r.TryReserveLoginAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>())).ReturnsAsync((User?)null);
+
+            var result = await Create().ExecuteAsync(PasswordRequest(), Req(), Res());
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status423Locked);
+            _repo.Verify(r => r.ReleaseLoginAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_ReturnsLocked_WhenPasswordRight_ButLockedMeanwhile()
+        {
+            SetupOidcClientExists();
+            _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _repo.Setup(r => r.ReleaseLoginAttemptAsync("user-1", It.IsAny<DateTime>())).ReturnsAsync(false);
+
+            var result = await Create().ExecuteAsync(PasswordRequest(), Req(), Res());
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status423Locked);
+            _mfaIssuer.Verify(m => m.IsRequiredAsync(It.IsAny<User>()), Times.Never);
         }
 
         // ---------- password: MFA challenge ----------
@@ -333,14 +396,15 @@ namespace XUnitTest.Auth
             user.FailedMfaCount = 1; // forces ResetAuthFailureCountersAsync to persist
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(user);
             _mfaIssuer.Setup(m => m.IsRequiredAsync(It.IsAny<User>())).ReturnsAsync(false);
-            _repo.Setup(r => r.UpdatePartialAsync<User>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()))
-                .Returns(Task.CompletedTask);
+            _repo.Setup(r => r.ResetFailureCountersAfterSuccessAsync(It.IsAny<User>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(true);
 
             // scope without "openid" makes the authorize endpoint validation fail deterministically
             var result = await Create().ExecuteAsync(PasswordRequest(scope: "profile email"), Req(), Res());
 
             result.Should().BeOfType<BadRequestObjectResult>();
-            _repo.Verify(r => r.UpdatePartialAsync<User>("user-1", It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()), Times.Once);
+            _repo.Verify(r => r.ResetFailureCountersAfterSuccessAsync(It.Is<User>(u => u.ItemId == "user-1"), It.IsAny<DateTime>()), Times.Once);
+            _repo.Verify(r => r.UpdatePartialAsync<User>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()), Times.Never);
             _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e => e.Outcome == "success")), Times.AtLeastOnce);
         }
 
@@ -399,6 +463,33 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task ExecuteAsync_PasswordRefusedByLoginPolicy_Returns403_BeforeAnyUserLookup()
+        {
+            SetupOidcClientExists();
+            _loginPolicy.Decide = (_, _, _, _) => LoginPolicyDecision.Denied("Password sign-in is turned off for this application.");
+
+            var result = await Create().ExecuteAsync(PasswordRequest(), Req(), Res());
+
+            var refused = result.Should().BeOfType<ObjectResult>().Subject;
+            refused.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            Prop(refused.Value, "error").Should().Be(LoginPolicyRules.Error);
+            _loginPolicy.Checks.Should().Equal((LoginChannel.Oidc, LoginMethods.Password));
+            _repo.Verify(r => r.GetUserByUsernameAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_MfaCompletionRefusedByLoginPolicy_Returns403_BeforeTheCodeIsChecked()
+        {
+            _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(MfaContextJson());
+            _loginPolicy.Decide = (_, _, _, _) => LoginPolicyDecision.Denied("off");
+
+            var result = await Create().ExecuteAsync(MfaRequest(), Req(), Res());
+
+            result.Should().BeOfType<ObjectResult>().Subject.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            _repo.Verify(r => r.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
         public async Task ExecuteAsync_ReturnsUnauthorized_WhenMfaUserNull()
         {
             _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(MfaContextJson());
@@ -442,8 +533,8 @@ namespace XUnitTest.Auth
             _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(MfaContextJson());
             _repo.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _repo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
-                .ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = null });
+            _repo.Setup(r => r.TryReserveMfaAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "user-1", FailedMfaCount = 1 });
             var otp = new Mock<IOtpService>();
             otp.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>())).ReturnsAsync(new OtpVerificationResponse { IsValid = false });
             _mfaIssuer.Setup(m => m.GetOtpServiceAsync(It.IsAny<User>())).ReturnsAsync(otp.Object);
@@ -461,7 +552,9 @@ namespace XUnitTest.Auth
             _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(MfaContextJson());
             _repo.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _repo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+            _repo.Setup(r => r.TryReserveMfaAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "user-1", FailedMfaCount = 100 });
+            _repo.Setup(r => r.LockAccountIfMfaThresholdReachedAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
                 .ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(20) });
             var otp = new Mock<IOtpService>();
             otp.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>())).ReturnsAsync(new OtpVerificationResponse { IsValid = false });

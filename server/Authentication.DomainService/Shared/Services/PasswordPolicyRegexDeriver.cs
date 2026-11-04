@@ -148,27 +148,48 @@ public static class PasswordPolicyRegexDeriver
         var rest = pattern;
         if (!TryStripAnchors(ref rest)) return null;
 
-        var assertions = new List<string>();
-        int? assertedMin = null;
-        int? assertedMax = null;
-        var index = 0;
+        if (!TryReadAssertions(rest, out var assertions, out var assertedMin, out var assertedMax, out var index)) return null;
+
+        var tail = rest[index..];
+        var cursor = 0;
+        if (!TryReadAtom(tail, ref cursor, out var body)) return null;
+        if (!TryReadQuantifier(tail[cursor..], out var minLength, out var maxLength)) return null;
+
+        return new Structure(assertions, body, minLength, maxLength, assertedMin, assertedMax);
+    }
+
+    /// <summary>
+    /// Reads the leading "(?=...)" / "(?!...)" groups. Length assertions are folded into the asserted
+    /// bounds; every other assertion is kept as written. Fails for a group that is not an assertion.
+    /// </summary>
+    private static bool TryReadAssertions(
+        string rest,
+        out List<string> assertions,
+        out int? assertedMin,
+        out int? assertedMax,
+        out int index)
+    {
+        assertions = new List<string>();
+        assertedMin = null;
+        assertedMax = null;
+        index = 0;
 
         while (index < rest.Length && rest[index] == '(')
         {
-            if (!TryFindGroupEnd(rest, index, out var end)) return null;
+            if (!TryFindGroupEnd(rest, index, out var end)) return false;
 
             // A group that is not an assertion at all (a capture, an alternation) changes what the
             // body is, so the scan cannot claim to know the length.
             var opener = rest.AsSpan(index);
-            if (!opener.StartsWith("(?=") && !opener.StartsWith("(?!")) return null;
+            if (!opener.StartsWith("(?=") && !opener.StartsWith("(?!")) return false;
 
             // A length assertion is read as length rather than kept as a requirement: it is the
             // one assertion the structured fields can say in full.
             if (opener.StartsWith("(?=")
                 && TryReadLengthAssertion(rest[(index + 3)..end], out var min, out var max))
             {
-                assertedMin = assertedMin is null ? min : Math.Max(assertedMin.Value, min);
-                assertedMax = assertedMax is null ? max : Math.Min(assertedMax.Value, max);
+                assertedMin = Math.Max(assertedMin ?? min, min);
+                assertedMax = Math.Min(assertedMax ?? max, max);
             }
             else
             {
@@ -178,12 +199,7 @@ public static class PasswordPolicyRegexDeriver
             index = end + 1;
         }
 
-        var tail = rest[index..];
-        var cursor = 0;
-        if (!TryReadAtom(tail, ref cursor, out var body)) return null;
-        if (!TryReadQuantifier(tail[cursor..], out var minLength, out var maxLength)) return null;
-
-        return new Structure(assertions, body, minLength, maxLength, assertedMin, assertedMax);
+        return true;
     }
 
     /// <summary>The four flags, or null when any part of the rule cannot be said with them.</summary>
@@ -218,12 +234,10 @@ public static class PasswordPolicyRegexDeriver
 
     private static bool TryStripAnchors(ref string pattern)
     {
-        var start = pattern.StartsWith('^') ? 1 : pattern.StartsWith(@"\A", StringComparison.Ordinal) ? 2 : 0;
+        var start = StartAnchorLength(pattern);
         if (start == 0) return false;
 
-        var end = pattern.EndsWith('$') ? 1
-            : pattern.EndsWith(@"\z", StringComparison.Ordinal) || pattern.EndsWith(@"\Z", StringComparison.Ordinal) ? 2
-            : 0;
+        var end = EndAnchorLength(pattern);
         if (end == 0) return false;
 
         // A "$" that is itself escaped is a literal dollar sign, not an anchor.
@@ -231,6 +245,18 @@ public static class PasswordPolicyRegexDeriver
 
         pattern = pattern[start..^end];
         return true;
+    }
+
+    private static int StartAnchorLength(string pattern)
+    {
+        if (pattern.StartsWith('^')) return 1;
+        return pattern.StartsWith(@"\A", StringComparison.Ordinal) ? 2 : 0;
+    }
+
+    private static int EndAnchorLength(string pattern)
+    {
+        if (pattern.EndsWith('$')) return 1;
+        return pattern.EndsWith(@"\z", StringComparison.Ordinal) || pattern.EndsWith(@"\Z", StringComparison.Ordinal) ? 2 : 0;
     }
 
     private static bool IsEscaped(string s, int position)
@@ -247,14 +273,16 @@ public static class PasswordPolicyRegexDeriver
         var depth = 0;
         var inClass = false;
 
-        for (var i = start; i < s.Length; i++)
+        var i = start;
+        while (i < s.Length)
         {
             var c = s[i];
-            if (c == '\\') { i++; continue; }
+            if (c == '\\') { i += 2; continue; }
 
             if (inClass)
             {
                 if (c == ']') inClass = false;
+                i++;
                 continue;
             }
 
@@ -267,6 +295,8 @@ public static class PasswordPolicyRegexDeriver
                     if (depth == 0) { end = i; return true; }
                     break;
             }
+
+            i++;
         }
 
         return false;
@@ -307,14 +337,18 @@ public static class PasswordPolicyRegexDeriver
         var digit = Count(regex, Digits);
         var special = Count(regex, Specials);
 
-        characterClass =
-            Covers(lower, Lowercase) && upper == 0 && digit == 0 && special == 0 ? CharacterClass.Lower
-            : Covers(upper, Uppercase) && lower == 0 && digit == 0 && special == 0 ? CharacterClass.Upper
-            : Covers(digit, Digits) && lower == 0 && upper == 0 && special == 0 ? CharacterClass.Digit
-            : Covers(special, Specials) && lower == 0 && upper == 0 && digit == 0 ? CharacterClass.Special
-            : null;
+        characterClass = ClassifyCounts(lower, upper, digit, special);
 
         return characterClass is not null;
+    }
+
+    private static CharacterClass? ClassifyCounts(int lower, int upper, int digit, int special)
+    {
+        if (Covers(lower, Lowercase) && upper == 0 && digit == 0 && special == 0) return CharacterClass.Lower;
+        if (Covers(upper, Uppercase) && lower == 0 && digit == 0 && special == 0) return CharacterClass.Upper;
+        if (Covers(digit, Digits) && lower == 0 && upper == 0 && special == 0) return CharacterClass.Digit;
+        if (Covers(special, Specials) && lower == 0 && upper == 0 && digit == 0) return CharacterClass.Special;
+        return null;
     }
 
     /// <summary>A body must admit every character, or it bans some the structured fields cannot ban.</summary>
@@ -371,16 +405,7 @@ public static class PasswordPolicyRegexDeriver
                 break;
 
             case '[':
-                i++;
-                if (i < s.Length && s[i] == '^') i++;
-                if (i < s.Length && s[i] == ']') i++; // a leading "]" is a literal
-                while (i < s.Length && s[i] != ']')
-                {
-                    if (s[i] == '\\') i++;
-                    i++;
-                }
-                if (i >= s.Length) return false;
-                i++;
+                if (!TryAdvancePastBracketExpression(s, ref i)) return false;
                 break;
 
             case '.':
@@ -392,6 +417,22 @@ public static class PasswordPolicyRegexDeriver
         }
 
         atom = s[start..i];
+        return true;
+    }
+
+    /// <summary>Moves <paramref name="i"/> from the "[" past the matching "]"; false when it is never closed.</summary>
+    private static bool TryAdvancePastBracketExpression(string s, ref int i)
+    {
+        i++;
+        if (i < s.Length && s[i] == '^') i++;
+        if (i < s.Length && s[i] == ']') i++; // a leading "]" is a literal
+        while (i < s.Length && s[i] != ']')
+        {
+            if (s[i] == '\\') i++;
+            i++;
+        }
+        if (i >= s.Length) return false;
+        i++;
         return true;
     }
 

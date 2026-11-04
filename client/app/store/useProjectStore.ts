@@ -1,4 +1,4 @@
-import { IProject } from "@blocks-identifier/models/project.model";
+import type { IProject } from "@seliseblocks/genesis-os/models";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 

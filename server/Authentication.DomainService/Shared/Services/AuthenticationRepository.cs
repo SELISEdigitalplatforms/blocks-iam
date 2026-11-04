@@ -1,12 +1,16 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
 using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Entities;
+using Iam.DomainService.Services;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using System.Linq.Expressions;
+using MongoDB.Bson;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Services
 {
@@ -21,15 +25,18 @@ namespace Authentication.DomainService.Services
         private readonly IDbContextProvider _dbContextProvider;
         private readonly OidcDiscoveryClient _oidcDiscoveryClient;
         private readonly IKeyValueStore _keyValueStore;
+        private readonly IIamDataAccess _dataAccess;
 
         public AuthenticationRepository(
             IDbContextProvider dbContextProvider,
             OidcDiscoveryClient oidcDiscoveryClient,
-            IKeyValueStore keyValueStore)
+            IKeyValueStore keyValueStore,
+            IIamDataAccess dataAccess)
         {
             _dbContextProvider = dbContextProvider;
             _oidcDiscoveryClient = oidcDiscoveryClient;
             _keyValueStore = keyValueStore;
+            _dataAccess = dataAccess;
         }
 
         public IMongoCollection<T> GetCollection<T>()
@@ -68,7 +75,9 @@ namespace Authentication.DomainService.Services
                 Collation = new Collation("en", strength: CollationStrength.Secondary)
             };
             var filter = Builders<User>.Filter.Eq(x => x.Email, email);
-            return await (await collection.FindAsync(filter, options)).FirstOrDefaultAsync();
+            var scope = await _dataAccess.ReadAsync(IamSchemas.User, filter, "AuthenticationRepository.GetUserByEmailAsync", useProjection: false);
+            if (!scope.Granted) return null!;
+            return await (await collection.FindAsync(scope.Filter, options)).FirstOrDefaultAsync();
         }
 
         public async Task<User> GetUserByUsernameAsync(string username, string? organizationId = null)
@@ -95,14 +104,16 @@ namespace Authentication.DomainService.Services
                 filter &= Builders<User>.Filter.AnyEq("OrganizationIds", organizationId);
             }
 
-            return await collection.Find(filter, options).FirstOrDefaultAsync();
+            var scope = await _dataAccess.ReadAsync(IamSchemas.User, filter, "AuthenticationRepository.GetUserByUsernameAsync", useProjection: false);
+            if (!scope.Granted) return null!;
+            return await collection.Find(scope.Filter, options).FirstOrDefaultAsync();
         }
 
         public async Task<User> GetUserByIdAsync(string itemId)
         {
             var collection = GetCollection<User>();
 
-            return await collection.Find(x => x.ItemId == itemId).FirstOrDefaultAsync();
+            return (await _dataAccess.FindFirstAsync(collection, IamSchemas.User, Builders<User>.Filter.Eq(x => x.ItemId, itemId), "AuthenticationRepository.GetUserByIdAsync"))!;
         }
 
         public async Task<T> GetUserByIdAsync<T>(string itemId)
@@ -111,193 +122,247 @@ namespace Authentication.DomainService.Services
             var filter = Builders<User>.Filter.Eq(x => x.ItemId, itemId);
             var project = Builders<User>.Projection.As<T>();
 
-            var cursor = await collection.FindAsync(filter, new FindOptions<User, T>
+            // Own projection (As<T>): only the row filter is applied, not the resolver projection.
+            var scope = await _dataAccess.ReadAsync(IamSchemas.User, filter, "AuthenticationRepository.GetUserByIdAsync<T>", useProjection: false);
+            if (!scope.Granted) return default!;
+            var cursor = await collection.FindAsync(scope.Filter, new FindOptions<User, T>
             {
                 Projection = project
             });
             return await cursor.FirstOrDefaultAsync();
         }
 
-        public async Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc)
-        {
-            var collection = GetCollection<User>();
+        /// <summary>
+        /// How long the last free slot stays taken by one reservation once the threshold is reached. Shorter than
+        /// any lock (minimum 1 minute) and longer than any request, so a crashed request frees the slot again.
+        /// </summary>
+        public static readonly TimeSpan LoginAttemptLease = TimeSpan.FromSeconds(60);
 
-            var incrementFilter = Builders<User>.Filter.Eq(x => x.ItemId, userId);
-            var incrementUpdate = Builders<User>.Update
-                .Inc(x => x.FailedLoginCount, 1)
-                .Set(x => x.LastFailedLoginUtc, nowUtc)
+        public Task<User?> TryReserveLoginAttemptAsync(string userId, int lockThreshold, DateTime nowUtc) =>
+            TryReserveAttemptAsync(LoginCounter, userId, lockThreshold, nowUtc);
+
+        public Task<bool> ReleaseLoginAttemptAsync(string userId, DateTime nowUtc) =>
+            ReleaseAttemptAsync(LoginCounter, userId, nowUtc);
+
+        public Task<User?> LockAccountIfLoginThresholdReachedAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc) =>
+            LockIfThresholdReachedAsync(LoginCounter, userId, lockThreshold, lockDurationInMinutes, nowUtc);
+
+        public Task<User?> TryReserveMfaAttemptAsync(string userId, int lockThreshold, DateTime nowUtc) =>
+            TryReserveAttemptAsync(MfaCounter, userId, lockThreshold, nowUtc);
+
+        public Task<bool> ReleaseMfaAttemptAsync(string userId, DateTime nowUtc) =>
+            ReleaseAttemptAsync(MfaCounter, userId, nowUtc);
+
+        public Task<User?> LockAccountIfMfaThresholdReachedAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc) =>
+            LockIfThresholdReachedAsync(MfaCounter, userId, lockThreshold, lockDurationInMinutes, nowUtc);
+
+        /// <summary>One failure counter on the user: wrong passwords or wrong MFA codes.</summary>
+        private sealed record AttemptCounter(
+            string Name,
+            Expression<Func<User, int>> Count,
+            Expression<Func<User, DateTime?>> LastFailure,
+            Func<User, int> Read);
+
+        private static readonly AttemptCounter LoginCounter =
+            new("Login", x => x.FailedLoginCount, x => x.LastFailedLoginUtc, x => x.FailedLoginCount);
+
+        private static readonly AttemptCounter MfaCounter =
+            new("Mfa", x => x.FailedMfaCount, x => x.LastFailedMfaUtc, x => x.FailedMfaCount);
+
+        private async Task<User?> TryReserveAttemptAsync(AttemptCounter counter, string userId, int lockThreshold, DateTime nowUtc)
+        {
+            var f = Builders<User>.Filter;
+            var filter = f.And(
+                f.Eq(x => x.ItemId, userId),
+                NotLockedFilter(nowUtc),
+                f.Or(
+                    f.Lt(counter.Count, lockThreshold),
+                    f.Exists(new ExpressionFieldDefinition<User, int>(counter.Count), false),
+                    f.Eq(counter.LastFailure, null),
+                    f.Lte(counter.LastFailure, nowUtc - LoginAttemptLease)));
+
+            var update = Builders<User>.Update
+                .Inc(counter.Count, 1)
+                .Set(counter.LastFailure, nowUtc)
                 .Set(x => x.LastUpdatedDate, nowUtc)
                 .Set(x => x.LastUpdatedBy, userId);
 
-            var userAfterIncrement = await collection.FindOneAndUpdateAsync(
-                incrementFilter,
-                incrementUpdate,
-                new FindOneAndUpdateOptions<User>
-                {
-                    ReturnDocument = ReturnDocument.After
-                });
+            return await _dataAccess.FindOneAndUpdateAsync(
+                GetCollection<User>(),
+                IamSchemas.User,
+                filter,
+                update,
+                $"AuthenticationRepository.TryReserve{counter.Name}AttemptAsync",
+                new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After });
+        }
 
-            if (userAfterIncrement == null)
+        private async Task<bool> ReleaseAttemptAsync(AttemptCounter counter, string userId, DateTime nowUtc)
+        {
+            var collection = GetCollection<User>();
+            var f = Builders<User>.Filter;
+            var released = await _dataAccess.FindOneAndUpdateAsync(
+                collection,
+                IamSchemas.User,
+                f.And(f.Eq(x => x.ItemId, userId), NotLockedFilter(nowUtc), f.Gt(counter.Count, 0)),
+                Builders<User>.Update
+                    .Inc(counter.Count, -1)
+                    .Set(x => x.LastUpdatedDate, nowUtc)
+                    .Set(x => x.LastUpdatedBy, userId),
+                $"AuthenticationRepository.Release{counter.Name}AttemptAsync");
+            if (released != null)
+            {
+                return true;
+            }
+
+            // Nothing to give back (a concurrent sign-in already reset the counter) or the account is locked.
+            var current = await _dataAccess.FindFirstAsync(collection, IamSchemas.User, Builders<User>.Filter.Eq(x => x.ItemId, userId), $"AuthenticationRepository.Release{counter.Name}AttemptAsync.Read");
+            return current != null && !(current.LockoutUntilUtc.HasValue && current.LockoutUntilUtc.Value > nowUtc);
+        }
+
+        private async Task<User?> LockIfThresholdReachedAsync(AttemptCounter counter, string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc)
+        {
+            var collection = GetCollection<User>();
+            var current = await _dataAccess.FindFirstAsync(collection, IamSchemas.User, Builders<User>.Filter.Eq(x => x.ItemId, userId), $"AuthenticationRepository.LockAccountIf{counter.Name}ThresholdReachedAsync.Read");
+            if (current == null
+                || counter.Read(current) < lockThreshold
+                || (current.LockoutUntilUtc.HasValue && current.LockoutUntilUtc.Value > nowUtc))
             {
                 return null;
             }
 
-            if (userAfterIncrement.FailedLoginCount < lockThreshold)
-            {
-                return userAfterIncrement;
-            }
+            // LockoutCount must still be the value the duration was computed from: no double lock, exact escalation.
+            var f = Builders<User>.Filter;
+            var sameLockoutCount = current.LockoutCount == 0
+                ? f.Or(f.Eq(x => x.LockoutCount, 0), f.Exists(x => x.LockoutCount, false))
+                : f.Eq(x => x.LockoutCount, current.LockoutCount);
+            var lockFilter = f.And(
+                f.Eq(x => x.ItemId, userId),
+                f.Gte(counter.Count, lockThreshold),
+                NotLockedFilter(nowUtc),
+                sameLockoutCount);
 
-            if (userAfterIncrement.LockoutUntilUtc.HasValue && userAfterIncrement.LockoutUntilUtc.Value > nowUtc)
-            {
-                return userAfterIncrement;
-            }
+            var lockUpdate = LockUpdate(current, lockDurationInMinutes, nowUtc, userId);
 
-            // Calculate actual lockout duration with exponential backoff
-            var actualLockoutDurationInMinutes = CalculateExponentialBackoffLockoutDuration(
-                userAfterIncrement.LockoutCount,
-                userAfterIncrement.LastLockoutUtc,
-                lockDurationInMinutes,
-                7); // 7-day reset window
-
-            var lockoutUntilUtc = nowUtc.AddMinutes(actualLockoutDurationInMinutes);
-            var lockFilter = Builders<User>.Filter.And(
-                Builders<User>.Filter.Eq(x => x.ItemId, userId),
-                Builders<User>.Filter.Eq(x => x.FailedLoginCount, userAfterIncrement.FailedLoginCount));
-
-            var lockUpdate = Builders<User>.Update
-                .Set(x => x.LockoutUntilUtc, lockoutUntilUtc)
-                .Inc(x => x.LockoutCount, 1) // Increment lockout count for next time
-                .Set(x => x.LastLockoutUtc, nowUtc)
-                .Set(x => x.LastUpdatedDate, nowUtc)
-                .Set(x => x.LastUpdatedBy, userId);
-
-            var userAfterLock = await collection.FindOneAndUpdateAsync(
+            return await _dataAccess.FindOneAndUpdateAsync(
+                collection,
+                IamSchemas.User,
                 lockFilter,
                 lockUpdate,
-                new FindOneAndUpdateOptions<User>
-                {
-                    ReturnDocument = ReturnDocument.After
-                });
-
-            return userAfterLock ?? userAfterIncrement;
+                $"AuthenticationRepository.LockAccountIf{counter.Name}ThresholdReachedAsync",
+                new FindOneAndUpdateOptions<User> { ReturnDocument = ReturnDocument.After });
         }
 
-        public async Task<User?> IncrementFailedMfaAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc)
+        public async Task<bool> ResetFailureCountersAfterSuccessAsync(User snapshot, DateTime nowUtc)
         {
-            var collection = GetCollection<User>();
+            ArgumentNullException.ThrowIfNull(snapshot);
 
-            var incrementFilter = Builders<User>.Filter.Eq(x => x.ItemId, userId);
-            var incrementUpdate = Builders<User>.Update
-                .Inc(x => x.FailedMfaCount, 1)
-                .Set(x => x.LastFailedMfaUtc, nowUtc)
+            if (snapshot.FailedLoginCount <= 0
+                && !snapshot.LastFailedLoginUtc.HasValue
+                && snapshot.FailedMfaCount <= 0
+                && !snapshot.LastFailedMfaUtc.HasValue
+                && !snapshot.LockoutUntilUtc.HasValue)
+            {
+                return false;
+            }
+
+            // The success already gave its own slot back, so a higher count means a wrong password was counted
+            // after the snapshot. Never clears an active lock.
+            var f = Builders<User>.Filter;
+            var filter = f.And(
+                f.Eq(x => x.ItemId, snapshot.ItemId),
+                NotLockedFilter(nowUtc),
+                f.Or(
+                    f.Lte(x => x.FailedLoginCount, Math.Max(0, snapshot.FailedLoginCount)),
+                    f.Exists(x => x.FailedLoginCount, false)));
+
+            var update = Builders<User>.Update
+                .Set(x => x.FailedLoginCount, 0)
+                .Set(x => x.LastFailedLoginUtc, null)
+                .Set(x => x.FailedMfaCount, 0)
+                .Set(x => x.LastFailedMfaUtc, null)
+                .Set(x => x.LockoutUntilUtc, null)
+                .Set(x => x.LockoutCount, 0)
                 .Set(x => x.LastUpdatedDate, nowUtc)
-                .Set(x => x.LastUpdatedBy, userId);
+                .Set(x => x.LastUpdatedBy, snapshot.ItemId);
 
-            var userAfterIncrement = await collection.FindOneAndUpdateAsync(
-                incrementFilter,
-                incrementUpdate,
-                new FindOneAndUpdateOptions<User>
-                {
-                    ReturnDocument = ReturnDocument.After
-                });
-
-            if (userAfterIncrement == null)
-            {
-                return null;
-            }
-
-            if (userAfterIncrement.FailedMfaCount < lockThreshold)
-            {
-                return userAfterIncrement;
-            }
-
-            if (userAfterIncrement.LockoutUntilUtc.HasValue && userAfterIncrement.LockoutUntilUtc.Value > nowUtc)
-            {
-                return userAfterIncrement;
-            }
-
-            var actualLockoutDurationInMinutes = CalculateExponentialBackoffLockoutDuration(
-                userAfterIncrement.LockoutCount,
-                userAfterIncrement.LastLockoutUtc,
-                lockDurationInMinutes,
-                7);
-
-            var lockoutUntilUtc = nowUtc.AddMinutes(actualLockoutDurationInMinutes);
-            var lockFilter = Builders<User>.Filter.And(
-                Builders<User>.Filter.Eq(x => x.ItemId, userId),
-                Builders<User>.Filter.Eq(x => x.FailedMfaCount, userAfterIncrement.FailedMfaCount));
-
-            var lockUpdate = Builders<User>.Update
-                .Set(x => x.LockoutUntilUtc, lockoutUntilUtc)
-                .Inc(x => x.LockoutCount, 1)
-                .Set(x => x.LastLockoutUtc, nowUtc)
-                .Set(x => x.LastUpdatedDate, nowUtc)
-                .Set(x => x.LastUpdatedBy, userId);
-
-            var userAfterLock = await collection.FindOneAndUpdateAsync(
-                lockFilter,
-                lockUpdate,
-                new FindOneAndUpdateOptions<User>
-                {
-                    ReturnDocument = ReturnDocument.After
-                });
-
-            return userAfterLock ?? userAfterIncrement;
+            var reset = await _dataAccess.FindOneAndUpdateAsync(
+                GetCollection<User>(),
+                IamSchemas.User,
+                filter,
+                update,
+                "AuthenticationRepository.ResetFailureCountersAfterSuccessAsync");
+            return reset != null;
         }
+
+        private static FilterDefinition<User> NotLockedFilter(DateTime nowUtc) =>
+            Builders<User>.Filter.Or(
+                Builders<User>.Filter.Eq(x => x.LockoutUntilUtc, null),
+                Builders<User>.Filter.Lte(x => x.LockoutUntilUtc, nowUtc));
+
+        /// <summary>Longest single lock, unless the tenant's base lock time is already longer.</summary>
+        public const int MaxLockoutDurationInMinutes = 4 * 60;
+
+        /// <summary>After this many quiet days the lock ladder starts again from the first step.</summary>
+        public const int LockoutLadderResetDays = 7;
 
         /// <summary>
-        /// Calculates exponential backoff lockout duration.
-        /// - 1st lockout: baseDuration (5 min)
-        /// - 2nd lockout: 3x baseDuration (15 min)
-        /// - 3rd lockout: 12x baseDuration (60 min)
-        /// - 4th+ lockout: 288x baseDuration (24 hours)
-        /// Resets counter if last lockout was > resetWindowDays ago.
+        /// Applies the next lock. Each lock in a row adds the tenant's base lock time (15, 30, 45 …
+        /// minutes with the default), up to <see cref="MaxLockoutDurationInMinutes"/>. Both failure
+        /// counters start again from zero, so the next lock needs a full new round of wrong attempts.
         /// </summary>
-        private int CalculateExponentialBackoffLockoutDuration(
-            int currentLockoutCount,
-            DateTime? lastLockoutUtc,
-            int baseDurationMinutes,
-            int resetWindowDays)
+        private static UpdateDefinition<User> LockUpdate(User current, int baseDurationMinutes, DateTime nowUtc, string userId)
         {
-            var now = DateTime.UtcNow;
+            var previousLocks = PreviousLocksInLadder(current.LockoutCount, current.LastLockoutUtc, nowUtc);
 
-            // Reset counter if last lockout was too long ago
-            if (lastLockoutUtc.HasValue && (now - lastLockoutUtc.Value).TotalDays >= resetWindowDays)
-            {
-                // Reset to 1st lockout duration
-                return baseDurationMinutes;
-            }
+            return Builders<User>.Update
+                .Set(x => x.LockoutUntilUtc, nowUtc.AddMinutes(LockoutDurationMinutes(previousLocks, baseDurationMinutes)))
+                .Set(x => x.LockoutCount, previousLocks + 1)
+                .Set(x => x.LastLockoutUtc, nowUtc)
+                .Set(x => x.FailedLoginCount, 0)
+                .Set(x => x.FailedMfaCount, 0)
+                .Set(x => x.LastUpdatedDate, nowUtc)
+                .Set(x => x.LastUpdatedBy, userId);
+        }
 
-            // Exponential backoff based on lockout count
-            return currentLockoutCount switch
-            {
-                0 => baseDurationMinutes,              // 5 minutes
-                1 => baseDurationMinutes * 3,          // 15 minutes
-                2 => baseDurationMinutes * 12,         // 60 minutes (1 hour)
-                _ => baseDurationMinutes * 288         // 1440 minutes (24 hours)
-            };
+        public static int PreviousLocksInLadder(int lockoutCount, DateTime? lastLockoutUtc, DateTime nowUtc) =>
+            lastLockoutUtc.HasValue && (nowUtc - lastLockoutUtc.Value).TotalDays >= LockoutLadderResetDays
+                ? 0
+                : Math.Max(0, lockoutCount);
+
+        public static int LockoutDurationMinutes(int previousLocks, int baseDurationMinutes)
+        {
+            var step = Math.Max(1, baseDurationMinutes);
+            var cap = Math.Max(step, MaxLockoutDurationInMinutes);
+            return (int)Math.Min((long)step * (previousLocks + 1), cap);
         }
 
         public async Task<List<IdentityProvider>> GetIdentityProvidersAsync()
         {
             var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Where(_ => true);
-            var cursor = await collection.FindAsync(filter);
-            return await cursor.ToListAsync();
+            return await _dataAccess.FindListAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProvidersAsync");
+        }
+
+
+        public async Task<List<IdentityProvider>> GetIdentityProvidersForViewAsync()
+        {
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Where(_ => true);
+            return await _dataAccess.FindListForViewAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProvidersForViewAsync");
         }
 
         public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider)
         {
             var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.Provider, provider);
-            return await collection.Find(filter).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProviderAsync");
         }
 
         public async Task<IdentityProvider?> GetIdentityProviderByClientIdAsync(string clientId)
         {
             var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ClientId, clientId);
-            return await collection.Find(filter).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProviderByClientIdAsync");
         }
 
         public async Task<IdentityProvider?> GetIdentityProviderByClientIdAndRedirectUriAsync(string clientId, string redirectUri)
@@ -306,7 +371,7 @@ namespace Authentication.DomainService.Services
             var filter = Builders<IdentityProvider>.Filter.And(
                 Builders<IdentityProvider>.Filter.Eq(x => x.ClientId, clientId),
                 Builders<IdentityProvider>.Filter.AnyEq(x => x.RedirectUris, redirectUri));
-            return await collection.Find(filter).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProviderByClientIdAndRedirectUriAsync");
         }
 
         public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider, string providerType)
@@ -315,14 +380,22 @@ namespace Authentication.DomainService.Services
             var filter = Builders<IdentityProvider>.Filter.And(
                 Builders<IdentityProvider>.Filter.Eq(x => x.Provider, provider),
                 Builders<IdentityProvider>.Filter.Eq(x => x.ProviderType, providerType));
-            return await collection.Find(filter).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProviderAsync");
         }
 
         public async Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id)
         {
             var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, id);
-            return await collection.Find(filter).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProviderByIdAsync");
+        }
+
+
+        public async Task<IdentityProvider?> GetIdentityProviderByIdForViewAsync(string id)
+        {
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, id);
+            return await _dataAccess.FindFirstForViewAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProviderByIdForViewAsync");
         }
 
         public async Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider)
@@ -336,7 +409,7 @@ namespace Authentication.DomainService.Services
             provider.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? "system";
 
             var collection = GetCollection<IdentityProvider>();
-            await collection.InsertOneAsync(provider);
+            await _dataAccess.InsertOneAsync(collection, IamSchemas.IdentityProvider, provider, "AuthenticationRepository.CreateIdentityProviderAsync");
             return provider;
         }
 
@@ -407,7 +480,7 @@ namespace Authentication.DomainService.Services
             var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, provider.ItemId);
             var options = new ReplaceOptions { IsUpsert = false };
-            await collection.ReplaceOneAsync(filter, provider, options);
+            await _dataAccess.ReplaceOneAsync(collection, IamSchemas.IdentityProvider, filter, provider, "AuthenticationRepository.UpdateIdentityProviderAsync", options);
             return provider;
         }
 
@@ -415,14 +488,14 @@ namespace Authentication.DomainService.Services
         {
             var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, id);
-            await collection.DeleteOneAsync(filter);
+            await _dataAccess.DeleteOneAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.DeleteIdentityProviderAsync");
         }
 
         public async Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "")
         {
-            IMongoCollection<T> collection = string.IsNullOrWhiteSpace(collectionName) ? GetCollection<T>() : GetCollection<T>(collectionName);
+            IMongoCollection<T> collection = string.IsNullOrWhiteSpace(collectionName) ? GetCollection<T>() : GetCollectionByName<T>(collectionName);
 
-            var filter = Builders<T>.Filter.Eq("_id", id);
+            FilterDefinition<T> filter = Builders<T>.Filter.Eq("_id", id);
             var updateDefinition = new List<UpdateDefinition<T>>();
 
             foreach (var update in updates)
@@ -431,6 +504,14 @@ namespace Authentication.DomainService.Services
             }
 
             var combinedUpdate = Builders<T>.Update.Combine(updateDefinition);
+            var schema = IamSchemas.For(typeof(T));
+            if (schema is not null)
+            {
+                var edit = await _dataAccess.EditFilterAsync(schema, filter, "AuthenticationRepository.UpdatePartialAsync");
+                if (edit is null) return;
+                await _dataAccess.CheckUpdateAsync(schema, combinedUpdate, "AuthenticationRepository.UpdatePartialAsync");
+                filter = edit;
+            }
             await collection.UpdateOneAsync(filter, combinedUpdate);
         }
 
@@ -438,27 +519,45 @@ namespace Authentication.DomainService.Services
         {
             var collection = GetCollection<IdentityConfiguration>();
             var filter = Builders<IdentityConfiguration>.Filter.Where(_ => true);
-            return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
+            return (await _dataAccess.FindFirstAsync(collection, IamSchemas.IdentityConfiguration, filter, "AuthenticationRepository.GetAuthenticationConfigurationAsync"))!;
+        }
+
+
+        public async Task<IdentityConfiguration> GetAuthenticationConfigurationForViewAsync()
+        {
+            var collection = GetCollection<IdentityConfiguration>();
+            var filter = Builders<IdentityConfiguration>.Filter.Where(_ => true);
+            return (await _dataAccess.FindFirstForViewAsync(collection, IamSchemas.IdentityConfiguration, filter, "AuthenticationRepository.GetAuthenticationConfigurationForViewAsync"))!;
         }
 
         public async Task UpdateAuthenticationConfigurationAsync(IdentityConfiguration authenticationConfiguration)
         {
             var collection = GetCollection<IdentityConfiguration>();
             var filter = Builders<IdentityConfiguration>.Filter.Eq("_id", authenticationConfiguration.ItemId);
-            await collection.ReplaceOneAsync(filter, authenticationConfiguration);
+
+            // $set of every mapped field, not a whole-document replace: a replace deletes each field the class
+            // does not map -- the merged TenantConfiguration field, and on the root tenant AllowedApis.
+            var fields = authenticationConfiguration.ToBsonDocument();
+            fields.Remove("_id");
+            await _dataAccess.UpdateOneAsync(
+                collection,
+                IamSchemas.IdentityConfiguration,
+                filter,
+                new BsonDocumentUpdateDefinition<IdentityConfiguration>(new BsonDocument("$set", fields)),
+                "AuthenticationRepository.UpdateAuthenticationConfigurationAsync");
         }
 
         public async Task<OidcClientRegistration> GetOidcClientRegistrationAsync(string clientId)
         {
             var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var filter = Builders<OidcClientRegistration>.Filter.Eq(x => x.ItemId, clientId);
-            return await collection.Find(filter).FirstOrDefaultAsync();
+            return (await _dataAccess.FindFirstAsync(collection, IamSchemas.OidcClientRegistration, filter, "AuthenticationRepository.GetOidcClientRegistrationAsync"))!;
         }
 
         public async Task SaveOidcClientRegistrationAsync(OidcClientRegistration credential)
         {
             var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
-            var result = await collection.ReplaceOneAsync(x => x.ItemId == credential.ItemId, credential, new ReplaceOptions { IsUpsert = true });
+            await _dataAccess.ReplaceOneAsync(collection, IamSchemas.OidcClientRegistration, Builders<OidcClientRegistration>.Filter.Where(x => x.ItemId == credential.ItemId), credential, "AuthenticationRepository.SaveOidcClientRegistrationAsync", new ReplaceOptions { IsUpsert = true });
         }
 
         public async Task<OidcUiTemplate?> GetOidcUiTemplateAsync()
@@ -484,92 +583,64 @@ namespace Authentication.DomainService.Services
         {
             var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var filter = Builders<OidcClientRegistration>.Filter.Eq(it => it.ItemId, itemId);
-            return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
+            return (await _dataAccess.FindFirstForViewAsync(collection, IamSchemas.OidcClientRegistration, filter, "AuthenticationRepository.GetOIDCCredentialByIdAsync"))!;
         }
 
         public async Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantAsync()
         {
             var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var filter = Builders<OidcClientRegistration>.Filter.Empty;
-            return await (await collection.FindAsync(filter)).ToListAsync();
+            return await _dataAccess.FindListAsync(collection, IamSchemas.OidcClientRegistration, filter, "AuthenticationRepository.GetOIDCCredentialsByTenantAsync");
+        }
+
+
+        public async Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantForViewAsync()
+        {
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
+            var filter = Builders<OidcClientRegistration>.Filter.Empty;
+            return await _dataAccess.FindListForViewAsync(collection, IamSchemas.OidcClientRegistration, filter, "AuthenticationRepository.GetOIDCCredentialsByTenantForViewAsync");
         }
 
         public async Task DeleteOidcClientAsync(DeleteOIDCClientRequest request)
         {
             var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var filter = Builders<OidcClientRegistration>.Filter.Eq(it => it.ItemId, request.ItemId);
-            await collection.DeleteOneAsync(filter);
+            await _dataAccess.DeleteOneAsync(collection, IamSchemas.OidcClientRegistration, filter, "AuthenticationRepository.DeleteOidcClientAsync");
         }
 
         public async Task<ClientCredential> GetClientCredentialByIdAsync(string clientId)
         {
             var collection = GetCollection<ClientCredential>();
             var filter = Builders<ClientCredential>.Filter.Eq(it => it.ItemId, clientId);
-            return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
+            return (await _dataAccess.FindFirstAsync(collection, IamSchemas.ClientCredential, filter, "AuthenticationRepository.GetClientCredentialByIdAsync"))!;
         }
 
         public async Task<BiometricCredential> AuthenticateBiometricCredentialAsync(string biometricId, string biometricKey)
         {
             var collection = GetCollection<BiometricCredential>();
             var filter = Builders<BiometricCredential>.Filter.Where(it => it.BiometricId == biometricId && it.BiometricKey == biometricKey);
-            return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
-        }
-
-        public async Task<UserCode> GetUserCodeAsync(string code)
-        {
-            var collection = GetCollection<UserCode>();
-            var filter = Builders<UserCode>.Filter.Eq(it => it.Code, code);
-            return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
+            return (await _dataAccess.FindFirstAsync(collection, IamSchemas.BiometricCredential, filter, "AuthenticationRepository.AuthenticateBiometricCredentialAsync"))!;
         }
 
         public async Task<BlocksClientConfig> GetBlocksClientAsync(string clientId)
         {
             var collection = GetCollection<BlocksClientConfig>();
             var filter = Builders<BlocksClientConfig>.Filter.Eq(it => it.ItemId, clientId);
-            return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
-        }
-
-        public async Task SaveUserCodeByClientAsync(UserCode userCode)
-        {
-            var collection = GetCollection<UserCode>();
-            var result = await collection.ReplaceOneAsync(x => x.ItemId == userCode.ItemId, userCode, new ReplaceOptions { IsUpsert = true });
-        }
-
-        public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodesByUserIdAsync(string userId)
-        {
-            var collection = GetCollection<UserCode>();
-            var filter = Builders<UserCode>.Filter.Eq(it => it.UserId, userId);
-            var userCodes = await (await collection.FindAsync(filter)).ToListAsync();
-            return GetUserCodesByUserIdResponse(userCodes);
-        }
-
-        private List<GetUserCodesByUserIdResponse> GetUserCodesByUserIdResponse(List<UserCode> userCodes)
-        {
-            return userCodes.Select(x => new GetUserCodesByUserIdResponse
-            {
-                ItemId = x.ItemId,
-                CreatedDate = x.CreatedDate,
-                UserId = x.UserId,
-                Code = x.Code,
-                ExpiryDate = x.CodeTtlInMinute.HasValue ? x.CreatedDate.AddMinutes(x.CodeTtlInMinute.Value) : x.CreatedDate,
-                CodeTtlInMinute = x.CodeTtlInMinute,
-                ClientId = x.ClientId,
-                Note = x.Note,
-            }).ToList();
+            return (await _dataAccess.FindFirstAsync(collection, IamSchemas.BlocksClientConfig, filter, "AuthenticationRepository.GetBlocksClientAsync"))!;
         }
 
         public async Task<BaseResponse> SaveClientCredentialAsync(ClientCredential clientCredential)
         {
             var collection = GetCollection<ClientCredential>();
-            var result = await collection.ReplaceOneAsync(x => x.ItemId == clientCredential.ItemId, clientCredential, new ReplaceOptions { IsUpsert = true });
-            return new BaseResponse { IsSuccess = result.IsAcknowledged };
+            var result = await _dataAccess.ReplaceOneAsync(collection, IamSchemas.ClientCredential, Builders<ClientCredential>.Filter.Where(x => x.ItemId == clientCredential.ItemId), clientCredential, "AuthenticationRepository.SaveClientCredentialAsync", new ReplaceOptions { IsUpsert = true });
+            return new BaseResponse { IsSuccess = result?.IsAcknowledged ?? false };
         }
 
         public async Task DeleteClientCredentialAsync(DeleteClientCredentialRequest request)
         {
             var collection = GetCollection<ClientCredential>();
             var filter = Builders<ClientCredential>.Filter.Eq(it => it.ItemId, request.ItemId);
-            await collection.DeleteOneAsync(filter);
+            await _dataAccess.DeleteOneAsync(collection, IamSchemas.ClientCredential, filter, "AuthenticationRepository.DeleteClientCredentialAsync");
         }
 
         /// <param name="organizationId">
@@ -582,8 +653,7 @@ namespace Authentication.DomainService.Services
             var filter = organizationId == null
                 ? Builders<ClientCredential>.Filter.Where(_ => true)
                 : Builders<ClientCredential>.Filter.Eq(it => it.OrganizationId, organizationId);
-            var cursor = await collection.FindAsync(filter);
-            return await cursor.ToListAsync();
+            return await _dataAccess.FindListForViewAsync(collection, IamSchemas.ClientCredential, filter, "AuthenticationRepository.GetClientCredentialsAsync");
         }
 
         // Impersonation session methods
@@ -592,7 +662,7 @@ namespace Authentication.DomainService.Services
             try
             {
                 var collection = GetCollection<ImpersonationSession>();
-                await collection.InsertOneAsync(session);
+                await _dataAccess.InsertOneAsync(collection, IamSchemas.ImpersonationSession, session, "AuthenticationRepository.InsertImpersonationSessionAsync");
                 return true;
             }
             catch (Exception ex)
@@ -606,7 +676,7 @@ namespace Authentication.DomainService.Services
         {
             var collection = GetCollection<ImpersonationSession>();
             var filter = Builders<ImpersonationSession>.Filter.Eq(x => x.Id, sessionId);
-            return await collection.Find(filter).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.ImpersonationSession, filter, "AuthenticationRepository.GetImpersonationSessionByIdAsync");
         }
 
         public async Task<List<ImpersonationSession>> GetActiveImpersonationSessionsByUserIdAsync(string userId)
@@ -616,8 +686,7 @@ namespace Authentication.DomainService.Services
                 Builders<ImpersonationSession>.Filter.Eq(x => x.UserId, userId),
                 Builders<ImpersonationSession>.Filter.Eq(x => x.Status, "active")
             );
-            var cursor = await collection.FindAsync(filter);
-            return await cursor.ToListAsync();
+            return await _dataAccess.FindListAsync(collection, IamSchemas.ImpersonationSession, filter, "AuthenticationRepository.GetActiveImpersonationSessionsByUserIdAsync");
         }
 
         public async Task<bool> UpdateImpersonationSessionAsync(string sessionId, Dictionary<string, object> updates)
@@ -638,9 +707,9 @@ namespace Authentication.DomainService.Services
                 updateList.Add(updateDefinition.Set(x => x.UpdateDate, DateTime.UtcNow));
 
                 var combinedUpdate = updateDefinition.Combine(updateList);
-                var result = await collection.UpdateOneAsync(filter, combinedUpdate);
+                var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.ImpersonationSession, filter, combinedUpdate, "AuthenticationRepository.UpdateImpersonationSessionAsync");
 
-                return result.ModifiedCount > 0;
+                return result is not null && result.ModifiedCount > 0;
             }
             catch (Exception ex)
             {

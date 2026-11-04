@@ -4,6 +4,8 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Notifications;
+using XUnitTest.IamTests.Notifications;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources;
@@ -12,8 +14,10 @@ using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
+using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Users
 {
@@ -45,7 +49,7 @@ namespace XUnitTest.IamTests.Users
             _message.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<CreateUserViaSsoEvent>>())).Returns(Task.CompletedTask);
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
             _iam.Setup(i => i.HashPassword(It.IsAny<string>(), It.IsAny<string>())).Returns((string p, string s) => "hash:" + p);
-            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration());
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new IamTenantConfiguration());
             _userRepo.Setup(r => r.CreateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
             _userRepo.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
         }
@@ -116,10 +120,60 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
+        public async Task CreateUser_SendMailOmitted_EventAsksForActivationMail()
+        {
+            await Create().CreateUserAsync(new CreateUserRequest { Email = "new@test.com", Password = "pw" });
+
+            _message.Verify(m => m.SendToConsumerAsync(
+                It.Is<ConsumerMessage<UserMutationEvent>>(c => c.Payload.SendMail)), Times.Once);
+        }
+
+        [Fact]
+        public async Task CreateUser_EventCarriesTheInviterAndOrganization()
+        {
+            await Create().CreateUserAsync(new CreateUserRequest { Email = "new@test.com", Password = "pw", OrganizationId = "org-1" });
+
+            _message.Verify(m => m.SendToConsumerAsync(
+                It.Is<ConsumerMessage<UserMutationEvent>>(c => c.Payload.InvitedBy == "actor-1" && c.Payload.OrganizationId != null)), Times.Once);
+        }
+
+        [Fact]
+        public async Task CreateUser_SendMailFalse_StillCreates_EventSuppressesActivationMail()
+        {
+            var result = await Create().CreateUserAsync(new CreateUserRequest { Email = "new@test.com", Password = "pw", SendMail = false });
+
+            result.IsSuccess.Should().BeTrue();
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Once);
+            _message.Verify(m => m.SendToConsumerAsync(
+                It.Is<ConsumerMessage<UserMutationEvent>>(c => !c.Payload.SendMail)), Times.Once);
+        }
+
+        [Fact]
+        public void CreateUserRequest_SendMailAbsentFromJson_DefaultsToTrue()
+        {
+            var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+
+            System.Text.Json.JsonSerializer.Deserialize<CreateUserRequest>("""{"email":"a@b.com"}""", options)!
+                .SendMail.Should().BeTrue();
+            System.Text.Json.JsonSerializer.Deserialize<CreateUserRequest>("""{"email":"a@b.com","sendMail":false}""", options)!
+                .SendMail.Should().BeFalse();
+        }
+
+        [Fact]
+        public void UserMutationEvent_QueuedBeforeSendMailExisted_StillSendsActivationMail()
+        {
+            // A message published by the previous build carries no SendMail field at all.
+            var queued = System.Text.Json.JsonSerializer.Deserialize<UserMutationEvent>(
+                $$"""{"ItemId":"u1","Action":{{(int)MutationEventType.Create}}}""");
+
+            queued!.SendMail.Should().BeTrue();
+        }
+
+        [Fact]
         public async Task CreateUser_EmailIsInAnotherOrganization_GrantsTheOrganizationInsteadOfDuplicating()
         {
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _resourceRepo.Setup(r => r.GetOrganizationById("org-2")).ReturnsAsync(new Organization { Name = "Org2" });
             var existing = new User
             {
@@ -151,7 +205,7 @@ namespace XUnitTest.IamTests.Users
             // account with an empty OrganizationIds list. No organization id can ever match an
             // empty list, so an organization-scoped lookup answers "not found" for every invite.
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _resourceRepo.Setup(r => r.GetOrganizationById("org-2")).ReturnsAsync(new Organization { Name = "Org2" });
             var orphan = new User { ItemId = "orphan-1", Email = "orphan@test.com", OrganizationIds = new List<string>() };
             _userRepo.Setup(r => r.GetUserByEmailAsync("orphan@test.com")).ReturnsAsync(orphan);
@@ -170,7 +224,7 @@ namespace XUnitTest.IamTests.Users
         public async Task CreateUser_EmailAlreadyInTheTargetOrganization_UpdatesAccessWithoutDuplicating()
         {
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _resourceRepo.Setup(r => r.GetOrganizationById("org-1")).ReturnsAsync(new Organization { Name = "Org1" });
             var existing = new User
             {
@@ -199,7 +253,7 @@ namespace XUnitTest.IamTests.Users
             // Reading OrganizationIds alone sees this account as a new joiner and overwrites the
             // roles it already holds with an empty list.
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _resourceRepo.Setup(r => r.GetOrganizationById("org-1")).ReturnsAsync(new Organization { Name = "Org1" });
             var existing = new User
             {
@@ -262,7 +316,7 @@ namespace XUnitTest.IamTests.Users
             // org-2 in the body and hand roles inside org-2 to an account they do not administer.
             InstallContext(orgId: "org-1");
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _resourceRepo.Setup(r => r.GetOrganizationById("org-2")).ReturnsAsync(new Organization { Name = "Org2" });
 
             var result = await Create().CreateUserAsync(new CreateUserRequest
@@ -286,7 +340,7 @@ namespace XUnitTest.IamTests.Users
             // explicit "default" scope may name an arbitrary organization.
             InstallContext(orgId: tokenOrganizationId!);
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _resourceRepo.Setup(r => r.GetOrganizationById("org-2")).ReturnsAsync(new Organization { Name = "Org2" });
 
             var result = await Create().CreateUserAsync(new CreateUserRequest
@@ -320,7 +374,7 @@ namespace XUnitTest.IamTests.Users
         public async Task CreateUser_TooManyPermissions_ReturnsValidationError()
         {
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             var command = new CreateUserRequest
             {
                 Email = "x@test.com",
@@ -339,7 +393,7 @@ namespace XUnitTest.IamTests.Users
         public async Task ProcessCreateUser_MultiOrg_UsesOrgDefaultsForRolesAndPermissions()
         {
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             _resourceRepo.Setup(r => r.GetOrganizationById("org-5")).ReturnsAsync(new Organization
             {
                 Name = "Org5",
@@ -374,6 +428,133 @@ namespace XUnitTest.IamTests.Users
             user.Password.Should().Be("hash:secret");
             user.Status.Should().Be(UserLifecycleStatus.Active);
             user.EmailVerifiedAtUtc.Should().NotBeNull();
+        }
+
+        // ---------- CreateSignupUserWithoutOrganizationAsync ----------
+
+        [Fact]
+        public async Task H8_CreateSignupUserWithoutOrganization_StoresNoMembership_AndTokenIsNoOrg()
+        {
+            BlocksContext.SetContext(null);
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
+            User? created = null;
+            _userRepo.Setup(r => r.CreateUserAsync(It.IsAny<User>()))
+                .Callback<User>(u => created = u)
+                .ReturnsAsync(true);
+
+            // Whatever organization, roles and permissions arrive are ignored on this path.
+            var result = await Create().CreateSignupUserWithoutOrganizationAsync(new CreateUserRequest
+            {
+                Email = "New@Test.com",
+                VerifiedType = UserVerifiedType.None,
+                OrganizationId = "default",
+                Roles = ["user"],
+                Permissions = ["perm.read"],
+                ClientId = "client-1",
+                RedirectUri = "https://app/cb"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            created.Should().NotBeNull();
+            result.ItemId.Should().Be(created!.ItemId);
+            created.Email.Should().Be("new@test.com");
+            created.OrganizationIds.Should().BeEmpty();
+            created.Roles.Should().BeEmpty();
+            created.Permissions.Should().BeEmpty();
+            created.Status.Should().Be(UserLifecycleStatus.PendingVerification);
+            _message.Verify(m => m.SendToConsumerAsync(It.Is<ConsumerMessage<UserMutationEvent>>(e =>
+                e.Payload.ItemId == created.ItemId && e.Payload.ClientId == "client-1")), Times.Once);
+            _resourceRepo.Verify(r => r.GetOrganizationById(It.IsAny<string>()), Times.Never);
+
+            OrganizationScopeResolver.Resolve(true, created, null, (u, org) =>
+                    !string.IsNullOrWhiteSpace(org) && (u.OrganizationIds.Contains(org) || u.Roles.ContainsKey(org) || u.Permissions.ContainsKey(org)))
+                .ClaimValue.Should().Be(IdpConstants.NoOrganizationId);
+        }
+
+        [Fact]
+        public async Task CreateSignupUserWithoutOrganization_IgnoresOnlyTheOrganizationRule()
+        {
+            _createValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateUserRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult(new[]
+                {
+                    new ValidationFailure(nameof(CreateUserRequest.OrganizationId), "Organization id is required when multi organization is enabled")
+                }));
+
+            var accepted = await Create().CreateSignupUserWithoutOrganizationAsync(new CreateUserRequest { Email = "a@test.com" });
+
+            accepted.IsSuccess.Should().BeTrue();
+
+            _createValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateUserRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult(new[]
+                {
+                    new ValidationFailure(nameof(CreateUserRequest.OrganizationId), "required"),
+                    new ValidationFailure("Email", "Email invalid")
+                }));
+
+            var rejected = await Create().CreateSignupUserWithoutOrganizationAsync(new CreateUserRequest { Email = "not-an-email" });
+
+            rejected.IsSuccess.Should().BeFalse();
+            rejected.Errors.Should().ContainKey("Email");
+            rejected.Errors.Should().NotContainKey(nameof(CreateUserRequest.OrganizationId));
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Once, "only the accepted request writes a user");
+        }
+
+        [Fact]
+        public async Task C10_CreateSignupUserWithoutOrganization_ExistingEmail_ChangesNothing()
+        {
+            var existing = new User
+            {
+                ItemId = "existing-1",
+                Email = "dupe@test.com",
+                OrganizationIds = ["org-1"],
+                Roles = new Dictionary<string, List<string>> { ["org-1"] = ["admin"] }
+            };
+            _userRepo.Setup(r => r.GetUserByEmailAsync("dupe@test.com")).ReturnsAsync(existing);
+
+            var result = await Create().CreateSignupUserWithoutOrganizationAsync(new CreateUserRequest { Email = "dupe@test.com" });
+
+            result.IsSuccess.Should().BeTrue();
+            result.ItemId.Should().Be("existing-1");
+            existing.OrganizationIds.Should().Equal("org-1");
+            existing.Roles.Keys.Should().Equal("org-1");
+            _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+            _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+            _message.Verify(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<UserMutationEvent>>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        public async Task C14_CreateUser_BlankOrganizationOnMultiOrg_StillLandsInDefault_NeverNoOrganization(string? organizationId)
+        {
+            // The admin, gRPC and queue paths all go through CreateUserAsync; ApplyOrganizationDefaultsAsync keeps
+            // filling a blank organization with "default", so none of them can produce the sign-up-only shape.
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
+            User? created = null;
+            _userRepo.Setup(r => r.CreateUserAsync(It.IsAny<User>()))
+                .Callback<User>(u => created = u)
+                .ReturnsAsync(true);
+
+            var result = await Create().CreateUserAsync(new CreateUserRequest { Email = "admin-made@test.com", OrganizationId = organizationId });
+
+            result.IsSuccess.Should().BeTrue();
+            created!.OrganizationIds.Should().Equal("default");
+            created.Roles.Keys.Should().Equal("default");
+        }
+
+        [Fact]
+        public void C14_NoOrganizationPath_IsNotSelectableFromTheCreateRequest()
+        {
+            // Nothing on the request body that admin create, gRPC or queue messages bind to can ask for "no
+            // organization": the only way in is the separate sign-up-only method.
+            typeof(CreateUserRequest).GetProperties()
+                .Select(p => p.Name)
+                .Should().NotContain(name => name.Contains("NoOrganization", StringComparison.OrdinalIgnoreCase)
+                    || name.Contains("WithoutOrganization", StringComparison.OrdinalIgnoreCase));
+            typeof(UserManagementMutationService).GetMethod(nameof(UserManagementMutationService.CreateUserAsync))!
+                .GetParameters().Should().ContainSingle();
         }
 
         // ---------- UpdateUserAsync ----------
@@ -517,6 +698,49 @@ namespace XUnitTest.IamTests.Users
             user.Active.Should().BeFalse();
             user.Status.Should().Be(UserLifecycleStatus.Disabled);
             _message.Verify(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<UserStatusChangedEvent>>()), Times.Once);
+        }
+
+        private UserManagementMutationService CreateWithTerminator(IUserSessionTerminator? terminator) =>
+            new(NullLogger<UserManagementMutationService>.Instance, _createValidator.Object, _updateValidator.Object, _myAccountValidator.Object,
+                _iam.Object, _userRepo.Object, _message.Object, _cache.Object, _tenants.Object, _activity.Object,
+                null, _resourceRepo.Object, null, userSessionTerminator: terminator);
+
+        [Fact]
+        public async Task Deactivate_EndsAllSessionsOfTheUserInline()
+        {
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(new User { ItemId = "u1", Active = true });
+            var terminator = new Mock<IUserSessionTerminator>();
+
+            var result = await CreateWithTerminator(terminator.Object).DeactivateUserAsync(new DeactivateUserRequest { UserId = "u1" });
+
+            result.IsSuccess.Should().BeTrue();
+            terminator.Verify(t => t.EndAllSessionsAsync("u1", "user_deactivated"), Times.Once);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<LogoutAllEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Deactivate_InlineSessionEndFails_QueuesLogoutAllAndStillSucceeds()
+        {
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(new User { ItemId = "u1", Active = true });
+            var terminator = new Mock<IUserSessionTerminator>();
+            terminator.Setup(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("store down"));
+
+            var result = await CreateWithTerminator(terminator.Object).DeactivateUserAsync(new DeactivateUserRequest { UserId = "u1" });
+
+            result.IsSuccess.Should().BeTrue();
+            _iam.Verify(i => i.SendToQueueAsync(IdpConstants.AuthenticationQueue, It.Is<LogoutAllEvent>(e => e.UserId == "u1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task Deactivate_NoTerminatorWired_QueuesLogoutAll()
+        {
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(new User { ItemId = "u1", Active = true });
+
+            var result = await CreateWithTerminator(null).DeactivateUserAsync(new DeactivateUserRequest { UserId = "u1" });
+
+            result.IsSuccess.Should().BeTrue();
+            _iam.Verify(i => i.SendToQueueAsync(IdpConstants.AuthenticationQueue, It.Is<LogoutAllEvent>(e => e.UserId == "u1")), Times.Once);
         }
 
         // ---------- ActivateUserAsync ----------
@@ -747,7 +971,7 @@ namespace XUnitTest.IamTests.Users
         public async Task CreateUserByEmail_EmailIsInAnotherOrganization_GrantsTheInvitedOrgInsteadOfDuplicating()
         {
             _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+                .ReturnsAsync(new IamTenantConfiguration { IsMultiOrgEnabled = true });
             var existing = new User
             {
                 ItemId = "existing-1",
@@ -859,6 +1083,121 @@ namespace XUnitTest.IamTests.Users
 
             _iam.Verify(i => i.SendActivationToEmailAsync(user, It.Is<string>(s => s.StartsWith("https://app.test")), It.IsAny<string>()), Times.Once);
             _userRepo.Verify(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task ExecuteUserMutationCommand_CreateWithSendMailFalse_RecordsActivityWithoutActivationMail()
+        {
+            var user = new User { ItemId = "u1", Language = "en-US", MailPurpose = "AccountActivation" };
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            await Create().ExecuteUserMutationCommandAsync(
+                new UserMutationEvent { ItemId = "u1", Action = MutationEventType.Create, SendMail = false });
+
+            _iam.Verify(i => i.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+            _userRepo.Verify(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()), Times.Never);
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
+        }
+
+        private User ArrangeInvitationUser(bool mailQueued)
+        {
+            var user = new User { ItemId = "u1", Email = "invitee@example.com", Language = "en-US", MailPurpose = "AccountActivation" };
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+            _userRepo.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(new IamConfiguration
+            {
+                ActivationUrlLifetimeInMinutes = 30,
+                UseAccountActionBaseUrlAsDefault = true,
+                AccountActionBaseUrl = "https://app.test"
+            });
+            _userRepo.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+            _iam.Setup(i => i.SendActivationToEmailAsync(user, It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(mailQueued);
+            return user;
+        }
+
+        private static UserMutationEvent InvitationEvent() => new()
+        {
+            ItemId = "u1", Action = MutationEventType.Create, InvitedBy = "admin-1", OrganizationId = "org-1"
+        };
+
+        [Fact]
+        public async Task InvitationMail_NotQueued_TellsTheInviterWithIdsAndReasonOnly()
+        {
+            var user = ArrangeInvitationUser(mailQueued: false);
+            var sender = new RecordingSender();
+
+            await CreateWithSender(sender).ExecuteUserMutationCommandAsync(InvitationEvent());
+
+            var sent = sender.Sent.Should().ContainSingle().Subject;
+            sent.ConfigurationName.Should().Be("iam-invitation-mail-failed");
+            sent.UserIds.Should().Equal("admin-1");
+            sent.OrganizationId.Should().Be("org-1");
+            var json = RecordingSender.PayloadJson(sent);
+            json.Should().Contain("\"invitedUserId\":\"u1\"").And.Contain("\"reason\":\"not_queued\"");
+            json.Should().NotContain(user.Email);
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task InvitationMail_Queued_SendsNoNotification()
+        {
+            ArrangeInvitationUser(mailQueued: true);
+            var sender = new RecordingSender();
+
+            await CreateWithSender(sender).ExecuteUserMutationCommandAsync(InvitationEvent());
+
+            sender.Sent.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task InvitationMail_QueueThrows_TellsTheInviterAndStillThrowsForRetry()
+        {
+            ArrangeInvitationUser(mailQueued: true);
+            _iam.Setup(i => i.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("broker down for invitee@example.com"));
+            var sender = new RecordingSender();
+
+            var act = async () => await CreateWithSender(sender).ExecuteUserMutationCommandAsync(InvitationEvent());
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+            var json = RecordingSender.PayloadJson(sender.Sent.Should().ContainSingle().Subject);
+            json.Should().Contain("\"reason\":\"queue_error\"").And.NotContain("broker").And.NotContain("invitee@");
+        }
+
+        [Fact]
+        public async Task InvitationMail_NotQueuedWithoutInviter_SendsNoNotification()
+        {
+            ArrangeInvitationUser(mailQueued: false);
+            var sender = new RecordingSender();
+
+            await CreateWithSender(sender).ExecuteUserMutationCommandAsync(
+                new UserMutationEvent { ItemId = "u1", Action = MutationEventType.Create });
+
+            sender.Sent.Should().BeEmpty();
+        }
+
+        private UserManagementMutationService CreateWithSender(IBuiltInNotificationSender sender) =>
+            new(NullLogger<UserManagementMutationService>.Instance, _createValidator.Object, _updateValidator.Object, _myAccountValidator.Object,
+                _iam.Object, _userRepo.Object, _message.Object, _cache.Object, _tenants.Object, _activity.Object,
+                null, _resourceRepo.Object, null, notificationSender: sender);
+
+        [Theory]
+        [InlineData(MutationEventType.Update)]
+        [InlineData(MutationEventType.Delete)]
+        public async Task ExecuteUserMutationCommand_NonCreate_RecordsActivityWithoutActivationMail(MutationEventType action)
+        {
+            // Revoke-access and the activate paths raise Update for existing users; they must
+            // not be sent a new activation link.
+            var user = new User { ItemId = "u1", Language = "en-US", MailPurpose = "AccountActivation", Active = true };
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            await Create().ExecuteUserMutationCommandAsync(new UserMutationEvent { ItemId = "u1", Action = action });
+
+            _iam.Verify(i => i.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+            _userRepo.Verify(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()), Times.Never);
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
         }
     }
 }

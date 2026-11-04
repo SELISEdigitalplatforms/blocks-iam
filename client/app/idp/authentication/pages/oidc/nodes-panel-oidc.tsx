@@ -10,6 +10,7 @@ import {
   Code2,
   type LucideIcon,
 } from "lucide-react";
+import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
 
 export type OidcAnimPhase = "idle" | "submitting" | "succeeded" | "failed";
 
@@ -86,8 +87,12 @@ function ProgressBar({
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!running) { setWidth(failed ? 100 : completed ? 100 : 0); return; }
-    setWidth(0);
+    if (!running) {
+      const settled = failed || completed ? 100 : 0;
+      rafRef.current = requestAnimationFrame(() => setWidth(settled));
+      return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    }
+    // The first frame starts the bar from 0, so a re-run never animates from a stale width.
     let start: number | null = null;
 
     function animate(ts: number) {
@@ -136,30 +141,59 @@ function ProgressBar({
 }
 
 /* ── Service node card ──────────────────────────────────────── */
+function getNodeBadgeText(
+  t: TFunction,
+  { isFailed, isDone, isActive }: { isFailed: boolean; isDone: boolean; isActive: boolean },
+) {
+  if (isFailed) return t("NODES_PANEL.BADGE_FAILED");
+  if (isDone) return t("NODES_PANEL.BADGE_COMPLETE");
+  if (isActive) return t("NODES_PANEL.BADGE_PROCESSING");
+  return t("NODES_PANEL.BADGE_STANDBY");
+}
+
+type NodeTone = "failed" | "done" | "active" | "idle";
+
+function nodeTone({ isFailed, isDone, isActive }: { isFailed: boolean; isDone: boolean; isActive: boolean }): NodeTone {
+  if (isFailed) return "failed";
+  if (isDone) return "done";
+  if (isActive) return "active";
+  return "idle";
+}
+
+const NODE_LOOK: Record<NodeTone, { badge: React.CSSProperties; text: string }> = {
+  failed: { badge: { background: "var(--danger-soft)", color: "var(--danger)" }, text: "var(--danger)" },
+  done: { badge: { background: "var(--success-soft)", color: "var(--success)" }, text: "var(--success)" },
+  active: { badge: { background: "var(--accent-soft)", color: "var(--accent2)" }, text: "var(--accent2)" },
+  idle: { badge: { background: "var(--node-divider)", color: "var(--fg)" }, text: "var(--muted)" },
+};
+
+function getNodeDescription(
+  t: TFunction,
+  node: OidcServiceNode,
+  { isFailed, isDone }: { isFailed: boolean; isDone: boolean },
+) {
+  if (isFailed) return node.failLabel ?? t("NODES_PANEL.STEP_FAILED");
+  if (isDone) return node.successLabel;
+  return node.activeLabel;
+}
+
 function NodeCard({
   node, state, floatIdx, indeterminate = false, showProgress = true, floating = true,
 }: {
   node: OidcServiceNode; state: NodeState; floatIdx: number;
   indeterminate?: boolean; showProgress?: boolean; floating?: boolean;
 }) {
+  const { t } = useT("iam.oidc");
   const isActive = state === "active";
   const isDone   = state === "complete";
   const isFailed = state === "failed";
 
-  const badgeStyle: React.CSSProperties = isFailed
-    ? { background: "var(--danger-soft)", color: "var(--danger)" }
-    : isDone
-    ? { background: "var(--success-soft)", color: "var(--success)" }
-    : isActive
-    ? { background: "var(--accent-soft)",  color: "var(--accent2)" }
-    : { background: "var(--node-divider)", color: "var(--fg)" };
-
-  const badgeText = isFailed ? "Failed" : isDone ? "Complete" : isActive ? "Processing" : "Standby";
-  const descColor = isFailed ? "var(--danger)" : isDone ? "var(--success)" : isActive ? "var(--accent2)" : "var(--muted)";
-  const description = isFailed
-    ? (node.failLabel ?? "Step failed — see details below")
-    : isDone   ? node.successLabel
-    : node.activeLabel;
+  const look = NODE_LOOK[nodeTone({ isFailed, isDone, isActive })];
+  const badgeStyle = look.badge;
+  const badgeText = getNodeBadgeText(t, { isFailed, isDone, isActive });
+  const stateLabel = isFailed ? t("NODES_PANEL.ABORTED") : t("NODES_PANEL.COMPLETE");
+  const descColor = look.text;
+  const description = getNodeDescription(t, node, { isFailed, isDone });
 
   const IconComp = ICON_MAP[node.icon] ?? KeyRound;
   const floatClass = floating ? `oidc-node-float-${floatIdx}` : "";
@@ -197,7 +231,7 @@ function NodeCard({
           failed={isFailed}
           completed={isDone}
           indeterminate={indeterminate}
-          label={isFailed ? "Aborted" : isDone ? "Complete" : node.activeLabel}
+          label={isFailed || isDone ? stateLabel : node.activeLabel}
         />
       )}
     </div>
@@ -212,7 +246,7 @@ function IdleCard({ icon, title, description, badge }: {
   return (
     <div className="oidc-sci-fi-node relative z-10 shadow-xl flex items-center gap-4 oidc-node-float-1" style={{ padding: "20px 18px" }}>
       <div
-        className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 relative"
+        className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 relative"
         style={{ background: "var(--accent-soft)", border: "1px solid var(--border-hover)" }}
       >
         <IconComp size={24} style={{ color: "var(--accent2)" }} />
@@ -236,121 +270,254 @@ function IdleCard({ icon, title, description, badge }: {
 }
 
 /* ── Main panel ─────────────────────────────────────────────── */
-export function NodesPanelOidc({ config, phase, errorMessage, idleContent, instant }: NodesPanelOidcProps) {
-  type VisibleNode =
-    | { kind: "validating"; state: NodeState }
-    | { kind: "success"; index: number; state: NodeState };
+type VisibleNode =
+  | { kind: "validating"; state: NodeState }
+  | { kind: "success"; index: number; state: NodeState };
 
-  const [visible, setVisible] = useState<VisibleNode[]>([]);
-  const [terminalLines, setTerminalLines] = useState<Array<{ text: string; color: string }>>([]);
-  const terminalRef = useRef<HTMLDivElement>(null);
+type TerminalLine = { text: string; color: string };
 
-  useEffect(() => {
-    if (phase === "idle") { setVisible([]); setTerminalLines([]); return; }
+type SetVisible = React.Dispatch<React.SetStateAction<VisibleNode[]>>;
+type SetTerminalLines = React.Dispatch<React.SetStateAction<TerminalLine[]>>;
 
-    if (phase === "submitting") {
-      setVisible([{ kind: "validating", state: "active" }]);
-      setTerminalLines([]);
-      return;
-    }
+function buildFailureLines(config: OidcPanelConfig, errorMessage: string | null | undefined): TerminalLine[] {
+  return [
+    ...(config.errorTerminalPrefix ?? [{ text: "$ verifying...", color: "var(--fg)" }]),
+    { text: `  > error: ${errorMessage ?? "request failed"}`, color: "var(--danger)" },
+    { text: "  > status: aborted", color: "var(--muted)" },
+  ];
+}
 
-    if (instant && phase === "succeeded") {
-      setVisible([
+/** The state a phase starts from; `terminalLines` is left alone when it is absent. */
+function resolveSyncedState(
+  phase: OidcAnimPhase,
+  config: OidcPanelConfig,
+  errorMessage: string | null | undefined,
+  instant: boolean | undefined,
+): { visible: VisibleNode[]; terminalLines?: TerminalLine[] } | null {
+  if (phase === "idle") return { visible: [], terminalLines: [] };
+  if (phase === "submitting") return { visible: [{ kind: "validating", state: "active" }], terminalLines: [] };
+  if (instant && phase === "succeeded") {
+    return {
+      visible: [
         { kind: "validating", state: "complete" },
         ...config.successNodes.map((_, i) => ({ kind: "success" as const, index: i, state: "complete" as const })),
-      ]);
-      setTerminalLines(config.terminalMessages);
-      return;
+      ],
+      terminalLines: config.terminalMessages,
+    };
+  }
+  if (instant && phase === "failed") {
+    return {
+      visible: [{ kind: "validating", state: "failed" }],
+      terminalLines: buildFailureLines(config, errorMessage),
+    };
+  }
+  if (phase === "failed") return { visible: [{ kind: "validating", state: "failed" }], terminalLines: [] };
+  if (phase === "succeeded") return { visible: [{ kind: "validating", state: "active" }] };
+  return null;
+}
+
+function scheduleFailureLines(
+  config: OidcPanelConfig,
+  errorMessage: string | null | undefined,
+  setTerminalLines: SetTerminalLines,
+) {
+  const lines = buildFailureLines(config, errorMessage);
+  let cancelled = false;
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  lines.forEach((line, i) => {
+    const id = setTimeout(() => { if (!cancelled) setTerminalLines(p => [...p, line]); }, FAIL_TERMINAL_LINE_MS * i);
+    timers.push(id);
+  });
+  return () => { cancelled = true; timers.forEach(clearTimeout); };
+}
+
+function scrollToBottom(el: HTMLElement | null) {
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+/** Shows success node <i>i</i> as running, replacing any earlier entry for it. */
+const activateSuccessNode = (i: number) => (prev: VisibleNode[]): VisibleNode[] => [
+  ...prev.filter(n => !(n.kind === "success" && n.index === i)),
+  { kind: "success", index: i, state: "active" },
+];
+
+/** Marks success node <i>i</i> as done. */
+const completeSuccessNode = (i: number) => (prev: VisibleNode[]): VisibleNode[] =>
+  prev.map(n => (n.kind === "success" && n.index === i ? { ...n, state: "complete" } : n));
+
+function scheduleSuccessCascade(
+  config: OidcPanelConfig,
+  setVisible: SetVisible,
+  setTerminalLines: SetTerminalLines,
+  terminalRef: React.RefObject<HTMLDivElement | null>,
+) {
+  let cancelled = false;
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const t = (fn: () => void, ms: number) => {
+    const id = setTimeout(() => { if (!cancelled) fn(); }, ms);
+    timers.push(id);
+  };
+
+  t(() => {
+    setVisible(prev => prev.map(n => n.kind === "validating" ? { ...n, state: "complete" } : n));
+  }, NODE_START_DELAY_MS);
+
+  config.successNodes.forEach((_, i) => {
+    t(() => setVisible(activateSuccessNode(i)), NODE_START_DELAY_MS + i * NODE_STEP_MS);
+    t(() => setVisible(completeSuccessNode(i)), NODE_START_DELAY_MS + (i + 1) * NODE_STEP_MS);
+  });
+
+  const totalDuration = config.successNodes.length * NODE_STEP_MS + 300;
+  const lineGap = Math.max(80, Math.floor(totalDuration / Math.max(1, config.terminalMessages.length)));
+  config.terminalMessages.forEach((line, i) => {
+    t(() => {
+      setTerminalLines(prev => [...prev, line]);
+      requestAnimationFrame(() => scrollToBottom(terminalRef.current));
+    }, 100 + i * lineGap);
+  });
+
+  return () => { cancelled = true; timers.forEach(clearTimeout); };
+}
+
+const BADGE_STYLES: Record<OidcAnimPhase, React.CSSProperties> = {
+  idle: {},
+  submitting: { background: "var(--warn-soft)", borderColor: "var(--warn-border)", color: "var(--warn)" },
+  succeeded: { background: "var(--success-soft)", borderColor: "var(--success-border)", color: "var(--success)" },
+  failed: { background: "var(--danger-soft)", borderColor: "var(--danger-border)", color: "var(--danger)" },
+};
+
+const DOT_STYLES: Record<OidcAnimPhase, React.CSSProperties> = {
+  idle: { background: "var(--accent2)", boxShadow: "0 0 6px var(--accent2-glow)" },
+  submitting: { background: "var(--warn)", boxShadow: "none" },
+  succeeded: { background: "var(--success)", boxShadow: "0 0 6px var(--success)" },
+  failed: { background: "var(--danger)", boxShadow: "0 0 6px var(--danger)" },
+};
+
+function badgeTextFor(phase: OidcAnimPhase, config: OidcPanelConfig) {
+  if (phase === "submitting") return config.submittingBadge;
+  if (phase === "succeeded") return config.successBadge;
+  if (phase === "failed") return config.failedBadge;
+  return config.idleBadge;
+}
+
+function IdleBody({ config, idleContent }: Readonly<{ config: OidcPanelConfig; idleContent?: React.ReactNode }>) {
+  return (
+    <div className="oidc-animate-fade-up flex flex-col gap-4 h-full">
+      {idleContent && (
+        <div className="flex-1 min-h-0 overflow-y-auto rounded-xl p-4"
+          style={{ background: "var(--node-bg)", border: "1px solid var(--border)" }}>
+          {idleContent}
+        </div>
+      )}
+      <div className={idleContent ? "shrink-0" : "mt-auto"}>
+        <IdleCard
+          icon={config.idleNode.icon}
+          title={config.idleNode.title}
+          description={config.idleNode.description}
+          badge={config.idleBadge}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CascadeBody({
+  config,
+  visible,
+  showTerminal,
+  terminalLines,
+  terminalRef,
+}: Readonly<{
+  config: OidcPanelConfig;
+  visible: VisibleNode[];
+  showTerminal: boolean;
+  terminalLines: TerminalLine[];
+  terminalRef: React.RefObject<HTMLDivElement | null>;
+}>) {
+  return (
+    <div
+      className="flex flex-col justify-end gap-3 overflow-hidden h-full"
+      style={{
+        maskImage: "linear-gradient(to bottom, transparent 0, #000 56px, #000 100%)",
+        WebkitMaskImage: "linear-gradient(to bottom, transparent 0, #000 56px, #000 100%)",
+      }}
+    >
+      {visible.slice(-MAX_VISIBLE_NODES).map(vis => {
+        const node = vis.kind === "validating" ? config.validatingNode : config.successNodes[vis.index];
+        return (
+          <div
+            key={`${vis.kind}-${vis.kind === "success" ? vis.index : 0}`}
+            className="oidc-node-cascade-enter shrink-0"
+          >
+            <NodeCard
+              node={node}
+              state={vis.state}
+              floatIdx={1}
+              floating={false}
+              indeterminate={vis.kind === "validating" && vis.state === "active"}
+              showProgress={vis.state !== "idle"}
+            />
+          </div>
+        );
+      })}
+
+      {showTerminal && (
+        <div
+          ref={terminalRef}
+          className="p-3 font-mono text-[11px] rounded-lg oidc-node-cascade-enter shrink-0"
+          style={{ background: "var(--terminal-bg)", maxHeight: 110, overflowY: "auto" }}
+        >
+          <div className="space-y-0.5">
+            {terminalLines.map((line, i) => (
+              <div key={i} style={{ color: line.color }}>{line.text}</div>
+            ))}
+          </div>
+          <div className="mt-1 flex items-center gap-1">
+            <span style={{ color: "var(--accent2)" }}>$</span>
+            <span className="oidc-cursor-blink w-2 h-3.5 inline-block" style={{ background: "var(--fg)", opacity: 0.7 }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function NodesPanelOidc({ config, phase, errorMessage, idleContent, instant }: Readonly<NodesPanelOidcProps>) {
+  // Subscribes the panel to the text of this module, so it redraws when another language arrives. The
+  // labels are read from `config` as they are drawn.
+  useT("iam.oidc");
+  const [visible, setVisible] = useState<VisibleNode[]>([]);
+  const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([]);
+  const terminalRef = useRef<HTMLDivElement>(null);
+
+  // Each phase starts from a known state. It is applied during render whenever one of the
+  // inputs the timers below depend on changes, so the first frame of a phase never shows the
+  // previous phase's nodes; the effect only schedules what happens after that.
+  const [syncedFor, setSyncedFor] = useState<{
+    phase: NodesPanelOidcProps["phase"];
+    config: NodesPanelOidcProps["config"];
+    errorMessage: NodesPanelOidcProps["errorMessage"];
+    instant: NodesPanelOidcProps["instant"];
+  } | null>(null);
+  if (
+    syncedFor?.phase !== phase ||
+    syncedFor.config !== config ||
+    syncedFor.errorMessage !== errorMessage ||
+    syncedFor.instant !== instant
+  ) {
+    setSyncedFor({ phase, config, errorMessage, instant });
+    const synced = resolveSyncedState(phase, config, errorMessage, instant);
+    if (synced) {
+      setVisible(synced.visible);
+      if (synced.terminalLines) setTerminalLines(synced.terminalLines);
     }
+  }
 
-    if (instant && phase === "failed") {
-      setVisible([{ kind: "validating", state: "failed" }]);
-      setTerminalLines([
-        ...(config.errorTerminalPrefix ?? [{ text: "$ verifying...", color: "var(--fg)" }]),
-        { text: `  > error: ${errorMessage ?? "request failed"}`, color: "var(--danger)" },
-        { text: "  > status: aborted", color: "var(--muted)" },
-      ]);
-      return;
-    }
-
-    if (phase === "failed") {
-      setVisible([{ kind: "validating", state: "failed" }]);
-      const lines = [
-        ...(config.errorTerminalPrefix ?? [{ text: "$ verifying...", color: "var(--fg)" }]),
-        { text: `  > error: ${errorMessage ?? "request failed"}`, color: "var(--danger)" },
-        { text: "  > status: aborted", color: "var(--muted)" },
-      ];
-      setTerminalLines([]);
-      let cancelled = false;
-      const timers: ReturnType<typeof setTimeout>[] = [];
-      lines.forEach((line, i) => {
-        const id = setTimeout(() => { if (!cancelled) setTerminalLines(p => [...p, line]); }, FAIL_TERMINAL_LINE_MS * i);
-        timers.push(id);
-      });
-      return () => { cancelled = true; timers.forEach(clearTimeout); };
-    }
-
-    if (phase === "succeeded") {
-      let cancelled = false;
-      const timers: ReturnType<typeof setTimeout>[] = [];
-      const t = (fn: () => void, ms: number) => {
-        const id = setTimeout(() => { if (!cancelled) fn(); }, ms);
-        timers.push(id);
-      };
-
-      setVisible([{ kind: "validating", state: "active" }]);
-
-      t(() => {
-        setVisible(prev => prev.map(n => n.kind === "validating" ? { ...n, state: "complete" } : n));
-      }, NODE_START_DELAY_MS);
-
-      config.successNodes.forEach((_, i) => {
-        t(() => {
-          setVisible(prev => [
-            ...prev.filter(n => !(n.kind === "success" && n.index === i)),
-            { kind: "success", index: i, state: "active" },
-          ]);
-        }, NODE_START_DELAY_MS + i * NODE_STEP_MS);
-        t(() => {
-          setVisible(prev => prev.map(n =>
-            n.kind === "success" && n.index === i ? { ...n, state: "complete" } : n
-          ));
-        }, NODE_START_DELAY_MS + (i + 1) * NODE_STEP_MS);
-      });
-
-      const totalDuration = config.successNodes.length * NODE_STEP_MS + 300;
-      const lineGap = Math.max(80, Math.floor(totalDuration / Math.max(1, config.terminalMessages.length)));
-      config.terminalMessages.forEach((line, i) => {
-        t(() => {
-          setTerminalLines(prev => [...prev, line]);
-          requestAnimationFrame(() => {
-            if (terminalRef.current)
-              terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
-          });
-        }, 100 + i * lineGap);
-      });
-
-      return () => { cancelled = true; timers.forEach(clearTimeout); };
-    }
+  useEffect(() => {
+    if (instant) return;
+    if (phase === "failed") return scheduleFailureLines(config, errorMessage, setTerminalLines);
+    if (phase === "succeeded") return scheduleSuccessCascade(config, setVisible, setTerminalLines, terminalRef);
   }, [phase, config, errorMessage, instant]);
-
-  const badgeStyle: React.CSSProperties =
-    phase === "submitting" ? { background: "var(--warn-soft)",    borderColor: "var(--warn-border)",    color: "var(--warn)"    }
-    : phase === "succeeded" ? { background: "var(--success-soft)", borderColor: "var(--success-border)", color: "var(--success)" }
-    : phase === "failed"    ? { background: "var(--danger-soft)",  borderColor: "var(--danger-border)",  color: "var(--danger)"  }
-    : {};
-
-  const dotStyle: React.CSSProperties =
-    phase === "submitting" ? { background: "var(--warn)",    boxShadow: "none" }
-    : phase === "succeeded" ? { background: "var(--success)", boxShadow: "0 0 6px var(--success)" }
-    : phase === "failed"    ? { background: "var(--danger)",  boxShadow: "0 0 6px var(--danger)"  }
-    : { background: "var(--accent2)", boxShadow: "0 0 6px var(--accent2-glow)" };
-
-  const badgeText =
-    phase === "submitting" ? config.submittingBadge
-    : phase === "succeeded" ? config.successBadge
-    : phase === "failed"    ? config.failedBadge
-    : config.idleBadge;
 
   const showTerminal = (phase === "succeeded" || phase === "failed") && terminalLines.length > 0;
 
@@ -360,10 +527,10 @@ export function NodesPanelOidc({ config, phase, errorMessage, idleContent, insta
         <div className="oidc-sci-fi-panel-inner h-full p-5 lg:p-7 flex flex-col overflow-hidden">
           <div className="oidc-frame-top-line" />
 
-          <div className="relative z-10 max-w-xs flex-shrink-0">
-            <div className="oidc-sci-fi-badge mb-3" style={badgeStyle}>
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={dotStyle} />
-              <span>{badgeText}</span>
+          <div className="relative z-10 max-w-xs shrink-0">
+            <div className="oidc-sci-fi-badge mb-3" style={BADGE_STYLES[phase]}>
+              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={DOT_STYLES[phase]} />
+              <span>{badgeTextFor(phase, config)}</span>
             </div>
             <h2 className="text-xl oidc-font-orbitron font-medium mb-1 tracking-tight" style={{ color: "var(--fg)" }}>
               {config.heading}
@@ -380,70 +547,15 @@ export function NodesPanelOidc({ config, phase, errorMessage, idleContent, insta
             }`}
           >
             {phase === "idle" ? (
-              <div className="oidc-animate-fade-up flex flex-col gap-4 h-full">
-                {idleContent && (
-                  <div className="flex-1 min-h-0 overflow-y-auto rounded-xl p-4"
-                    style={{ background: "var(--node-bg)", border: "1px solid var(--border)" }}>
-                    {idleContent}
-                  </div>
-                )}
-                <div className={idleContent ? "flex-shrink-0" : "mt-auto"}>
-                  <IdleCard
-                    icon={config.idleNode.icon}
-                    title={config.idleNode.title}
-                    description={config.idleNode.description}
-                    badge={config.idleBadge}
-                  />
-                </div>
-              </div>
+              <IdleBody config={config} idleContent={idleContent} />
             ) : (
-              <div
-                className="flex flex-col justify-end gap-3 overflow-hidden h-full"
-                style={{
-                  maskImage: "linear-gradient(to bottom, transparent 0, #000 56px, #000 100%)",
-                  WebkitMaskImage: "linear-gradient(to bottom, transparent 0, #000 56px, #000 100%)",
-                }}
-              >
-                {visible.slice(-MAX_VISIBLE_NODES).map(vis => {
-                  const node =
-                    vis.kind === "validating"
-                      ? config.validatingNode
-                      : config.successNodes[vis.index];
-                  return (
-                    <div
-                      key={`${vis.kind}-${vis.kind === "success" ? vis.index : 0}`}
-                      className="oidc-node-cascade-enter flex-shrink-0"
-                    >
-                      <NodeCard
-                        node={node}
-                        state={vis.state}
-                        floatIdx={1}
-                        floating={false}
-                        indeterminate={vis.kind === "validating" && vis.state === "active"}
-                        showProgress={vis.state !== "idle"}
-                      />
-                    </div>
-                  );
-                })}
-
-                {showTerminal && (
-                  <div
-                    ref={terminalRef}
-                    className="p-3 font-mono text-[11px] rounded-lg oidc-node-cascade-enter flex-shrink-0"
-                    style={{ background: "var(--terminal-bg)", maxHeight: 110, overflowY: "auto" }}
-                  >
-                    <div className="space-y-0.5">
-                      {terminalLines.map((line, i) => (
-                        <div key={i} style={{ color: line.color }}>{line.text}</div>
-                      ))}
-                    </div>
-                    <div className="mt-1 flex items-center gap-1">
-                      <span style={{ color: "var(--accent2)" }}>$</span>
-                      <span className="oidc-cursor-blink w-2 h-3.5 inline-block" style={{ background: "var(--fg)", opacity: 0.7 }} />
-                    </div>
-                  </div>
-                )}
-              </div>
+              <CascadeBody
+                config={config}
+                visible={visible}
+                showTerminal={showTerminal}
+                terminalLines={terminalLines}
+                terminalRef={terminalRef}
+              />
             )}
           </div>
         </div>

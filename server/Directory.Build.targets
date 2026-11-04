@@ -1,0 +1,17 @@
+<Project>
+  <!-- Local overrides are intentionally untracked. CI keeps using the NuGet package. -->
+  <Import Project="$(MSBuildThisFileDirectory)Directory.Build.local.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.local.props')" />
+
+  <!-- Flag UseLocalGenesis is OFF by default: a normal build restores the NuGet packages.
+       -p:UseLocalGenesis=true builds against the local blocks-genesis-net projects instead.
+       Each swap acts only in a project that references the package itself. -->
+  <PropertyGroup Condition="'$(UseLocalGenesis)' == 'true'">
+    <LocalGenesisProject Condition="'$(LocalGenesisProject)' == ''">$(MSBuildThisFileDirectory)..\..\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj</LocalGenesisProject>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UseLocalGenesis)' == 'true' And '@(PackageReference->AnyHaveMetadataValue('Identity','SeliseBlocks.Genesis.OS'))' == 'true'">
+    <PackageReference Remove="SeliseBlocks.Genesis.OS" />
+    <ProjectReference Include="$(LocalGenesisProject)" />
+  </ItemGroup>
+</Project>

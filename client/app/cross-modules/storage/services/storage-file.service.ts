@@ -1,6 +1,8 @@
 import { serviceInstances } from "@/lib/http-client";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import {
+  ICompleteUploadPayload,
+  ICompleteUploadResponse,
   IDeleteFilePayload,
   IDeleteFolderPayload,
   IDeleteResourceResponse,
@@ -39,6 +41,10 @@ export class StorageFile {
     payload: IGetPreSignedUrlForUploadPayload,
   ): Promise<IGetPreSignedUrlForUploadResponse> {
     return serviceInstances.idpService.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.GET_PRESIGNED_URL), payload, undefined, { absoluteUrl: true });
+  }
+
+  completeUpload(payload: ICompleteUploadPayload): Promise<ICompleteUploadResponse> {
+    return serviceInstances.idpService.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.COMPLETE_UPLOAD), payload, undefined, { absoluteUrl: true });
   }
 
   getFilesInfoUrlForUpload(payload: IGetFilesInfoPayload): Promise<IGetFilesInfoResponse> {

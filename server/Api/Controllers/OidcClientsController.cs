@@ -84,7 +84,7 @@ public class OidcClientsController : ControllerBase
     /// Create or update OIDC client configuration (Upsert)
     /// Registers new OIDC client or updates existing configuration
     /// Validates client metadata and OAuth/OIDC compliance
-    /// Returns generated or existing client_secret
+    /// On create only, returns the generated client_secret once; it is never returned again
     /// </summary>
     /// <param name="request">OIDC client configuration request</param>
     /// <returns>Saved OIDC client with credentials</returns>
@@ -143,7 +143,7 @@ public class OidcClientsController : ControllerBase
     /// <summary>
     /// Rotate OIDC client secret
     /// Generates a new client_secret for the existing client and returns it exactly once.
-    /// The new secret is not stored anywhere else and subsequent GETs mask it as usual.
+    /// GETs never return the secret.
     /// </summary>
     /// <param name="clientId">OIDC client identifier</param>
     /// <returns>The newly rotated client_secret (one-time disclosure)</returns>

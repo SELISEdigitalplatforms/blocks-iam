@@ -2,6 +2,7 @@
 using Iam.DomainService.Resources;
 using Iam.DomainService.Shared.Entities;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {
@@ -27,7 +28,7 @@ namespace XUnitTest.IamTests.Resources
         private void Uniqueness(bool enforced, bool multiOrg = true)
         {
             _repo.Setup(r => r.GetTenantConfigurationAsync())
-                .ReturnsAsync(new TenantConfiguration
+                .ReturnsAsync(new IamTenantConfiguration
                 {
                     IsMultiOrgEnabled = multiOrg,
                     IsOrgNameUniquenessEnabled = enforced
@@ -89,7 +90,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task IsNameAvailable_NoTenantConfiguration_TreatsUniquenessAsDisabled()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((TenantConfiguration)null!);
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((IamTenantConfiguration)null!);
             NameIsTaken("Acme");
 
             (await Sut().IsNameAvailableAsync("Acme")).Should().BeTrue();
@@ -211,7 +212,7 @@ namespace XUnitTest.IamTests.Resources
         [Fact]
         public async Task CheckAvailability_NoTenantConfiguration_ReportsDisabled()
         {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((TenantConfiguration)null!);
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((IamTenantConfiguration)null!);
 
             (await Sut().CheckAvailabilityAsync("Acme")).MultiOrgEnabled.Should().BeFalse();
         }

@@ -3,11 +3,13 @@ using System.Security.Claims;
 using Authentication.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Blocks.Genesis;
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Oidc
 {
@@ -16,9 +18,10 @@ namespace XUnitTest.Auth.Oidc
         private readonly Mock<ITokenRevocationRepository> _revocationRepo = new();
         private readonly Mock<IRefreshTokenRepository> _refreshRepo = new();
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
+        private readonly Mock<ICacheClient> _cache = new();
 
         private TokenRevocationService Create() =>
-            new(_revocationRepo.Object, _refreshRepo.Object, _authRepo.Object,
+            new(_revocationRepo.Object, _refreshRepo.Object, _authRepo.Object, _cache.Object,
                 NullLogger<TokenRevocationService>.Instance);
 
         /// <summary>Builds a signed JWT carrying jti, audience (client), subject, scope and expiry.</summary>
@@ -68,6 +71,43 @@ namespace XUnitTest.Auth.Oidc
             result.Success.Should().BeTrue();
             _refreshRepo.Verify(r => r.RevokeByTokenIdAsync("rt-1", "user_revoked"), Times.Once);
             _refreshRepo.Verify(r => r.RevokeAllByTokenIdsAsync(It.Is<IEnumerable<string>>(ids => ids.Contains("rt-1")), "revoked"), Times.Once);
+        }
+
+        [Fact]
+        public async Task Revoke_RefreshTokenProducedBySwitchOrg_IsAuthorizedForItsLineageClient()
+        {
+            // blocks-iam#624 H14: the successor switch-org writes keeps the lineage client, so that client
+            // may revoke it. Before the fix it was stored client-less and every client was refused.
+            var (switched, _) = await XUnitTest.Auth.Shared.RefreshTokenLineageTests.RotateOnceAsync(
+                XUnitTest.Auth.Shared.RefreshTokenLineageTests.HostedPredecessor(),
+                new Authentication.DomainService.OAuth.RequestModel.TokenRequest { GrantType = "switch_organization", OrganizationId = "org-b" });
+            _refreshRepo.Setup(r => r.GetByTokenIdAsync(switched.TokenId)).ReturnsAsync(switched);
+            _refreshRepo.Setup(r => r.RevokeByTokenIdAsync(switched.TokenId, "user_revoked")).ReturnsAsync(true);
+            _refreshRepo.Setup(r => r.RevokeAllByTokenIdsAsync(It.IsAny<IEnumerable<string>>(), "revoked")).ReturnsAsync(1);
+
+            var result = await Create().RevokeTokenAsync(switched.TokenId, "refresh_token", "client-1");
+
+            result.Success.Should().BeTrue();
+            _refreshRepo.Verify(r => r.RevokeByTokenIdAsync(switched.TokenId, "user_revoked"), Times.Once);
+        }
+
+        [Fact]
+        public async Task Revoke_RefreshToken_LogsFingerprintNotRawToken()
+        {
+            const string rawToken = "rt-0123456789abcdef";
+            var logger = new CapturingLogger();
+            var rt = new RefreshTokenModel { TokenId = rawToken, ClientId = "client-1", IsRevoked = false };
+            _refreshRepo.Setup(r => r.GetByTokenIdAsync(rawToken)).ReturnsAsync(rt);
+            _refreshRepo.Setup(r => r.RevokeByTokenIdAsync(rawToken, "user_revoked")).ReturnsAsync(true);
+            _refreshRepo.Setup(r => r.RevokeAllByTokenIdsAsync(It.IsAny<IEnumerable<string>>(), "revoked")).ReturnsAsync(1);
+            var service = new TokenRevocationService(_revocationRepo.Object, _refreshRepo.Object, _authRepo.Object, _cache.Object, logger);
+
+            var result = await service.RevokeTokenAsync(rawToken, "refresh_token", "client-1");
+
+            result.Success.Should().BeTrue();
+            logger.Messages.Should().NotBeEmpty();
+            logger.Messages.Should().NotContain(m => m.Contains(rawToken));
+            logger.Messages.Should().Contain(m => m.Contains("rt-01234..."));
         }
 
         [Fact]
@@ -325,6 +365,19 @@ namespace XUnitTest.Auth.Oidc
             var act = async () => await Create().GetRevocationHistoryAsync("user-1");
 
             await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        private sealed class CapturingLogger : Microsoft.Extensions.Logging.ILogger<TokenRevocationService>
+        {
+            public List<string> Messages { get; } = new();
+
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+            public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+                TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+                => Messages.Add(formatter(state, exception));
         }
     }
 }

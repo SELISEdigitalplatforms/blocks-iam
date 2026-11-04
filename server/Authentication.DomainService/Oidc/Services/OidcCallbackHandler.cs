@@ -1,4 +1,5 @@
 using Iam.DomainService.Utilities;
+using Authentication.DomainService.Authentication.LoginPolicies;
 using System.Text.Json;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
@@ -63,20 +64,25 @@ namespace Authentication.DomainService.Oidc.Services
         private readonly ICacheClient _cacheClient;
         private readonly ISocialLogInServiceProvider _socialLogInServiceProvider;
         private readonly ISsoUserProvisioningService _ssoUserProvisioningService;
+        private readonly ILoginPolicyService _loginPolicy;
 
         public OidcCallbackHandler(
             ILogger<OidcCallbackHandler> logger,
             IAuthenticationRepository authenticationRepository,
             ICacheClient cacheClient,
             ISocialLogInServiceProvider socialLogInServiceProvider,
-            ISsoUserProvisioningService ssoUserProvisioningService)
+            ISsoUserProvisioningService ssoUserProvisioningService,
+            ILoginPolicyService loginPolicy)
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
             _cacheClient = cacheClient;
             _socialLogInServiceProvider = socialLogInServiceProvider;
             _ssoUserProvisioningService = ssoUserProvisioningService;
+            _loginPolicy = loginPolicy;
         }
+
+        private static string UsedStateKey(string state) => $"oidc_social_state_used:{state}";
 
         public async Task<OidcCallbackResult> HandleCallbackAsync(string code, string state)
         {
@@ -87,6 +93,12 @@ namespace Authentication.DomainService.Oidc.Services
                 
                 if (string.IsNullOrWhiteSpace(oidcSocialStateJson))
                 {
+                    if (!string.IsNullOrWhiteSpace(await _cacheClient.GetStringValueAsync(UsedStateKey(state))))
+                    {
+                        _logger.LogInformation("OIDC social state {State} was already used", state);
+                        return new OidcCallbackResult { IsSuccess = false, ErrorCode = "state_already_used", ErrorMessage = "This sign-in was already completed" };
+                    }
+
                     _logger.LogWarning("Invalid OIDC state: {State}", state);
                     return new OidcCallbackResult { IsSuccess = false, ErrorCode = "invalid_state", ErrorMessage = "Invalid or expired OIDC state" };
                 }
@@ -258,6 +270,19 @@ namespace Authentication.DomainService.Oidc.Services
                 // From here on a failure can be shown on the login page the user started from.
                 recoveredContext = context;
 
+                // Checked again here: the policy may have changed while the user was at the provider.
+                // Before the code exchange, so a refused sign-in never provisions a user.
+                var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(context.ClientId);
+                var identityProvider = string.IsNullOrWhiteSpace(context.ProviderClientId)
+                    ? null
+                    : await _authenticationRepository.GetIdentityProviderByClientIdAsync(context.ProviderClientId);
+                var policy = await _loginPolicy.CheckAsync(LoginChannel.Oidc, LoginMethods.Social, oidcClient, identityProvider);
+                if (!policy.IsAllowed)
+                {
+                    _logger.LogInformation("OIDC social sign-in refused by the login policy for provider {Provider}", provider);
+                    return Failure(LoginPolicyRules.Error, policy.Message!);
+                }
+
                 // 3. Reuse social folder callback handling for provider token exchange + user extraction
                 var stateInfo = new StateInfo
                 {
@@ -265,7 +290,8 @@ namespace Authentication.DomainService.Oidc.Services
                     Provider = provider,
                     Code = code,
                     Audience = context.ProviderClientId,
-                    RedirectUri = context.ProviderRedirectUri,
+                    // The URI checked when the flow started, not one carried in from the request.
+                    RedirectUri = oidcSocialState.ProviderRedirectUri,
                     FlowType = SocialFlowType.Oidc
                 };
 
@@ -291,6 +317,14 @@ namespace Authentication.DomainService.Oidc.Services
                         "No account exists for this email, and signing up with SSO is turned off. Contact your administrator to get access.");
                 }
 
+                if (provisioning.Outcome == SsoProvisioningOutcome.OrganizationUnavailable)
+                {
+                    _logger.LogWarning("SSO signup refused for an unknown user from {Provider}: the auto-join organization is unavailable", provider);
+                    return Failure(
+                        IdpConstants.SignupOrganizationUnavailableError,
+                        IdpConstants.SignupOrganizationUnavailableOidcMessage);
+                }
+
                 var ssoUser = provisioning.User;
 
                 if (ssoUser == null || string.IsNullOrWhiteSpace(ssoUser.ItemId))
@@ -307,6 +341,7 @@ namespace Authentication.DomainService.Oidc.Services
 
                 // 6. Clean up temporary states. The actual authorization code must be created
                 // through AuthorizationFlowService.AuthorizeAsync so it persists as AuthorizationCodeModel.
+                await _cacheClient.AddStringValueAsync(UsedStateKey(state), "1", IdpConstants.OidcSocialStateUsedCacheTtlSeconds);
                 await _cacheClient.RemoveKeyAsync($"oidc_social_state:{state}");
                 await _cacheClient.RemoveKeyAsync(contextKey);
 

@@ -1,6 +1,9 @@
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Idp.DomainService.Oidc.Contracts;
+using System.Security.Cryptography;
+using System.Text;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Shared.Services
 {
@@ -50,6 +53,35 @@ namespace Authentication.DomainService.Shared.Services
             }
 
             return false;
+        }
+
+        public static bool RequiresClientAuthentication(OidcClientRegistration? client)
+        {
+            if (client == null)
+            {
+                return false;
+            }
+
+            if (string.Equals(client.ClientType, "public", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return !string.IsNullOrWhiteSpace(client.TokenEndpointAuthMethod)
+                && !string.Equals(client.TokenEndpointAuthMethod, "none", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool SecretsMatch(string? presentedSecret, string? registeredSecret)
+        {
+            if (string.IsNullOrEmpty(presentedSecret) || string.IsNullOrEmpty(registeredSecret))
+            {
+                return false;
+            }
+
+            var presented = Encoding.UTF8.GetBytes(presentedSecret);
+            var registered = Encoding.UTF8.GetBytes(registeredSecret);
+            return presented.Length == registered.Length
+                && CryptographicOperations.FixedTimeEquals(presented, registered);
         }
 
         public static bool IsPublicClient(OidcClientRegistration? client, string grantType)

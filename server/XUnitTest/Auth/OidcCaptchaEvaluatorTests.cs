@@ -6,6 +6,7 @@ using FluentAssertions;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {

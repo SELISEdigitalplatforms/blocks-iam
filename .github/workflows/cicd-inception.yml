@@ -108,21 +108,25 @@ jobs:
     needs: [plan, guards]
     if: needs.plan.outputs.sast == 'true'
     uses: ./.github/workflows/inception-sast.yml
-    secrets: inherit
+    secrets:
+      INCEPTION_SONAR_TOKEN: ${{ secrets.INCEPTION_SONAR_TOKEN }}
 
   sca:
     name: SCA
     needs: [plan, guards]
     if: needs.plan.outputs.sca == 'true'
     uses: ./.github/workflows/inception-sca.yml
-    secrets: inherit
+    secrets:
+      INCEPTION_DT_API_KEY: ${{ secrets.INCEPTION_DT_API_KEY }}
 
   secret-scan:
     name: Secrets
     needs: [plan, guards]
     if: needs.plan.outputs.secrets == 'true'
     uses: ./.github/workflows/inception-secrets.yml
-    secrets: inherit
+    secrets:
+      INCEPTION_SHIELD_USER: ${{ secrets.INCEPTION_SHIELD_USER }}
+      INCEPTION_SHIELD_PASS: ${{ secrets.INCEPTION_SHIELD_PASS }}
 
   # ---------------------------------------------------------------------------
   # Deploy - the ONLY job on the self-hosted inception2 runner.
@@ -158,7 +162,8 @@ jobs:
     needs: [plan, deploy]
     if: needs.plan.outputs.dast == 'true' && needs.deploy.result == 'success'
     uses: ./.github/workflows/inception-dast.yml
-    secrets: inherit
+    secrets:
+      INCEPTION_DD_TOKEN: ${{ secrets.INCEPTION_DD_TOKEN }}
 
   # ---------------------------------------------------------------------------
   # One status to gate the branch on.

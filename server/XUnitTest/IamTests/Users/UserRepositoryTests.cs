@@ -11,6 +11,7 @@ using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Users
 {
@@ -40,7 +41,7 @@ namespace XUnitTest.IamTests.Users
             BlocksContext.IsTestMode = false;
         }
 
-        private UserRepository Sut() => new(_iam.Object);
+        private UserRepository Sut() => new(_iam.Object, new XUnitTest.TestDoubles.PassThroughIamDataAccess());
 
         private static UserListScope Scope(params string[] organizationIds) =>
             new(UserListScopeKind.Organizations, organizationIds);
@@ -269,6 +270,13 @@ namespace XUnitTest.IamTests.Users
         {
             Register(new[] { new ProjectPeople { ItemId = "pp1", UserId = "u1", TenantId = "tenant-9" } });
             (await Sut().GetProjectIdFromProjectPeopleAsync("u1")).Should().Be("tenant-9");
+        }
+
+        [Fact]
+        public async Task GetProjectIdFromProjectPeopleAsync_NoRow_ReturnsEmpty()
+        {
+            Register(Array.Empty<ProjectPeople>());
+            (await Sut().GetProjectIdFromProjectPeopleAsync("u1")).Should().BeEmpty();
         }
 
         // ---------------------------------------------------------------------
@@ -689,6 +697,32 @@ namespace XUnitTest.IamTests.Users
             Clause(rendered, "_id")!["$in"].AsBsonArray.Select(v => v.AsString).Should().Equal("u1");
             Clause(rendered, "OrganizationIds").Should().NotBeNull();
             AllStrings(rendered).Should().Contain("org-a");
+        }
+
+        // ---------- Account-state filter ----------
+        // The rule itself is covered in UserAccountStatesTests; these only prove the repository
+        // hands it to the driver alongside the other filters, and adds nothing when it should not.
+
+        [Fact]
+        public async Task GetUsersAsync_AccountStates_AddsTheClauseAlongsideTheOtherFilters()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter
+            {
+                Name = "john",
+                AccountStates = [UserAccountStates.LockedOut],
+            });
+
+            Clause(rendered, "LockoutUntilUtc").Should().NotBeNull("a LockedOut filter constrains the lockout instant");
+            Regex(rendered, "FirstName").Pattern.Should().Be("john");
+        }
+
+        [Fact]
+        public async Task GetUsersAsync_NoRecognisedAccountStates_AddsNoClause()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter { AccountStates = ["Verified"] });
+
+            Clause(rendered, "LockoutUntilUtc").Should().BeNull();
+            Clause(rendered, "Status").Should().BeNull();
         }
     }
 }

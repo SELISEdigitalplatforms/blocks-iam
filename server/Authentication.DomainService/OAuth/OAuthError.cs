@@ -19,6 +19,13 @@ namespace Authentication.DomainService.OAuth
         public const string InvalidRefreshToken = "invalid_refresh_token";
         public const string AuthConfigMissing = "auth_config_missing";
         public const string SessionExpired = "session_expired";
+
+        /// <summary>
+        /// The refresh token was replaced by an impersonation start, stop or switch, so the session is in
+        /// another tenant or organization now. Sent as an <c>error_description</c>: the client's cookie may
+        /// already hold the newer token, so it is not a sign-out by itself.
+        /// </summary>
+        public const string SessionChanged = "session_changed";
         public const string OidcStateRequired = "oidc_state_required";
         public const string SessionCreationFailed = "session_creation_failed";
         public const string ImpersonationFailed = "impersonation_failed";
@@ -28,6 +35,12 @@ namespace Authentication.DomainService.OAuth
         public const string InvalidImpersonationRequest = "invalid_impersonation_request";
         public const string InvalidRequestBody = "invalid_request_body";
         public const string InvalidGrantType = "invalid_grant_type";
+
+        /// <summary>
+        /// The one description for every failed password login: unknown user, pending, disabled and
+        /// wrong password alike, so the text never tells which it was.
+        /// </summary>
+        public const string InvalidUsernamePasswordDescription = "Invalid username or password";
 
         public static IActionResult InvalidRequest(string description = "The request is missing a required parameter.", string state = "")
         {
@@ -84,7 +97,7 @@ namespace Authentication.DomainService.OAuth
                 GrantTypes.Password => new TokenResponse
                 {
                     Error = InValidUseNamePassword,
-                    ErrorDescription = "User name or password invalid",
+                    ErrorDescription = InvalidUsernamePasswordDescription,
                     StatusCode = 401
                 },
                 GrantTypes.MfaCode => new TokenResponse

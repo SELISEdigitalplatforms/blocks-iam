@@ -86,3 +86,13 @@ export const EXECUTION_CONTEXT_ENDPOINTS = {
 // ─── Device flow endpoints (RFC 8628) ──────────────────────────────────────
 
 export { DEVICE_ENDPOINTS } from "./endpoints/device.endpoint";
+
+
+// ─── Signup link (one-click join) ───────────────────────────────────────────
+
+export const SIGNUP_LINK_ENDPOINTS = {
+  CONTEXT: "/api/iam/signup-links/context",
+  REDEEM: "/api/iam/signup-links/redeem",
+  REDEEM_MFA: "/api/iam/signup-links/redeem/mfa",
+  REDEEM_AUTHENTICATE: "/api/iam/signup-links/redeem/authenticate",
+} as const;

@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using System.Security.Cryptography;
 using Iam.DomainService.Resources;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {
@@ -172,6 +173,24 @@ namespace XUnitTest.Auth
             var body = ok.Value.Should().BeOfType<DeviceVerifyResponse>().Subject;
             body.Status.Should().Be(DeviceVerifyStatus.LoginRequired);
             body.ReturnUrl.Should().Contain("/oidc/login").And.Contain("client_id=client-1");
+        }
+
+        [Fact]
+        public async Task VerifyAsync_LoginRequired_ReturnUrlIsRelative_SoTheHttpsLoginPageFollowsIt()
+        {
+            // Behind the TLS proxy the request scheme is http; an absolute returnUrl was then refused
+            // by the https login page's same-origin check and the user never got back to the device page.
+            var entity = PendingEntity();
+            _repo.Setup(r => r.GetByUserCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(entity);
+            var context = Context();
+            context.Request.Scheme = "http";
+            context.Request.Host = new HostString("iam.example.com");
+
+            var result = await Create().VerifyAsync(new DeviceVerifyRequest { UserCode = entity.UserCode }, context);
+
+            var body = result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<DeviceVerifyResponse>().Subject;
+            var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri("https://x" + body.ReturnUrl).Query);
+            query["returnUrl"].ToString().Should().Be($"/device/{entity.TenantId}?user_code={entity.UserCode}");
         }
 
         [Fact]

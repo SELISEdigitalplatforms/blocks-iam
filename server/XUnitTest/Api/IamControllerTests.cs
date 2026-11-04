@@ -467,6 +467,44 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
+        public async Task Create_ForwardsMailFlagsUntouched()
+        {
+            _userMutation.Setup(s => s.CreateUserAsync(It.IsAny<CreateUserRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            await CreateController().CreateUser(new CreateUserRequest { SendMail = false, NotifyUser = false });
+
+            _userMutation.Verify(s => s.CreateUserAsync(
+                It.Is<CreateUserRequest>(c => !c.SendMail && !c.NotifyUser)), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateUserAccessControl_ForwardsNotifyUserUntouched()
+        {
+            _userMutation.Setup(s => s.UpdateUserAccessControlAsync(It.IsAny<UpdateUserAccessControlRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            await CreateController().UpdateUserAccessControl(
+                new UpdateUserAccessControlRequest { UserId = "u-1", NotifyUser = false });
+
+            _userMutation.Verify(s => s.UpdateUserAccessControlAsync(
+                It.Is<UpdateUserAccessControlRequest>(c => !c.NotifyUser)), Times.Once);
+        }
+
+        [Fact]
+        public async Task RevokeUserAccessControl_ForwardsNotifyUserUntouched()
+        {
+            _userMutation.Setup(s => s.RevokeUserAccessControlAsync(It.IsAny<RevokeUserAccessControlRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            await CreateController().RevokeUserAccessControl(
+                new RevokeUserAccessControlRequest { UserId = "u-1", NotifyUser = false });
+
+            _userMutation.Verify(s => s.RevokeUserAccessControlAsync(
+                It.Is<RevokeUserAccessControlRequest>(c => !c.NotifyUser)), Times.Once);
+        }
+
+        [Fact]
         public async Task Update_Success_SetsItemIdAndReturnsOk()
         {
             _userMutation.Setup(s => s.UpdateUserAsync(It.Is<UpdateUserRequest>(c => c.ItemId == "u-1")))
@@ -571,6 +609,75 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
+        public async Task PreviewBulkRoleChange_Success_ReturnsOk()
+        {
+            _userMutation.Setup(s => s.PreviewBulkRoleChangeAsync(It.IsAny<BulkRoleChangeRequest>()))
+                .ReturnsAsync(new BulkRoleChangePreviewResponse
+                {
+                    IsSuccess = true,
+                    MatchedCount = 312,
+                    AffectedCount = 309,
+                    UnchangedCount = 3
+                });
+
+            var result = await CreateController().PreviewBulkRoleChange(new BulkRoleChangeRequest
+            {
+                OrganizationId = "org_acme",
+                AddRoles = ["viewer"],
+                Target = new BulkRoleTarget { UserIds = ["u-1"] }
+            });
+
+            result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task PreviewBulkRoleChange_ValidationErrors_ReturnsBadRequest()
+        {
+            _userMutation.Setup(s => s.PreviewBulkRoleChangeAsync(It.IsAny<BulkRoleChangeRequest>()))
+                .ReturnsAsync(new BulkRoleChangePreviewResponse
+                {
+                    Errors = new Dictionary<string, string> { { "Target", "Exactly one of userIds or filter is required" } }
+                });
+
+            var result = await CreateController().PreviewBulkRoleChange(new BulkRoleChangeRequest { OrganizationId = "org_acme" });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task SubmitBulkRoleChange_Success_ReturnsAcceptedNotOk()
+        {
+            // 202 is the only place the contract can say "this has not happened yet" -- the write is
+            // queued to a worker that reports nothing back, and the console's copy depends on that
+            // distinction being real.
+            _userMutation.Setup(s => s.SubmitBulkRoleChangeAsync(It.IsAny<BulkRoleChangeRequest>()))
+                .ReturnsAsync(new BulkRoleChangeSubmitResponse { IsSuccess = true, BatchId = "b_1", MatchedCount = 312 });
+
+            var result = await CreateController().SubmitBulkRoleChange(new BulkRoleChangeRequest
+            {
+                OrganizationId = "org_acme",
+                AddRoles = ["viewer"],
+                Target = new BulkRoleTarget { UserIds = ["u-1"] }
+            });
+
+            result.Should().BeOfType<AcceptedResult>();
+        }
+
+        [Fact]
+        public async Task SubmitBulkRoleChange_ValidationErrors_ReturnsBadRequest()
+        {
+            _userMutation.Setup(s => s.SubmitBulkRoleChangeAsync(It.IsAny<BulkRoleChangeRequest>()))
+                .ReturnsAsync(new BulkRoleChangeSubmitResponse
+                {
+                    Errors = new Dictionary<string, string> { { "Roles", "At least one role to add or remove is required" } }
+                });
+
+            var result = await CreateController().SubmitBulkRoleChange(new BulkRoleChangeRequest { OrganizationId = "org_acme" });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
         public async Task RevokeUserAccessControl_Failure_ReturnsBadRequest()
         {
             _userMutation.Setup(s => s.RevokeUserAccessControlAsync(It.IsAny<RevokeUserAccessControlRequest>()))
@@ -581,35 +688,6 @@ namespace XUnitTest.ApiTests
             result.Should().BeOfType<BadRequestObjectResult>();
         }
 
-        [Fact]
-        public async Task IsEmailAvailable_ReturnsOk()
-        {
-            _userQuery.Setup(s => s.IsUserAvailableAsync(It.IsAny<IsEmailAvailableRequest>())).ReturnsAsync(true);
-
-            var result = await CreateController().IsEmailAvailable(new IsEmailAvailableRequest());
-
-            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-            ok.Value.Should().BeOfType<IsEmailAvailableResponse>().Which.IsAvailable.Should().BeTrue();
-        }
-
-        [Fact]
-        public async Task IsUserExist_MissingEmail_ReturnsBadRequest()
-        {
-            var result = await CreateController().IsUserExist(null);
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-            _userQuery.Verify(s => s.IsUserExistAsync(It.IsAny<string>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task IsUserExist_ValidEmail_ReturnsOk()
-        {
-            _userQuery.Setup(s => s.IsUserExistAsync("a@b.com")).ReturnsAsync(new IsUserExistResponse { UserId = "u-1" });
-
-            var result = await CreateController().IsUserExist("a@b.com");
-
-            result.Should().BeOfType<OkObjectResult>();
-        }
 
         // ---------- Organizations ----------
 
@@ -699,7 +777,7 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().CreateOrganization(new CreateOrganizationRequest { Name = "Acme" });
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
         }
 
         [Fact]
@@ -757,7 +835,7 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().SaveOrganizationConfig(new SaveOrganizationConfigRequest());
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
         }
 
         [Fact]
@@ -779,7 +857,7 @@ namespace XUnitTest.ApiTests
 
             var result = await CreateController().SaveSignUpSetting(new SaveSignUpSettingRequest());
 
-            result.Should().BeSameAs(response);
+            result.Value.Should().BeSameAs(response);
         }
 
         [Fact]
@@ -793,6 +871,93 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().GetSignUpSetting();
 
             result.Should().BeSameAs(response);
+        }
+
+        // ---------------------------------------------------------------------------------
+        // Portal reads are split from the anonymous ones: without a valid token the anonymous
+        // routes answer for the X-Blocks-Key (root) tenant, so the portal reads through routes
+        // that 401 instead. The anonymous routes stay exactly as they are for OIDC login/signup.
+        // ---------------------------------------------------------------------------------
+
+        [Fact]
+        public void GetAdminOrganizationConfig_RequiresSignInButNoExtraPermission()
+        {
+            var method = typeof(IamController).GetMethod(nameof(IamController.GetAdminOrganizationConfig))!;
+
+            method.GetCustomAttribute<HttpGetAttribute>()!.Template.Should().Be("organizations/config/admin");
+            method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().Should().NotBeNull();
+            method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().BeNull();
+            // Read by the users, roles, invite and credential screens, not only settings, so a
+            // settings permission here would lock those screens out.
+            method.GetCustomAttribute<ProtectedEndPointAttribute>().Should().BeNull();
+        }
+
+        [Fact]
+        public void GetAdminSignUpSetting_ReusesTheSavePermission()
+        {
+            var method = typeof(IamController).GetMethod(nameof(IamController.GetAdminSignUpSetting))!;
+
+            method.GetCustomAttribute<HttpGetAttribute>()!.Template.Should().Be("signup-settings/admin");
+            method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().BeNull();
+            method.GetCustomAttribute<ProtectedEndPointAttribute>()!.ResourceName
+                .Should().Be("blocks-iam::iam::mutate-tenant-configs");
+        }
+
+        [Theory]
+        [InlineData(nameof(IamController.GetOrganizationConfig), "organizations/config")]
+        [InlineData(nameof(IamController.GetSignUpSetting), "signup-settings")]
+        public void AnonymousConfigReads_StayAnonymousForOidcLoginAndSignup(string action, string template)
+        {
+            var method = typeof(IamController).GetMethod(action)!;
+
+            method.GetCustomAttribute<HttpGetAttribute>()!.Template.Should().Be(template);
+            method.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>().Should().NotBeNull();
+        }
+
+        [Fact]
+        public async Task GetAdminOrganizationConfig_DelegatesWithoutReResolvingTheTenant()
+        {
+            var response = new Dictionary<string, object> { { "isMultiOrgEnabled", true } };
+            // H3/C5: the admin read now has its own service call, the only one that carries the
+            // sign-up auto-join target, so the delegation is asserted against that call.
+            _resourceMutation.Setup(s => s.GetAdminOrganizationConfigAsync()).ReturnsAsync(response);
+
+            var result = await CreateController().GetAdminOrganizationConfig();
+
+            result.Should().BeSameAs(response);
+            // The middleware already scoped the request to the token's tenant; nothing to re-resolve.
+            _authService.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task H3_C5_OrganizationConfigReads_AnonymousAndAdminUseSeparateServiceCalls()
+        {
+            _authService.Setup(s => s.GetPrincipalFromTokenAsync(It.IsAny<HttpRequest>(), It.IsAny<string>(), false))
+                .ReturnsAsync((System.Security.Claims.ClaimsPrincipal)null!);
+            _resourceMutation.Setup(s => s.GetOrganizationConfigAsync())
+                .ReturnsAsync(new Dictionary<string, object> { { "isSignupAutoJoinEnabled", true } });
+            _resourceMutation.Setup(s => s.GetAdminOrganizationConfigAsync())
+                .ReturnsAsync(new Dictionary<string, object> { { "isSignupAutoJoinEnabled", true }, { "signupAutoJoinOrganizationId", "org-sales" } });
+
+            var anonymous = await CreateController().GetOrganizationConfig();
+            var admin = await CreateController().GetAdminOrganizationConfig();
+
+            anonymous.Should().NotContainKey("signupAutoJoinOrganizationId");
+            admin["signupAutoJoinOrganizationId"].Should().Be("org-sales");
+            _resourceMutation.Verify(s => s.GetOrganizationConfigAsync(), Times.Once);
+            _resourceMutation.Verify(s => s.GetAdminOrganizationConfigAsync(), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetAdminSignUpSetting_DelegatesToAccountService()
+        {
+            var response = new Dictionary<string, object> { { "isSignUpEnable", true } };
+            _accountService.Setup(s => s.GetSignUpSettingAsync()).ReturnsAsync(response);
+
+            var result = await CreateController().GetAdminSignUpSetting();
+
+            result.Should().BeSameAs(response);
+            _authService.VerifyNoOtherCalls();
         }
 
         // ---------------------------------------------------------------------------------
@@ -866,6 +1031,18 @@ namespace XUnitTest.ApiTests
 
             method.GetCustomAttribute<ProtectedEndPointAttribute>()
                 .Should().BeNull("organizations/my must not require an administrative permission");
+        }
+
+        [Fact]
+        public void GetPermissionsGroupBySeverity_IsProtectedByPermissionsRead()
+        {
+            // Same read permission as POST permissions and GET permissions/{id} (owner decision 2026-10-14).
+            var method = typeof(IamController).GetMethod(nameof(IamController.GetPermissionsGroupBySeverity))!;
+
+            var guard = method.GetCustomAttribute<ProtectedEndPointAttribute>();
+            guard.Should().NotBeNull();
+            guard!.ResourceName.Should().Be("blocks-iam::iam::permissions");
+            method.GetCustomAttribute<HttpGetAttribute>()!.Template.Should().Be("permissions/by-severity");
         }
     }
 }

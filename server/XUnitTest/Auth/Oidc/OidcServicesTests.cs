@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
@@ -129,6 +130,57 @@ namespace XUnitTest.Auth.Oidc
             token.Claims.Should().Contain(c => c.Type == BlocksContext.ROLES_CLAIM && c.Value == "admin");
             token.Claims.Should().Contain(c => c.Type == BlocksContext.PERMISSION_CLAIM && c.Value == "read");
             token.Claims.Should().NotContain(c => c.Type == "nonce");
+        }
+
+        private static OidcClaims VersionedClaims(int? tokenVersion, string? securityStamp) => new()
+        {
+            Sub = "user-1", TenantId = "tenant-1", ClientId = "cid", Audience = "aud", Nonce = "n-1",
+            Roles = new List<string> { "admin" }, Permissions = new List<string> { "read" },
+            Iat = 1000, AuthTime = 900, TokenVersion = tokenVersion, SecurityStamp = securityStamp
+        };
+
+        [Fact]
+        public async Task GenerateAccessToken_WithVersion_CarriesTokenVersionAndSecurityStamp()
+        {
+            var jwt = await CreateTokenSvc().GenerateAccessTokenAsync(VersionedClaims(3, "S1"), "https://issuer", 3600);
+
+            var token = new JwtSecurityTokenHandler().ReadJwtToken(jwt);
+            token.Claims.Should().ContainSingle(c => c.Type == "token_version")
+                .Which.Should().Match<Claim>(c => c.Value == "3" && c.ValueType == ClaimValueTypes.Integer32);
+            token.Claims.Should().ContainSingle(c => c.Type == "security_stamp").Which.Value.Should().Be("S1");
+            // Existing claims stay as they were.
+            token.Claims.Should().Contain(c => c.Type == "token_use" && c.Value == "access_token");
+            token.Claims.Should().Contain(c => c.Type == BlocksContext.ROLES_CLAIM && c.Value == "admin");
+            token.Claims.Should().Contain(c => c.Type == BlocksContext.PERMISSION_CLAIM && c.Value == "read");
+            token.Claims.Should().Contain(c => c.Type == "client_id" && c.Value == "cid");
+        }
+
+        [Fact]
+        public async Task GenerateAccessToken_NullStamp_EmitsEmptyStamp_LikeTheStandardProvider()
+        {
+            var jwt = await CreateTokenSvc().GenerateAccessTokenAsync(VersionedClaims(1, null), "https://issuer", 3600);
+
+            var token = new JwtSecurityTokenHandler().ReadJwtToken(jwt);
+            token.Claims.Should().Contain(c => c.Type == "token_version" && c.Value == "1");
+            token.Claims.Should().ContainSingle(c => c.Type == "security_stamp").Which.Value.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task GenerateAccessToken_NoVersion_OmitsBothClaims()
+        {
+            var jwt = await CreateTokenSvc().GenerateAccessTokenAsync(VersionedClaims(null, "S1"), "https://issuer", 3600);
+
+            var token = new JwtSecurityTokenHandler().ReadJwtToken(jwt);
+            token.Claims.Should().NotContain(c => c.Type == "token_version" || c.Type == "security_stamp");
+        }
+
+        [Fact]
+        public async Task GenerateIdToken_WithVersion_CarriesNeitherClaim()
+        {
+            var jwt = await CreateTokenSvc().GenerateIdTokenAsync(VersionedClaims(3, "S1"), "https://issuer", 3600);
+
+            var token = new JwtSecurityTokenHandler().ReadJwtToken(jwt);
+            token.Claims.Should().NotContain(c => c.Type == "token_version" || c.Type == "security_stamp");
         }
 
         // ---------- JwksService (fallback key path) ----------

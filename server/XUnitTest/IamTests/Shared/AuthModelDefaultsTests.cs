@@ -5,6 +5,7 @@ using Authentication.DomainService.Shared;
 using FluentAssertions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Shared
 {
@@ -33,7 +34,6 @@ namespace XUnitTest.IamTests.Shared
             payload.BiometricKey.Should().BeEmpty();
             payload.ClientId.Should().BeEmpty();
             payload.ClientSecret.Should().BeEmpty();
-            payload.UserSecret.Should().BeEmpty();
             payload.OrganizationId.Should().BeEmpty();
             payload.RememberMe.Should().BeFalse();
 
@@ -66,7 +66,6 @@ namespace XUnitTest.IamTests.Shared
                 BiometricKey = "bkey",
                 ClientId = "cid",
                 ClientSecret = "secret",
-                UserSecret = "usercode",
                 OrganizationId = "org",
                 SubjectToken = "dg_" + new string('a', 64),
                 SubjectTokenType = "urn:blocks:params:oauth:token-type:delegation-grant",
@@ -91,7 +90,6 @@ namespace XUnitTest.IamTests.Shared
             payload.BiometricKey.Should().Be("bkey");
             payload.ClientId.Should().Be("cid");
             payload.ClientSecret.Should().Be("secret");
-            payload.UserSecret.Should().Be("usercode");
             payload.OrganizationId.Should().Be("org");
             payload.SubjectToken.Should().Be("dg_" + new string('a', 64));
             payload.SubjectTokenType.Should().Be("urn:blocks:params:oauth:token-type:delegation-grant");

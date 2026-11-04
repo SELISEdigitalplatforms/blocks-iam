@@ -1,3 +1,4 @@
+using XUnitTest.TestSupport;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
@@ -25,6 +26,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Moq;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth
 {
@@ -72,7 +74,7 @@ namespace XUnitTest.Auth
 
         private AuthenticationService Create() =>
             new(NullLogger<AuthenticationService>.Instance, _cache.Object, _repo.Object, _domain.Object,
-                _session.Object, _tenants.Object, _activity.Object, _refresh.Object);
+                _session.Object, _tenants.Object, _activity.Object, _refresh.Object, new FakeLoginPolicy());
 
         // ---------------- helpers ----------------
 
@@ -423,6 +425,24 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task ExecuteStop_H7_ImpersonationAudit_TrustedGatewayXff_RecordsResolvedClientIp()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant());
+            UserActivityEvent? audit = null;
+            _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()))
+                .Callback<UserActivityEvent>(e => audit = e).Returns(Task.CompletedTask);
+
+            // RemoteIpAddress as the forwarded-header middleware leaves it for a trusted gateway hop.
+            // Multi-entry header: a call site reading the raw header would record the spoofable first entry.
+            var ctx = await XUnitTest.ApiTests.ForwardedHeadersTestPipeline.ThroughTrustedGatewayAsync("198.51.100.99, 203.0.113.10");
+            await Create().ExecuteStopImpersonationAsync(new StopImpersonationRequest(), ctx.Request, ctx.Response);
+
+            audit!.Source.Should().Be("auth-impersonation");
+            audit.Context.IpAddress.Should().Be("203.0.113.10");
+            audit.Context.IpAddress.Should().NotContain("198.51.100.99");
+        }
+
+        [Fact]
         public async Task ExecuteStop_NoRefreshToken_ReturnsUnauthorized()
         {
             _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant());
@@ -509,6 +529,118 @@ namespace XUnitTest.Auth
             _session.Verify(s => s.ManageTokenAsync(
                 It.Is<TokenRequest>(t => t.RefreshToken == "imp-rt"), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
             _session.Verify(s => s.RevokeRefreshToken(It.IsAny<string>()), Times.Never);
+        }
+
+        // A stop whose answer never reached the client: the presented impersonated token resolves onto the
+        // root token that stop issued, and the client still holds the project's cookies. Retrying must
+        // finish the stop rather than strand the client in the project.
+
+        /// <summary>
+        /// The caller's access token is the project's, issued for impersonation <paramref name="sessionId"/>,
+        /// and the context is reset to root the way the stop endpoint does before calling the service.
+        /// </summary>
+        private static void CallerImpersonating(string sessionId)
+        {
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: TargetTenantId, roles: null, userId: ActorId, impersonated: true,
+                isAuthenticated: true, requestUri: "https://test", organizationId: "default",
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
+                userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
+                originalTenantId: TenantId, impersonationSessionId: sessionId, applicationDomain: "test"));
+            DomainResolver.ResetToOriginalBlocksContextForImpersonation();
+        }
+
+        // The session record keeps the status it had while the impersonation ran: the retry is recognised
+        // from the lineage, not from the record.
+        private void StopAlreadyFinished(RefreshTokenCache resolved, string callerSessionId = "imp-1")
+        {
+            CallerImpersonating(callerSessionId);
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant());
+            _repo.Setup(r => r.GetImpersonationSessionByIdAsync("imp-1"))
+                .ReturnsAsync(new ImpersonationSession { Id = "imp-1", Status = "active", ClientId = "c1", OrganizationId = "org", RootTenantId = TenantId, TargetTenantId = TargetTenantId });
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("imp-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(resolved);
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
+            _repo.Setup(r => r.GetUserByIdAsync(ActorId)).ReturnsAsync(new User { ItemId = ActorId });
+            _session.Setup(s => s.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "root-at", RefreshToken = "root-rt3", TokenType = "Bearer" });
+        }
+
+        private static RefreshTokenCache RootSuccessor(string tokenId = "root-rt2", string userId = ActorId) =>
+            new() { RefreshToken = tokenId, Impersonated = false, ClientId = "c1", UserId = userId };
+
+        [Fact]
+        public async Task ExecuteStop_RetryOfAStopThatAlreadyFinished_IssuesTheRootSessionAgain()
+        {
+            StopAlreadyFinished(RootSuccessor());
+            var req = new StopImpersonationRequest { ImpersonationId = "imp-1", RefreshToken = "imp-rt" };
+
+            var result = await Create().ExecuteStopImpersonationAsync(req, HttpContext().Request, HttpContext().Response);
+
+            result.Should().BeOfType<OkObjectResult>();
+            // Rotates away from the root token the first attempt issued, not from the replaced project token.
+            _session.Verify(s => s.ManageTokenAsync(
+                It.Is<TokenRequest>(t => t.RefreshToken == "root-rt2" && !t.IsImpersonation), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
+            // Recorded and audited by the attempt whose answer was lost.
+            _repo.Verify(r => r.UpdateImpersonationSessionAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteStop_RootSuccessorForACallerOutsideTheImpersonation_IsRefused()
+        {
+            // The caller's access token is root: there is no impersonation of its own to finish stopping.
+            StopAlreadyFinished(RootSuccessor());
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: TenantId, roles: null, userId: ActorId, impersonated: false,
+                isAuthenticated: true, requestUri: "https://test", organizationId: "default",
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
+                userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
+                originalTenantId: TenantId, impersonationSessionId: null, applicationDomain: "test"));
+            var req = new StopImpersonationRequest { ImpersonationId = "imp-1", RefreshToken = "imp-rt" };
+
+            var result = await Create().ExecuteStopImpersonationAsync(req, HttpContext().Request, HttpContext().Response);
+
+            result.Should().BeOfType<UnauthorizedObjectResult>();
+            ErrorOf(result).Should().Be("invalid_refresh_token");
+            _session.Verify(s => s.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteStop_RootSuccessorForAnotherImpersonation_IsRefused()
+        {
+            // The caller is impersonating, but under a different session than the one it asks to stop.
+            StopAlreadyFinished(RootSuccessor(), callerSessionId: "imp-2");
+            var req = new StopImpersonationRequest { ImpersonationId = "imp-1", RefreshToken = "imp-rt" };
+
+            var result = await Create().ExecuteStopImpersonationAsync(req, HttpContext().Request, HttpContext().Response);
+
+            result.Should().BeOfType<UnauthorizedObjectResult>();
+            ErrorOf(result).Should().Be("invalid_refresh_token");
+            _session.Verify(s => s.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteStop_RootTokenPresentedDirectly_IsRefused()
+        {
+            // Not a replay: the presented token itself is root, so there is no lost stop to finish.
+            StopAlreadyFinished(RootSuccessor(tokenId: "imp-rt"));
+            var req = new StopImpersonationRequest { ImpersonationId = "imp-1", RefreshToken = "imp-rt" };
+
+            var result = await Create().ExecuteStopImpersonationAsync(req, HttpContext().Request, HttpContext().Response);
+
+            result.Should().BeOfType<UnauthorizedObjectResult>();
+            _session.Verify(s => s.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExecuteStop_RootSuccessorOfAnotherUser_IsRefused()
+        {
+            StopAlreadyFinished(RootSuccessor(userId: "someone-else"));
+            var req = new StopImpersonationRequest { ImpersonationId = "imp-1", RefreshToken = "imp-rt" };
+
+            var result = await Create().ExecuteStopImpersonationAsync(req, HttpContext().Request, HttpContext().Response);
+
+            result.Should().BeOfType<UnauthorizedObjectResult>();
+            _session.Verify(s => s.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
         }
 
         // ============ CookieToken ============
@@ -734,6 +866,22 @@ namespace XUnitTest.Auth
             result.Should().BeTrue();
             _session.Verify(s => s.CreateSessionAsync("user-1", TenantId, It.IsAny<string>()), Times.Once);
             ctx.Response.Headers.Should().ContainKey("Set-Cookie");
+        }
+
+        [Fact]
+        public async Task EnsureIdpSessionForOidcCallback_H3_TrustedGatewayXff_StoresResolvedClientIp()
+        {
+            _session.Setup(s => s.CreateSessionAsync("user-1", TenantId, It.IsAny<string>())).ReturnsAsync("new-sess");
+
+            // RemoteIpAddress as the forwarded-header middleware leaves it for a trusted gateway hop.
+            // Multi-entry header: a call site reading the raw header would store the spoofable first entry.
+            var ctx = await XUnitTest.ApiTests.ForwardedHeadersTestPipeline.ThroughTrustedGatewayAsync("198.51.100.99, 203.0.113.10");
+            var result = await Create().EnsureIdpSessionForOidcCallbackAsync(ctx, "user-1", TenantId);
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.CreateSessionAsync("user-1", TenantId, "203.0.113.10"), Times.Once);
+            _session.Verify(s => s.CreateSessionAsync(It.IsAny<string>(), It.IsAny<string>(),
+                It.Is<string>(ip => ip != null && ip.Contains("198.51.100.99"))), Times.Never);
         }
 
         [Fact]

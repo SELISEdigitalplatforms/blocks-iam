@@ -4,6 +4,7 @@ using Iam.DomainService.Enums;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Resources
 {
@@ -78,6 +79,18 @@ namespace XUnitTest.IamTests.Resources
         {
             var req = ValidCreateRequest();
             req.Type = (ResourceType)999;
+
+            var result = await CreateValidator().ValidateAsync(req);
+
+            result.IsValid.Should().BeFalse();
+            result.Errors.Should().Contain(e => e.PropertyName == nameof(req.Type));
+        }
+
+        [Fact]
+        public async Task Type_RemovedDataProtectionValue3_Fails()
+        {
+            var req = ValidCreateRequest();
+            req.Type = (ResourceType)3;
 
             var result = await CreateValidator().ValidateAsync(req);
 

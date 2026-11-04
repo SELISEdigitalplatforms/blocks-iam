@@ -1,4 +1,7 @@
+using Authentication.DomainService.Authentication.LoginPolicies;
+using XUnitTest.TestSupport;
 using System.Text.Json;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
@@ -9,6 +12,7 @@ using FluentAssertions;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Oidc
 {
@@ -18,7 +22,8 @@ namespace XUnitTest.Auth.Oidc
             out Mock<IAuthenticationRepository> authRepo,
             out Mock<ICacheClient> cache,
             out Mock<ISsoUserProvisioningService> provisioning,
-            out Mock<ISocialLogInServiceProvider> socialProvider)
+            out Mock<ISocialLogInServiceProvider> socialProvider,
+            FakeLoginPolicy? loginPolicy = null)
         {
             authRepo = new Mock<IAuthenticationRepository>();
             cache = new Mock<ICacheClient>();
@@ -27,7 +32,7 @@ namespace XUnitTest.Auth.Oidc
 
             return new OidcCallbackHandler(
                 NullLogger<OidcCallbackHandler>.Instance,
-                authRepo.Object, cache.Object, socialProvider.Object, provisioning.Object);
+                authRepo.Object, cache.Object, socialProvider.Object, provisioning.Object, loginPolicy ?? new FakeLoginPolicy());
         }
 
         private static string SocialStateJson(string oidcState = "oidc-state-1", string provider = "google")
@@ -86,6 +91,30 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
+        public async Task HandleCallbackAsync_ReturnsStateAlreadyUsed_WhenCallbackIsOpenedAgain()
+        {
+            var handler = Create(out _, out var cache, out _, out _);
+            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
+            cache.Setup(c => c.GetStringValueAsync("oidc_social_state_used:state-1")).ReturnsAsync("1");
+
+            var result = await handler.HandleCallbackAsync("code-1", "state-1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.ErrorCode.Should().Be("state_already_used");
+        }
+
+        [Fact]
+        public async Task HandleCallbackAsync_ReturnsInvalidState_WhenStateUnknown()
+        {
+            var handler = Create(out _, out var cache, out _, out _);
+            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
+
+            var result = await handler.HandleCallbackAsync("code-1", "state-1");
+
+            result.ErrorCode.Should().Be("invalid_state");
+        }
+
+        [Fact]
         public async Task HandleCallbackAsync_ReturnsError_WhenOidcStateNull()
         {
             var handler = Create(out _, out var cache, out _, out _);
@@ -127,6 +156,27 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
+        public async Task HandleCallbackAsync_RefusedByLoginPolicy_FailsBeforeTheCodeExchange()
+        {
+            var policy = new FakeLoginPolicy
+            {
+                Decide = (_, _, _, _) => LoginPolicyDecision.Denied("This sign-in provider is not available for this application.")
+            };
+            var handler = Create(out _, out var cache, out var provisioning, out var social, policy);
+            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(SocialStateJson());
+            cache.Setup(c => c.GetStringValueAsync("oidc_context:oidc-state-1")).ReturnsAsync(ContextJson());
+
+            var result = await handler.HandleCallbackAsync("code-1", "state-1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.ErrorCode.Should().Be(LoginPolicyRules.Error);
+            result.ClientId.Should().Be("client-1");
+            policy.Checks.Should().Equal((LoginChannel.Oidc, LoginMethods.Social));
+            social.Verify(s => s.HandleSocialLoginCallback(It.IsAny<StateInfo>()), Times.Never);
+            provisioning.Verify(p => p.ResolveOrProvisionAsync(It.IsAny<IExternalUserData>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
         public async Task HandleCallbackAsync_ReturnsError_WhenExternalUserMissingEmail()
         {
             var handler = Create(out _, out var cache, out _, out var social);
@@ -160,6 +210,34 @@ namespace XUnitTest.Auth.Oidc
             result.Scope.Should().Be("openid");
             result.Nonce.Should().Be("nonce-1");
             cache.Verify(c => c.RemoveKeyAsync(It.IsAny<string>()), Times.Exactly(2));
+            cache.Verify(c => c.AddStringValueAsync(
+                "oidc_social_state_used:state-1", "1", IdpConstants.OidcSocialStateUsedCacheTtlSeconds), Times.Once);
+        }
+
+        [Fact]
+        public async Task HandleCallbackAsync_ExchangesTheCode_WithTheRedirectUriCheckedAtStart()
+        {
+            var handler = Create(out _, out var cache, out var provisioning, out var social);
+            var socialState = JsonSerializer.Serialize(new OidcSocialStateContext
+            {
+                OidcState = "oidc-state-1", Provider = "google", ProviderRedirectUri = "https://iam/checked"
+            });
+            var context = JsonSerializer.Serialize(new OidcContext
+            {
+                ClientId = "client-1", RedirectUri = "https://redirect.com", ProviderRedirectUri = "https://request/raw"
+            });
+            cache.Setup(c => c.GetStringValueAsync("oidc_social_state:state-1")).ReturnsAsync(socialState);
+            cache.Setup(c => c.GetStringValueAsync("oidc_context:oidc-state-1")).ReturnsAsync(context);
+            StateInfo? sent = null;
+            social.Setup(s => s.HandleSocialLoginCallback(It.IsAny<StateInfo>()))
+                .Callback<StateInfo>(s => sent = s)
+                .ReturnsAsync(new SocialCallbackResult { ExternalUserData = new BYOSsoUserData { Email = "u@example.com" } });
+            provisioning.Setup(p => p.ResolveOrProvisionAsync(It.IsAny<IExternalUserData>(), It.IsAny<string>()))
+                .ReturnsAsync(SsoProvisioningResult.From(SsoProvisioningOutcome.ExistingUser, new User { ItemId = "u1", Active = true }));
+
+            await handler.HandleCallbackAsync("code-1", "state-1");
+
+            sent!.RedirectUri.Should().Be("https://iam/checked");
         }
 
         [Fact]
@@ -195,6 +273,25 @@ namespace XUnitTest.Auth.Oidc
             result.ErrorCode.Should().Be("signup_disabled");
             // The refusal carries the original request so the controller can return the user to
             // the login page instead of leaving them on an error body.
+            result.ClientId.Should().Be("client-1");
+            result.RedirectUri.Should().Be("https://redirect.com");
+            result.OriginalState.Should().Be("state-1");
+        }
+
+        [Fact]
+        public async Task C8_HandleCallbackAsync_ReturnsSignupOrganizationUnavailable_WhenAutoJoinTargetIsUnavailable()
+        {
+            var handler = ArrangeUpToProvisioning(
+                SsoProvisioningResult.From(SsoProvisioningOutcome.OrganizationUnavailable),
+                out _,
+                out _);
+
+            var result = await handler.HandleCallbackAsync("code-1", "state-1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.ErrorCode.Should().Be("signup_organization_unavailable");
+            result.ErrorMessage.Should().Be("This project's organization isn't available right now. Contact your administrator.");
+            // Same redirect-back shape as signup_disabled, so the login page shows the sentence in its dialog.
             result.ClientId.Should().Be("client-1");
             result.RedirectUri.Should().Be("https://redirect.com");
             result.OriginalState.Should().Be("state-1");

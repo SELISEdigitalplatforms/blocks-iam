@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using Iam.DomainService.Entities;
@@ -11,7 +11,7 @@ using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Moq;
-using StorageDriver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Mfa.Shared.Services
 {
@@ -28,7 +28,7 @@ namespace XUnitTest.Mfa.Shared.Services
                 new Mock<ICacheClient>().Object,
                 new Mock<IValidator<VerifyOtpRequest>>().Object,
                 new Mock<ITenants>().Object,
-                new Mock<IStorageDriverService>().Object);
+                new Mock<ITotpSecretResolver>().Object);
 
             var services = new ServiceCollection();
             services.AddSingleton(totpService);

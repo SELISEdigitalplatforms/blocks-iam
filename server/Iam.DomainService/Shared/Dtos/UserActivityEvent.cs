@@ -1,3 +1,5 @@
+using Blocks.Genesis.Entities.Iam;
+
 namespace Iam.DomainService.Dtos
 {
     public sealed record UserActivityEvent

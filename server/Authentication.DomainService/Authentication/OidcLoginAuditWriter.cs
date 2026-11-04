@@ -6,6 +6,7 @@ using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Blocks.Genesis;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -62,7 +63,7 @@ namespace Authentication.DomainService.Authentication
                         UserAgent = userAgent,
                         DeviceInformation = _authenticationDomainService.GetDeviceInfo(userAgent)
                     },
-                    Metadata = details is null ? null : new Dictionary<string, string> { { "details", details } }
+                    Metadata = BuildMetadata(user, eventType, details)
                 });
             }
             catch (Exception ex)
@@ -71,6 +72,30 @@ namespace Authentication.DomainService.Authentication
                     "Failed to publish UserActivity event {EventType} for user {UserId} (message lost — activity will be missing from history)",
                     eventType, user?.ItemId);
             }
+        }
+
+        /// <summary>
+        /// Metadata key on a <c>login_success</c> event: failed password/MFA attempts the account
+        /// had right before this sign-in (only when above zero). Read from the user record the
+        /// caller already loaded; the worker uses it for the new-login notification.
+        /// </summary>
+        public const string PriorFailedAttemptsKey = "priorFailedAttempts";
+
+        private static Dictionary<string, string>? BuildMetadata(User user, string eventType, string? details)
+        {
+            Dictionary<string, string>? metadata = details is null ? null : new Dictionary<string, string> { { "details", details } };
+
+            if (string.Equals(eventType, LoginAuditEvents.LoginSuccess, StringComparison.Ordinal) && user != null)
+            {
+                var prior = Math.Max(0, user.FailedLoginCount) + Math.Max(0, user.FailedMfaCount);
+                if (prior > 0)
+                {
+                    metadata ??= new Dictionary<string, string>();
+                    metadata[PriorFailedAttemptsKey] = prior.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
+            }
+
+            return metadata;
         }
     }
 }

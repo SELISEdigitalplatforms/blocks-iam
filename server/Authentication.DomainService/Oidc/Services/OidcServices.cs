@@ -14,6 +14,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Iam.DomainService.Entities;
 using Authentication.DomainService.Shared;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Idp.DomainService.Oidc.Services;
 
@@ -21,7 +22,7 @@ public interface ITokenGenerationService
 {
     Task<string> GenerateIdTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
     Task<string> GenerateAccessTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
-    Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null);
+    Task<RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null);
 }
 
 public interface IPkceService
@@ -100,7 +101,7 @@ public sealed class OidcSigningKeyMaterial
         return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: false);
     }
 
-        public async Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null)
+        public async Task<RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null)
         {
             // UnifiedTokenSessionService handles all logic. This method is now a thin adapter only.
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
@@ -113,13 +114,26 @@ public sealed class OidcSigningKeyMaterial
                 Scope = claims.Scope,
                 GrantType = "authorization_code",
                 Request = _httpContextAccessor.HttpContext?.Request,
-                IdpSessionId = idpSessionId
+                IdpSessionId = idpSessionId,
+                IsLinkAuthentication = claims.IsLinkAuthentication,
+                RestrictedRoles = claims.RestrictedRoles?.ToList() ?? [],
+                RestrictedPermissions = claims.RestrictedPermissions?.ToList() ?? [],
+                Amr = claims.Amr?.ToList() ?? [],
+                Audience = claims.Audience,
+                SignInUserAgent = claims.SignInUserAgent
             };
-            var visitorsIpAddresses = new List<string> { _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
-            var userAgent = _httpContextAccessor.HttpContext?.Request?.Headers?["User-Agent"].ToString() ?? string.Empty;
+            // A code is usually redeemed by a server: when the claims carry the browser that signed in,
+            // the refresh token records that browser instead of the redeeming request.
+            var signInIpAddress = string.IsNullOrWhiteSpace(claims.SignInIpAddress)
+                || string.Equals(claims.SignInIpAddress, "unknown", StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : claims.SignInIpAddress;
+            var visitorsIpAddresses = new List<string> { signInIpAddress ?? _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
+            var userAgent = !string.IsNullOrWhiteSpace(claims.SignInUserAgent)
+                ? claims.SignInUserAgent
+                : _httpContextAccessor.HttpContext?.Request?.Headers?["User-Agent"].ToString() ?? string.Empty;
             var (refreshToken, slidingExpiry, absoluteExpiry, refreshTokenSessionId) = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
-                null,
-                null,
+                RefreshTokenPredecessor.None,
                 tokenRequest,
                 authConfiguration,
                 tenant,
@@ -127,7 +141,7 @@ public sealed class OidcSigningKeyMaterial
                 visitorsIpAddresses,
                 isImpersonation
             );
-            return new Contracts.RefreshTokenModel
+            return new RefreshTokenModel
             {
                 TokenId = refreshToken,
                 UserId = claims.Sub,
@@ -210,6 +224,15 @@ public sealed class OidcSigningKeyMaterial
             }
         }
 
+        // The IdP session. Omitted when absent: a consumer cannot tell an empty claim from
+        // "this token has no session", and blank would read as a valid session id downstream.
+        if (!string.IsNullOrWhiteSpace(claims.Sid))
+        {
+            // Literal rather than BlocksContext.SESSION_ID_CLAIM: that constant lands in the next
+            // Genesis release, and IAM still builds against the published 4.2.0. Same claim name.
+            jwtClaims.Add(new Claim("sid", claims.Sid));
+        }
+
         // Add token_use claim to distinguish id_token from access_token
         jwtClaims.Add(new Claim("token_use", includeNonce ? "id_token" : "access_token"));
 
@@ -225,6 +248,8 @@ public sealed class OidcSigningKeyMaterial
             {
                 jwtClaims.Add(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
             }
+
+            AddVersionClaims(jwtClaims, claims);
         }
 
         var token = new JwtSecurityToken(
@@ -236,6 +261,19 @@ public sealed class OidcSigningKeyMaterial
             signingCredentials: signingCredentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    // Same names and values as JwtAccessTokenProvider, so Genesis can attach a delegation grant
+    // for work queued from an OIDC-authenticated request. Both or neither.
+    private static void AddVersionClaims(List<Claim> jwtClaims, Contracts.OidcClaims claims)
+    {
+        if (claims.TokenVersion is not { } tokenVersion)
+        {
+            return;
+        }
+
+        jwtClaims.Add(new Claim("token_version", tokenVersion.ToString(), ClaimValueTypes.Integer32));
+        jwtClaims.Add(new Claim("security_stamp", claims.SecurityStamp ?? string.Empty));
     }
 
     private static string ExtractUserId(string subject)

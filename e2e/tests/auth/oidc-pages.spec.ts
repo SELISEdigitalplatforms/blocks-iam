@@ -1,0 +1,310 @@
+import { type Page, type Route } from "@playwright/test";
+import { test, expect } from "../../support/test-base";
+
+/**
+ * OIDC ancillary pages reached at the boundaries of the auth flow:
+ *
+ *   - /oidc/mfa-check?mfa_id=...&mfa_type=1|2   — verify a 2FA OTP
+ *   - /oidc/permission                          — consent screen (Allow / Deny)
+ *   - /oidc/error                               — terminal error screen
+ *
+ * mfa-check posts back to /api/oidc/login with a different body shape
+ * (mfa_id + mfa_code + tenant_id) than the regular login. mfa_type=1 maps to
+ * a 6-slot TOTP; mfa_type=2 maps to a 5-slot email OTP plus a resend button.
+ */
+
+const mockOidcUiConfig = async (page: Page) => {
+  await page.route("**/api/idp/oidc-ui-config*", async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ captcha: null, template: {} }),
+    });
+  });
+};
+
+test.describe("OIDC MFA check", () => {
+  test.beforeEach(async ({ context, page }) => {
+    await context.clearCookies();
+    await mockOidcUiConfig(page);
+  });
+
+  test("MFA check — email/TOTP render, invalid code + locked errors, expired sign-in, successful redirect", async ({
+    page,
+  }) => {
+    await test.step("[Positive] mfa_type=2 (email) renders a 6-slot OTP and the resend button", async () => {
+      await page.goto("/oidc/mfa-check?mfa_id=mfa-id-1&mfa_type=2", {
+        waitUntil: "domcontentloaded",
+      });
+
+      // The heading + email-mode subhead.
+      await expect(
+        page.getByText(/check your email for the verification code/i),
+      ).toBeVisible({ timeout: 30_000 });
+
+      // 6 input slots since 8fa531d2 (email codes have 6 digits, like TOTP); the OTP
+      // component is a single input with maxLength=6.
+      const otpInput = page.locator('input[maxlength="6"]');
+      await expect(otpInput).toBeVisible();
+
+      // Resend button (mfa_type=2 only).
+      await expect(page.getByRole("button", { name: /resend code/i })).toBeVisible();
+    });
+
+    await test.step("[Positive] mfa_type=1 (TOTP) renders a 6-slot OTP and no resend button", async () => {
+      await page.goto("/oidc/mfa-check?mfa_id=mfa-id-2&mfa_type=1", {
+        waitUntil: "domcontentloaded",
+      });
+
+      await expect(
+        page.getByText(/open your authenticator app/i),
+      ).toBeVisible({ timeout: 30_000 });
+
+      const otpInput = page.locator('input[maxlength="6"]');
+      await expect(otpInput).toBeVisible();
+
+      // TOTP has no resend path — the resend button must be absent.
+      await expect(page.getByRole("button", { name: /resend code/i })).toHaveCount(0);
+    });
+
+    await test.step("[Negative] Server returns invalid_mfa_code → inline error + form resets", async () => {
+      await page.route("**/api/oidc/login", async (route: Route) => {
+        const body = JSON.parse(route.request().postData() || "{}");
+        // Only intercept MFA-stage requests, not regular signin requests.
+        if (!body.mfa_code) {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: "invalid_mfa_code",
+            error_description: "Invalid verification code. Please try again.",
+          }),
+        });
+      });
+
+      await page.goto("/oidc/mfa-check?mfa_id=mfa-id-3&mfa_type=2", {
+        waitUntil: "domcontentloaded",
+      });
+
+      await page.locator('input[maxlength="6"]').fill("123456");
+      await page.getByRole("button", { name: /^verify$/i }).click();
+
+      await expect(
+        page.getByText(/invalid verification code\. please try again\./i),
+      ).toBeVisible({ timeout: 15_000 });
+
+      await page.unroute("**/api/oidc/login").catch(() => {});
+    });
+
+    await test.step("[Negative] Server returns account_locked → locked-account message", async () => {
+      await page.route("**/api/oidc/login", async (route: Route) => {
+        const body = JSON.parse(route.request().postData() || "{}");
+        if (!body.mfa_code) {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "account_locked" }),
+        });
+      });
+
+      await page.goto("/oidc/mfa-check?mfa_id=mfa-id-4&mfa_type=2", {
+        waitUntil: "domcontentloaded",
+      });
+
+      await page.locator('input[maxlength="6"]').fill("123456");
+      await page.getByRole("button", { name: /^verify$/i }).click();
+
+      await expect(
+        page.getByText(
+          /your account is locked\. please contact support or reset your password\./i,
+        ),
+      ).toBeVisible({ timeout: 15_000 });
+
+      await page.unroute("**/api/oidc/login").catch(() => {});
+    });
+
+    await test.step("[Negative] Server returns invalid_mfa_session → expired notice + back to the same sign-in", async () => {
+      await page.route("**/api/oidc/login", async (route: Route) => {
+        const body = JSON.parse(route.request().postData() || "{}");
+        if (!body.mfa_code) {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: "invalid_mfa_session",
+            error_description: "Mfa login session is expired or invalid",
+          }),
+        });
+      });
+
+      // The flow of a construct app on its own tenant, with the app's own PKCE challenge.
+      await page.goto(
+        "/oidc/mfa-check?mfa_id=mfa-id-6&mfa_type=1&clientId=construct-client&tenant_id=construct-tenant" +
+          "&state=st&redirect_uri=https%3A%2F%2Fexample.com%2Fcb&code_challenge=rp-challenge&code_challenge_method=S256",
+        { waitUntil: "domcontentloaded" },
+      );
+
+      // The way back is there before anything goes wrong.
+      await expect(page.getByRole("link", { name: /^back to sign in$/i })).toBeVisible({ timeout: 30_000 });
+
+      await page.locator('input[maxlength="6"]').fill("123456");
+      await page.getByRole("button", { name: /^verify$/i }).click();
+
+      await expect(page.getByRole("heading", { name: /sign-in expired/i })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/your sign-in took too long/i)).toBeVisible();
+      await expect(page.locator('input[maxlength="6"]')).toHaveCount(0);
+
+      const back = page.getByRole("link", { name: /back to sign in/i });
+      const href = (await back.getAttribute("href")) ?? "";
+      const target = new URL(href, "http://x");
+      expect(target.pathname).toBe("/oidc/login");
+      expect(target.searchParams.get("clientId")).toBe("construct-client");
+      expect(target.searchParams.get("tenant_id")).toBe("construct-tenant");
+      expect(target.searchParams.get("code_challenge")).toBe("rp-challenge");
+      expect(target.searchParams.get("mfa_id")).toBeNull();
+
+      await back.click();
+      await page.waitForURL(/\/oidc\/login\?/, { timeout: 15_000 });
+
+      await page.unroute("**/api/oidc/login").catch(() => {});
+    });
+
+    await test.step("[Positive] Successful verification with redirect_uri navigates to it", async () => {
+      await page.route("**/api/oidc/login", async (route: Route) => {
+        const body = JSON.parse(route.request().postData() || "{}");
+        if (!body.mfa_code) {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            redirect_uri: "https://example.com/cb?code=abc",
+          }),
+        });
+      });
+
+      await page.goto("/oidc/mfa-check?mfa_id=mfa-id-5&mfa_type=2", {
+        waitUntil: "domcontentloaded",
+      });
+
+      await page.locator('input[maxlength="6"]').fill("123456");
+      await page.getByRole("button", { name: /^verify$/i }).click();
+
+      // The page uses window.location.href (full-page redirect), so the URL
+      // bar of the test browser reflects the redirect.
+      await page.waitForURL(/example\.com/, { timeout: 15_000 });
+
+      await page.unroute("**/api/oidc/login").catch(() => {});
+    });
+  });
+});
+
+test.describe("OIDC permission (consent) screen", () => {
+  test.beforeEach(async ({ context, page }) => {
+    await context.clearCookies();
+    await mockOidcUiConfig(page);
+  });
+
+  test("Permission — greeting, Allow/Deny buttons, userName from query string", async ({
+    page,
+  }) => {
+    await test.step("[Positive] Greeting + Allow + Deny buttons are present", async () => {
+      await page.goto("/oidc/permission?client_id=test&redirect_uri=https%3A%2F%2Fexample.com%2Fcb", {
+        waitUntil: "domcontentloaded",
+      });
+
+      await expect(page.getByRole("button", { name: /^allow$/i })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.getByRole("button", { name: /^deny$/i })).toBeVisible();
+      await expect(page.getByText(/about to connect your blocks account/i)).toBeVisible();
+    });
+
+    await test.step("[Positive] userName from query string renders below the greeting", async () => {
+      await page.goto(
+        "/oidc/permission?userName=Jane+Doe&client_id=test&redirect_uri=https%3A%2F%2Fexample.com%2Fcb",
+        { waitUntil: "domcontentloaded" },
+      );
+
+      await expect(page.getByText("Jane Doe")).toBeVisible({ timeout: 30_000 });
+    });
+  });
+});
+
+test.describe("OIDC error screen", () => {
+  test.beforeEach(async ({ context, page }) => {
+    await context.clearCookies();
+    await mockOidcUiConfig(page);
+  });
+
+  test("OIDC error — generic Access Blocked, Sign In Failed with error_description, Back to Sign In", async ({
+    page,
+  }) => {
+    await test.step("[Positive] Without query params, shows the generic 'Access Blocked' card", async () => {
+      await page.goto("/oidc/error", { waitUntil: "domcontentloaded" });
+
+      // The shell renders each heading word in its own span.
+      await expect(page.getByRole("heading", { name: /access\s*blocked/i })).toBeVisible({ timeout: 30_000 });
+      await expect(
+        page.getByText(/we couldn'?t sign you in at this time/i),
+      ).toBeVisible();
+      await expect(page.getByRole("link", { name: /back to sign in/i })).toBeVisible();
+    });
+
+    await test.step("[Positive] With error_description, shows the 'Sign In Failed' card with the message", async () => {
+      await page.goto(
+        "/oidc/error?error=signup_disabled_for_tenant&error_description=Signups+are+disabled+for+this+tenant",
+        { waitUntil: "domcontentloaded" },
+      );
+
+      await expect(page.getByRole("heading", { name: /sign\s*in\s*failed/i })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText(/signups are disabled for this tenant/i)).toBeVisible();
+
+      // Error code is humanized from snake_case.
+      await expect(page.getByText("Signup Disabled For Tenant")).toBeVisible();
+    });
+
+    await test.step("[Positive] An expired sign-in is explained in plain words", async () => {
+      await page.goto("/oidc/error?error=invalid_state&error_description=Invalid+or+expired+OIDC+state", {
+        waitUntil: "domcontentloaded",
+      });
+
+      await expect(page.getByRole("heading", { name: /sign-in\s*expired/i })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText(/invalid or expired oidc state/i)).toHaveCount(0);
+    });
+
+    await test.step("[Positive] 'Back to Sign In' with a client in the URL returns into /oidc/login", async () => {
+      await page.goto("/oidc/error?clientId=client-1&state=s1", { waitUntil: "domcontentloaded" });
+
+      const back = page.getByRole("link", { name: /back to sign in/i });
+      await expect(back).toBeVisible({ timeout: 30_000 });
+      await expect(back).toHaveAttribute("href", /^\/oidc\/login\?.*clientId=client-1/);
+    });
+
+    // With no application in the URL, a bare /oidc/login is a dead end, so the link goes to
+    // IAM's own login launcher instead (0472d5b5, "send /oidc/login with no application to IAM's own login").
+    await test.step("[Positive] 'Back to Sign In' without a client returns to IAM's own /login", async () => {
+      await page.goto("/oidc/error", { waitUntil: "domcontentloaded" });
+
+      const back = page.getByRole("link", { name: /back to sign in/i });
+      await expect(back).toBeVisible({ timeout: 30_000 });
+      await expect(back).toHaveAttribute("href", "/login");
+      await back.click();
+      await expect(page).toHaveURL((url) => url.pathname === "/login", { timeout: 15_000 });
+      await expect(page.getByRole("button", { name: /log in to your account/i })).toBeVisible({
+        timeout: 30_000,
+      });
+    });
+  });
+});

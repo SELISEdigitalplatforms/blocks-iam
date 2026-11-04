@@ -1,4 +1,4 @@
-using Authentication.DomainService.Entities;
+﻿using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -11,6 +11,7 @@ using Mfa.DomainService.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Iam.DomainService.Utilities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -21,16 +22,23 @@ namespace XUnitTest.Auth.OAuth
         private readonly Mock<IOtpService> _otpService = new();
         private readonly Mock<IAuthenticationRepository> _repo = new();
         private readonly Mock<IMfaAuditService> _audit = new();
+        private readonly Mock<IMfaManagementService> _mfaManagement = new();
 
         public MfaAuthorizationServiceTests()
         {
+            _mfaManagement.Setup(m => m.GetChallengeOwnerAsync("mfa-1")).ReturnsAsync("u1");
+            // A free MFA slot, given back when the code is right.
+            _repo.Setup(r => r.TryReserveMfaAttemptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync((string id, int _, DateTime _) => new User { ItemId = id, FailedMfaCount = 1 });
+            _repo.Setup(r => r.ReleaseMfaAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>())).ReturnsAsync(true);
             _otpFactory.Setup(f => f.GetOTPService(It.IsAny<UserMfaType>())).Returns(_otpService.Object);
             _audit.Setup(a => a.WriteAsync(It.IsAny<MfaAuditEvent>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         }
 
         private MfaAuthorizationService Create() =>
             new(NullLogger<MfaAuthorizationService>.Instance, _tokenManager.Object,
-                _otpFactory.Object, _repo.Object, _audit.Object);
+                _otpFactory.Object, _repo.Object, _audit.Object, _mfaManagement.Object,
+                new Authentication.DomainService.Authentication.MfaAttemptGate(_repo.Object));
 
         private static TokenRequest Request() => new()
         {
@@ -59,6 +67,7 @@ namespace XUnitTest.Auth.OAuth
         {
             _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
                 .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "missing" });
+            _mfaManagement.Setup(m => m.GetChallengeOwnerAsync("mfa-1")).ReturnsAsync("missing");
             _repo.Setup(r => r.GetUserByIdAsync("missing")).ReturnsAsync((User?)null!);
 
             var result = await Create().AuthenticateAsync(Request(), Config());
@@ -76,6 +85,7 @@ namespace XUnitTest.Auth.OAuth
             var victim = new User { ItemId = "victim", IsMfaVerified = true };
             _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
                 .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "attacker" });
+            _mfaManagement.Setup(m => m.GetChallengeOwnerAsync("mfa-1")).ReturnsAsync("attacker");
 
             var result = await Create().AuthenticateAsync(Request(), Config(), victim);
 
@@ -103,15 +113,44 @@ namespace XUnitTest.Auth.OAuth
         }
 
         [Fact]
-        public async Task Authenticate_ValidOtp_BlankSessionUserId_ReturnsInvalidRequest()
+        public async Task Authenticate_UnknownChallenge_IsRefused_AndNoCodeIsChecked()
         {
-            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
-                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = null });
+            _mfaManagement.Setup(m => m.GetChallengeOwnerAsync("mfa-1")).ReturnsAsync((string?)null);
 
             var result = await Create().AuthenticateAsync(Request(), Config());
 
-            result.Error.Should().Be("invalid_request");
-            result.StatusCode.Should().Be(400);
+            result.Error.Should().Be(OAuthError.MfaInvalidCode);
+            result.StatusCode.Should().Be(401);
+            _otpService.Verify(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Authenticate_ValidOtp_ForAnotherUserThanTheChallengeOwner_IsRefused()
+        {
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "someone-else" });
+
+            var result = await Create().AuthenticateAsync(Request(), Config());
+
+            result.StatusCode.Should().Be(401);
+            _tokenManager.Verify(m => m.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Authenticate_ParallelWrongCodes_GetNoMoreChecksThanTheThreshold()
+        {
+            // The real counting contract: a slot is taken before each check, none come back for a wrong code.
+            var taken = 0;
+            _repo.Setup(r => r.TryReserveMfaAttemptAsync("u1", 3, It.IsAny<DateTime>()))
+                .ReturnsAsync(() => Interlocked.Increment(ref taken) <= 3 ? new User { ItemId = "u1", FailedMfaCount = taken } : null);
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = false, UserId = "u1" });
+            var config = new IdentityConfiguration { GetNumberOfWrongAttemptsToLockTheAccount = 3 };
+
+            var results = await Task.WhenAll(Enumerable.Range(0, 50).Select(_ => Create().AuthenticateAsync(Request(), config)));
+
+            _otpService.Verify(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()), Times.Exactly(3));
+            results.Count(r => r.StatusCode == 423).Should().Be(47);
         }
 
         [Fact]
@@ -163,8 +202,6 @@ namespace XUnitTest.Auth.OAuth
         {
             _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
                 .ReturnsAsync(new OtpVerificationResponse { IsValid = false, UserId = "u1" });
-            _repo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
-                .ReturnsAsync(new User { ItemId = "u1", FailedMfaCount = 1 });
 
             var result = await Create().AuthenticateAsync(Request(), Config());
 
@@ -178,13 +215,101 @@ namespace XUnitTest.Auth.OAuth
         {
             _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
                 .ReturnsAsync(new OtpVerificationResponse { IsValid = false, UserId = "u1" });
-            _repo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+            _repo.Setup(r => r.TryReserveMfaAttemptAsync("u1", It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "u1", FailedMfaCount = 100 });
+            _repo.Setup(r => r.LockAccountIfMfaThresholdReachedAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
                 .ReturnsAsync(new User { ItemId = "u1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15) });
 
             var result = await Create().AuthenticateAsync(Request(), Config());
 
             result.Error.Should().Be(OAuthError.AccountLocked);
             result.StatusCode.Should().Be(423);
+        }
+
+        // ---- Real EmailOtpService behind the login mfa step (cache mocked) ----
+
+        private (MfaAuthorizationService Sut, MfaAuthenticationContext Context) CreateWithRealEmailOtp()
+        {
+            var cache = new Mock<Blocks.Genesis.ICacheClient>();
+            var context = MfaAuthenticationContext.Create("mfa-1", "u1", UserMfaType.Email);
+            context.MfaCode = "004217";
+            cache.Setup(c => c.KeyExistsAsync("mfa-1")).ReturnsAsync(true);
+            cache.Setup(c => c.GetStringValueAsync("mfa-1")).ReturnsAsync(context.Sterilize());
+            cache.Setup(c => c.RemoveKeyAsync("mfa-1")).ReturnsAsync(true);
+            var email = new global::Mfa.DomainService.OTP.Services.EmailOtpService(
+                cache.Object, new Mock<global::Mfa.DomainService.Configuration.IMfaConfigurationService>().Object, new Mock<Blocks.Genesis.IMessageClient>().Object);
+            _otpFactory.Setup(f => f.GetOTPService(UserMfaType.Email)).Returns(email);
+            return (Create(), context);
+        }
+
+        [Fact]
+        public async Task Authenticate_EmailOtp_WrongCode_IsCountedAgainstTheChallengeOwner()
+        {
+            var (sut, _) = CreateWithRealEmailOtp();
+            var request = Request();
+            request.Code = "000000";
+            var config = new IdentityConfiguration { GetNumberOfWrongAttemptsToLockTheAccount = 7, AccountLockDurationInMinutes = 9 };
+
+            var result = await sut.AuthenticateAsync(request, config);
+
+            result.StatusCode.Should().Be(401);
+            _repo.Verify(r => r.TryReserveMfaAttemptAsync("u1", 7, It.IsAny<DateTime>()), Times.Once);
+            _repo.Verify(r => r.ReleaseMfaAttemptAsync(It.IsAny<string>(), It.IsAny<DateTime>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData("4217")]
+        [InlineData("12345")]
+        public async Task Authenticate_EmailOtp_BypassInputs_AreCountedAndRefused(string code)
+        {
+            var (sut, _) = CreateWithRealEmailOtp();
+            var request = Request();
+            request.Code = code;
+
+            var result = await sut.AuthenticateAsync(request, Config());
+
+            result.StatusCode.Should().Be(401);
+            _tokenManager.Verify(t => t.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+            _repo.Verify(r => r.TryReserveMfaAttemptAsync("u1", It.IsAny<int>(), It.IsAny<DateTime>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Authenticate_EmailOtp_RepeatedWrongCodes_LockThenRightCodeIsAlsoRefused()
+        {
+            var (sut, context) = CreateWithRealEmailOtp();
+            var locked = new User { ItemId = "u1", IsMfaVerified = true };
+            var attempts = 0;
+            _repo.Setup(r => r.TryReserveMfaAttemptAsync("u1", It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(() =>
+                {
+                    if (locked.LockoutUntilUtc > DateTime.UtcNow) return null;
+                    attempts++;
+                    locked.FailedMfaCount = attempts;
+                    return locked;
+                });
+            _repo.Setup(r => r.LockAccountIfMfaThresholdReachedAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(() =>
+                {
+                    locked.LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15);
+                    return locked;
+                });
+            _repo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(() => locked);
+            var config = new IdentityConfiguration { GetNumberOfWrongAttemptsToLockTheAccount = 3 };
+
+            var wrong = Request();
+            wrong.Code = "000000";
+            (await sut.AuthenticateAsync(wrong, config)).StatusCode.Should().Be(401);
+            (await sut.AuthenticateAsync(wrong, config)).StatusCode.Should().Be(401);
+            (await sut.AuthenticateAsync(wrong, config)).StatusCode.Should().Be(423);
+
+            // Locked: the correct code gets the same 423, with and without a resolved user.
+            var right = Request();
+            right.Code = context.MfaCode;
+            (await sut.AuthenticateAsync(right, config, locked)).StatusCode.Should().Be(423);
+            (await sut.AuthenticateAsync(right, config)).StatusCode.Should().Be(423);
+            _tokenManager.Verify(t => t.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
         }
 
         [Fact]
@@ -351,8 +476,6 @@ namespace XUnitTest.Auth.OAuth
         {
             _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
                 .ReturnsAsync(new OtpVerificationResponse { IsValid = false, UserId = "u1" });
-            _repo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
-                .ReturnsAsync(new User { ItemId = "u1", FailedMfaCount = 1 });
 
             await Create().AuthenticateAsync(Request(), Config());
 

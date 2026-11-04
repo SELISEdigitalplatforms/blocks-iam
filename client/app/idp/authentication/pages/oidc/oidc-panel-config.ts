@@ -1,4 +1,7 @@
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
 import type { OidcPanelConfig, OidcServiceNode } from "./nodes-panel-oidc";
+
+const OIDC_LOGIN_PANEL_IDLE_BADGE = "OIDC_LOGIN_PANEL.IDLE_BADGE";
 
 /* ──────────────────────────────────────────────────────────────
    OIDC LOGIN — real service flow:
@@ -8,51 +11,50 @@ import type { OidcPanelConfig, OidcServiceNode } from "./nodes-panel-oidc";
      Browser is redirected back to the client application
    ────────────────────────────────────────────────────────────── */
 export const OIDC_LOGIN_PANEL: OidcPanelConfig = {
-  heading: "OIDC Authentication Pipeline",
-  subtext:
-    "Your credentials are verified against the Blocks IAM service. An authorization code is issued and your browser is redirected to the client application.",
+  get heading() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.HEADING"); },
+  get subtext() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.SUBTEXT"); },
 
-  idleBadge:       "Awaiting Input",
-  submittingBadge: "Verifying",
-  successBadge:    "Authenticated",
-  failedBadge:     "Rejected",
+  get idleBadge() { return tStatic("iam.oidc", OIDC_LOGIN_PANEL_IDLE_BADGE); },
+  get submittingBadge() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.SUBMITTING_BADGE"); },
+  get successBadge() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.SUCCESS_BADGE"); },
+  get failedBadge() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.FAILED_BADGE"); },
 
   idleNode: {
     icon:        "cursor",
-    title:       "Awaiting User Input",
-    description: "Enter your email and password to begin OIDC authentication.",
+    get title() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.IDLE_TITLE"); },
+    get description() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.IDLE_DESCRIPTION"); },
   },
 
   validatingNode: {
     icon:         "key",
     service:      "IAM Service",
-    title:        "Validating Credentials",
+    get title() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.VALIDATING_TITLE"); },
     activeLabel:  "POST /api/oidc/login …",
-    successLabel: "Credentials verified",
-    failLabel:    "Credentials rejected by IAM",
+    get successLabel() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.VALIDATING_SUCCESS"); },
+    get failLabel() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.VALIDATING_FAIL"); },
   },
 
   successNodes: [
     {
       icon:         "ticket",
       service:      "IAM Service",
-      title:        "Issuing Auth Code",
-      activeLabel:  "Generating authorization code (PKCE, S256)…",
-      successLabel: "Authorization code issued",
+      get title() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.NODE_1_TITLE"); },
+      get activeLabel() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.NODE_1_ACTIVE"); },
+      get successLabel() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.NODE_1_SUCCESS"); },
     },
     {
       icon:         "shield-check",
       service:      "OIDC Service",
-      title:        "Building Redirect URI",
-      activeLabel:  "Attaching code + state to redirect_uri…",
-      successLabel: "Redirect URI prepared",
+      get title() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.NODE_2_TITLE"); },
+      get activeLabel() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.NODE_2_ACTIVE"); },
+      get successLabel() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.NODE_2_SUCCESS"); },
     },
     {
       icon:         "external",
       service:      "Browser",
-      title:        "Redirecting to Client",
-      activeLabel:  "Sending browser to client application…",
-      successLabel: "Authorization code delivered",
+      get title() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.NODE_3_TITLE"); },
+      get activeLabel() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.NODE_3_ACTIVE"); },
+      get successLabel() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.NODE_3_SUCCESS"); },
     },
   ],
 
@@ -82,44 +84,43 @@ export const OIDC_LOGIN_PANEL: OidcPanelConfig = {
      Mail Service dispatches the activation email to the inbox
    ────────────────────────────────────────────────────────────── */
 export const SIGNUP_PANEL: OidcPanelConfig = {
-  heading: "Account Registration Pipeline",
-  subtext:
-    "Your email is validated against the Blocks IAM service. A new user record is provisioned and an activation link is dispatched to your inbox.",
+  get heading() { return tStatic("iam.oidc", "SIGNUP_PANEL.HEADING"); },
+  get subtext() { return tStatic("iam.oidc", "SIGNUP_PANEL.SUBTEXT"); },
 
-  idleBadge:       "Ready",
-  submittingBadge: "Registering",
-  successBadge:    "Account Created",
-  failedBadge:     "Registration Failed",
+  get idleBadge() { return tStatic("iam.oidc", "SIGNUP_PANEL.IDLE_BADGE"); },
+  get submittingBadge() { return tStatic("iam.oidc", "SIGNUP_PANEL.SUBMITTING_BADGE"); },
+  get successBadge() { return tStatic("iam.oidc", "SIGNUP_PANEL.SUCCESS_BADGE"); },
+  get failedBadge() { return tStatic("iam.oidc", "SIGNUP_PANEL.FAILED_BADGE"); },
 
   idleNode: {
     icon:        "cursor",
-    title:       "Awaiting Input",
-    description: "Enter your email address to create a Blocks account.",
+    get title() { return tStatic("iam.oidc", OIDC_LOGIN_PANEL_IDLE_BADGE); },
+    get description() { return tStatic("iam.oidc", "SIGNUP_PANEL.IDLE_DESCRIPTION"); },
   },
 
   validatingNode: {
     icon:         "shield-check",
     service:      "IAM Service",
-    title:        "Validating Email",
+    get title() { return tStatic("iam.oidc", "SIGNUP_PANEL.VALIDATING_TITLE"); },
     activeLabel:  "POST /api/account/signup …",
-    successLabel: "Email accepted",
-    failLabel:    "Registration rejected by IAM",
+    get successLabel() { return tStatic("iam.oidc", "SIGNUP_PANEL.VALIDATING_SUCCESS"); },
+    get failLabel() { return tStatic("iam.oidc", "SIGNUP_PANEL.VALIDATING_FAIL"); },
   },
 
   successNodes: [
     {
       icon:         "key",
       service:      "IAM Service",
-      title:        "Creating Account",
-      activeLabel:  "Provisioning user record…",
-      successLabel: "Account created successfully",
+      get title() { return tStatic("iam.oidc", "SIGNUP_PANEL.NODE_1_TITLE"); },
+      get activeLabel() { return tStatic("iam.oidc", "SIGNUP_PANEL.NODE_1_ACTIVE"); },
+      get successLabel() { return tStatic("iam.oidc", "SIGNUP_PANEL.NODE_1_SUCCESS"); },
     },
     {
       icon:         "external",
       service:      "Mail Service",
-      title:        "Sending Activation Email",
-      activeLabel:  "Dispatching verification link…",
-      successLabel: "Activation email sent",
+      get title() { return tStatic("iam.oidc", "SIGNUP_PANEL.NODE_2_TITLE"); },
+      get activeLabel() { return tStatic("iam.oidc", "SIGNUP_PANEL.NODE_2_ACTIVE"); },
+      get successLabel() { return tStatic("iam.oidc", "SIGNUP_PANEL.NODE_2_SUCCESS"); },
     },
   ],
 
@@ -147,44 +148,43 @@ export const SIGNUP_PANEL: OidcPanelConfig = {
      IAM revokes active session tokens (when logoutFromAllDevices is on)
    ────────────────────────────────────────────────────────────── */
 export const RESET_PASSWORD_PANEL: OidcPanelConfig = {
-  heading: "Password Reset Pipeline",
-  subtext:
-    "Your reset code is validated by the Blocks IAM service. The new password is applied and active sessions are revoked if requested.",
+  get heading() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.HEADING"); },
+  get subtext() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.SUBTEXT"); },
 
-  idleBadge:       "Awaiting Input",
-  submittingBadge: "Resetting",
-  successBadge:    "Password Updated",
-  failedBadge:     "Reset Failed",
+  get idleBadge() { return tStatic("iam.oidc", OIDC_LOGIN_PANEL_IDLE_BADGE); },
+  get submittingBadge() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.SUBMITTING_BADGE"); },
+  get successBadge() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.SUCCESS_BADGE"); },
+  get failedBadge() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.FAILED_BADGE"); },
 
   idleNode: {
     icon:        "cursor",
-    title:       "Awaiting Input",
-    description: "Enter and confirm your new password to begin the reset flow.",
+    get title() { return tStatic("iam.oidc", OIDC_LOGIN_PANEL_IDLE_BADGE); },
+    get description() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.IDLE_DESCRIPTION"); },
   },
 
   validatingNode: {
     icon:         "key",
     service:      "IAM Service",
-    title:        "Validating Reset Code",
+    get title() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.VALIDATING_TITLE"); },
     activeLabel:  "POST /api/account/reset-password …",
-    successLabel: "Reset code verified",
-    failLabel:    "Reset code rejected by IAM",
+    get successLabel() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.VALIDATING_SUCCESS"); },
+    get failLabel() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.VALIDATING_FAIL"); },
   },
 
   successNodes: [
     {
       icon:         "shield-check",
       service:      "IAM Service",
-      title:        "Updating Password",
-      activeLabel:  "Applying new password hash…",
-      successLabel: "Password updated successfully",
+      get title() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.NODE_1_TITLE"); },
+      get activeLabel() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.NODE_1_ACTIVE"); },
+      get successLabel() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.NODE_1_SUCCESS"); },
     },
     {
       icon:         "cookie",
       service:      "IAM Service",
-      title:        "Invalidating Sessions",
-      activeLabel:  "Revoking active session tokens…",
-      successLabel: "Sessions cleared",
+      get title() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.NODE_2_TITLE"); },
+      get activeLabel() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.NODE_2_ACTIVE"); },
+      get successLabel() { return tStatic("iam.oidc", "RESET_PASSWORD_PANEL.NODE_2_SUCCESS"); },
     },
   ],
 
@@ -208,42 +208,41 @@ export const RESET_PASSWORD_PANEL: OidcPanelConfig = {
 const SETTING_PASSWORD_NODE: OidcServiceNode = {
   icon:         "shield-check",
   service:      "IAM Service",
-  title:        "Setting Password",
-  activeLabel:  "Applying password hash to user record…",
-  successLabel: "Password set successfully",
+  get title() { return tStatic("iam.oidc", "SETTING_PASSWORD_NODE.TITLE"); },
+  get activeLabel() { return tStatic("iam.oidc", "SETTING_PASSWORD_NODE.ACTIVE"); },
+  get successLabel() { return tStatic("iam.oidc", "SETTING_PASSWORD_NODE.SUCCESS"); },
 };
 
 const ACTIVATING_ACCOUNT_NODE: OidcServiceNode = {
   icon:         "user-check",
   service:      "IAM Service",
-  title:        "Activating Account",
-  activeLabel:  "Marking account as active…",
-  successLabel: "Account activated",
+  get title() { return tStatic("iam.oidc", "ACTIVATING_ACCOUNT_NODE.TITLE"); },
+  get activeLabel() { return tStatic("iam.oidc", "ACTIVATING_ACCOUNT_NODE.ACTIVE"); },
+  get successLabel() { return tStatic("iam.oidc", "ACTIVATING_ACCOUNT_NODE.SUCCESS"); },
 };
 
 export const ACTIVATE_PANEL: OidcPanelConfig = {
-  heading: "Account Activation Pipeline",
-  subtext:
-    "Your activation code is validated by the Blocks IAM service. A new password is set and the account becomes ready to use.",
+  get heading() { return tStatic("iam.oidc", "ACTIVATE_PANEL.HEADING"); },
+  get subtext() { return tStatic("iam.oidc", "ACTIVATE_PANEL.SUBTEXT"); },
 
-  idleBadge:       "Awaiting Input",
-  submittingBadge: "Activating",
-  successBadge:    "Activated",
-  failedBadge:     "Activation Failed",
+  get idleBadge() { return tStatic("iam.oidc", OIDC_LOGIN_PANEL_IDLE_BADGE); },
+  get submittingBadge() { return tStatic("iam.oidc", "ACTIVATE_PANEL.SUBMITTING_BADGE"); },
+  get successBadge() { return tStatic("iam.oidc", "ACTIVATE_PANEL.SUCCESS_BADGE"); },
+  get failedBadge() { return tStatic("iam.oidc", "ACTIVATE_PANEL.FAILED_BADGE"); },
 
   idleNode: {
     icon:        "cursor",
-    title:       "Awaiting User Input",
-    description: "Set a password to begin the activation flow.",
+    get title() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.IDLE_TITLE"); },
+    get description() { return tStatic("iam.oidc", "ACTIVATE_PANEL.IDLE_DESCRIPTION"); },
   },
 
   validatingNode: {
     icon:         "key",
     service:      "IAM Service",
-    title:        "Validating Activation Code",
+    get title() { return tStatic("iam.oidc", "ACTIVATE_PANEL.VALIDATING_TITLE"); },
     activeLabel:  "POST /api/account/activate …",
-    successLabel: "Activation code verified",
-    failLabel:    "Activation code rejected by IAM",
+    get successLabel() { return tStatic("iam.oidc", "ACTIVATE_PANEL.VALIDATING_SUCCESS"); },
+    get failLabel() { return tStatic("iam.oidc", "ACTIVATE_PANEL.VALIDATING_FAIL"); },
   },
 
   successNodes: [SETTING_PASSWORD_NODE, ACTIVATING_ACCOUNT_NODE],
@@ -270,14 +269,22 @@ export const ACTIVATE_PANEL: OidcPanelConfig = {
  * off `collectPasswordOnActivation`: confirming the emailed link is the whole flow.
  */
 export const ACTIVATE_PANEL_WITHOUT_PASSWORD: OidcPanelConfig = {
-  ...ACTIVATE_PANEL,
-  subtext:
-    "Your activation code is validated by the Blocks IAM service. The account is confirmed and becomes ready to use.",
+  // Read through, never spread: a spread would freeze today's language into the copy.
+  get heading() { return ACTIVATE_PANEL.heading; },
+  get subtext() { return tStatic("iam.oidc", "ACTIVATE_PANEL_WITHOUT_PASSWORD.SUBTEXT"); },
+
+  get idleBadge() { return ACTIVATE_PANEL.idleBadge; },
+  get submittingBadge() { return ACTIVATE_PANEL.submittingBadge; },
+  get successBadge() { return ACTIVATE_PANEL.successBadge; },
+  get failedBadge() { return ACTIVATE_PANEL.failedBadge; },
 
   idleNode: {
-    ...ACTIVATE_PANEL.idleNode,
-    description: "Confirm your details to begin the activation flow.",
+    get icon() { return ACTIVATE_PANEL.idleNode.icon; },
+    get title() { return ACTIVATE_PANEL.idleNode.title; },
+    get description() { return tStatic("iam.oidc", "ACTIVATE_PANEL_WITHOUT_PASSWORD.IDLE_DESCRIPTION"); },
   },
+
+  validatingNode: ACTIVATE_PANEL.validatingNode,
 
   successNodes: [ACTIVATING_ACCOUNT_NODE],
 
@@ -294,3 +301,101 @@ export const ACTIVATE_PANEL_WITHOUT_PASSWORD: OidcPanelConfig = {
 /** Picks the activation panel copy that matches the tenant's password setting. */
 export const getActivatePanel = (collectPassword: boolean): OidcPanelConfig =>
   collectPassword ? ACTIVATE_PANEL : ACTIVATE_PANEL_WITHOUT_PASSWORD;
+
+
+/* ──────────────────────────────────────────────────────────────
+   JOIN (signup link) — context → redeem → authorize redirect
+   ────────────────────────────────────────────────────────────── */
+export const JOIN_PANEL: OidcPanelConfig = {
+  get heading() { return tStatic("iam.oidc", "JOIN_PANEL.HEADING"); },
+  get subtext() { return tStatic("iam.oidc", "JOIN_PANEL.SUBTEXT"); },
+
+  get idleBadge() { return tStatic("iam.oidc", "JOIN_PANEL.IDLE_BADGE"); },
+  get submittingBadge() { return tStatic("iam.oidc", "JOIN_PANEL.SUBMITTING_BADGE"); },
+  get successBadge() { return tStatic("iam.oidc", "JOIN_PANEL.SUCCESS_BADGE"); },
+  get failedBadge() { return tStatic("iam.oidc", "JOIN_PANEL.FAILED_BADGE"); },
+
+  idleNode: {
+    icon: "cursor",
+    get title() { return tStatic("iam.oidc", "JOIN_PANEL.IDLE_TITLE"); },
+    get description() { return tStatic("iam.oidc", "JOIN_PANEL.IDLE_DESCRIPTION"); },
+  },
+
+  validatingNode: {
+    icon: "key",
+    service: "IAM Service",
+    get title() { return tStatic("iam.oidc", "JOIN_PANEL.VALIDATING_TITLE"); },
+    activeLabel: "GET /api/iam/signup-links/context …",
+    get successLabel() { return tStatic("iam.oidc", "JOIN_PANEL.VALIDATING_SUCCESS"); },
+    get failLabel() { return tStatic("iam.oidc", "JOIN_PANEL.VALIDATING_FAIL"); },
+  },
+
+  successNodes: [
+    {
+      icon: "ticket",
+      service: "IAM Service",
+      get title() { return tStatic("iam.oidc", "JOIN_PANEL.NODE_1_TITLE"); },
+      activeLabel: "POST /api/iam/signup-links/redeem …",
+      get successLabel() { return tStatic("iam.oidc", "JOIN_PANEL.NODE_1_SUCCESS"); },
+    },
+    {
+      icon: "external",
+      service: "Browser",
+      get title() { return tStatic("iam.oidc", "JOIN_PANEL.NODE_2_TITLE"); },
+      get activeLabel() { return tStatic("iam.oidc", "JOIN_PANEL.NODE_2_ACTIVE"); },
+      get successLabel() { return tStatic("iam.oidc", "JOIN_PANEL.NODE_2_SUCCESS"); },
+    },
+  ],
+
+  terminalMessages: [
+    { text: "$ GET /api/iam/signup-links/context", color: "var(--accent2)" },
+    { text: "  > X-Signup-Link-Code: (header)", color: "var(--muted)" },
+    { text: "200 OK — link valid", color: "var(--success)" },
+    { text: "$ POST /api/iam/signup-links/redeem", color: "var(--fg)" },
+    { text: "  > restricted session cookie set", color: "var(--muted)" },
+    { text: "window.location → authorizeUrl", color: "var(--success)" },
+  ],
+
+  errorTerminalPrefix: [
+    { text: "$ GET /api/iam/signup-links/context", color: "var(--accent2)" },
+  ],
+};
+
+/* ──────────────────────────────────────────────────────────────
+   SIGN-IN ERROR — the provider sent the browser back, but IAM could
+   not finish the sign-in (expired, already used, or refused).
+   The page opens with this panel already in its failed state.
+   ────────────────────────────────────────────────────────────── */
+export const OIDC_ERROR_PANEL: OidcPanelConfig = {
+  get heading() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.HEADING"); },
+  get subtext() { return tStatic("iam.oidc", "OIDC_ERROR_PANEL.SUBTEXT"); },
+
+  get idleBadge() { return tStatic("iam.oidc", "OIDC_ERROR_PANEL.IDLE_BADGE"); },
+  get submittingBadge() { return tStatic("iam.oidc", "OIDC_ERROR_PANEL.SUBMITTING_BADGE"); },
+  get successBadge() { return tStatic("iam.oidc", "OIDC_LOGIN_PANEL.SUCCESS_BADGE"); },
+  get failedBadge() { return tStatic("iam.oidc", "OIDC_ERROR_PANEL.IDLE_BADGE"); },
+
+  idleNode: {
+    icon:        "shield-check",
+    get title() { return tStatic("iam.oidc", "OIDC_ERROR_PANEL.IDLE_TITLE"); },
+    get description() { return tStatic("iam.oidc", "OIDC_ERROR_PANEL.IDLE_DESCRIPTION"); },
+  },
+
+  validatingNode: {
+    icon:         "key",
+    service:      "IAM Service",
+    get title() { return tStatic("iam.oidc", "OIDC_ERROR_PANEL.VALIDATING_TITLE"); },
+    activeLabel:  "GET /api/oidc/callback …",
+    get successLabel() { return tStatic("iam.oidc", "OIDC_ERROR_PANEL.VALIDATING_SUCCESS"); },
+    get failLabel() { return tStatic("iam.oidc", "OIDC_ERROR_PANEL.VALIDATING_FAIL"); },
+  },
+
+  successNodes: [],
+
+  terminalMessages: [],
+
+  errorTerminalPrefix: [
+    { text: "$ GET /api/oidc/callback",  color: "var(--accent2)" },
+    { text: "  > state checked",          color: "var(--muted)"   },
+  ],
+};

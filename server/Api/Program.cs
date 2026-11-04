@@ -1,7 +1,11 @@
+using Api.Middleware;
+using Api.Security;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Text.Json.Serialization.Metadata;
 using SeliseBlocks.ConfigurationDriver;
 
 
@@ -38,6 +42,15 @@ var apiRoutePrefix = builder.Configuration["ApiRouting:Prefix"];
 
 services.AddHealthChecks();
 
+// A system schema's validation rules refusing a save: 400 with the failed properties.
+services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options => options.Filters.Add<DataValidationExceptionFilter>());
+
+// No response ever carries a client secret or private key of the client/IdP entities.
+services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(options =>
+    options.JsonSerializerOptions.TypeInfoResolver =
+        (options.JsonSerializerOptions.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver())
+            .WithAddedModifier(SecretFieldsJsonModifier.Apply));
+
 ApplicationConfigurations.ConfigureApi(
     services,
     serviceName: serviceName,
@@ -50,11 +63,24 @@ ApplyFrontendRuntimeSettings(builder.Configuration, wwwrootPath);
 
 services.RegisterAllServices();
 
+// Built before the host so an invalid ForwardedHeaders:KnownNetworks entry fails startup.
+var forwardedHeadersOptions = Blocks.Api.ForwardedHeadersSetup.BuildOptions(builder.Configuration);
 
 var app = builder.Build();
 
+// Forwarded headers run before every other middleware so that each later reader of
+// Connection.RemoteIpAddress (sessions, refresh tokens, audits) sees the client address
+// supplied by a trusted gateway. Not registered at all when no network is configured.
+Blocks.Api.ForwardedHeadersSetup.Apply(app, forwardedHeadersOptions);
+
 // Configure DomainResolver with IHttpContextAccessor instance
 DomainResolver.Configure(app.Services.GetRequiredService<IHttpContextAccessor>());
+
+// Browser-facing security headers first so even short-circuit 404s carry HSTS/CSP.
+// The CSP origins come from configuration (FrontendRuntime + Csp:Extra*), not from a
+// compiled-in host list -- see Api.Security.ContentSecurityPolicy.
+var contentSecurityPolicy = ContentSecurityPolicy.Build(app.Configuration);
+app.UseMiddleware<SecurityHeadersMiddleware>(contentSecurityPolicy, StyleNonce.CreateWithRandomKey());
 
 // Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
 var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);
@@ -62,18 +88,57 @@ ApplicationConfigurations.ConfigureMiddleware(
     app,
     tenantValidationPrefixes: new[] { normalizedApiRoutePrefix });
 
+// The SPA shell carries the response's style nonce (meta[name=csp-nonce]), so it is rendered
+// rather than sent verbatim. Read after ApplyFrontendRuntimeSettings filled the runtime
+// placeholders.
+var indexHtml = Path.Combine(app.Environment.WebRootPath ?? "", "index.html");
+var indexHtmlTemplate = File.Exists(indexHtml) ? await File.ReadAllTextAsync(indexHtml) : null;
+
+if (indexHtmlTemplate is not null)
+{
+    // "/" and "/index.html" would otherwise be served verbatim by the static file
+    // middleware, with the nonce placeholder still in them.
+    app.Use(async (context, next) =>
+    {
+        var path = context.Request.Path.Value;
+        if ((HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+            && (path is "/" or "" || string.Equals(path, "/index.html", StringComparison.OrdinalIgnoreCase)))
+        {
+            await WriteSpaShell(context, indexHtmlTemplate);
+            return;
+        }
+
+        await next();
+    });
+}
+
 // THEN serve static files
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// Finally, fallback to index.html for React SPA routing (non-API routes)
-var indexHtml = Path.Combine(app.Environment.WebRootPath ?? "", "index.html");
-if (File.Exists(indexHtml))
+// Finally, fallback to index.html for React SPA routing (non-API, non-file routes)
+if (indexHtmlTemplate is not null)
 {
-    app.MapFallbackToFile("/index.html");
+    app.MapFallback(context => WriteSpaShell(context, indexHtmlTemplate));
 }
 
 await app.RunAsync();
+
+static async Task WriteSpaShell(HttpContext context, string indexHtmlTemplate)
+{
+    // Same methods the static file fallback answered before; anything else is not a page.
+    if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    var nonce = (string)context.Items[SecurityHeadersMiddleware.StyleNonceItemKey]!;
+    context.Response.ContentType = "text/html; charset=utf-8";
+    // The shell is a page, never a cookie-issuing auth response, so it is not cached on any path.
+    SecurityHeadersMiddleware.DisableCaching(context.Response.Headers);
+    await context.Response.WriteAsync(ContentSecurityPolicy.RenderIndex(indexHtmlTemplate, nonce));
+}
 
 static void ApplyFrontendRuntimeSettings(IConfiguration configuration, string webRootPath)
 {
@@ -162,4 +227,95 @@ static string ResolveRequiredServiceName(IConfiguration configuration)
     }
 
     return serviceName;
+}
+
+namespace Blocks.Api
+{
+    // Builds the forwarded-header trust configuration from ForwardedHeaders:KnownNetworks and
+    // ForwardedHeaders:ForwardLimit. Only X-Forwarded-For is processed (scheme and host are left
+    // unchanged), and only connections from the configured CIDR networks are trusted.
+    // (Plain comments: XML docs here would change the tracked, generated Api.xml.)
+    public static class ForwardedHeadersSetup
+    {
+        public const string KnownNetworksKey = "ForwardedHeaders:KnownNetworks";
+        public const string ForwardLimitKey = "ForwardedHeaders:ForwardLimit";
+        public const int MaxForwardLimit = 10;
+
+        // Returns null when no network is configured: the middleware must then not be registered,
+        // because with empty KnownProxies/KnownIPNetworks it would trust every source.
+        public static ForwardedHeadersOptions? BuildOptions(IConfiguration configuration)
+        {
+            var section = configuration.GetSection(KnownNetworksKey);
+            var networks = section.Get<string[]>();
+            if (networks is null || networks.Length == 0)
+            {
+                // A scalar value (e.g. ForwardedHeaders__KnownNetworks=10.0.0.0/24) binds to no array
+                // entries; failing here beats silently leaving the middleware unregistered.
+                if (!string.IsNullOrWhiteSpace(section.Value))
+                {
+                    throw new InvalidOperationException(
+                        $"{KnownNetworksKey} is set to a single value '{section.Value}'; configure it as indexed entries " +
+                        "instead (e.g. ForwardedHeaders__KnownNetworks__0=<cidr>).");
+                }
+
+
+                return null;
+            }
+
+            var options = new ForwardedHeadersOptions
+            {
+                ForwardedHeaders = ForwardedHeaders.XForwardedFor,
+                ForwardLimit = ReadForwardLimit(configuration),
+            };
+            options.KnownProxies.Clear();
+            options.KnownIPNetworks.Clear();
+
+            foreach (var entry in networks)
+            {
+                if (string.IsNullOrWhiteSpace(entry) || !System.Net.IPNetwork.TryParse(entry.Trim(), out var network))
+                {
+                    throw new InvalidOperationException(
+                        $"{KnownNetworksKey} entry '{entry}' is not a valid CIDR network.");
+                }
+
+                options.KnownIPNetworks.Add(network);
+            }
+
+            return options;
+        }
+
+        // How many X-Forwarded-For entries the middleware may walk back through, right to left.
+        // 1 (the default) takes only the entry the gateway appended. A request that crossed more
+        // trusted hops (a bridge proxy re-sending to the public API URL adds the gateway, the cluster's
+        // outbound address and possibly a CDN edge) needs one entry per hop to reach the client. The
+        // walk stops at the first address outside KnownNetworks, so entries a client wrote itself to
+        // the left of its own address are never used.
+        private static int ReadForwardLimit(IConfiguration configuration)
+        {
+            var raw = configuration[ForwardLimitKey];
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return 1;
+            }
+
+            if (!int.TryParse(raw.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var limit)
+                || limit < 1 || limit > MaxForwardLimit)
+            {
+                throw new InvalidOperationException(
+                    $"{ForwardLimitKey} '{raw}' must be a whole number from 1 to {MaxForwardLimit}.");
+            }
+
+            return limit;
+        }
+
+        public static void Apply(IApplicationBuilder app, ForwardedHeadersOptions? options)
+        {
+            if (options is null)
+            {
+                return;
+            }
+
+            app.UseForwardedHeaders(options);
+        }
+    }
 }

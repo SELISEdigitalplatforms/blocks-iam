@@ -1,3 +1,4 @@
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
@@ -9,6 +10,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -20,16 +22,23 @@ namespace XUnitTest.Auth.OAuth
     /// </summary>
     public class PasswordAuthenticationServiceInvariantTests
     {
-        private static PasswordAuthenticationService CreateService() =>
-            new(
+        private static PasswordAuthenticationService CreateService()
+        {
+            var repository = new Mock<IAuthenticationRepository>().Object;
+            return new(
                 NullLogger<PasswordAuthenticationService>.Instance,
                 new Mock<IOAuthJwtAccessTokenManager>().Object,
-                new Mock<ITenants>().Object,
                 new Mock<ICryptoService>().Object,
-                new Mock<IAuthenticationRepository>().Object,
-                new Mock<IAuthenticationDomainService>().Object,
-                new Mock<IAccountService>().Object,
-                new Mock<IUserActivityDispatcher>().Object);
+                repository,
+                new PasswordCredentialVerifier(
+                    NullLogger<PasswordCredentialVerifier>.Instance,
+                    new Mock<ITenants>().Object,
+                    repository,
+                    new Mock<IAccountService>().Object,
+                    new Mock<IUserActivityDispatcher>().Object,
+                    new Mock<IAuthenticationDomainService>().Object),
+                XUnitTest.TestSupport.UnknownLoginGuardStub.Create().Object);
+        }
 
         private static TokenRequest BuildRequest() => new()
         {

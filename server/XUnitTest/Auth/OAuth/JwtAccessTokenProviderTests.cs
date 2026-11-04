@@ -12,6 +12,7 @@ using Moq;
 using StackExchange.Redis;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Utilities;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -155,8 +156,8 @@ namespace XUnitTest.Auth.OAuth
         {
             var token = Sut().MapJwtAccessToken(
                 Config(), MakeTenant(), MakeUser(), GenerateCertificate(),
-                new ResolvedAuthorizationClaims { Roles = { "admin" } },
-                new TokenRequest { OrganizationId = "org1" }, Scope("org1"));
+                new TokenClaimSet(new ResolvedAuthorizationClaims { Roles = { "admin" } }, Scope("org1")),
+                new TokenRequest { OrganizationId = "org1" });
 
             token.Issuer.Should().Be("https://issuer");
             token.AccessTokenValidForNumberMinute.Should().Be(10);
@@ -164,14 +165,91 @@ namespace XUnitTest.Auth.OAuth
             token.SigningCredentials.Should().NotBeNull();
         }
 
+        private static Tenant TenantWithAudience()
+        {
+            var tenant = MakeTenant();
+            tenant.JwtTokenParameters.Audiences = ["app.example.com"];
+            return tenant;
+        }
+
+        [Fact]
+        public void MapJwtAccessToken_LinkAuthentication_UsesTheTenantAudience()
+        {
+            // A link token used to get aud = the link's client, which every Blocks API then
+            // rejected -- including the iam/me call a construct makes to establish its session.
+            // The audience is the tenant's, exactly as for a password login.
+            var token = Sut().MapJwtAccessToken(
+                Config(), TenantWithAudience(), MakeUser(), GenerateCertificate(),
+                new TokenClaimSet(new ResolvedAuthorizationClaims { Roles = { "admin", "manager" } }, Scope("org1")),
+                new TokenRequest
+                {
+                    OrganizationId = "org1",
+                    IsLinkAuthentication = true,
+                    ClientId = "partner-web",
+                    RestrictedRoles = ["manager"]
+                });
+
+            token.Audience.Should().Be("app.example.com");
+            token.Audience.Should().NotBe("partner-web");
+        }
+
+        [Fact]
+        public void MapJwtAccessToken_LinkAuthentication_StillIntersectsRoles()
+        {
+            // The restriction that actually bounds a link token, and the reason dropping the
+            // audience narrowing costs nothing: authority comes from here, not from aud.
+            var token = Sut().MapJwtAccessToken(
+                Config(), TenantWithAudience(), MakeUser(), GenerateCertificate(),
+                new TokenClaimSet(new ResolvedAuthorizationClaims { Roles = { "admin", "manager" } }, Scope("org1")),
+                new TokenRequest
+                {
+                    OrganizationId = "org1",
+                    IsLinkAuthentication = true,
+                    ClientId = "partner-web",
+                    RestrictedRoles = ["manager"]
+                });
+
+            token.Claims.Should().Contain(c => c.Type == BlocksContext.ROLES_CLAIM && c.Value == "manager");
+            token.Claims.Should().NotContain(c => c.Type == BlocksContext.ROLES_CLAIM && c.Value == "admin");
+            token.Claims.Should().Contain(c => c.Type == "amr" && c.Value == "link");
+        }
+
+        [Fact]
+        public void MapJwtAccessToken_OrdinaryLogin_UsesTheTenantAudience()
+        {
+            var token = Sut().MapJwtAccessToken(
+                Config(), TenantWithAudience(), MakeUser(), GenerateCertificate(),
+                new TokenClaimSet(new ResolvedAuthorizationClaims { Roles = { "admin" } }, Scope("org1")),
+                new TokenRequest { OrganizationId = "org1", ClientId = "partner-web" });
+
+            token.Audience.Should().Be("app.example.com");
+        }
+
+        [Theory]
+        [InlineData("switch_organization")]
+        [InlineData("refresh_token")]
+        public void MapJwtAccessToken_RotationCarryingTheLineageClient_StillUsesTheTenantAudience(string grantType)
+        {
+            // blocks-iam#624 C12: switch-org and /auth/refresh now name the lineage client and leave the
+            // request Audience unset; the minted aud is still DomainResolver.GetAudience(tenant).
+            var tenant = TenantWithAudience();
+            var token = Sut().MapJwtAccessToken(
+                Config(), tenant, MakeUser(), GenerateCertificate(),
+                new TokenClaimSet(new ResolvedAuthorizationClaims { Roles = { "admin" } }, Scope("org1")),
+                new TokenRequest { GrantType = grantType, OrganizationId = "org1", ClientId = "client-1", Audience = null });
+
+            token.Audience.Should().Be(Authentication.DomainService.Utilities.DomainResolver.GetAudience(tenant));
+            token.Audience.Should().Be("app.example.com");
+        }
+
         [Fact]
         public async Task GetOrRetrieveCertAsync_CacheMiss_FetchesFromProviderAndCaches()
         {
             var pfx = GenerateCertificate();
-            _cacheDb.Setup(d => d.StringGet(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).Returns(RedisValue.Null);
+            _cacheDb.Setup(d => d.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).ReturnsAsync(RedisValue.Null);
             _certificateProvider.Setup(p => p.GetCertificateAsync(It.IsAny<string>())).ReturnsAsync(pfx);
 
-            var result = await Sut().GetOrRetrieveCertAsync(MakeTenant());
+            var result = await Sut().GetOrRetrieveCertAsync("cache-key", MakeTenant());
 
             result.Should().NotBeNull();
             result!.Length.Should().Be(pfx.Length);
@@ -182,9 +260,9 @@ namespace XUnitTest.Auth.OAuth
         public async Task GetOrRetrieveCertAsync_CacheHit_ReturnsCachedWithoutProvider()
         {
             var pfx = GenerateCertificate();
-            _cacheDb.Setup(d => d.StringGet(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).Returns(pfx);
+            _cacheDb.Setup(d => d.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).ReturnsAsync(pfx);
 
-            var result = await Sut().GetOrRetrieveCertAsync(MakeTenant());
+            var result = await Sut().GetOrRetrieveCertAsync("cache-key", MakeTenant());
 
             result.Should().NotBeNull();
             _certificateProvider.Verify(p => p.GetCertificateAsync(It.IsAny<string>()), Times.Never);
@@ -193,7 +271,7 @@ namespace XUnitTest.Auth.OAuth
         [Fact]
         public async Task GetJwtAccessToken_NullCertificate_ReturnsEmptyToken()
         {
-            _cacheDb.Setup(d => d.StringGet(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).Returns(RedisValue.Null);
+            _cacheDb.Setup(d => d.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).ReturnsAsync(RedisValue.Null);
             _certificateProvider.Setup(p => p.GetCertificateAsync(It.IsAny<string>())).ReturnsAsync((byte[])null!);
 
             var token = await Sut().GetJwtAccessToken(Config(), MakeTenant(), MakeUser(), new TokenRequest());
@@ -207,7 +285,7 @@ namespace XUnitTest.Auth.OAuth
         public async Task GetJwtAccessToken_WithCertificate_ResolvesClaimsAndMapsToken()
         {
             var pfx = GenerateCertificate();
-            _cacheDb.Setup(d => d.StringGet(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).Returns(pfx);
+            _cacheDb.Setup(d => d.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).ReturnsAsync(pfx);
             _claimsResolver.Setup(r => r.ResolveAsync(It.IsAny<User>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>()))
                 .ReturnsAsync(new ResolvedAuthorizationClaims { Roles = { "admin" } });
 
@@ -215,6 +293,69 @@ namespace XUnitTest.Auth.OAuth
 
             token.Issuer.Should().Be("https://issuer");
             token.Claims.Should().Contain(c => c.Type == BlocksContext.ROLES_CLAIM && c.Value == "admin");
+        }
+
+        [Theory] // switch-org into "default" on a multi-org project, by a user who holds it
+        [InlineData(true, "default")]
+        [InlineData(false, "org1")]
+        public async Task GetJwtAccessToken_SwitchToDefault_MintsDefaultOnlyForAUserWhoHoldsIt(bool holdsDefault, string expectedOrganization)
+        {
+            _cacheDb.Setup(d => d.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).ReturnsAsync(GenerateCertificate());
+            _resourceRepository.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new Iam.DomainService.Shared.Entities.IamTenantConfiguration { IsMultiOrgEnabled = true });
+            _claimsResolver.Setup(r => r.ResolveAsync(It.IsAny<User>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>()))
+                .ReturnsAsync(new ResolvedAuthorizationClaims());
+
+            // The session is in org1 and org1 is remembered, so only the request can produce "default".
+            var user = MakeUser();
+            user.LastUsedOrganizationId = "org1";
+            if (holdsDefault) user.OrganizationIds.Add(IdpConstants.DefaultOrganizationId);
+
+            var token = await Sut().GetJwtAccessToken(Config(), MakeTenant(), user,
+                new TokenRequest { GrantType = GrantTypes.SwitchOrganization, OrganizationId = IdpConstants.DefaultOrganizationId });
+
+            token.Claims.Should().ContainSingle(c => c.Type == BlocksContext.ORGANIZATION_ID_CLAIM)
+                .Which.Value.Should().Be(expectedOrganization);
+            // Roles and permissions are read from the same organization the claim names.
+            _claimsResolver.Verify(r => r.ResolveAsync(user, expectedOrganization, It.IsAny<string?>(), It.IsAny<bool>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetJwtAccessToken_ParallelTenantsOnOneInstance_EachTokenIsSignedWithItsOwnTenantsCertificate()
+        {
+            // The provider is a singleton. The certificate key used to live in an instance field,
+            // so a concurrent mint for another tenant could overwrite it across the awaits below.
+            var pfxByKey = new Dictionary<string, byte[]> { ["key-A"] = GenerateCertificate(), ["key-B"] = GenerateCertificate() };
+            _cryptoService.Setup(c => c.Hash(It.IsAny<byte[]>(), It.IsAny<bool>()))
+                .Returns((byte[] bytes, bool _) => System.Text.Encoding.UTF8.GetString(bytes).StartsWith("tenant-A") ? "key-A" : "key-B");
+            _cacheDb.Setup(d => d.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).ReturnsAsync(RedisValue.Null);
+            _certificateProvider.Setup(p => p.GetCertificateAsync(It.IsAny<string>()))
+                .Returns(async (string key) => { await Task.Delay(Random.Shared.Next(1, 10)); return pfxByKey[key]; });
+            _claimsResolver.Setup(r => r.ResolveAsync(It.IsAny<User>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>()))
+                .ReturnsAsync(new ResolvedAuthorizationClaims());
+
+            var sut = Sut();
+            Tenant TenantFor(string id) { var t = MakeTenant(); t.TenantId = id; t.ItemId = id; return t; }
+            var jobs = Enumerable.Range(0, 40).Select(i => i % 2 == 0 ? "tenant-A" : "tenant-B")
+                .Select(async id => (id, token: await sut.GetJwtAccessToken(Config(), TenantFor(id), MakeUser(), new TokenRequest())));
+            var results = await Task.WhenAll(jobs);
+
+            foreach (var (id, token) in results)
+            {
+                using var expected = X509CertificateLoader.LoadPkcs12(pfxByKey[id == "tenant-A" ? "key-A" : "key-B"], CertPassword);
+                var signingKey = (Microsoft.IdentityModel.Tokens.RsaSecurityKey)token.SigningCredentials.Key;
+                signingKey.Rsa.ExportParameters(false).Modulus.Should().Equal(expected.GetRSAPublicKey()!.ExportParameters(false).Modulus);
+            }
+
+            // Every certificate written to the cache sits under its own tenant's key, so a later
+            // cache hit cannot hand one tenant another tenant's certificate.
+            var cacheWrites = _cacheDb.Invocations.Where(i => i.Method.Name == nameof(IDatabase.StringSetAsync)).ToList();
+            cacheWrites.Should().NotBeEmpty();
+            foreach (var write in cacheWrites)
+            {
+                var key = ((RedisKey)write.Arguments[0]).ToString();
+                ((byte[])(RedisValue)write.Arguments[1]!).Should().Equal(pfxByKey[key]);
+            }
         }
     }
 }

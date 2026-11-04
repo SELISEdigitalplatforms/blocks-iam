@@ -1,6 +1,7 @@
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using System.Text.Json;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth.Services
 {
@@ -33,13 +35,38 @@ namespace Authentication.DomainService.OAuth.Services
     /// 7.1: clock window, nonce replay, signature, then -- and only then -- the grant lookup.
     /// A bad signature performs no Redis read at all.
     /// </para>
+    /// <para>
+    /// A grant names either a user or, for a <c>client_credentials</c> caller, a client. A client
+    /// grant has no version material; instead the client is re-read and must still be active, and
+    /// the token is minted with the client's current roles and permissions.
+    /// </para>
     /// </summary>
     public sealed class TokenExchangeAuthorizationService : ITokenService
     {
+        private const string ErrorServerError = "server_error";
+        private const string ErrorInvalidRequest = "invalid_request";
+        private const string ErrorInvalidGrant = "invalid_grant";
+
+        /// <summary>
+        /// IAM's read model of the grant record. Mirrors <see cref="DelegationGrantRecord"/> plus
+        /// <c>ClientId</c>, which the referenced Genesis package may predate. Same PascalCase wire names.
+        /// </summary>
+        private sealed record StoredGrant(
+            string? TenantId,
+            string? UserId,
+            string? OrganizationId,
+            string? TokenVersion,
+            string? SecurityStamp,
+            string? ClientId,
+            string? ImpersonationSessionId,
+            string? OriginalTenantId);
+
         private readonly ITenants _tenants;
         private readonly ICacheClient _cacheClient;
         private readonly IUserRepository _userRepository;
         private readonly IJwtAccessTokenProvider _jwtAccessTokenProvider;
+        private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IClientAccessTokenIssuer _clientAccessTokenIssuer;
         private readonly ILogger<TokenExchangeAuthorizationService> _logger;
 
         public TokenExchangeAuthorizationService(
@@ -47,12 +74,16 @@ namespace Authentication.DomainService.OAuth.Services
             ICacheClient cacheClient,
             IUserRepository userRepository,
             IJwtAccessTokenProvider jwtAccessTokenProvider,
+            IAuthenticationRepository authenticationRepository,
+            IClientAccessTokenIssuer clientAccessTokenIssuer,
             ILogger<TokenExchangeAuthorizationService> logger)
         {
             _tenants = tenants;
             _cacheClient = cacheClient;
             _userRepository = userRepository;
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
+            _authenticationRepository = authenticationRepository;
+            _clientAccessTokenIssuer = clientAccessTokenIssuer;
             _logger = logger;
         }
 
@@ -63,57 +94,105 @@ namespace Authentication.DomainService.OAuth.Services
         {
             if (authenticationConfiguration == null)
             {
-                return Failure("server_error", "Authentication configuration missing", StatusCodes.Status500InternalServerError);
+                return Failure(ErrorServerError, "Authentication configuration missing", StatusCodes.Status500InternalServerError);
             }
 
             var exchange = request?.TokenExchange;
             if (exchange == null)
             {
-                return Failure("invalid_request", "Missing token exchange parameters");
+                return Failure(ErrorInvalidRequest, "Missing token exchange parameters");
             }
 
+            var envelopeError = ValidateExchangeEnvelope(exchange);
+            if (envelopeError != null)
+            {
+                return envelopeError;
+            }
+
+            var (preError, tenantContext) = await ValidateTenantNonceAndSignatureAsync(exchange).ConfigureAwait(false);
+            if (preError != null)
+            {
+                return preError;
+            }
+
+            var tenantId = tenantContext!.TenantId;
+
+            var (grantError, record) = await LoadAndCheckGrantAsync(exchange, tenantId).ConfigureAwait(false);
+            if (grantError != null)
+            {
+                return grantError;
+            }
+
+            if (!string.IsNullOrWhiteSpace(record!.ClientId))
+            {
+                return await RedeemClientGrantAsync(record, tenantId, authenticationConfiguration).ConfigureAwait(false);
+            }
+
+            if (!string.IsNullOrWhiteSpace(record.ImpersonationSessionId))
+            {
+                return await RedeemImpersonatedGrantAsync(record, tenantId, authenticationConfiguration, request).ConfigureAwait(false);
+            }
+
+            return await RedeemUserGrantAsync(record, tenantId, tenantContext.Tenant, authenticationConfiguration, request).ConfigureAwait(false);
+        }
+
+        private sealed record ExchangeTenantContext(string TenantId, Tenant Tenant);
+
+        private static TokenResponse? ValidateExchangeEnvelope(TokenExchangeRequest exchange)
+        {
             if (!string.Equals(exchange.SubjectTokenType, DelegationConstants.DelegationGrantTokenType, StringComparison.Ordinal))
             {
-                return Failure("invalid_request", "Unsupported subject_token_type");
+                return Failure(ErrorInvalidRequest, "Unsupported subject_token_type");
             }
 
             if (!DelegationPolicy.IsWellFormedGrantId(exchange.SubjectToken))
             {
                 // Rejected before any Redis access, so a caller cannot use this endpoint to probe keys.
-                return Failure("invalid_grant", "Malformed subject_token");
+                return Failure(ErrorInvalidGrant, "Malformed subject_token");
             }
 
+            return null;
+        }
+
+        private async Task<(TokenResponse? Error, ExchangeTenantContext? Context)> ValidateTenantNonceAndSignatureAsync(TokenExchangeRequest exchange)
+        {
             // ---- 1. tenant: from BlocksContext only. On this anonymous endpoint it carries the
             //         tenant and nothing else -- there is no authenticated user here.
             var tenantId = BlocksContext.GetContext()?.TenantId;
             if (string.IsNullOrWhiteSpace(tenantId))
             {
-                return Failure("invalid_client", "Tenant could not be resolved", StatusCodes.Status401Unauthorized);
+                return (Failure("invalid_client", "Tenant could not be resolved", StatusCodes.Status401Unauthorized), null);
             }
 
             // ---- 2. salt
             var tenant = _tenants.GetTenantByID(tenantId!);
             if (tenant == null || string.IsNullOrWhiteSpace(tenant.TenantSalt))
             {
-                return Failure("invalid_client", "Tenant could not be resolved", StatusCodes.Status401Unauthorized);
+                return (Failure("invalid_client", "Tenant could not be resolved", StatusCodes.Status401Unauthorized), null);
             }
 
             // ---- 3. clock window
             if (!TryParseTimestamp(exchange.Ts, out var ts) || !IsInsideClockWindow(ts))
             {
                 // A hard failure here usually means NTP drift on a worker or an IAM node.
-                return Failure("invalid_request", "Timestamp outside the accepted window");
+                return (Failure(ErrorInvalidRequest, "Timestamp outside the accepted window"), null);
             }
 
             if (string.IsNullOrWhiteSpace(exchange.Nonce))
             {
-                return Failure("invalid_request", "Missing nonce");
+                return (Failure(ErrorInvalidRequest, "Missing nonce"), null);
             }
 
             // ---- 4. nonce replay: SETNX. A nonce that already exists is a replay.
-            if (!await TryClaimNonceAsync(exchange.SubjectToken!, exchange.Nonce!).ConfigureAwait(false))
+            //         A store failure still fails closed with the same status and error code (callers see
+            //         no contract change); only the description differs, so a store outage is not read as
+            //         a replay when debugging. Event 8004 carries the exception.
+            switch (await TryClaimNonceAsync(exchange.SubjectToken!, exchange.Nonce!).ConfigureAwait(false))
             {
-                return Failure("invalid_request", "Nonce replay detected");
+                case NonceClaim.Replay:
+                    return (Failure(ErrorInvalidRequest, "Nonce replay detected"), null);
+                case NonceClaim.Unavailable:
+                    return (Failure(ErrorInvalidRequest, "Nonce check unavailable"), null);
             }
 
             // ---- 5. signature, constant-time. No Redis *read* has happened yet.
@@ -124,57 +203,75 @@ namespace Authentication.DomainService.OAuth.Services
             if (!DelegationSignature.Verify(expectedSignature, exchange.Signature))
             {
                 TokenExchangeLog.SignatureMismatch(_logger, tenantId!);
-                return Failure("invalid_client", "Signature verification failed", StatusCodes.Status401Unauthorized);
+                return (Failure("invalid_client", "Signature verification failed", StatusCodes.Status401Unauthorized), null);
             }
 
+            return (null, new ExchangeTenantContext(tenantId!, tenant));
+        }
+
+        private async Task<(TokenResponse? Error, StoredGrant? Record)> LoadAndCheckGrantAsync(TokenExchangeRequest exchange, string tenantId)
+        {
             // ---- 6. grant lookup
             var record = await ReadGrantAsync(exchange.SubjectToken!).ConfigureAwait(false);
             if (record == null)
             {
-                return Failure("invalid_grant", "Delegation grant not found or expired");
+                return (Failure(ErrorInvalidGrant, "Delegation grant not found or expired"), null);
             }
 
             // ---- 7. the record's tenant must be the request's tenant
             if (!string.Equals(record.TenantId, tenantId, StringComparison.Ordinal))
             {
                 TokenExchangeLog.TenantMismatch(_logger, tenantId!);
-                return Failure("invalid_grant", "Delegation grant does not belong to this tenant");
+                return (Failure(ErrorInvalidGrant, "Delegation grant does not belong to this tenant"), null);
             }
 
-            if (string.IsNullOrWhiteSpace(record.UserId))
+            var hasUser = !string.IsNullOrWhiteSpace(record.UserId);
+            var hasClient = !string.IsNullOrWhiteSpace(record.ClientId);
+            if (hasUser == hasClient)
             {
-                return Failure("invalid_grant", "Delegation grant carries no user");
+                // Exactly one subject. A record naming both, or neither, was not written by an SDK.
+                return (Failure(ErrorInvalidGrant, "Delegation grant must name exactly one of a user or a client"), null);
             }
 
             // ---- 8. redemption rate cap
             if (!await IsInsideRateCapAsync(exchange.SubjectToken!).ConfigureAwait(false))
             {
-                return Failure("slow_down", "Redemption rate exceeded", StatusCodes.Status429TooManyRequests);
+                return (Failure("slow_down", "Redemption rate exceeded", StatusCodes.Status429TooManyRequests), null);
             }
 
+            return (null, record);
+        }
+
+        private async Task<TokenResponse> RedeemUserGrantAsync(
+            StoredGrant record,
+            string tenantId,
+            Tenant tenant,
+            IdentityConfiguration authenticationConfiguration,
+            TokenRequest request)
+        {
             // ---- 9. current user state from the tenant DB. The grant is a pointer to an identity,
             //         never a snapshot of its authority: everything below is re-read now.
-            var delegatedUser = await _userRepository.GetUserByIdAsync(record.UserId).ConfigureAwait(false);
+            var delegatedUser = await _userRepository.GetUserByIdAsync(record.UserId!).ConfigureAwait(false);
             if (delegatedUser == null || string.IsNullOrWhiteSpace(delegatedUser.ItemId))
             {
-                return Failure("invalid_grant", "User no longer exists");
+                return Failure(ErrorInvalidGrant, "User no longer exists");
             }
 
             if (!delegatedUser.Active)
             {
-                return Failure("invalid_grant", "User is not active");
+                return Failure(ErrorInvalidGrant, "User is not active");
             }
 
             if (!string.Equals(delegatedUser.TokenVersion.ToString(), record.TokenVersion, StringComparison.Ordinal))
             {
                 // Every session was revoked since the grant was written.
-                return Failure("invalid_grant", "Token version has changed");
+                return Failure(ErrorInvalidGrant, "Token version has changed");
             }
 
-            if (!string.Equals(delegatedUser.SecurityStamp ?? string.Empty, record.SecurityStamp, StringComparison.Ordinal))
+            if (!string.Equals(delegatedUser.SecurityStamp ?? string.Empty, record.SecurityStamp ?? string.Empty, StringComparison.Ordinal))
             {
                 // Credentials or security-relevant state changed since the grant was written.
-                return Failure("invalid_grant", "Security stamp has changed");
+                return Failure(ErrorInvalidGrant, "Security stamp has changed");
             }
 
             // ---- 10/11. Mint through GetJwtAccessToken + CreateJwtAccessToken directly.
@@ -189,7 +286,7 @@ namespace Authentication.DomainService.OAuth.Services
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.TokenExchange,
-                OrganizationId = record.OrganizationId,
+                OrganizationId = record.OrganizationId ?? string.Empty,
                 Request = request?.Request
             };
 
@@ -199,13 +296,13 @@ namespace Authentication.DomainService.OAuth.Services
 
             if (jwtAccessToken?.SigningCredentials == null)
             {
-                return Failure("server_error", "Unable to resolve the signing certificate", StatusCodes.Status500InternalServerError);
+                return Failure(ErrorServerError, "Unable to resolve the signing certificate", StatusCodes.Status500InternalServerError);
             }
 
             var accessToken = OAuthJwtAccessTokenManager.CreateJwtAccessToken(jwtAccessToken);
             if (string.IsNullOrWhiteSpace(accessToken))
             {
-                return Failure("server_error", "Unable to mint an access token", StatusCodes.Status500InternalServerError);
+                return Failure(ErrorServerError, "Unable to mint an access token", StatusCodes.Status500InternalServerError);
             }
 
             var lifetimeSeconds = Math.Max(
@@ -225,6 +322,236 @@ namespace Authentication.DomainService.OAuth.Services
             };
         }
 
+
+
+        /// <summary>
+        /// A grant written while its caller was impersonating.
+        /// <para>
+        /// The console user does not exist in the tenant being worked in, so the ordinary path —
+        /// re-read the user from this tenant's database — can only ever fail. Everything is read
+        /// from the tenant the user really lives in, exactly as the console's own impersonation
+        /// token is minted: that is what makes the function's token the same authority as the
+        /// session that started it, rather than a second, weaker one.
+        /// </para>
+        /// <para>
+        /// <b>The grant is a pointer, never an assertion.</b> <c>OriginalTenantId</c> only says
+        /// where to look for the session. The session record found there must then agree about
+        /// all three of: the user, the tenant being worked in, and its own root tenant. A grant
+        /// that names a session which does not agree is refused, so pointing the lookup somewhere
+        /// else buys nothing.
+        /// </para>
+        /// <para>
+        /// Stopping the impersonation ends every outstanding grant with it: the session stops
+        /// being <c>active</c> and nothing below can mint again. That is the property the old
+        /// blanket refusal was protecting, kept without refusing the whole feature.
+        /// </para>
+        /// </summary>
+        private async Task<TokenResponse> RedeemImpersonatedGrantAsync(
+            StoredGrant record,
+            string tenantId,
+            IdentityConfiguration authenticationConfiguration,
+            TokenRequest? request)
+        {
+            if (string.IsNullOrWhiteSpace(record.OriginalTenantId))
+            {
+                // A session id with nowhere to look it up. Written by nothing we ship.
+                TokenExchangeLog.ImpersonationGrantIncomplete(_logger, tenantId);
+                return Failure(ErrorInvalidGrant, "Delegation grant names an impersonation session but no original tenant");
+            }
+
+            var rootTenant = _tenants.GetTenantByID(record.OriginalTenantId!);
+            if (rootTenant == null)
+            {
+                TokenExchangeLog.ImpersonationRootTenantUnknown(_logger, tenantId);
+                return Failure(ErrorInvalidGrant, "Original tenant is not known");
+            }
+
+            // The impersonation session lives in the root tenant's own database, and every
+            // repository below picks its database from the ambient context. The switch is held for
+            // the whole redemption -- the session read, the user read, and the claims resolved
+            // inside GetJwtAccessToken -- and is always put back.
+            var previousContext = BlocksContext.GetContext();
+
+            try
+            {
+                BlocksContext.SetContext(RootContextFor(rootTenant, record), changeContext: true);
+
+                var session = await _authenticationRepository
+                    .GetImpersonationSessionByIdAsync(record.ImpersonationSessionId!)
+                    .ConfigureAwait(false);
+
+                if (session == null)
+                {
+                    TokenExchangeLog.ImpersonationSessionMissing(_logger, tenantId);
+                    return Failure(ErrorInvalidGrant, "Impersonation session no longer exists");
+                }
+
+                if (!string.Equals(session.Status, ImpersonationSessionActive, StringComparison.Ordinal))
+                {
+                    // Logged out, stopped by an admin, or ended any other way.
+                    TokenExchangeLog.ImpersonationSessionNotActive(_logger, tenantId);
+                    return Failure(ErrorInvalidGrant, "Impersonation session is no longer active");
+                }
+
+                // The three agreements. Each one alone is cheap; together they mean the grant
+                // cannot borrow a session that was not its own.
+                var agrees =
+                    string.Equals(session.UserId, record.UserId, StringComparison.Ordinal)
+                    && string.Equals(session.TargetTenantId, record.TenantId, StringComparison.Ordinal)
+                    && string.Equals(session.RootTenantId, record.OriginalTenantId, StringComparison.Ordinal);
+
+                if (!agrees)
+                {
+                    TokenExchangeLog.ImpersonationSessionMismatch(_logger, tenantId);
+                    return Failure(ErrorInvalidGrant, "Impersonation session does not match this grant");
+                }
+
+                // Same re-reads as a plain user grant, against the root tenant: the grant is a
+                // pointer to an identity, never a snapshot of its authority.
+                var delegatedUser = await _userRepository.GetUserByIdAsync(record.UserId!).ConfigureAwait(false);
+                if (delegatedUser == null || string.IsNullOrWhiteSpace(delegatedUser.ItemId))
+                {
+                    return Failure(ErrorInvalidGrant, "User no longer exists");
+                }
+
+                if (!delegatedUser.Active)
+                {
+                    return Failure(ErrorInvalidGrant, "User is not active");
+                }
+
+                if (!string.Equals(delegatedUser.TokenVersion.ToString(), record.TokenVersion, StringComparison.Ordinal))
+                {
+                    return Failure(ErrorInvalidGrant, "Token version has changed");
+                }
+
+                if (!string.Equals(delegatedUser.SecurityStamp ?? string.Empty, record.SecurityStamp ?? string.Empty, StringComparison.Ordinal))
+                {
+                    return Failure(ErrorInvalidGrant, "Security stamp has changed");
+                }
+
+                // The same shape the console builds when impersonation starts, so the token that
+                // comes back still says it is impersonated and still names both tenants. Without
+                // these the mint would quietly produce an ordinary token for the root tenant --
+                // the de-escalation the old refusal existed to prevent.
+                var tokenRequest = new TokenRequest
+                {
+                    GrantType = GrantTypes.TokenExchange,
+                    OrganizationId = record.OrganizationId ?? string.Empty,
+                    IsImpersonation = true,
+                    OriginalTenantId = record.OriginalTenantId,
+                    TargetTenantId = record.TenantId,
+                    ImpersonatorUserId = record.UserId,
+                    ImpersonationSessionId = record.ImpersonationSessionId,
+                    Request = request?.Request
+                };
+
+                var jwtAccessToken = await _jwtAccessTokenProvider
+                    .GetJwtAccessToken(authenticationConfiguration, rootTenant, delegatedUser, tokenRequest)
+                    .ConfigureAwait(false);
+
+                if (jwtAccessToken?.SigningCredentials == null)
+                {
+                    return Failure(ErrorServerError, "Unable to resolve the signing certificate", StatusCodes.Status500InternalServerError);
+                }
+
+                var accessToken = OAuthJwtAccessTokenManager.CreateJwtAccessToken(jwtAccessToken);
+                if (string.IsNullOrWhiteSpace(accessToken))
+                {
+                    return Failure(ErrorServerError, "Unable to mint an access token", StatusCodes.Status500InternalServerError);
+                }
+
+                var lifetimeSeconds = Math.Max(
+                    authenticationConfiguration.AccessTokenValidForNumberMinutes * IdpConstants.SecondsPerMinute,
+                    IdpConstants.MinAccessTokenLifetimeSeconds);
+
+                TokenExchangeLog.ImpersonatedGrantRedeemed(_logger, tenantId);
+
+                return new TokenResponse
+                {
+                    AccessToken = accessToken,
+                    TokenType = "Bearer",
+                    ExpiresIn = lifetimeSeconds,
+                    ExpiresUtc = jwtAccessToken.Expires,
+                    StatusCode = StatusCodes.Status200OK
+                };
+            }
+            finally
+            {
+                // Unconditional. Restoring only a non-null context would leave the root tenant
+                // behind whenever there was nothing to put back, and the next thing to read the
+                // ambient context on this request would silently get the wrong database.
+                BlocksContext.SetContext(previousContext, changeContext: true);
+            }
+        }
+
+        /// <summary>
+        /// A context that names the root tenant and nothing else of consequence: it exists so the
+        /// repositories below resolve to that tenant's database. Authority is never read from it --
+        /// roles and permissions are resolved from the user record inside the mint.
+        /// </summary>
+        private static BlocksContext RootContextFor(Tenant rootTenant, StoredGrant record)
+            => BlocksContext.Create(
+                tenantId: rootTenant.TenantId,
+                roles: [],
+                userId: record.UserId ?? string.Empty,
+                isAuthenticated: true,
+                requestUri: string.Empty,
+                organizationId: record.OrganizationId ?? string.Empty,
+                expireOn: DateTime.UtcNow.AddMinutes(5),
+                email: string.Empty,
+                permissions: [],
+                userName: string.Empty,
+                phoneNumber: string.Empty,
+                displayName: string.Empty,
+                oauthToken: string.Empty,
+                originalTenantId: rootTenant.TenantId);
+
+        /// <summary>Value <see cref="ImpersonationSession.Status"/> carries while a session is live.</summary>
+        private const string ImpersonationSessionActive = "active";
+
+        /// <summary>
+        /// Client grant: the client is re-read from the tenant DB and must still exist and be
+        /// active. Deactivating or deleting the client stops every outstanding grant for it.
+        /// The token carries the client's current roles and permissions, exactly as a
+        /// <c>client_credentials</c> token would, and no refresh token.
+        /// </summary>
+        private async Task<TokenResponse> RedeemClientGrantAsync(
+            StoredGrant record,
+            string tenantId,
+            IdentityConfiguration authenticationConfiguration)
+        {
+            var client = await _authenticationRepository.GetClientCredentialByIdAsync(record.ClientId!).ConfigureAwait(false);
+            if (client == null || string.IsNullOrWhiteSpace(client.ItemId))
+            {
+                return Failure(ErrorInvalidGrant, "Client no longer exists");
+            }
+
+            if (!client.IsActive)
+            {
+                return Failure(ErrorInvalidGrant, "Client is not active");
+            }
+
+            var result = await _clientAccessTokenIssuer.IssueForClientAsync(authenticationConfiguration, client).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(result.Error) || string.IsNullOrWhiteSpace(result.AccessToken))
+            {
+                return Failure(
+                    string.IsNullOrWhiteSpace(result.Error) ? ErrorServerError : result.Error!,
+                    result.ErrorDescription ?? "Unable to mint an access token",
+                    StatusCodes.Status500InternalServerError);
+            }
+
+            TokenExchangeLog.ClientGrantRedeemed(_logger, tenantId);
+
+            return new TokenResponse
+            {
+                AccessToken = result.AccessToken,
+                TokenType = "Bearer",
+                ExpiresIn = result.ExpiresIn,
+                ExpiresUtc = result.ExpiresUtc,
+                StatusCode = StatusCodes.Status200OK
+            };
+        }
+
         private static bool TryParseTimestamp(string? value, out long ts)
             => long.TryParse(value, out ts);
 
@@ -234,14 +561,17 @@ namespace Authentication.DomainService.OAuth.Services
             return Math.Abs(now - ts) <= DelegationConstants.ClockWindowSeconds;
         }
 
+        private enum NonceClaim { Claimed, Replay, Unavailable }
+
         /// <summary>
-        /// Claims the nonce with a SETNX. Returns false when it already exists, which is a replay.
+        /// Claims the nonce with a SETNX. <see cref="NonceClaim.Replay"/> when it already exists;
+        /// <see cref="NonceClaim.Unavailable"/> when the store could not answer.
         /// </summary>
-        private async Task<bool> TryClaimNonceAsync(string delegationId, string nonce)
+        private async Task<NonceClaim> TryClaimNonceAsync(string delegationId, string nonce)
         {
             try
             {
-                return await _cacheClient.CacheDatabase()
+                var claimed = await _cacheClient.CacheDatabase()
                     .StringSetAsync(
                         key: DelegationPolicy.NonceKey(delegationId, nonce),
                         value: "1",
@@ -250,23 +580,24 @@ namespace Authentication.DomainService.OAuth.Services
                         when: When.NotExists,
                         flags: CommandFlags.None)
                     .ConfigureAwait(false);
+                return claimed ? NonceClaim.Claimed : NonceClaim.Replay;
             }
             catch (Exception ex)
             {
                 // Failing closed: without a working replay guard the exchange must not proceed.
                 TokenExchangeLog.NonceStoreUnavailable(_logger, ex);
-                return false;
+                return NonceClaim.Unavailable;
             }
         }
 
-        private async Task<DelegationGrantRecord?> ReadGrantAsync(string delegationId)
+        private async Task<StoredGrant?> ReadGrantAsync(string delegationId)
         {
             var json = await _cacheClient.GetStringValueAsync(DelegationPolicy.GrantKey(delegationId)).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(json)) return null;
 
             try
             {
-                return JsonSerializer.Deserialize<DelegationGrantRecord>(json);
+                return JsonSerializer.Deserialize<StoredGrant>(json);
             }
             catch (JsonException ex)
             {
@@ -319,6 +650,24 @@ namespace Authentication.DomainService.OAuth.Services
         [LoggerMessage(EventId = 8002, Level = LogLevel.Warning, Message = "Delegation grant tenant did not match the request tenant {TenantId}.")]
         public static partial void TenantMismatch(ILogger logger, string tenantId);
 
+        [LoggerMessage(EventId = 8020, Level = LogLevel.Warning, Message = "Delegation grant for tenant {TenantId} names an impersonation session but no original tenant.")]
+        public static partial void ImpersonationGrantIncomplete(ILogger logger, string tenantId);
+
+        [LoggerMessage(EventId = 8021, Level = LogLevel.Warning, Message = "The original tenant on an impersonated delegation grant for tenant {TenantId} is not known.")]
+        public static partial void ImpersonationRootTenantUnknown(ILogger logger, string tenantId);
+
+        [LoggerMessage(EventId = 8022, Level = LogLevel.Warning, Message = "The impersonation session behind a delegation grant for tenant {TenantId} no longer exists.")]
+        public static partial void ImpersonationSessionMissing(ILogger logger, string tenantId);
+
+        [LoggerMessage(EventId = 8023, Level = LogLevel.Information, Message = "The impersonation session behind a delegation grant for tenant {TenantId} is no longer active; no token minted.")]
+        public static partial void ImpersonationSessionNotActive(ILogger logger, string tenantId);
+
+        [LoggerMessage(EventId = 8024, Level = LogLevel.Warning, Message = "An impersonated delegation grant for tenant {TenantId} did not match its session.")]
+        public static partial void ImpersonationSessionMismatch(ILogger logger, string tenantId);
+
+        [LoggerMessage(EventId = 8025, Level = LogLevel.Information, Message = "Impersonated delegation grant redeemed for tenant {TenantId}.")]
+        public static partial void ImpersonatedGrantRedeemed(ILogger logger, string tenantId);
+
         [LoggerMessage(EventId = 8003, Level = LogLevel.Warning, Message = "Stored delegation grant could not be deserialized.")]
         public static partial void GrantUnreadable(ILogger logger, Exception exception);
 
@@ -330,5 +679,8 @@ namespace Authentication.DomainService.OAuth.Services
 
         [LoggerMessage(EventId = 8006, Level = LogLevel.Information, Message = "Delegation grant redeemed for tenant {TenantId}.")]
         public static partial void Redeemed(ILogger logger, string tenantId);
+
+        [LoggerMessage(EventId = 8007, Level = LogLevel.Information, Message = "Client delegation grant redeemed for tenant {TenantId}.")]
+        public static partial void ClientGrantRedeemed(ILogger logger, string tenantId);
     }
 }

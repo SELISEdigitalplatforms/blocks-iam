@@ -3,6 +3,7 @@ using FluentAssertions;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.OAuth
 {

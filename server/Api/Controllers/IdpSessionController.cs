@@ -149,49 +149,19 @@ namespace Blocks.Api.Controllers
         [ProducesResponseType(typeof(AddAccountResponse), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
-        public async Task<IActionResult> AddAccount([FromBody] AddAccountRequest request)
+        public Task<IActionResult> AddAccount([FromBody] AddAccountRequest request)
         {
-            try
+            // Disabled: the account to add came from the request body with no proof that this user
+            // signed in, so any signed-in caller could put another user's account into their own
+            // session and silent SSO would then mint codes for it. No Blocks frontend calls this.
+            // Multi-account must be rebuilt inside the login flow, right after the added user's
+            // credentials (and MFA) are verified.
+            _logger.LogWarning("Rejected call to disabled endpoint oidc/session/account/add");
+            return Task.FromResult<IActionResult>(StatusCode(StatusCodes.Status410Gone, new
             {
-                if (string.IsNullOrWhiteSpace(request.UserId) || string.IsNullOrWhiteSpace(request.TenantId))
-                {
-                    return BadRequest(new { error = "invalid_request", error_description = "UserId and TenantId required" });
-                }
-
-                if (!IsSessionMutationRequestTrusted())
-                {
-                    return StatusCode(403, new { error = "csrf_validation_failed" });
-                }
-                var bc = BlocksContext.GetContext();
-                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(request.TenantId ?? bc.TenantId);
-
-                var sessionId = GetSessionIdFromToken(sessionCookieName);
-                if (string.IsNullOrEmpty(sessionId))
-                {
-                    return Unauthorized(new { error = "session_not_found" });
-                }
-
-                var success = await _sessionService.AddAccountAsync(
-                    sessionId,
-                    request.UserId,
-                    request.TenantId,
-                    request.DisplayName);
-
-                if (!success)
-                {
-                    return BadRequest(new { error = "failed_to_add_account" });
-                }
-
-                await _sessionService.UpdateActivityAsync(sessionId);
-                var rotatedSessionId = await _sessionService.RotateSessionAsync(sessionId, "account_add") ?? sessionId;
-                Response.Cookies.Append(sessionCookieName, rotatedSessionId, CreateSessionCookieOptions(bc.TenantId));
-                return Ok(new AddAccountResponse { Success = true });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error adding account");
-                return StatusCode(500, new { error = "internal_server_error" });
-            }
+                error = "endpoint_disabled",
+                error_description = "Adding an account to a session is not available"
+            }));
         }
 
         /// <summary>

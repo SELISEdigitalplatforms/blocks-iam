@@ -3,6 +3,8 @@ using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Shared;
+using Blocks.Genesis.Entities.Iam;
+using Mfa.DomainService.TOTP;
 
 namespace Mfa.DomainService.Services
 {
@@ -13,17 +15,20 @@ namespace Mfa.DomainService.Services
         private readonly IMfaConfigurationService _configurationService;
         private readonly IMfaAuditService? _auditService;
         private readonly ICacheClient _cacheClient;
+        private readonly ITotpSecretResolver _totpSecrets;
 
         public MfaManagementService(IOtpServiceFactory otpServiceFactory,
                                     IMfaManagementRepository mdmRepository,
                                     IMfaConfigurationService configurationService,
                                     ICacheClient cacheClient,
+                                    ITotpSecretResolver totpSecrets,
                                     IMfaAuditService? auditService = null)
         {
             _otpServiceFactory = otpServiceFactory;
             _mfaRepository = mdmRepository;
             _configurationService = configurationService;
             _cacheClient = cacheClient;
+            _totpSecrets = totpSecrets;
             _auditService = auditService;
         }
 
@@ -51,6 +56,30 @@ namespace Mfa.DomainService.Services
 
             var otpService = _otpServiceFactory.GetOTPService(request.MfaType ?? userInfo.UserMfaType);
             return await otpService.GenerateAsync(userInfo, request.SendPhoneNumberAsEmailDomain ?? string.Empty);
+        }
+
+        // Who a live mfa challenge belongs to, read without consuming it: the JSON context of a
+        // code challenge (email/SMS) or the bare user id a TOTP login session stores. Null for an
+        // unknown, expired or unreadable id.
+        public async Task<string?> GetChallengeOwnerAsync(string mfaId)
+        {
+            if (string.IsNullOrWhiteSpace(mfaId))
+            {
+                return null;
+            }
+
+            var raw = await _cacheClient.GetStringValueAsync(mfaId);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return null;
+            }
+
+            if (MfaAuthenticationContext.TryDeserialize(raw, out var context))
+            {
+                return string.IsNullOrWhiteSpace(context.UserId) ? null : context.UserId;
+            }
+
+            return raw.TrimStart().StartsWith('{') ? null : raw;
         }
 
         public async Task<OtpVerificationResponse> VerifyOTPAsync(VerifyOtpRequest request)
@@ -108,6 +137,10 @@ namespace Mfa.DomainService.Services
                           };
 
             await _mfaRepository.UpdatePartialAsync<UserMfaInfo>(request.UserId, updates, "Users");
+
+            // A disabled authenticator must not keep working: the old secret goes (retired in Blocks
+            // Secrets), and the next setup makes a new one.
+            await TotpSecretRows.DeleteAsync(_mfaRepository, _totpSecrets, request.UserId);
 
             if (isAdmin)
             {

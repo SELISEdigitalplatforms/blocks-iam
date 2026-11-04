@@ -238,6 +238,88 @@ describe("OidcLoginForm", () => {
     expect(h.animCtx.startAnimation).toHaveBeenCalled();
   });
 
+  describe("redirect target after a successful login", () => {
+    const APP_URL = "com.klaxai.app://login/callback?code=abc&state=xyz";
+    let assignments: string[];
+
+    const animCtx = () => ({
+      phase: "idle",
+      startAnimation: vi.fn(),
+      succeedAnimation: vi.fn().mockResolvedValue(undefined),
+      failAnimation: vi.fn().mockResolvedValue(undefined),
+      resetAnimation: vi.fn(),
+    });
+
+    const submitWith = (body: unknown) => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, body)));
+      renderForm();
+      fillValid();
+      fireEvent.click(screen.getByRole("button", { name: /login/i }));
+    };
+
+    beforeEach(() => {
+      assignments = [];
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          get href() {
+            return assignments[assignments.length - 1] ?? "";
+          },
+          set href(value: string) {
+            assignments.push(value);
+          },
+        },
+      });
+    });
+
+    it("hands an app-scheme redirect_uri to the app once and replaces the form (H6, H7)", async () => {
+      h.animCtx = animCtx();
+      submitWith({ redirect_uri: APP_URL });
+
+      const link = await screen.findByRole("link", { name: "Return to the app" });
+      expect(link).toHaveAttribute("href", APP_URL);
+      await waitFor(() => expect(link).toHaveFocus());
+      expect(screen.getByRole("heading", { name: "Signed in" })).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText("name@company.com")).not.toBeInTheDocument();
+      expect(assignments).toEqual([APP_URL]);
+      // The shell would swap the hand-off for its success screen once this resolved.
+      expect(h.animCtx.succeedAnimation).not.toHaveBeenCalled();
+      expect(h.animCtx.resetAnimation).toHaveBeenCalled();
+    });
+
+    it("keeps the success animation and a single navigation for a web redirect_uri (H3)", async () => {
+      h.animCtx = animCtx();
+      submitWith({ redirect_uri: "https://app.example.com/next" });
+
+      await waitFor(() => expect(assignments).toEqual(["https://app.example.com/next"]));
+      expect(h.animCtx.succeedAnimation).toHaveBeenCalled();
+      expect(screen.queryByRole("link", { name: "Return to the app" })).not.toBeInTheDocument();
+    });
+
+    it.each(["javascript:alert(1)", "myapp://callback", "com.example.app://cb#frag"])(
+      "refuses %s with the no-redirect-target error and does not navigate (C10)",
+      async (redirectUri) => {
+        h.animCtx = animCtx();
+        submitWith({ redirect_uri: redirectUri });
+
+        expect(
+          await screen.findByText("Login succeeded but no redirect target was provided"),
+        ).toBeInTheDocument();
+        expect(h.animCtx.failAnimation).toHaveBeenCalledWith(
+          "Login succeeded but no redirect target was provided",
+        );
+        expect(assignments).toEqual([]);
+        expect(screen.queryByRole("link", { name: "Return to the app" })).not.toBeInTheDocument();
+      },
+    );
+
+    it("shows the hand-off without an animation context as well", async () => {
+      submitWith({ redirect_uri: APP_URL });
+      expect(await screen.findByRole("link", { name: "Return to the app" })).toBeInTheDocument();
+      expect(assignments).toEqual([APP_URL]);
+    });
+  });
+
   it("navigates to the MFA check screen when the backend signals mfa_enabled", async () => {
     const fetchMock = vi
       .fn()
@@ -451,6 +533,35 @@ describe("OidcLoginForm", () => {
     expect(screen.getByText("or")).toBeInTheDocument();
   });
 
+  it("asks for the options of this application", async () => {
+    const { useGetLoginOptions } = await import("@blocks-idp/authentication/hooks/use-auth");
+    renderForm();
+    expect(useGetLoginOptions).toHaveBeenCalledWith(expect.anything(), true, expect.any(String));
+  });
+
+  it("hides the password form when the application allows social only", () => {
+    h.loginOption = { allowedGrantTypes: ["authorization_code", "social"], ssoInfo: [{ provider: "google" }] };
+    renderForm();
+    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+    expect(screen.getByTestId("sso-signin")).toBeInTheDocument();
+    expect(screen.queryByText("or")).not.toBeInTheDocument();
+  });
+
+  it("keeps the password form while the options have no grant list", () => {
+    h.loginOption = { ssoInfo: [] };
+    renderForm();
+    expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+  });
+
+  it("says so when no sign-in method is available", () => {
+    h.loginOption = { allowedGrantTypes: ["authorization_code"], ssoInfo: null };
+    renderForm();
+    expect(screen.getByTestId("no-sign-in-method")).toHaveTextContent(
+      "No sign-in method is available for this application.",
+    );
+    expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+  });
+
   it("renders the sign-up link when self sign-up is enabled", () => {
     h.signUpSetting = { isSignUpEnable: true };
     renderForm();
@@ -497,6 +608,24 @@ describe("OidcLoginForm", () => {
       fireEvent.click(await screen.findByRole("button", { name: "Back to Login" }));
 
       expect(window.location.href).toBe("https://app.example.com/login/callback");
+    });
+
+    it("closes the dialog without navigating when the redirect_uri is refused (C11)", async () => {
+      renderForm({ initialError: SSO_ERROR, redirectUri: "javascript:alert(1)" });
+
+      fireEvent.click(await screen.findByRole("button", { name: "Back to Login" }));
+
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+      expect(window.location.href).toBe("");
+      expect(screen.getByPlaceholderText("name@company.com")).toBeInTheDocument();
+    });
+
+    it("hands the user back to a native app's redirect_uri too", async () => {
+      renderForm({ initialError: SSO_ERROR, redirectUri: "com.example.app:/oauth2redirect" });
+
+      fireEvent.click(await screen.findByRole("button", { name: "Back to Login" }));
+
+      expect(window.location.href).toBe("com.example.app:/oauth2redirect");
     });
 
     it("cannot be escaped past, since the message still applies to the page behind it", async () => {

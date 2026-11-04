@@ -1,6 +1,8 @@
 using Blocks.Genesis;
+using Iam.DomainService.Services;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -13,13 +15,16 @@ namespace Authentication.DomainService.Oidc.Repositories
     {
         private readonly IDbContextProvider _dbContextProvider;
         private readonly ILogger<TokenRevocationRepository> _logger;
+        private readonly IIamDataAccess _dataAccess;
 
         public TokenRevocationRepository(
             IDbContextProvider dbContextProvider,
-            ILogger<TokenRevocationRepository> logger)
+            ILogger<TokenRevocationRepository> logger,
+            IIamDataAccess dataAccess)
         {
             _dbContextProvider = dbContextProvider;
             _logger = logger;
+            _dataAccess = dataAccess;
         }
 
         private IMongoDatabase GetDatabase() =>
@@ -40,7 +45,7 @@ namespace Authentication.DomainService.Oidc.Repositories
                 RevokeReason = reason,
                 ExpiresAt = expiresAt
             };
-            await collection.InsertOneAsync(model);
+            await _dataAccess.InsertOneAsync(collection, IamSchemas.TokenRevocationModel, model, "TokenRevocationRepository.RevokeTokenAsync");
             _logger.LogInformation("Token revoked: {Jti}, reason: {Reason}", jti, reason);
             return true;
         }
@@ -52,7 +57,10 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
             var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
-            var result = await collection.Find(filter).FirstOrDefaultAsync();
+            var scope = await _dataAccess.ReadAsync(IamSchemas.TokenRevocationModel, filter, "TokenRevocationRepository.IsRevokedAsync", useProjection: false);
+            // Denied read = fail closed: the token is treated as revoked rather than silently valid.
+            if (!scope.Granted) return true;
+            var result = await scope.Apply(collection).FirstOrDefaultAsync();
             return result != null;
         }
 
@@ -67,8 +75,8 @@ namespace Authentication.DomainService.Oidc.Repositories
                 .Set(t => t.IsDeleted, true)
                 .Set(t => t.DeletedAt, DateTime.UtcNow);
 
-            var result = await collection.UpdateOneAsync(filter, update);
-            return result.ModifiedCount > 0;
+            var result = await _dataAccess.UpdateOneAsync(collection, IamSchemas.TokenRevocationModel, filter, update, "TokenRevocationRepository.DeleteAsync");
+            return result?.ModifiedCount > 0;
         }
 
         /// <summary>
@@ -78,7 +86,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
             var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
-            return await collection.Find(filter).FirstOrDefaultAsync();
+            return await _dataAccess.FindFirstAsync(collection, IamSchemas.TokenRevocationModel, filter, "TokenRevocationRepository.GetRevocationDetailsAsync");
         }
 
         /// <summary>
@@ -88,24 +96,14 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
             var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.UserId, userId);
-            return await collection.Find(filter).SortByDescending(t => t.RevokedAt).ToListAsync();
+            var scope = await _dataAccess.ReadAsync(IamSchemas.TokenRevocationModel, filter, "TokenRevocationRepository.GetRevokedTokensByUserAsync", useProjection: false);
+            if (!scope.Granted) return [];
+            return await scope.Apply(collection).SortByDescending(t => t.RevokedAt).ToListAsync();
         }
 
         public async Task<IEnumerable<TokenRevocationModel>> GetByUserAsync(string userId)
         {
             return await GetRevokedTokensByUserAsync(userId);
         }
-    }
-
-    public sealed class TokenRevocationModel
-    {
-        public string? Id { get; set; } // MongoDB ObjectId
-        public string? Jti { get; set; } // JWT ID (unique token identifier)
-        public string? UserId { get; set; }
-        public DateTime RevokedAt { get; set; }
-        public string? RevokeReason { get; set; } // "user_revoked", "logout", "reuse_detected", "password_changed"
-        public DateTime ExpiresAt { get; set; } // After this date, can be deleted from DB
-        public bool IsDeleted { get; set; } // Soft delete flag
-        public DateTime DeletedAt { get; set; } // Soft delete timestamp
     }
 }

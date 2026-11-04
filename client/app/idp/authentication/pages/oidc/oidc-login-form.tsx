@@ -12,24 +12,28 @@ import { Link, useNavigate } from "react-router";
 import { z } from "zod";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
-import React, { useEffect, useRef, useState } from "react";
+import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Captcha } from "@/components/captcha";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { isErrorWithErrors } from "@/lib/error";
 import {
-  getCurrentOIDCParams,
   buildOIDCNavigationUrl,
 } from "@blocks-idp/authentication/utils/oidc-utils";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { SsoSignin } from "@blocks-idp/authentication/pages/login/sso-signin";
-import { useAuthStore } from "@seliseblocks/genesis-os";
 import { sha256 } from "js-sha256";
 import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 import { useOidcAuthAnimation } from "./oidc-auth-shell";
 import { OidcErrorDialog } from "./oidc-error-dialog";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
+import { OidcAppHandoff } from "./oidc-app-handoff";
+import { isAppRedirectUrl, navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
+import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
+
+const OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED = "OIDC_LOGIN_FORM.SELECT_ACCOUNT_FAILED";
 
 const base64UrlEncode = (bytes: Uint8Array) => {
   const binary = String.fromCharCode(...bytes);
@@ -51,9 +55,19 @@ const generatePkcePair = async () => {
   return { verifier, challenge };
 };
 
+/** The fields of an /api/oidc/login JSON response the form acts on. */
+type OidcLoginResponseBody = {
+  error?: string;
+  error_description?: string;
+  message?: string;
+  mfa_id?: string;
+  user_mfa?: string;
+  redirect_uri?: string;
+};
+
 // Maps the backend's `user_mfa` channel string to the integer `mfa_type` the
 // /mfa-check form expects: 1 = authenticator (6 digits, no resend), 2 = email
-// / SMS / OTP-with-resend (5 digits). Unknown values fall back to 2.
+// / SMS / OTP-with-resend (6 digits). Unknown values fall back to 2.
 const mapUserMfaToType = (channel: string | undefined): number => {
   if (!channel) return 2;
   const c = channel.toLowerCase();
@@ -62,12 +76,13 @@ const mapUserMfaToType = (channel: string | undefined): number => {
   return 2;
 };
 
-const oidcLoginFormSchema = z.object({
-  username: z.string().email("Invalid email address"),
-  password: z.string().min(1, "Password is required"),
-});
+const buildOidcLoginFormSchema = (t: TFunction) =>
+  z.object({
+    username: z.email(t("OIDC_LOGIN_FORM.INVALID_EMAIL")),
+    password: z.string().min(1, t("OIDC_LOGIN_FORM.PASSWORD_REQUIRED")),
+  });
 
-type OidcLoginFormValues = z.infer<typeof oidcLoginFormSchema>;
+type OidcLoginFormValues = z.infer<ReturnType<typeof buildOidcLoginFormSchema>>;
 
 interface OidcLoginFormProps {
   clientId: string;
@@ -101,13 +116,14 @@ export const OidcLoginForm = ({
   tenantId,
   initialError,
 }: OidcLoginFormProps) => {
+  const { t } = useT("iam.oidc");
+  const loginFormSchema = useMemo(() => buildOidcLoginFormSchema(t), [t]);
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
-  const { data: loginOption } = useGetLoginOptions(tenantId, true);
+  const { data: loginOption } = useGetLoginOptions(tenantId, true, clientId);
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
   const { data: signUpSetting } = useGetSignUpSetting(tenantId);
   const isSignUpEnabled = signUpSetting?.isSignUpEnable ?? false;
-  const [token, setToken] = useState("");
   const [accounts, setAccounts] = useState<OidcAccountInfo[]>([]);
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -116,13 +132,15 @@ export const OidcLoginForm = ({
   // Kept apart from serverError: this one arrives from a round trip the form cannot retry, and
   // it is shown as a modal rather than a line under the password field.
   const [roundTripError, setRoundTripError] = useState<string | null>(initialError ?? null);
-  const [lastAttemptedEmail, setLastAttemptedEmail] = useState("");
   const [showActivationError, setShowActivationError] = useState(false);
   const [activeCodeChallenge, setActiveCodeChallenge] = useState(codeChallenge);
   const [activeCodeChallengeMethod, setActiveCodeChallengeMethod] = useState(
     codeChallengeMethod || "S256",
   );
   const [captchaRequired, setCaptchaRequired] = useState(false);
+  // Set when the client is a native app: the redirect is attempted by OidcAppHandoff, which
+  // replaces the form so the user has a way back if the OS does not open the app.
+  const [appHandoffUrl, setAppHandoffUrl] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   const isAuthenticating =
@@ -142,7 +160,7 @@ export const OidcLoginForm = ({
       username: "",
       password: "",
     },
-    resolver: zodResolver(oidcLoginFormSchema),
+    resolver: zodResolver(loginFormSchema),
   });
 
   const {
@@ -197,6 +215,87 @@ export const OidcLoginForm = ({
     };
   };
 
+  /**
+   * Finishes a login the server accepted (HTTP 200 JSON): on to MFA, to a native app through the
+   * hand-off block, or to the client's redirect_uri (device flow: the same-origin returnUrl).
+   */
+  const completeLogin = async (data: OidcLoginResponseBody) => {
+    // Backend may signal MFA required via a 200 with `error: "mfa_enabled"`
+    // (matches /api/oidc/login contract: { error, error_description, mfa_id, user_mfa }).
+    if (data?.error === "mfa_enabled" && data?.mfa_id) {
+      animCtx?.resetAnimation();
+      const mfaType = mapUserMfaToType(data.user_mfa);
+      navigate(
+        buildOIDCNavigationUrl(
+          `/oidc/mfa-check?mfa_id=${encodeURIComponent(data.mfa_id)}&mfa_type=${mfaType}`,
+        ),
+      );
+      return;
+    }
+
+    // Checked before the success animation: the shell swaps its children for the success
+    // screen once that animation finishes, which would unmount the hand-off block.
+    if (data.redirect_uri && isAppRedirectUrl(data.redirect_uri)) {
+      animCtx?.resetAnimation();
+      setAppHandoffUrl(data.redirect_uri);
+      setIsLoading(false);
+      return;
+    }
+
+    await animCtx?.succeedAnimation();
+    // Normal flow always gets `redirect_uri` back; only device flow (RFC 8628)
+    // completes with `{ success: true }` and no redirect_uri, so returnUrl is
+    // only ever used as a fallback for that case, never preferred over it.
+    // redirect_uri is validated by the server against the client; returnUrl comes from
+    // the query string, so it may only point back at this origin.
+    const navigated = data.redirect_uri
+      ? navigateToUrl(data.redirect_uri)
+      : !!returnUrl && navigateToSameOrigin(returnUrl);
+    if (!navigated) {
+      const errMsg = t("OIDC_LOGIN_FORM.NO_REDIRECT_TARGET");
+      shake();
+      setServerError(errMsg);
+      await animCtx?.failAnimation(errMsg);
+      setIsLoading(false);
+    }
+  };
+
+  /** Shows why a login the server refused (non-2xx JSON) failed, by its error code. */
+  const showLoginFailure = async (
+    data: OidcLoginResponseBody | null | undefined,
+  ) => {
+    const errorMsg =
+      data?.error_description || data?.message || t("OIDC_LOGIN_FORM.LOGIN_FAILED");
+    const errorCode = data?.error;
+
+    shake();
+    if (errorCode === "account_locked") {
+      const msg = t("OIDC_LOGIN_FORM.ACCOUNT_LOCKED");
+      setServerError(msg);
+      await animCtx?.failAnimation(msg);
+    } else if (errorCode === "account_not_verified") {
+      animCtx?.resetAnimation();
+      setShowActivationError(true);
+    } else if (errorCode === "captcha_enabled") {
+      const msg = t("OIDC_LOGIN_FORM.CAPTCHA_REQUIRED");
+      setServerError(msg);
+      await animCtx?.failAnimation(msg);
+      setCaptchaRequired(true);
+      resetCaptcha();
+    } else if (errorCode === "invalid_credentials" || errorCode === "captcha_invalid") {
+      const msg =
+        errorCode === "captcha_invalid"
+          ? t("OIDC_LOGIN_FORM.CAPTCHA_FAILED")
+          : t("OIDC_LOGIN_FORM.INVALID_CREDENTIALS");
+      setServerError(msg);
+      await animCtx?.failAnimation(msg);
+      resetCaptcha();
+    } else {
+      setServerError(errorMsg);
+      await animCtx?.failAnimation(errorMsg);
+    }
+  };
+
   const onSubmitHandler = async (values: OidcLoginFormValues) => {
     setIsLoading(true);
     setShowActivationError(false);
@@ -213,7 +312,6 @@ export const OidcLoginForm = ({
       // Use provided tenantId; if absent, fallback to configured tenant key when available.
       const finalTenantId =
         tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
-      const codeVerifier = sessionStorage.getItem("oidc-code-verifier");
 
       const payload = {
         username: values.username,
@@ -246,34 +344,7 @@ export const OidcLoginForm = ({
       if (response.ok) {
         const data = await response.json();
         setCaptchaRequired(false);
-
-        // Backend may signal MFA required via a 200 with `error: "mfa_enabled"`
-        // (matches /api/oidc/login contract: { error, error_description, mfa_id, user_mfa }).
-        if (data?.error === "mfa_enabled" && data?.mfa_id) {
-          animCtx?.resetAnimation();
-          const mfaType = mapUserMfaToType(data.user_mfa);
-          navigate(
-            buildOIDCNavigationUrl(
-              `/oidc/mfa-check?mfa_id=${encodeURIComponent(data.mfa_id)}&mfa_type=${mfaType}`,
-            ),
-          );
-          return;
-        }
-
-        await animCtx?.succeedAnimation();
-        // Normal flow always gets `redirect_uri` back; only device flow (RFC 8628)
-        // completes with `{ success: true }` and no redirect_uri, so returnUrl is
-        // only ever used as a fallback for that case, never preferred over it.
-        const target = data.redirect_uri || returnUrl;
-        if (!target) {
-          const errMsg = "Login succeeded but no redirect target was provided";
-          shake();
-          setServerError(errMsg);
-          await animCtx?.failAnimation(errMsg);
-          setIsLoading(false);
-          return;
-        }
-        window.location.href = target;
+        await completeLogin(data);
         return;
       }
 
@@ -283,7 +354,7 @@ export const OidcLoginForm = ({
         if (contentType && contentType.includes("application/json")) {
           data = await response.json();
         } else if (!response.ok) {
-          const errMsg = `Server error (HTTP ${response.status})`;
+          const errMsg = t("OIDC_LOGIN_FORM.SERVER_ERROR", { status: response.status });
           shake();
           setServerError(errMsg);
           await animCtx?.failAnimation(errMsg);
@@ -319,40 +390,10 @@ export const OidcLoginForm = ({
         return;
       }
 
-      const errorMsg =
-        data?.error_description || data?.message || "Login failed";
-      const errorCode = data?.error;
-
-shake();
-      if (errorCode === "account_locked") {
-        const msg = "Your account is locked. Please contact support or reset your password.";
-        setServerError(msg);
-        await animCtx?.failAnimation(msg);
-      } else if (errorCode === "account_not_verified") {
-        animCtx?.resetAnimation();
-        setLastAttemptedEmail(values.username);
-        setShowActivationError(true);
-      } else if (errorCode === "captcha_enabled") {
-        const msg = "Captcha verification is required. Please complete the given captcha.";
-        setServerError(msg);
-        await animCtx?.failAnimation(msg);
-        setCaptchaRequired(true);
-        resetCaptcha();
-      } else if (errorCode === "invalid_credentials" || errorCode === "captcha_invalid") {
-        const msg =
-          errorCode === "captcha_invalid"
-            ? "Captcha verification failed. Please try again."
-            : "Invalid email or password. Please try again.";
-        setServerError(msg);
-        await animCtx?.failAnimation(msg);
-        resetCaptcha();
-      } else {
-        setServerError(errorMsg);
-        await animCtx?.failAnimation(errorMsg);
-      }
+      await showLoginFailure(data);
     } catch (error) {
       console.error("Login error:", error);
-      const msg = "An unexpected error occurred during login. Please try again.";
+      const msg = t("OIDC_LOGIN_FORM.UNEXPECTED_ERROR");
       shake();
       setServerError(msg);
       await animCtx?.failAnimation(msg);
@@ -390,7 +431,7 @@ shake();
       if (response.redirect_url) {
         window.location.href = response.redirect_url;
       } else {
-        setServerError("Failed to select account");
+        setServerError(t(OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED));
       }
     } catch (error: unknown) {
       if (isErrorWithErrors(error)) {
@@ -398,10 +439,10 @@ shake();
         const errorDesc = error.errors?.error_description;
         const message = Array.isArray(errorDesc)
           ? errorDesc[0]
-          : (errorDesc || errorCode || "Failed to select account") as string;
+          : (errorDesc || errorCode || t(OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED)) as string;
         setServerError(message);
       } else {
-        setServerError("Failed to select account");
+        setServerError(t(OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED));
       }
     }
   };
@@ -409,6 +450,8 @@ shake();
   useEffect(() => {
     if (!isValid && captchaCode) resetCaptcha();
   }, [captchaCode, isValid, resetCaptcha]);
+
+  if (appHandoffUrl) return <OidcAppHandoff url={appHandoffUrl} />;
 
   if (!oidcUiConfig?.template) return null;
   const loginCopy = oidcUiConfig.template.pages.login;
@@ -423,19 +466,20 @@ shake();
     );
   }
 
-  const showPasswordLogin = true;
+  // The project and this application decide the methods. Until the options load (or if they
+  // fail to), the password form stays: the server still refuses a method that is turned off.
+  const allowedGrantTypes = loginOption?.allowedGrantTypes;
+  const showPasswordLogin = !allowedGrantTypes || allowedGrantTypes.includes(GRANT_TYPES.password);
   const showSocialLogin = !!loginOption?.ssoInfo?.length;
+  const noSignInMethod = !showPasswordLogin && !showSocialLogin;
 
   /**
    * Hands the user back to the application that sent them. Falls back to dismissing the modal
-   * when the request carried no redirect_uri, since there is nowhere to send them and the form
-   * behind is better than a dead modal.
+   * when the request carried no redirect_uri, or one that is not safe to follow, since there is
+   * nowhere to send them and the form behind is better than a dead modal.
    */
   const leaveToApplication = () => {
-    if (redirectUri) {
-      window.location.href = redirectUri;
-      return;
-    }
+    if (redirectUri && navigateToUrl(redirectUri)) return;
     setRoundTripError(null);
   };
 
@@ -478,18 +522,24 @@ shake();
     <>
       {roundTripError && (
         <OidcErrorDialog
-          title="Sign-in Unavailable"
+          title={t("OIDC_LOGIN_FORM.SIGN_IN_UNAVAILABLE")}
           message={roundTripError}
           actionLabel={loginCopy.backToLoginButton}
           onAction={leaveToApplication}
         />
       )}
 
+      {noSignInMethod && (
+        <p className="text-sm" style={{ color: "var(--muted)" }} data-testid="no-sign-in-method">
+          {t("OIDC_LOGIN_FORM.NO_SIGN_IN_METHOD")}
+        </p>
+      )}
+
       {showPasswordLogin && (
         <Form {...form}>
           <form
             ref={formRef}
-            onSubmit={form.handleSubmit(onSubmitHandler, shake)}
+            onSubmit={(event) => form.handleSubmit(onSubmitHandler, shake)(event)}
             className="flex flex-col gap-5 w-full"
             noValidate
           >
@@ -508,7 +558,7 @@ shake();
                         id="oidc-email"
                         type="email"
                         autoComplete="email"
-                        placeholder="name@company.com"
+                        placeholder={t("OIDC_LOGIN_FORM.EMAIL_PLACEHOLDER")}
                         className="oidc-sci-fi-input"
                         aria-invalid={!!form.formState.errors.username}
                         disabled={isAuthenticating}
@@ -559,7 +609,7 @@ shake();
                           onClick={() => setShowPassword(v => !v)}
                           className="absolute right-3 top-1/2 -translate-y-1/2"
                           style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          aria-label={showPassword ? t("OIDC_LOGIN_FORM.HIDE_PASSWORD") : t("OIDC_LOGIN_FORM.SHOW_PASSWORD")}
                         >
                           {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
@@ -590,7 +640,7 @@ shake();
               {isAuthenticating ? (
                 <>
                   <Loader size={16} className="oidc-spin-slow" />
-                  <span>Authenticating...</span>
+                  <span>{t("OIDC_LOGIN_FORM.AUTHENTICATING")}</span>
                 </>
               ) : (
                 <>

@@ -1,8 +1,10 @@
+using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Services;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Mfa.Configuration
 {
@@ -27,6 +29,22 @@ namespace XUnitTest.Mfa.Configuration
             };
         }
 
+        private static Mock<IKeyValueStore> Kv(MfaConfiguration? stored = null)
+        {
+            var kv = new Mock<IKeyValueStore>();
+            kv.Setup(k => k.GetAsync<MfaConfiguration>(MfaConfigurationService.StoreKey, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(stored);
+            return kv;
+        }
+
+        private static Mock<IMfaManagementRepository> OldDoc(MfaConfiguration? oldDoc)
+        {
+            var repo = new Mock<IMfaManagementRepository>();
+            repo.Setup(r => r.GetItemAsync<MfaConfiguration>(It.IsAny<System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync(oldDoc);
+            return repo;
+        }
+
         [Fact]
         public async Task GetAsync_WhenNoConfigInRepo_ReturnsDefaultEmptyConfiguration()
         {
@@ -34,7 +52,7 @@ namespace XUnitTest.Mfa.Configuration
             repo.Setup(r => r.GetItemAsync<MfaConfiguration>(It.IsAny<System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync((MfaConfiguration?)null);
 
-            var service = new MfaConfigurationService(repo.Object);
+            var service = new MfaConfigurationService(repo.Object, Kv().Object);
             var result = await service.GetAsync();
 
             result.Should().NotBeNull();
@@ -51,7 +69,7 @@ namespace XUnitTest.Mfa.Configuration
             repo.Setup(r => r.GetItemAsync<MfaConfiguration>(It.IsAny<System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync(repoConfig);
 
-            var service = new MfaConfigurationService(repo.Object);
+            var service = new MfaConfigurationService(repo.Object, Kv().Object);
             var result = await service.GetAsync();
 
             result.Should().NotBeNull();
@@ -71,7 +89,7 @@ namespace XUnitTest.Mfa.Configuration
             repo.Setup(r => r.GetItemAsync<MfaConfiguration>(It.IsAny<System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync(repoConfig);
 
-            var service = new MfaConfigurationService(repo.Object);
+            var service = new MfaConfigurationService(repo.Object, Kv().Object);
             var result = await service.GetAsync();
 
             result!.BackupCodesCount.Should().Be(10);
@@ -91,7 +109,7 @@ namespace XUnitTest.Mfa.Configuration
             repo.Setup(r => r.GetItemAsync<MfaConfiguration>(It.IsAny<System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync(repoConfig);
 
-            var service = new MfaConfigurationService(repo.Object);
+            var service = new MfaConfigurationService(repo.Object, Kv().Object);
             var result = await service.GetAsync();
 
             result!.UserMfaType.Should().BeEmpty();
@@ -107,11 +125,12 @@ namespace XUnitTest.Mfa.Configuration
                 .ReturnsAsync((MfaConfiguration?)null);
 
             MfaConfiguration? upserted = null;
-            repo.Setup(r => r.UpsertAsync(It.IsAny<MfaConfiguration>(), It.IsAny<System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>>(), It.IsAny<string>()))
-                .Callback<MfaConfiguration, System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>, string>((c, _, _) => upserted = c)
+            var kv = Kv();
+            kv.Setup(k => k.SetAsync(MfaConfigurationService.StoreKey, It.IsAny<MfaConfiguration>(), true, It.IsAny<CancellationToken>()))
+                .Callback<string, MfaConfiguration, bool, CancellationToken>((_, c, _, _) => upserted = c)
                 .Returns(Task.CompletedTask);
 
-            var service = new MfaConfigurationService(repo.Object);
+            var service = new MfaConfigurationService(repo.Object, kv.Object);
             await service.SaveAsync(new global::Mfa.DomainService.Configuration.Configuration
             {
                 EnableMfa = true,
@@ -144,11 +163,12 @@ namespace XUnitTest.Mfa.Configuration
                 .ReturnsAsync(existing);
 
             MfaConfiguration? upserted = null;
-            repo.Setup(r => r.UpsertAsync(It.IsAny<MfaConfiguration>(), It.IsAny<System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>>(), It.IsAny<string>()))
-                .Callback<MfaConfiguration, System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>, string>((c, _, _) => upserted = c)
+            var kv = Kv();
+            kv.Setup(k => k.SetAsync(MfaConfigurationService.StoreKey, It.IsAny<MfaConfiguration>(), true, It.IsAny<CancellationToken>()))
+                .Callback<string, MfaConfiguration, bool, CancellationToken>((_, c, _, _) => upserted = c)
                 .Returns(Task.CompletedTask);
 
-            var service = new MfaConfigurationService(repo.Object);
+            var service = new MfaConfigurationService(repo.Object, kv.Object);
             await service.SaveAsync(new global::Mfa.DomainService.Configuration.Configuration
             {
                 EnableMfa = true,
@@ -161,6 +181,120 @@ namespace XUnitTest.Mfa.Configuration
             upserted.UserMfaTypes.Should().ContainSingle().Which.Should().Be(UserMfaType.Sms);
             upserted.BackupCodesCount.Should().Be(25);
             upserted.LastUpdatedDate.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+        }
+
+        // ---------- KeyValueStores "mfa-config" (SPEC1 3.4) ----------
+
+        [Fact]
+        public async Task GetAsync_KvHit_UsesTheStoredValue_AndNeverReadsTheOldDoc()
+        {
+            var repo = OldDoc(BuildConfig(enableMfa: false));
+            var service = new MfaConfigurationService(repo.Object, Kv(BuildConfig(enableMfa: true)).Object);
+
+            var result = await service.GetAsync();
+
+            result!.EnableMfa.Should().BeTrue();
+            repo.Verify(r => r.GetItemAsync<MfaConfiguration>(It.IsAny<System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetAsync_KvMiss_FallsBackToTheOldDoc()
+        {
+            var service = new MfaConfigurationService(OldDoc(BuildConfig(enableMfa: true)).Object, Kv().Object);
+
+            (await service.GetAsync())!.EnableMfa.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task GetAsync_KvAndOldDocMiss_ReturnsTheDefaultObject()
+        {
+            var service = new MfaConfigurationService(OldDoc(null).Object, Kv().Object);
+
+            var result = await service.GetAsync();
+
+            result!.EnableMfa.Should().BeFalse();
+            result.UserMfaType.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task GetAsync_KvThrows_Throws_NeverReturnsMfaOff()
+        {
+            var kv = new Mock<IKeyValueStore>();
+            kv.Setup(k => k.GetAsync<MfaConfiguration>(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("kv down"));
+            var repo = OldDoc(BuildConfig(enableMfa: true));
+            var service = new MfaConfigurationService(repo.Object, kv.Object);
+
+            await service.Invoking(s => s.GetAsync()).Should().ThrowAsync<InvalidOperationException>();
+            repo.Verify(r => r.GetItemAsync<MfaConfiguration>(It.IsAny<System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveAsync_WritesTheStore_UnderTheContextTenant_AndNeverTheOldCollection()
+        {
+            var repo = OldDoc(null);
+            var kv = Kv();
+            var service = new MfaConfigurationService(repo.Object, kv.Object);
+
+            await service.SaveAsync(new global::Mfa.DomainService.Configuration.Configuration { EnableMfa = true });
+
+            // impersonated: true (the default) = the context tenant database; false would write the root DB (C5).
+            kv.Verify(k => k.SetAsync("mfa-config", It.IsAny<MfaConfiguration>(), true, It.IsAny<CancellationToken>()), Times.Once);
+            kv.Verify(k => k.SetAsync(It.IsAny<string>(), It.IsAny<MfaConfiguration>(), false, It.IsAny<CancellationToken>()), Times.Never);
+            repo.Verify(r => r.UpsertAsync(It.IsAny<MfaConfiguration>(), It.IsAny<System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveAsync_KvHit_KeepsTheStoredIdentity_AndUpdatesFields()
+        {
+            var stored = BuildConfig(enableMfa: false);
+            stored.ItemId = "kv-id";
+            stored.Name = "Default";
+            var kv = Kv(stored);
+            MfaConfiguration? saved = null;
+            kv.Setup(k => k.SetAsync(It.IsAny<string>(), It.IsAny<MfaConfiguration>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                .Callback<string, MfaConfiguration, bool, CancellationToken>((_, c, _, _) => saved = c)
+                .Returns(Task.CompletedTask);
+            var repo = OldDoc(BuildConfig());
+
+            await new MfaConfigurationService(repo.Object, kv.Object)
+                .SaveAsync(new global::Mfa.DomainService.Configuration.Configuration { EnableMfa = true, BackupCodesCount = 7 });
+
+            saved!.ItemId.Should().Be("kv-id");
+            saved.EnableMfa.Should().BeTrue();
+            saved.BackupCodesCount.Should().Be(7);
+            repo.Verify(r => r.GetItemAsync<MfaConfiguration>(It.IsAny<System.Linq.Expressions.Expression<Func<MfaConfiguration, bool>>>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveAsync_KvMiss_StartsFromTheOldDoc()
+        {
+            var old = BuildConfig();
+            old.ItemId = "old-id";
+            old.Name = "Default";
+            var kv = Kv();
+            MfaConfiguration? saved = null;
+            kv.Setup(k => k.SetAsync(It.IsAny<string>(), It.IsAny<MfaConfiguration>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                .Callback<string, MfaConfiguration, bool, CancellationToken>((_, c, _, _) => saved = c)
+                .Returns(Task.CompletedTask);
+
+            await new MfaConfigurationService(OldDoc(old).Object, kv.Object)
+                .SaveAsync(new global::Mfa.DomainService.Configuration.Configuration { EnableMfa = true });
+
+            saved!.ItemId.Should().Be("old-id");
+        }
+
+        [Fact]
+        public async Task SaveAsync_KvReadThrows_Throws_AndWritesNothing()
+        {
+            var kv = new Mock<IKeyValueStore>();
+            kv.Setup(k => k.GetAsync<MfaConfiguration>(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("kv down"));
+
+            await new MfaConfigurationService(OldDoc(null).Object, kv.Object)
+                .Invoking(s => s.SaveAsync(new global::Mfa.DomainService.Configuration.Configuration()))
+                .Should().ThrowAsync<InvalidOperationException>();
+            kv.Verify(k => k.SetAsync(It.IsAny<string>(), It.IsAny<MfaConfiguration>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
         }
     }
 }

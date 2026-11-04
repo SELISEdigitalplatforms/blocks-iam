@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Blocks.CaptchaDriver;
 

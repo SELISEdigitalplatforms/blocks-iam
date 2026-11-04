@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using StorageDriver;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Mfa
 {
@@ -29,11 +29,16 @@ namespace XUnitTest.Mfa
         private readonly Mock<ICacheClient> _cacheClient = new();
         private readonly Mock<IValidator<VerifyOtpRequest>> _validator = new();
         private readonly Mock<ITenants> _tenant = new();
-        private readonly Mock<IStorageDriverService> _storage = new();
+        private readonly Mock<ITotpSecretResolver> _secrets = new();
+
+        public TotpServiceTests()
+        {
+            _secrets.Setup(s => s.GetAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(ValidBase32Secret);
+        }
 
         private TotpService Sut() => new(
             _repository.Object, NullLogger<TotpService>.Instance, _httpContextAccessor.Object,
-            _configuration.Object, _cacheClient.Object, _validator.Object, _tenant.Object, _storage.Object);
+            _configuration.Object, _cacheClient.Object, _validator.Object, _tenant.Object, _secrets.Object);
 
         [Fact]
         public async Task GenerateAsync_StoresUserAndReturnsMfaId()
@@ -86,7 +91,7 @@ namespace XUnitTest.Mfa
             _cacheClient.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
             _cacheClient.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync("u1");
             _repository.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<System.Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserTotpDetail { CreatedBy = "u1", Secret = ValidBase32Secret });
+                .ReturnsAsync(new UserTotpDetail { CreatedBy = "u1", SecretReference = "ref1" });
             var result = await Sut().VerifyAsync(new VerifyOtpRequest { MfaId = "mfa1", VerificationCode = "000000" });
             result.IsSuccess.Should().BeTrue();
             result.UserId.Should().Be("u1");
@@ -113,7 +118,7 @@ namespace XUnitTest.Mfa
         public async Task VerifyForUserAsync_SetUp_ReturnsVerificationResult()
         {
             _repository.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<System.Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserTotpDetail { CreatedBy = "u1", Secret = ValidBase32Secret });
+                .ReturnsAsync(new UserTotpDetail { CreatedBy = "u1", SecretReference = "ref1" });
             var result = await Sut().VerifyForUserAsync("u1", "000000");
             result.IsSuccess.Should().BeTrue();
             result.UserId.Should().Be("u1");
@@ -126,19 +131,6 @@ namespace XUnitTest.Mfa
                 .ReturnsAsync((UserInfo?)null);
             var result = await Sut().GenerateTotpImageByUserAsync("u1");
             result.Errors.Should().ContainKey("user_not_exist");
-        }
-
-        [Fact]
-        public async Task GenerateTotpImageByUserAsync_ExistingImage_ReturnsCached()
-        {
-            _repository.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<System.Func<UserInfo, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u@x.com" });
-            _repository.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<System.Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserTotpDetail { ImageUri = "https://img/qr.png", Secret = "SEC" });
-            var result = await Sut().GenerateTotpImageByUserAsync("u1");
-            result.IsSuccess.Should().BeTrue();
-            result.QrImageUrl.Should().Be("https://img/qr.png");
-            result.QrCode.Should().Be("SEC");
         }
     }
 }

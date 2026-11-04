@@ -5,6 +5,7 @@ using Authentication.DomainService.Security.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Activity.RequestModel;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.Auth.Security
 {
@@ -24,6 +26,7 @@ namespace XUnitTest.Auth.Security
         private readonly Mock<ISessionRevocationService> _revocation;
         private readonly Mock<IActivityQueryService> _activity;
         private readonly Mock<IRefreshTokenRepository> _refreshTokens;
+        private readonly Mock<IAccessGrantService> _accessGrant = new();
 
         public SecurityControllerTests()
         {
@@ -64,7 +67,8 @@ namespace XUnitTest.Auth.Security
             return new SecurityController(
                 _securityQuery.Object,
                 _revocation.Object,
-                _activity.Object);
+                _activity.Object,
+                _accessGrant.Object);
         }
 
         [Fact]
@@ -186,6 +190,176 @@ namespace XUnitTest.Auth.Security
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             ok.Value.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task RevokeAnotherUsersSessionIsRefusedWhenTheCallerMayNotManageThem()
+        {
+            _accessGrant.Setup(d => d.IsConsoleCaller()).Returns(true);
+            _accessGrant.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(false);
+
+            var result = await CreateController().RevokeSession(
+                "their-session",
+                new() { UserId = "other-user", Reason = "admin" },
+                CancellationToken.None);
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        }
+
+        [Fact]
+        public async Task RevokeAnotherUsersRefreshTokenIsRefusedWhenTheCallerMayNotManageThem()
+        {
+            _accessGrant.Setup(d => d.IsConsoleCaller()).Returns(true);
+            _accessGrant.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(false);
+
+            var result = await CreateController().RevokeRefreshToken(
+                "their-token",
+                new() { UserId = "other-user" },
+                CancellationToken.None);
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        }
+
+        [Fact]
+        public async Task ConsoleRevokingAnotherUsersSessionProceedsWhenTheCallerMayManageThem()
+        {
+            _accessGrant.Setup(d => d.IsConsoleCaller()).Returns(true);
+            _accessGrant.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(true);
+            _securityQuery.Setup(s => s.ResolveCurrentSessionIdAsync("other-user", It.IsAny<CancellationToken>()))
+                .ReturnsAsync("their-current");
+            var response = new RevokeSessionResponse { SessionId = "their-session", Warnings = new List<string>() };
+            _revocation.Setup(r => r.RevokeSessionAsync("their-session", "other-user", "their-current", "admin", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(response);
+
+            var result = await CreateController().RevokeSession(
+                "their-session",
+                new() { UserId = "other-user", Reason = "admin" },
+                CancellationToken.None);
+
+            result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task RevokingOwnSessionNeverAsksAccessGrant()
+        {
+            _securityQuery.Setup(s => s.ResolveCurrentSessionIdAsync(ActorUserId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync("current-session");
+            _revocation.Setup(r => r.RevokeSessionAsync("old-session", ActorUserId, "current-session", null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new RevokeSessionResponse { SessionId = "old-session", Warnings = new List<string>() });
+
+            await CreateController().RevokeSession("old-session", new() { UserId = ActorUserId }, CancellationToken.None);
+
+            _accessGrant.Verify(d => d.AuthorizeManageUserAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        // ---------- a project's own token (Construct) acts on its own user only ----------
+
+        [Fact]
+        public async Task ProjectTokenMayNotRevokeAnotherUsersSession_EvenWhenAccessGrantWouldAllow()
+        {
+            _accessGrant.Setup(d => d.AuthorizeManageUserAsync("other-user")).ReturnsAsync(true);
+
+            var result = await CreateController().RevokeSession(
+                "their-session", new() { UserId = "other-user" }, CancellationToken.None);
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            _accessGrant.Verify(d => d.AuthorizeManageUserAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ProjectTokenMayNotRevokeAnotherUsersRefreshToken()
+        {
+            var result = await CreateController().RevokeRefreshToken(
+                "their-token", new() { UserId = "other-user" }, CancellationToken.None);
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        }
+
+        [Fact]
+        public async Task ProjectTokenMayNotReadAnotherUsersSecurityData()
+        {
+            var controller = CreateController();
+
+            (await controller.GetSummary("other-user", CancellationToken.None))
+                .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            (await controller.GetUserSessions("other-user", CancellationToken.None)).Result
+                .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            (await controller.GetSessionDetails(SessionId, "other-user", CancellationToken.None)).Result
+                .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            (await controller.GetActivity(new SecurityController.GetActivityPayload { UserId = "other-user" }, CancellationToken.None))
+                .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        }
+
+        [Fact]
+        public async Task RevokeSession_NoBody_RevokesTheCallersOwnSession()
+        {
+            _securityQuery.Setup(s => s.ResolveCurrentSessionIdAsync(ActorUserId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync("current-session");
+            var response = new RevokeSessionResponse { SessionId = "old-session", Warnings = new List<string>() };
+            _revocation.Setup(r => r.RevokeSessionAsync("old-session", ActorUserId, "current-session", null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(response);
+
+            var result = await CreateController().RevokeSession("old-session", null, CancellationToken.None);
+
+            result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeSameAs(response);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("some-user")]
+        public async Task ClientCredentialTokenIsRefused(string? userId)
+        {
+            UseClientCredentialCaller();
+            _accessGrant.Setup(d => d.IsConsoleCaller()).Returns(true);
+            _accessGrant.Setup(d => d.AuthorizeManageUserAsync(It.IsAny<string>())).ReturnsAsync(true);
+
+            var revoke = await CreateController().RevokeSession(SessionId, new() { UserId = userId }, CancellationToken.None);
+            var revokeToken = await CreateController().RevokeRefreshToken("rt-1", new() { UserId = userId }, CancellationToken.None);
+            var sessions = await CreateController().GetUserSessions(userId, CancellationToken.None);
+
+            revoke.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            revokeToken.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            sessions.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        }
+
+        // ---------- a revoke that matches nothing ----------
+
+        [Fact]
+        public async Task RevokeSession_NotASessionOfTheUser_ReturnsBadRequestSessionNotFound()
+        {
+            _securityQuery.Setup(s => s.ResolveCurrentSessionIdAsync(ActorUserId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync("current-session");
+            _revocation.Setup(r => r.RevokeSessionAsync("unknown", ActorUserId, "current-session", null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new RevokeSessionResponse { SessionId = "unknown", Warnings = new List<string> { "session_not_found" } });
+
+            var result = await CreateController().RevokeSession("unknown", new(), CancellationToken.None);
+
+            result.Should().BeOfType<BadRequestObjectResult>()
+                .Which.Value.Should().BeEquivalentTo(new { error = "session_not_found" });
+        }
+
+        [Fact]
+        public async Task RevokeRefreshToken_NotATokenOfTheUser_ReturnsBadRequestRefreshTokenNotFound()
+        {
+            _securityQuery.Setup(s => s.ResolveCurrentSessionIdAsync(ActorUserId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync("current-session");
+            _revocation.Setup(r => r.RevokeRefreshTokenAsync("rt-x", ActorUserId, "current-session", null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new RevokeSessionResponse { Warnings = new List<string> { "refresh_token_not_found" } });
+
+            var result = await CreateController().RevokeRefreshToken("rt-x", new(), CancellationToken.None);
+
+            result.Should().BeOfType<BadRequestObjectResult>()
+                .Which.Value.Should().BeEquivalentTo(new { error = "refresh_token_not_found" });
+        }
+
+        private static void UseClientCredentialCaller()
+        {
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: "tenant-1", roles: null, userId: string.Empty, impersonated: false,
+                isAuthenticated: true, requestUri: "https://test/security", organizationId: "org-1",
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: null, userName: null,
+                phoneNumber: null, displayName: null, oauthToken: null, originalTenantId: "tenant-1",
+                impersonationSessionId: null, applicationDomain: "test", clientId: "client-1"));
         }
 
         [Fact]

@@ -271,10 +271,10 @@ describe("UserService", () => {
       expect(http.get).toHaveBeenCalled();
     });
 
-    it("isUserExist() encodes the email in the query", async () => {
-      vi.mocked(http.get).mockResolvedValue({ userId: "u1" });
+    it("isUserExist() posts the email in the body", async () => {
+      vi.mocked(http.post).mockResolvedValue({ userId: "u1" });
       await service.isUserExist("a+b@test.com");
-      expect(http.get).toHaveBeenCalledWith(expect.stringContaining("a%2Bb%40test.com"));
+      expect(http.post).toHaveBeenCalledWith(USER_ENDPOINTS.EXISTS, { email: "a+b@test.com" });
     });
 
     it("getUserRoles() requests the roles for a user id", async () => {

@@ -1,3 +1,5 @@
+﻿using Blocks.Genesis.Notifications;
+using Blocks.Genesis.DataAccess;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
@@ -18,10 +20,13 @@ using FluentValidation;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Activity.Services;
 using Iam.DomainService.Configurations;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
+using Iam.DomainService.SignupLinks;
+using Authentication.DomainService.SignupLinks;
 using Idp.DomainService.Oidc.Services;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.OTP.Services;
@@ -32,7 +37,7 @@ using Mfa.DomainService.Validators;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Storage.DomainService.Shared.Services;
+using Storage.DomainService.Services;
 using Storage.DomainService.Storage;
 using Storage.DomainService.Storage.Validators;
 
@@ -44,14 +49,24 @@ namespace Authentication.DomainService.Utilities
         public static void RegisterAllServices(this IServiceCollection serviceCollection)
         {
             
+            // Genesis data access resolver (row filter gate). One registration for Api and Worker; pre-login
+            // flows have no authenticated user, so IamDataAccess.ShouldSkipResolver passes them through.
+            serviceCollection.AddBlocksDataAccess();
+            serviceCollection.AddSingleton<IAccessPrincipalAccessor, BlocksContextPrincipalAccessor>();
+            serviceCollection.AddSingleton<IIamDataAccess, IamDataAccess>();
+
             #region Authentication
             serviceCollection.AddHttpClient(OidcDiscoveryClient.HttpClientName);
             serviceCollection.AddSingleton<OidcDiscoveryClient>();
+            serviceCollection.AddSingleton<AuthenticationRequestValidators>();
             serviceCollection.AddSingleton<IAuthenticationDomainService, AuthenticationDomainService>();
             serviceCollection.AddSingleton<IAuthenticationRepository, AuthenticationRepository>();
             // Satisfies Iam.DomainService's account-action email builders, which need the
             // tenant's default OIDC client but cannot reference this assembly.
             serviceCollection.AddSingleton<IDefaultOidcClientResolver, DefaultOidcClientResolver>();
+            serviceCollection.AddSingleton<IUserSessionTerminator, UserSessionTerminator>();
+            serviceCollection.AddSingleton<IFailedLoginTracker, FailedLoginTracker>();
+            serviceCollection.AddSingleton<IOidcClientRegistrationLookup, OidcClientRegistrationLookup>();
 
             serviceCollection.AddSingleton<IOAuthJwtAccessTokenManager, OAuthJwtAccessTokenManager>();
             serviceCollection.AddSingleton<IJwtAccessTokenProvider, JwtAccessTokenProvider>();
@@ -70,23 +85,29 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IOidcCallbackHandler, OidcCallbackHandler>();
             serviceCollection.AddSingleton<ISsoUserProvisioningService, SsoUserProvisioningService>();
 
-            serviceCollection.AddSingleton<IAuthorizationCodeRepository, AuthorizationCodeRepository>();
+            serviceCollection.AddSingleton<AuthorizationCodeRepository>();
+            serviceCollection.AddSingleton<IAuthorizationCodeRepository, RedisAuthorizationCodeStore>();
             serviceCollection.AddSingleton<IRefreshTokenRepository, RefreshTokenRepository>();
             serviceCollection.AddSingleton<IIdpSessionRepository, IdpSessionRepository>();
             serviceCollection.AddSingleton<ITokenRevocationRepository, TokenRevocationRepository>();
             serviceCollection.AddSingleton<ITokenRevocationService, TokenRevocationService>();
             serviceCollection.AddSingleton<IIdpSessionService, IdpSessionService>();
 
+            serviceCollection.AddSingleton<IPasswordCredentialVerifier, PasswordCredentialVerifier>();
+            serviceCollection.AddSingleton<IUnknownUserLoginGuard, UnknownUserLoginGuard>();
             serviceCollection.AddSingleton<PasswordAuthenticationService>();
             serviceCollection.AddSingleton<MfaAuthorizationService>();
             serviceCollection.AddSingleton<IMfaPolicyService, MfaPolicyService>();
+            serviceCollection.AddSingleton<Authentication.LoginPolicies.ILoginPolicyService, Authentication.LoginPolicies.LoginPolicyService>();
+            serviceCollection.AddSingleton<IMfaDisableService, MfaDisableService>();
+            serviceCollection.AddSingleton<IMfaAttemptGate, MfaAttemptGate>();
             serviceCollection.AddSingleton<IMfaAuditService, MfaAuditService>();
             serviceCollection.AddSingleton<RefreshTokenAuthenticationService>();
             serviceCollection.AddSingleton<SocialAuthorizationService>();
             serviceCollection.AddSingleton<BYOSsoAuthorizationService>();
             serviceCollection.AddSingleton<BiometricAuthorizationService>();
             serviceCollection.AddSingleton<ClientCredentialAuthorizationService>();
-            serviceCollection.AddSingleton<ClientUserCodeAuthorizationService>();
+            serviceCollection.AddSingleton<IClientAccessTokenIssuer>(sp => sp.GetRequiredService<ClientCredentialAuthorizationService>());
             serviceCollection.AddSingleton<SSOConsentAuthenticationService>();
             serviceCollection.AddSingleton<IAuthorizationClaimsResolver, AuthorizationClaimsResolver>();
             serviceCollection.AddSingleton<ClientCredentialsTokenIssuer>();
@@ -100,6 +121,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<OidcLoginAuditWriter>();
             serviceCollection.AddSingleton<OidcCaptchaEvaluator>();
             serviceCollection.AddSingleton<OidcLoginOrchestrator>();
+            serviceCollection.AddSingleton<OidcAuthorizationSessionStores>();
+            serviceCollection.AddSingleton<OidcAuthorizationIdentityStores>();
             serviceCollection.AddSingleton<OidcAuthorizationEndpoint>();
             serviceCollection.AddSingleton<AuthorizationCodeExchangeService>();
             serviceCollection.AddSingleton<OidcRefreshTokenService>();
@@ -161,6 +184,11 @@ namespace Authentication.DomainService.Utilities
             #endregion
 
             #region IAM
+            // Built-in notifications go through the Genesis publisher. Best effort; both hosts use it.
+            serviceCollection.AddHttpClient();
+            serviceCollection.AddBlocksNotifications();
+            serviceCollection.AddSingleton<Iam.DomainService.Notifications.IBuiltInNotificationSender, Iam.DomainService.Notifications.BuiltInNotificationSender>();
+
             serviceCollection.AddSingleton<IUserManagementMutationService, UserManagementMutationService>();
             serviceCollection.AddSingleton<IUserRepository, UserRepository>();
 
@@ -179,7 +207,28 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IUserManagementQueryService, UserManagementQueryService>();
             serviceCollection.AddSingleton<IResourceQueryService, ResourceQueryService>();
 
+            serviceCollection.AddSingleton<ISignupOrganizationResolver, SignupOrganizationResolver>();
             serviceCollection.AddSingleton<IAccountService, AccountService>();
+            serviceCollection.AddSingleton<ILoginPolicySettingsService, LoginPolicySettingsService>();
+            serviceCollection.AddSingleton<IAdminPasswordResetService, AdminPasswordResetService>();
+            serviceCollection.AddSingleton<ISignupLinkConfigurationRepository, SignupLinkConfigurationRepository>();
+            serviceCollection.AddSingleton<ISignupLinkConfigurationService, SignupLinkConfigurationService>();
+            serviceCollection.AddSingleton<ISignupLinkRepository, SignupLinkRepository>();
+            serviceCollection.AddSingleton<ISignupLinkContextService, SignupLinkContextService>();
+            serviceCollection.AddSingleton<LinkSessionRepository>();
+            serviceCollection.AddSingleton<ILinkSessionRepository, RedisLinkSessionStore>();
+            serviceCollection.AddSingleton<SignupLinkRedemptionStores>();
+            serviceCollection.AddSingleton<SignupLinkRedemptionServices>();
+            serviceCollection.AddSingleton<SignupLinkRedemptionCollaborators>();
+            serviceCollection.AddSingleton<ISignupLinkEmbeddedTokenIssuer, SignupLinkEmbeddedTokenIssuer>();
+            serviceCollection.AddSingleton<ISignupLinkRedemptionOrchestrator, SignupLinkRedemptionOrchestrator>();
+            serviceCollection.AddSingleton<SignupLinkGenerationRepositories>();
+            serviceCollection.AddSingleton<SignupLinkGenerationValidators>();
+            serviceCollection.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
+            serviceCollection.AddSingleton<ISignupLinkSummaryService, SignupLinkSummaryService>();
+            serviceCollection.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
+            serviceCollection.AddAccessGrant();
+            serviceCollection.AddSingleton<IClientCredentialGrantGuard, ClientCredentialGrantGuard>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
 
             serviceCollection.AddSingleton<IUserActivityRepository, UserActivityRepository>();
@@ -194,6 +243,13 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IValidator<CreateUserRequest>, CreateUserValidator>();
             serviceCollection.AddSingleton<IValidator<UpdateUserRequest>, UpdateUserValidator>();
             serviceCollection.AddSingleton<IValidator<UpdateMyAccountRequest>, UpdateMyAccountValidator>();
+            serviceCollection.AddSingleton<IValidator<CreateSignupLinkConfigurationRequest>, CreateSignupLinkConfigurationValidator>();
+            serviceCollection.AddSingleton<IValidator<UpdateSignupLinkConfigurationRequest>, UpdateSignupLinkConfigurationValidator>();
+            serviceCollection.AddSingleton<IValidator<QuerySignupLinkConfigurationsRequest>, QuerySignupLinkConfigurationsValidator>();
+            serviceCollection.AddSingleton<IValidator<GenerateSignupLinkRequest>, GenerateSignupLinkValidator>();
+            serviceCollection.AddSingleton<IValidator<QuerySignupLinksRequest>, QuerySignupLinksValidator>();
+            serviceCollection.AddSingleton<IValidator<RevokeSignupLinksByConfigurationRequest>, RevokeSignupLinksByConfigurationValidator>();
+            serviceCollection.AddSingleton<IValidator<SignupLinkSummaryRequest>, SignupLinkSummaryValidator>();
             serviceCollection.AddSingleton<IValidator<CreatePermissionRequest>, CreatePermissionValidator>();
             serviceCollection.AddSingleton<IValidator<CreateRoleRequest>, RoleValidator>();
             serviceCollection.AddSingleton<IValidator<UpdatePermissionRequest>, UpdatePermissionValidator>();
@@ -207,8 +263,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IOtpServiceFactory, OtpServiceFactory>();
             serviceCollection.AddSingleton<IMfaManagementRepository, MfaManagementRepository>();
             serviceCollection.AddSingleton<IMfaConfigurationService, MfaConfigurationService>();
-            serviceCollection.AddSingleton<IMfaBackupCodeService, MfaBackupCodeService>();
             serviceCollection.AddSingleton<TotpService>();
+            serviceCollection.AddSingleton<ITotpSecretResolver, TotpSecretResolver>();
             serviceCollection.AddSingleton<EmailOtpService>();
             serviceCollection.AddHttpContextAccessor();
 
@@ -217,8 +273,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<MfaAuditService>();
             serviceCollection.AddSingleton<IMfaAuditService>(sp => sp.GetRequiredService<MfaAuditService>());
 
-
-            serviceCollection.RegisterBlocksMailService();
 
             #endregion
 
@@ -229,17 +283,19 @@ namespace Authentication.DomainService.Utilities
             // TryAdd throughout, so calling it here is idempotent.
             serviceCollection.AddBlocksSecrets();
             serviceCollection.RegisterBlocksCaptchaService();
+            // Singleton over IServiceScopeFactory: ISecretService is scoped, so it is resolved per call.
+            serviceCollection.AddSingleton<IIdentityProviderSecretResolver, IdentityProviderSecretResolver>();
+            serviceCollection.AddSingleton<IClientCredentialSecretResolver, ClientCredentialSecretResolver>();
+            serviceCollection.AddSingleton<IOidcClientSecretResolver, OidcClientSecretResolver>();
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
             serviceCollection.AddSingleton<IRefreshSessionResolver, RefreshSessionResolver>();
+            serviceCollection.AddSingleton<IOidcClientTokenLifetimeService, OidcClientTokenLifetimeService>();
             serviceCollection.AddSingleton<IImpersonationFlowHelper, ImpersonationFlowHelper>();
 
             // Drivers
-            serviceCollection.AddSingleton<DmsArtifactBuilderFactory>();
             serviceCollection.AddTransient<IValidator<UpdateFileRequest>, UpdateFileRequestValidator>();
             serviceCollection.AddTransient<AwsS3CompatibleStorageService>();
-            serviceCollection.AddSingleton<FileArtifactBuilder>();
-            serviceCollection.AddSingleton<FolderArtifactBuilder>();
 
             serviceCollection.RegisterBlocksStorageServices();
         }

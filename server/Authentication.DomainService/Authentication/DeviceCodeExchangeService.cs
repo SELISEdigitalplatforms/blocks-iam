@@ -11,8 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Security.Cryptography;
-using System.Text;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -29,6 +28,7 @@ namespace Authentication.DomainService.Authentication
         private readonly DeviceCodeGenerator _codeGenerator;
         private readonly IOidcTokenMintService _mintService;
         private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IOidcClientSecretResolver _clientSecrets;
         private readonly IUserRepository _userRepository;
         private readonly IOptions<DeviceFlowOptions> _options;
         private readonly ILogger<DeviceCodeExchangeService> _logger;
@@ -38,6 +38,7 @@ namespace Authentication.DomainService.Authentication
             DeviceCodeGenerator codeGenerator,
             IOidcTokenMintService mintService,
             IAuthenticationRepository authenticationRepository,
+            IOidcClientSecretResolver clientSecrets,
             IUserRepository userRepository,
             IOptions<DeviceFlowOptions> options,
             ILogger<DeviceCodeExchangeService> logger)
@@ -46,6 +47,7 @@ namespace Authentication.DomainService.Authentication
             _codeGenerator = codeGenerator;
             _mintService = mintService;
             _authenticationRepository = authenticationRepository;
+            _clientSecrets = clientSecrets;
             _userRepository = userRepository;
             _options = options;
             _logger = logger;
@@ -57,19 +59,7 @@ namespace Authentication.DomainService.Authentication
             var clientId = request.Form["client_id"].ToString();
             var clientSecret = request.Form["client_secret"].ToString();
 
-            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
-            {
-                OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out var basicClientId, out var basicSecret);
-                if (string.IsNullOrWhiteSpace(clientId))
-                {
-                    clientId = basicClientId;
-                }
-
-                if (string.IsNullOrWhiteSpace(clientSecret))
-                {
-                    clientSecret = basicSecret;
-                }
-            }
+            (clientId, clientSecret) = ResolveClientCredentials(request, clientId, clientSecret);
 
             if (string.IsNullOrWhiteSpace(deviceCode) || string.IsNullOrWhiteSpace(clientId))
             {
@@ -89,23 +79,10 @@ namespace Authentication.DomainService.Authentication
                 return DeviceEndpointErrors.InvalidGrant("client_id does not match device_code");
             }
 
-            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(entity.ClientId);
-            if (!OidcClientValidator.IsGrantAllowed(client, GrantTypes.DeviceCode))
+            var preconditionError = await ValidateClientAndTenantAsync(entity, clientSecret, request);
+            if (preconditionError != null)
             {
-                return DeviceEndpointErrors.InvalidClient("client is not authorized for the device_code grant");
-            }
-
-            if (RequiresClientAuthentication(client) && !SecretsMatch(clientSecret, client!.ClientSecret))
-            {
-                return DeviceEndpointErrors.InvalidClient("invalid client authentication");
-            }
-
-            var cookieTenantId = ResolveTenantIdFromRequest(request);
-            if (!string.IsNullOrWhiteSpace(cookieTenantId)
-                && !string.Equals(cookieTenantId, entity.TenantId, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("Device code tenant mismatch: presented={Presented} actual={Actual}", cookieTenantId, entity.TenantId);
-                return DeviceEndpointErrors.InvalidGrant("tenant mismatch");
+                return preconditionError;
             }
 
             switch (entity.Status)
@@ -128,6 +105,55 @@ namespace Authentication.DomainService.Authentication
                 default:
                     return DeviceEndpointErrors.InvalidGrant("unsupported device_code status");
             }
+        }
+
+        private static (string ClientId, string ClientSecret) ResolveClientCredentials(HttpRequest request, string clientId, string clientSecret)
+        {
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+            {
+                OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out var basicClientId, out var basicSecret);
+                if (string.IsNullOrWhiteSpace(clientId))
+                {
+                    clientId = basicClientId;
+                }
+
+                if (string.IsNullOrWhiteSpace(clientSecret))
+                {
+                    clientSecret = basicSecret;
+                }
+            }
+
+            return (clientId, clientSecret);
+        }
+
+        private async Task<IActionResult?> ValidateClientAndTenantAsync(DeviceAuthorizationRequestModel entity, string clientSecret, HttpRequest request)
+        {
+            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(entity.ClientId);
+            if (!OidcClientValidator.IsGrantAllowed(client, GrantTypes.DeviceCode))
+            {
+                return DeviceEndpointErrors.InvalidClient("client is not authorized for the device_code grant");
+            }
+
+            if (OidcClientValidator.RequiresClientAuthentication(client))
+            {
+                switch (await _clientSecrets.CheckSecretAsync(client!, clientSecret))
+                {
+                    case OidcClientSecretCheck.Unavailable:
+                        return DeviceEndpointErrors.TemporarilyUnavailable(OidcClientSecretResolverExtensions.UnavailableDescription);
+                    case OidcClientSecretCheck.DoesNotMatch:
+                        return DeviceEndpointErrors.InvalidClient("invalid client authentication");
+                }
+            }
+
+            var cookieTenantId = ResolveTenantIdFromRequest(request);
+            if (!string.IsNullOrWhiteSpace(cookieTenantId)
+                && !string.Equals(cookieTenantId, entity.TenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Device code tenant mismatch: presented={Presented} actual={Actual}", cookieTenantId, entity.TenantId);
+                return DeviceEndpointErrors.InvalidGrant("tenant mismatch");
+            }
+
+            return null;
         }
 
         private async Task<IActionResult> HandlePendingAsync(DeviceAuthorizationRequestModel entity, CancellationToken ct)
@@ -177,7 +203,9 @@ namespace Authentication.DomainService.Authentication
             }
 
             var user = await _userRepository.GetUserByIdAsync(entity.UserId);
-            if (user == null)
+            // A user deactivated or suspended between approval and polling gets no tokens. Same
+            // answer as an unknown user, so the device learns nothing about the account state.
+            if (user == null || BlockedUserRefreshGuard.IsBlocked(user))
             {
                 return DeviceEndpointErrors.AccessDenied("user not found");
             }
@@ -242,35 +270,6 @@ namespace Authentication.DomainService.Authentication
             return scope
                 .Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Any(s => string.Equals(s, "offline_access", StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static bool RequiresClientAuthentication(OidcClientRegistration? client)
-        {
-            if (client == null)
-            {
-                return false;
-            }
-
-            if (string.Equals(client.ClientType, "public", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            return !string.IsNullOrWhiteSpace(client.TokenEndpointAuthMethod)
-                && !string.Equals(client.TokenEndpointAuthMethod, "none", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool SecretsMatch(string? presentedSecret, string? registeredSecret)
-        {
-            if (string.IsNullOrEmpty(presentedSecret) || string.IsNullOrEmpty(registeredSecret))
-            {
-                return false;
-            }
-
-            var presented = Encoding.UTF8.GetBytes(presentedSecret);
-            var registered = Encoding.UTF8.GetBytes(registeredSecret);
-            return presented.Length == registered.Length
-                && CryptographicOperations.FixedTimeEquals(presented, registered);
         }
 
         private static string? ResolveTenantIdFromRequest(HttpRequest request)

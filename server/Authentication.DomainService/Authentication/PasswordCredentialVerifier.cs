@@ -1,0 +1,270 @@
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.Services;
+using Blocks.Genesis;
+using Iam.DomainService.Accounts;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Entities;
+using Iam.DomainService.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using Blocks.Genesis.Entities.Iam;
+using BCryptNet = BCrypt.Net.BCrypt;
+
+namespace Authentication.DomainService.Authentication
+{
+    /// <summary>
+    /// Extracted from <see cref="PasswordAuthenticationService"/> without behaviour change; see
+    /// <see cref="IPasswordCredentialVerifier"/>.
+    /// </summary>
+    public sealed class PasswordCredentialVerifier : IPasswordCredentialVerifier
+    {
+        private const string FailedLoginAccountLockedEvent = "failed_login_account_locked";
+        private const string PasswordAuthAccountLockedEvent = "password_auth_account_locked";
+
+        public const string LockedDescription = "Account is temporarily locked due to failed login attempts";
+        public const string InvalidPasswordDescription = OAuthError.InvalidUsernamePasswordDescription;
+
+        private readonly ILogger<PasswordCredentialVerifier> _logger;
+        private readonly ITenants _tenants;
+        private readonly IAuthenticationRepository _repository;
+        private readonly IAccountService _accountService;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
+        private readonly IAuthenticationDomainService _authenticationDomainService;
+        private readonly ICaptchaEvaluator? _captchaEvaluator;
+
+        public PasswordCredentialVerifier(
+            ILogger<PasswordCredentialVerifier> logger,
+            ITenants tenants,
+            IAuthenticationRepository repository,
+            IAccountService accountService,
+            IUserActivityDispatcher userActivityDispatcher,
+            IAuthenticationDomainService authenticationDomainService,
+            ICaptchaEvaluator? captchaEvaluator = null)
+        {
+            _logger = logger;
+            _tenants = tenants;
+            _repository = repository;
+            _accountService = accountService;
+            _userActivityDispatcher = userActivityDispatcher;
+            _authenticationDomainService = authenticationDomainService;
+            _captchaEvaluator = captchaEvaluator;
+        }
+
+        public async Task<PasswordVerificationResult> VerifyAsync(
+            User user,
+            string? password,
+            string? captchaCode,
+            HttpRequest? request,
+            string? tenantId)
+        {
+            var configuration = await _repository.GetAuthenticationConfigurationAsync();
+            if (configuration == null)
+            {
+                return new PasswordVerificationResult
+                {
+                    Error = OAuthError.AuthConfigMissing,
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
+            if (IsLocked(user))
+            {
+                await SendTimelineEventAsync(request, user.ItemId, FailedLoginAccountLockedEvent, PasswordAuthAccountLockedEvent);
+                return Locked();
+            }
+
+            var captcha = await EvaluateCaptchaAsync(user, captchaCode);
+            if (captcha != null)
+            {
+                return captcha;
+            }
+
+            // No counter reset here: a correct password is not yet a sign-in. The caller resets
+            // once it has issued a session, after any second factor, as login does.
+            return await VerifyPasswordAsync(user, password, configuration, request, tenantId);
+        }
+
+        public async Task<PasswordVerificationResult> VerifyPasswordAsync(
+            User user,
+            string? password,
+            IdentityConfiguration configuration,
+            HttpRequest? request,
+            string? tenantId)
+        {
+            if (IsLocked(user))
+            {
+                await SendTimelineEventAsync(request, user.ItemId, FailedLoginAccountLockedEvent, PasswordAuthAccountLockedEvent);
+                return Locked();
+            }
+
+            // The user above was read before this request; parallel requests all see the same copy.
+            // Reserve the attempt atomically first, so no more than the threshold of password checks
+            // can run before the lock, then give it back only if the password is right.
+            var threshold = configuration.GetNumberOfWrongAttemptsToLockTheAccount;
+            var reserved = await _repository.TryReserveLoginAttemptAsync(user.ItemId, threshold, DateTime.UtcNow);
+            if (reserved == null)
+            {
+                await SendTimelineEventAsync(request, user.ItemId, FailedLoginAccountLockedEvent, PasswordAuthAccountLockedEvent);
+                return Locked();
+            }
+
+            var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
+            if (VerifyPassword(password, user.Password ?? string.Empty, tenant?.TenantSalt))
+            {
+                if (await _repository.ReleaseLoginAttemptAsync(user.ItemId, DateTime.UtcNow))
+                {
+                    return PasswordVerificationResult.Success();
+                }
+
+                await SendTimelineEventAsync(request, user.ItemId, FailedLoginAccountLockedEvent, PasswordAuthAccountLockedEvent);
+                return Locked();
+            }
+
+            // The attempt is already counted; only the one that took the last slot can lock.
+            var updatedUser = reserved.FailedLoginCount >= threshold
+                ? await _repository.LockAccountIfLoginThresholdReachedAsync(
+                    user.ItemId,
+                    threshold,
+                    configuration.AccountLockDurationInMinutes,
+                    DateTime.UtcNow)
+                : null;
+
+            var lockoutUntilUtc = updatedUser?.LockoutUntilUtc;
+
+            var eventName = lockoutUntilUtc.HasValue
+                ? "failed_login_and_account_locked"
+                : "failed_login_invalid_password";
+            var actionBy = lockoutUntilUtc.HasValue
+                ? "password_auth_lock_after_failed_attempts"
+                : "password_auth_failed_attempt";
+
+            await SendTimelineEventAsync(request, user.ItemId, eventName, actionBy);
+
+            if (lockoutUntilUtc.HasValue && updatedUser != null)
+            {
+                try
+                {
+                    await _accountService.SendAccountLockedNotificationAsync(updatedUser, lockoutUntilUtc.Value);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to send account locked notification after failed login for user: {UserId}", user.ItemId);
+                }
+            }
+
+            return new PasswordVerificationResult
+            {
+                Error = OAuthError.InValidUseNamePassword,
+                ErrorDescription = InvalidPasswordDescription,
+                StatusCode = StatusCodes.Status401Unauthorized,
+                AccountLockedNow = lockoutUntilUtc.HasValue
+            };
+        }
+
+        public async Task ResetFailureCountersAsync(User user)
+        {
+            // Atomic and conditional: never clears an active lock, and never forgives a wrong password counted
+            // after this sign-in read the user.
+            await _repository.ResetFailureCountersAfterSuccessAsync(user, DateTime.UtcNow).ConfigureAwait(false);
+        }
+
+        public bool VerifyPassword(string? password, string? passwordHash, string? optionalSalt = null)
+        {
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                return false;
+            }
+
+            // An account without a password (social only) costs the same time as one with.
+            if (string.IsNullOrWhiteSpace(passwordHash))
+            {
+                return UnknownUserLoginGuard.VerifyAgainstDummy(password, optionalSalt);
+            }
+
+            try
+            {
+                return BCryptNet.Verify(BuildPasswordMaterial(password, optionalSalt), passwordHash);
+            }
+            catch (BCrypt.Net.SaltParseException ex)
+            {
+                _logger.LogWarning(ex, "Password hash is not a valid BCrypt hash format.");
+                return false;
+            }
+        }
+
+        public static string BuildPasswordMaterial(string password, string? optionalSalt) =>
+            string.IsNullOrWhiteSpace(optionalSalt) ? password : $"{password}::{optionalSalt}";
+
+        private static bool IsLocked(User user) =>
+            user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow;
+
+        private static PasswordVerificationResult Locked() => new()
+        {
+            Error = OAuthError.AccountLocked,
+            ErrorDescription = LockedDescription,
+            StatusCode = StatusCodes.Status423Locked
+        };
+
+        /// <summary>
+        /// The CAPTCHA gate embedded login applies, keyed on the same
+        /// <see cref="CaptchaGate"/> threshold and the tenant's captcha configuration.
+        /// </summary>
+        private async Task<PasswordVerificationResult?> EvaluateCaptchaAsync(User user, string? captchaCode)
+        {
+            if (_captchaEvaluator == null || !CaptchaGate.IsCaptchaRequired(user))
+            {
+                return null;
+            }
+
+            var configuration = await _captchaEvaluator.GetConfigurationAsync();
+            if (configuration == null || !configuration.IsEnable)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(captchaCode))
+            {
+                return CaptchaFailure(OAuthError.CaptchaEnabled, "Captcha verification is required", configuration.CaptchaKey);
+            }
+
+            var response = await _captchaEvaluator.VerifyAsync(captchaCode, configuration.Provider);
+            var verified = response.GetType().GetProperty("Verified")?.GetValue(response) is true;
+            return verified
+                ? null
+                : CaptchaFailure(OAuthError.CaptchaInvalid, "Captcha answer is invalid. Please try again.", configuration.CaptchaKey);
+        }
+
+        private static PasswordVerificationResult CaptchaFailure(string error, string description, string? siteKey) => new()
+        {
+            Error = error,
+            ErrorDescription = description,
+            StatusCode = StatusCodes.Status400BadRequest,
+            CaptchaRequired = true,
+            CaptchaSiteKey = siteKey
+        };
+
+        private async Task SendTimelineEventAsync(HttpRequest? request, string userId, string eventName, string actionBy)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || request?.HttpContext == null)
+            {
+                return;
+            }
+
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = userId,
+                Category = UserActivityCategory.Auth,
+                Event = eventName,
+                Source = "auth-password",
+                Outcome = eventName.Contains("SUCCESS", StringComparison.OrdinalIgnoreCase) ? "success" : "failure",
+                Context = new ActivityContext
+                {
+                    IpAddress = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(request.HttpContext)),
+                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(request.Headers.UserAgent.ToString())
+                },
+                Metadata = new Dictionary<string, string> { { "actionBy", actionBy } }
+            });
+        }
+    }
+}

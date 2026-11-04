@@ -6,6 +6,26 @@ import { sanitizeInternalNavigationTarget } from "@/lib/safe-navigation.util";
 // back by the callback page once the provider sends the browser back to us.
 export const OIDC_DEVICE_RETURN_URL_STORAGE_KEY = "oidc-device-return-url";
 
+// Set before the provider redirect when the login started from a native-app redirect_uri, so the
+// callback page asks the backend for JSON and shows the "Return to the app" hand-off instead of
+// a bare navigation to a custom scheme. It only selects the response mode; the URL followed is
+// always the backend's redirect_uri.
+export const OIDC_APP_HANDOFF_STORAGE_KEY = "oidc_app_handoff";
+
+// The application's redirect_uri, kept before a social provider redirect. When the server can no
+// longer find the sign-in (expired or already used), the error page has no application in its URL;
+// this lets its "Back" link still return the user to the app they came from.
+export const OIDC_SSO_RETURN_URI_STORAGE_KEY = "oidc-sso-return-uri";
+
+/** Reads the kept application redirect_uri; never throws (storage can be blocked). */
+export const readSsoReturnUri = (): string | undefined => {
+  try {
+    return sessionStorage.getItem(OIDC_SSO_RETURN_URI_STORAGE_KEY) || undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 interface OIDCParams {
   projectKey?: string;
   userName?: string;
@@ -238,6 +258,16 @@ export const buildOIDCNavigationUrl = (path: string): string => {
   if (params.returnUrl) searchParams.set("returnUrl", params.returnUrl);
   if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
 
+  // The relying party's PKCE challenge travels with the flow, as in getCurrentOIDCParams. A page
+  // that leads back to /oidc/login (MFA, error, signup) must hand the login form the challenge the
+  // RP holds the verifier for; without it the form makes its own, and the RP's exchange fails.
+  const current = new URLSearchParams(globalThis.location?.search ?? "");
+  const codeChallenge = current.get("code_challenge");
+  if (codeChallenge) {
+    searchParams.set("code_challenge", codeChallenge);
+    searchParams.set("code_challenge_method", current.get("code_challenge_method") || "S256");
+  }
+
   const queryString = searchParams.toString();
   if (!queryString) return safePath;
 
@@ -313,10 +343,10 @@ export const getApplicationOrigin = (redirectUri?: string): string | undefined =
  */
 export const resolveLoginReturnTarget = (
   isOidc: boolean,
-  options?: { preferOidcLogin?: boolean },
+  options?: { preferOidcLogin?: boolean; fallbackRedirectUri?: string },
 ): { href: string; external: boolean } => {
   const { redirectUri, clientId } = extractOIDCParams();
-  const applicationOrigin = getApplicationOrigin(redirectUri);
+  const applicationOrigin = getApplicationOrigin(redirectUri || options?.fallbackRedirectUri);
 
   // Pages reached from inside a live flow (signup) opt out of the hand-back above.
   // Their params came from an initiate call that cached a flow context, so the state
@@ -368,6 +398,15 @@ export const getCurrentOIDCParams = (): URLSearchParams => {
   if(params.redirectUri) searchParams.set("redirect_uri", params.redirectUri);
   if (params.returnUrl) searchParams.set("returnUrl", params.returnUrl);
   if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
+
+  // The relying party's own PKCE challenge must reach the consent step unchanged: its verifier
+  // lives on the RP, so any other challenge makes its token exchange fail.
+  const current = new URLSearchParams(globalThis.location.search);
+  const codeChallenge = current.get("code_challenge");
+  if (codeChallenge) {
+    searchParams.set("code_challenge", codeChallenge);
+    searchParams.set("code_challenge_method", current.get("code_challenge_method") || "S256");
+  }
 
   if (params.themeColor) {
     searchParams.set("brandColor", params.themeColor);

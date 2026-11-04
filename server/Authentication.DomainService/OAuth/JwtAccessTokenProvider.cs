@@ -12,9 +12,13 @@ using System.Text;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Resources;
 using Authentication.DomainService.OAuth.RequestModel;
+using Blocks.Genesis.Entities.Iam;
 
 namespace Authentication.DomainService.OAuth
 {
+    /// <summary>The resolved roles/permissions of a token together with the organization scope they were read from.</summary>
+    public sealed record TokenClaimSet(ResolvedAuthorizationClaims ResolvedClaims, OrganizationScope OrganizationScope);
+
     public sealed class JwtAccessTokenProvider : IJwtAccessTokenProvider
     {
         private readonly ILogger<JwtAccessTokenProvider> _logger;
@@ -23,7 +27,6 @@ namespace Authentication.DomainService.OAuth
         private readonly ICertificateProviderFactory _certificateProviderFactory;
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IResourceRepository _resourceRepository;
-        private string? _key;
 
 
         public JwtAccessTokenProvider(
@@ -51,8 +54,10 @@ namespace Authentication.DomainService.OAuth
             TokenRequest tokenRequest,
             StateInfo? state = null)
         {
-            _key = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
-            var certificate = await GetOrRetrieveCertAsync(tenant);
+            // A local, not a field: this provider is a singleton, so a field would be shared by
+            // concurrent requests and one tenant's mint could read another tenant's key.
+            var certificateKey = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
+            var certificate = await GetOrRetrieveCertAsync(certificateKey, tenant);
             if (certificate == null) return new JwtAccessToken();
 
             // The authoritative organization decision for every OAuth-family token: password,
@@ -65,7 +70,7 @@ namespace Authentication.DomainService.OAuth
             // the requested organization here instead would mint a token whose claim and whose
             // role set disagree.
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, organizationScope.ClaimValue, state?.Scope);
-            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, tokenRequest, organizationScope, stateInfo: state);
+            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, new TokenClaimSet(resolvedClaims, organizationScope), tokenRequest, stateInfo: state);
         }
 
         /// <summary>
@@ -95,22 +100,46 @@ namespace Authentication.DomainService.OAuth
             return OrganizationAccessResolver.Resolve(user, requestedOrganizationId, isMultiOrgEnabled);
         }
 
-        public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, OrganizationScope organizationScope, StateInfo? stateInfo = null)
+        public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, TokenClaimSet claimSet, TokenRequest tokenRequest, StateInfo? stateInfo = null)
         {
+            var resolvedClaims = claimSet.ResolvedClaims;
+            var organizationScope = claimSet.OrganizationScope;
+            var effectiveClaims = resolvedClaims;
+            if (tokenRequest.IsLinkAuthentication)
+            {
+                effectiveClaims = new ResolvedAuthorizationClaims
+                {
+                    Roles = IntersectClaims(resolvedClaims.Roles, tokenRequest.RestrictedRoles),
+                    Permissions = IntersectClaims(resolvedClaims.Permissions, tokenRequest.RestrictedPermissions)
+                };
+            }
+
+            // Every token carries the tenant audience, link-authenticated or not.
+            //
+            // A link token used to get aud = the link's client (SPEC23 H4), to make it weaker
+            // than a full session. In practice that made it unusable rather than weaker: the
+            // tenant audience is what every Blocks API validates against, so the token was
+            // rejected by all of them -- including the iam/me call a construct makes to
+            // establish its session, which is the whole point of redeeming the link.
+            //
+            // What actually bounds a link token is the role and permission intersection below
+            // and amr=link, and neither depends on the audience.
+            var audience = DomainResolver.GetAudience(tenant);
+
             var jwtAccessToken = new JwtAccessToken
             {
                 RefreshTokenValidForNumberMinute = authenticationConfiguration.RefreshTokenValidForNumberMinutes,
                 AccessTokenValidForNumberMinute = authenticationConfiguration.AccessTokenValidForNumberMinutes,
                 RememberMeRefreshTokenValidForNumberMinute = authenticationConfiguration.RememberMeRefreshTokenValidForNumberMinutes,
                 Issuer = tenant.JwtTokenParameters.Issuer,
-                Audience = DomainResolver.GetAudience(tenant),
+                Audience = audience,
                 NotBefore = DateTime.UtcNow,
                 Expires = DateTime.UtcNow.AddMinutes(authenticationConfiguration.AccessTokenValidForNumberMinutes),
                 SigningCredentials = MakeSigningCredentials(certificate, tenant.JwtTokenParameters.PrivateCertificatePassword)
             };
 
             var claimsIdentity = new ClaimsIdentity("seliseblocks-authentication");
-            AddClaims(claimsIdentity, tenant, user, resolvedClaims, tokenRequest, organizationScope, stateInfo: stateInfo);
+            AddClaims(claimsIdentity, tenant, user, effectiveClaims, tokenRequest, organizationScope, stateInfo: stateInfo);
             jwtAccessToken.Claims = claimsIdentity.Claims;
 
             return jwtAccessToken;
@@ -132,6 +161,16 @@ namespace Authentication.DomainService.OAuth
             claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));
             claimsIdentity.AddClaim(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
 
+            // The IdP session. Omitted when absent rather than emitted empty -- unlike
+            // impersonation_session_id below, which writes "" and leaves consumers unable to
+            // distinguish "no session" from "session unknown".
+            if (!string.IsNullOrWhiteSpace(tokenRequest.IdpSessionId))
+            {
+                // Literal rather than BlocksContext.SESSION_ID_CLAIM: that constant lands in the
+                // next Genesis release, and IAM still builds against the published 4.2.0.
+                claimsIdentity.AddClaim(new Claim("sid", tokenRequest.IdpSessionId));
+            }
+
             if (!string.IsNullOrWhiteSpace(stateInfo?.Nonce))
             {
                 claimsIdentity.AddClaim(new Claim("nonce", stateInfo?.Nonce ?? ""));
@@ -147,6 +186,15 @@ namespace Authentication.DomainService.OAuth
                 claimsIdentity.AddClaim(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
             }
 
+            if (tokenRequest.IsLinkAuthentication)
+            {
+                var amrValues = tokenRequest.Amr is { Count: > 0 } ? tokenRequest.Amr : new List<string> { "link" };
+                foreach (var amr in amrValues.Where(a => !string.IsNullOrWhiteSpace(a)).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    claimsIdentity.AddClaim(new Claim("amr", amr));
+                }
+            }
+
             if (tokenRequest.IsImpersonation)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.IMPERSONATED_CLAIM, "true", ClaimValueTypes.Boolean));
@@ -160,21 +208,21 @@ namespace Authentication.DomainService.OAuth
             }
         }
 
-        public async Task<byte[]?> GetOrRetrieveCertAsync(Tenant tenant)
+        public async Task<byte[]?> GetOrRetrieveCertAsync(string certificateKey, Tenant tenant)
         {
             _logger.LogInformation("Getting Certificate");
-            var cachedCert = _cacheDb.StringGet(_key);
+            var cachedCert = await _cacheDb.StringGetAsync(certificateKey);
             _logger.LogInformation("Has Cache Certificate: {CC}", cachedCert.HasValue);
 
             if (!cachedCert.HasValue)
             {
                 var provider = _certificateProviderFactory.GetProvider(tenant.JwtTokenParameters?.CertificateStorageType ?? CertificateStorageType.Azure);
-                var certificate = await provider.GetCertificateAsync(_key);
+                var certificate = await provider.GetCertificateAsync(certificateKey);
 
                 if (certificate != null && certificate.Length > 0)
                 {
                     var expirationDays = tenant.JwtTokenParameters?.CertificateValidForNumberOfDays - (DateTime.UtcNow - tenant.JwtTokenParameters?.IssueDate)?.Days - 1;
-                    _cacheDb.StringSet(_key, certificate, TimeSpan.FromDays(expirationDays ?? 0));
+                    await _cacheDb.StringSetAsync(certificateKey, certificate, TimeSpan.FromDays(expirationDays ?? 0));
                     _logger.LogInformation("Certificate set to cache");
                 }
                 return certificate;
@@ -217,5 +265,14 @@ namespace Authentication.DomainService.OAuth
             return new SigningCredentials(new RsaSecurityKey(rsa), SecurityAlgorithms.RsaSha256, SecurityAlgorithms.Sha256Digest);
         }
 
+
+        private static List<string> IntersectClaims(IEnumerable<string>? left, IEnumerable<string>? right)
+        {
+            var rightSet = new HashSet<string>(right ?? [], StringComparer.OrdinalIgnoreCase);
+            return (left ?? [])
+                .Where(r => rightSet.Contains(r))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
     }
 }

@@ -4,11 +4,12 @@ using Iam.DomainService.Shared.Entities;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
+using Blocks.Genesis.Entities.Iam;
 
 namespace XUnitTest.IamTests.Shared
 {
     /// <summary>
-    /// Unit tests for <see cref="Iam.DomainService.Shared.Serialization.AttributeBagSerializer"/>,
+    /// Unit tests for <see cref="Blocks.Genesis.Entities.Iam.AttributeBagSerializer"/>,
     /// driven through <see cref="Organization"/> so they cover the member attribute wiring as well
     /// as the serializer itself.
     /// <para>
