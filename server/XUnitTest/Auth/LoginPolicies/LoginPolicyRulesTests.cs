@@ -71,10 +71,18 @@ namespace XUnitTest.Auth.LoginPolicies
         [InlineData(OidcClientLoginMethods.Social, Password, false)]
         [InlineData(OidcClientLoginMethods.Social, Social, true)]
         [InlineData("Unknown", Password, true)]
-        public void ClientMethod_NarrowsOidcOnly(string clientMethod, string method, bool expected)
+        public void ClientMethod_NarrowsWhicheverChannelNamesTheClient(string clientMethod, string method, bool expected)
         {
             LoginPolicyRules.Check(null, LoginChannel.Oidc, method, Client(clientMethod), null).IsAllowed.Should().Be(expected);
-            LoginPolicyRules.Check(null, LoginChannel.Embedded, method, Client(clientMethod), null).IsAllowed.Should().BeTrue();
+            LoginPolicyRules.Check(null, LoginChannel.Embedded, method, Client(clientMethod), null).IsAllowed.Should().Be(expected);
+        }
+
+        [Theory]
+        [InlineData(Password)]
+        [InlineData(Social)]
+        public void Embedded_WithoutAClient_IsNotNarrowed(string method)
+        {
+            LoginPolicyRules.Check(null, LoginChannel.Embedded, method, null, Provider("p2")).IsAllowed.Should().BeTrue();
         }
 
         [Fact]
@@ -85,14 +93,31 @@ namespace XUnitTest.Auth.LoginPolicies
             LoginPolicyRules.Check(tenant, LoginChannel.Oidc, Social, Client(OidcClientLoginMethods.Social), null).IsAllowed.Should().BeFalse();
         }
 
-        [Fact]
-        public void SelectedProviders_OnlyThoseForOidc_AllEnabledForEmbedded()
+        [Theory]
+        [InlineData(LoginChannel.Oidc)]
+        [InlineData(LoginChannel.Embedded)]
+        public void SelectedProviders_OnlyThose_OnWhicheverChannelNamesTheClient(LoginChannel channel)
         {
             var client = Client(OidcClientLoginMethods.Default, "p1");
 
-            LoginPolicyRules.Check(null, LoginChannel.Oidc, Social, client, Provider("p1")).IsAllowed.Should().BeTrue();
-            LoginPolicyRules.Check(null, LoginChannel.Oidc, Social, client, Provider("p2")).IsAllowed.Should().BeFalse();
-            LoginPolicyRules.Check(null, LoginChannel.Embedded, Social, client, Provider("p2")).IsAllowed.Should().BeTrue();
+            LoginPolicyRules.Check(null, channel, Social, client, Provider("p1")).IsAllowed.Should().BeTrue();
+            LoginPolicyRules.Check(null, channel, Social, client, Provider("p2")).IsAllowed.Should().BeFalse();
+            LoginPolicyRules.Check(null, channel, Social, null, Provider("p2")).IsAllowed.Should().BeTrue();
+        }
+
+        [Fact]
+        public void Options_Embedded_WithAClient_FollowTheClient_AndTheEmbeddedSwitch()
+        {
+            var providers = new[] { Provider("p1"), Provider("p2") };
+            var client = Client(OidcClientLoginMethods.Social, "p2");
+
+            var narrowed = LoginPolicyRules.Options(new TenantLoginPolicy { AllowOidc = false }, LoginChannel.Embedded, client, providers);
+            narrowed.Password.Should().BeFalse();
+            narrowed.Providers.Select(p => p.ItemId).Should().Equal("p2");
+
+            var embeddedOff = LoginPolicyRules.Options(new TenantLoginPolicy { AllowEmbedded = false }, LoginChannel.Embedded, client, providers);
+            embeddedOff.Social.Should().BeFalse();
+            embeddedOff.Password.Should().BeFalse();
         }
 
         [Fact]

@@ -336,12 +336,23 @@ namespace Authentication.DomainService.Services
             return (int)Math.Min((long)step * (previousLocks + 1), cap);
         }
 
+        /// <summary>
+        /// Oldest first. Google and Microsoft may each have several entries, and a login page that
+        /// shows one button per provider takes the first: this keeps that the same entry every time.
+        /// </summary>
         public async Task<List<IdentityProvider>> GetIdentityProvidersAsync()
         {
             var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Where(_ => true);
-            return await _dataAccess.FindListAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProvidersAsync");
+            var providers = await _dataAccess.FindListAsync(collection, IamSchemas.IdentityProvider, filter, "AuthenticationRepository.GetIdentityProvidersAsync");
+            return OldestFirst(providers);
         }
+
+        public static List<IdentityProvider> OldestFirst(IEnumerable<IdentityProvider> providers) =>
+            providers
+                .OrderBy(p => p.CreatedDate)
+                .ThenBy(p => p.ItemId, StringComparer.Ordinal)
+                .ToList();
 
 
         public async Task<List<IdentityProvider>> GetIdentityProvidersForViewAsync()
@@ -420,6 +431,15 @@ namespace Authentication.DomainService.Services
                 return;
             }
 
+            // Google and Microsoft keep the built-in endpoints even when given a discovery URL; for
+            // Microsoft that URL only chooses the Entra tenant.
+            if (SocialProviderEndpoints.IsBuiltIn(provider.ProviderType, provider.Provider))
+            {
+                SocialProviderEndpoints.Apply(provider);
+                provider.Scope = SocialLoginScopes;
+                return;
+            }
+
             OpenIdConnectConfiguration? metadata = null;
 
             if (!string.IsNullOrWhiteSpace(provider.WellKnownUrl))
@@ -439,12 +459,12 @@ namespace Authentication.DomainService.Services
                 provider.WellKnownUrl = socialMetadata?.WellKnownUrl;
                 provider.AuthorizationUrl = socialMetadata?.AuthorizationUrl;
                 provider.TokenUrl = socialMetadata?.TokenUrl;
-                provider.UserInfoUrl = socialMetadata?.UserInfoUri;
+                provider.UserInfoUrl = socialMetadata?.UserInfoUrl;
                 provider.Scope = SocialLoginScopes;
             }
         }
 
-        private static SocialMetadata? GetSocialMetadata(string? providerName)
+        private static SocialProviderEndpoints.Endpoints? GetSocialMetadata(string? providerName)
         {
             if (string.IsNullOrWhiteSpace(providerName))
             {
@@ -455,22 +475,12 @@ namespace Authentication.DomainService.Services
 
             return normalizedProviderName switch
             {
-                var value when value.Contains("google") => new SocialMetadata(
-                    "https://accounts.google.com/.well-known/openid-configuration",
-                    "https://accounts.google.com/o/oauth2/v2/auth",
-                    "https://oauth2.googleapis.com/token",
-                    "https://www.googleapis.com/oauth2/v1/userinfo?access_token={0}"
-                    ),
-                var value when value.Contains("microsoft") => new SocialMetadata(
-                    "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
-                    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-                    "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-                    "https://graph.microsoft.com/v1.0/me"),
+                var value when value.Contains(SocialProviderEndpoints.Google) => SocialProviderEndpoints.GoogleEndpoints,
+                var value when value.Contains(SocialProviderEndpoints.Microsoft) =>
+                    SocialProviderEndpoints.MicrosoftEndpoints(SocialProviderEndpoints.MicrosoftDefaultTenant),
                 _ => null
             };
         }
-
-        private sealed record SocialMetadata(string WellKnownUrl, string AuthorizationUrl, string TokenUrl, string UserInfoUri);
 
         public async Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider)
         {

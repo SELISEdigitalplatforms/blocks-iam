@@ -875,6 +875,24 @@ namespace XUnitTest.Auth
             return () => form;
         }
 
+        [Fact]
+        public async Task HandleCallback_FindsTheEntryByTheFlowsClientId_NotByItsSharedName()
+        {
+            // Two entries are named "google"; the code is exchanged with the one the flow started with.
+            var (req, res) = HttpPair();
+            SetupFlowContext("st", new { provider = "google", clientId = "client-2", tenantId = TenantId, redirectUri = "https://app.example.com/callback", codeVerifier = (string?)null });
+            _authRepo.Setup(r => r.GetIdentityProviderAsync("google")).ReturnsAsync(ActiveProvider());
+            var second = ActiveProvider();
+            second.ClientId = "client-2";
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync("client-2")).ReturnsAsync(second);
+            var form = CaptureTokenForm();
+
+            await Create().HandleCallbackAsync("code-1", "st", null, null, req, res);
+
+            form()!["client_id"].Should().Be("client-2");
+            _authRepo.Verify(r => r.GetIdentityProviderAsync(It.IsAny<string>()), Times.Never);
+        }
+
         private void SetupReferencedProvider()
         {
             SetupFlowContext("st", new { provider = "google", tenantId = TenantId, redirectUri = "https://app.example.com/callback", codeVerifier = (string?)null });

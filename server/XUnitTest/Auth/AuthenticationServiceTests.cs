@@ -731,6 +731,96 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task GetLoginOptions_WithAnAppClient_UsesTheEmbeddedChannel_NarrowedByThatClient()
+        {
+            var appClient = new OidcClientRegistration { ItemId = "app-1", ClientId = "app-1" };
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("app-1")).ReturnsAsync(appClient);
+            var policy = new Mock<ILoginPolicyService>();
+            policy.Setup(p => p.GetOptionsAsync(LoginChannel.Embedded, appClient)).ReturnsAsync(new LoginOptions(false, true, [SocialProvider()]));
+            var service = new AuthenticationService(NullLogger<AuthenticationService>.Instance, _cache.Object, _repo.Object, _domain.Object,
+                _session.Object, _tenants.Object, _activity.Object, _refresh.Object, policy.Object);
+
+            var result = await service.GetLoginOptionsAsync(appClientId: "app-1");
+
+            JsonSerializer.Serialize(result.Should().BeOfType<OkObjectResult>().Subject.Value).Should().Contain("\"clientId\":\"cid\"");
+            policy.Verify(p => p.GetOptionsAsync(LoginChannel.Embedded, appClient), Times.Once);
+            policy.Verify(p => p.GetOptionsAsync(LoginChannel.Oidc, It.IsAny<OidcClientRegistration?>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task GetLoginOptions_AnUnknownOrInactiveAppClient_IsRefused(bool known)
+        {
+            if (known)
+                _repo.Setup(r => r.GetOidcClientRegistrationAsync("app-1")).ReturnsAsync(new OidcClientRegistration { ItemId = "app-1", ClientId = "app-1", IsActive = false });
+
+            var result = await Create().GetLoginOptionsAsync(appClientId: "app-1");
+
+            JsonSerializer.Serialize(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value).Should().Contain("invalid_client");
+        }
+
+        [Fact]
+        public async Task GetLoginOptions_BothClientIds_IsRefused()
+        {
+            var result = await Create().GetLoginOptionsAsync("hosted-1", "app-1");
+
+            JsonSerializer.Serialize(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value).Should().Contain("invalid_request");
+        }
+
+        [Fact]
+        public async Task GetSocialAuthUrl_WithAnAppClient_ChecksThatClientsPolicy()
+        {
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(SocialProvider());
+            var appClient = new OidcClientRegistration { ItemId = "app-1", ClientId = "app-1" };
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("app-1")).ReturnsAsync(appClient);
+            OidcClientRegistration? checkedClient = null;
+            LoginPolicy.Decide = (_, _, client, _) =>
+            {
+                checkedClient = client;
+                return LoginPolicyDecision.Denied("This sign-in provider is not available for this application.");
+            };
+
+            var result = await Create().GetSocialAuthorizationUrlAsync("cid", "https://app/cb", "app-1");
+
+            result.Should().BeOfType<ObjectResult>().Subject.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+            checkedClient.Should().BeSameAs(appClient);
+            LoginPolicy.Checks.Should().Equal((LoginChannel.Embedded, LoginMethods.Social));
+            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetSocialAuthUrl_AnUnknownAppClient_IsRefused_AndNothingCached()
+        {
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(SocialProvider());
+
+            var result = await Create().GetSocialAuthorizationUrlAsync("cid", "https://app/cb", "missing");
+
+            JsonSerializer.Serialize(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value).Should().Contain("invalid_client");
+            LoginPolicy.Checks.Should().BeEmpty();
+            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetSocialAuthUrl_WithoutAnAppClient_ChecksWithNoClient()
+        {
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(SocialProvider());
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+            var clients = new List<OidcClientRegistration?>();
+            LoginPolicy.Decide = (_, _, client, _) =>
+            {
+                clients.Add(client);
+                return LoginPolicyDecision.Allowed;
+            };
+
+            var result = await Create().GetSocialAuthorizationUrlAsync("cid", "https://app/cb");
+
+            result.Should().BeOfType<OkObjectResult>();
+            clients.Should().Equal(new OidcClientRegistration?[] { null });
+            _repo.Verify(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
         public async Task GetSocialAuthUrl_HappyPath_ReturnsUrl_AndCachesState()
         {
             _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid")).ReturnsAsync(SocialProvider());

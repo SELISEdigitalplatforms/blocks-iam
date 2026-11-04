@@ -29,7 +29,9 @@ namespace Authentication.DomainService.Authentication.LoginPolicies
     /// <summary>
     /// The tenant login policy as pure rules. The tenant decides where (embedded, OIDC) and how
     /// (password, social); an OIDC client can only narrow that; a provider must be enabled, and for an
-    /// OIDC client in "selected" mode also chosen. A missing policy allows everything.
+    /// OIDC client in "selected" mode also chosen. A client narrows whichever channel names it: the IAM
+    /// login page always does, an app's own login form only when it chooses to. A missing policy allows
+    /// everything.
     /// </summary>
     public static class LoginPolicyRules
     {
@@ -54,12 +56,12 @@ namespace Authentication.DomainService.Authentication.LoginPolicies
                     ? "Social sign-in is turned off for this project."
                     : "Password sign-in is turned off for this project.");
 
-            if (channel == LoginChannel.Oidc && !ClientAllowsMethod(client, method))
+            if (!ClientAllowsMethod(client, method))
                 return LoginPolicyDecision.Denied(isSocial
                     ? "Social sign-in is turned off for this application."
                     : "Password sign-in is turned off for this application.");
 
-            if (isSocial && provider != null && !ProviderAllowed(channel, client, provider))
+            if (isSocial && provider != null && !ProviderAllowed(client, provider))
                 return LoginPolicyDecision.Denied("This sign-in provider is not available for this application.");
 
             return LoginPolicyDecision.Allowed;
@@ -95,12 +97,12 @@ namespace Authentication.DomainService.Authentication.LoginPolicies
             _ => true
         };
 
-        public static bool ProviderAllowed(LoginChannel channel, OidcClientLoginPolicy? client, IdentityProvider provider)
+        public static bool ProviderAllowed(OidcClientLoginPolicy? client, IdentityProvider provider)
         {
             if (!provider.IsActive)
                 return false;
 
-            if (channel == LoginChannel.Embedded || client?.Providers != OidcClientProviderModes.Selected)
+            if (client?.Providers != OidcClientProviderModes.Selected)
                 return true;
 
             return client.SelectedProviderIds.Contains(provider.ItemId, StringComparer.Ordinal);
@@ -114,7 +116,7 @@ namespace Authentication.DomainService.Authentication.LoginPolicies
         {
             var password = Check(tenant, channel, LoginMethods.Password, client, null).IsAllowed;
             var providers = Check(tenant, channel, LoginMethods.Social, client, null).IsAllowed
-                ? socialProviders.Where(p => ProviderAllowed(channel, client, p)).ToList()
+                ? socialProviders.Where(p => ProviderAllowed(client, p)).ToList()
                 : [];
 
             return new LoginOptions(password, providers.Count > 0, providers);

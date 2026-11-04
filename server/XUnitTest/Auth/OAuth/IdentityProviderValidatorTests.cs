@@ -162,6 +162,48 @@ namespace XUnitTest.Auth.OAuth
             result.ShouldNotHaveValidationErrorFor(x => x.WellKnownUrl);
         }
 
+        [Theory]
+        [InlineData("https://idp.example.com/.well-known/openid-configuration")]
+        [InlineData("https://login.microsoftonline.com/common/oauth2/v2.0/authorize")]
+        [InlineData("http://login.microsoftonline.com/contoso.onmicrosoft.com/v2.0/.well-known/openid-configuration")]
+        public async Task Save_MicrosoftSocial_WithANonTenantDiscoveryUrl_Fails_WithoutFetchingIt(string wellKnownUrl)
+        {
+            var handler = new Mock<HttpMessageHandler>();
+            var factory = new Mock<IHttpClientFactory>();
+            factory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient(handler.Object));
+            var req = ValidSaveRequest();
+            req.Provider = "microsoft";
+            req.WellKnownUrl = wellKnownUrl;
+
+            var result = await new SaveIdentityProviderRequestValidator(factory.Object).TestValidateAsync(req);
+
+            result.ShouldHaveValidationErrorFor(x => x.WellKnownUrl);
+            handler.Protected().Verify("SendAsync", Times.Never(), ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>());
+        }
+
+        [Fact]
+        public async Task Save_MicrosoftSocial_WithATenantDiscoveryUrl_ChecksThatTheTenantAnswers()
+        {
+            var json = "{\"authorization_endpoint\":\"https://login.microsoftonline.com/t/oauth2/v2.0/authorize\",\"token_endpoint\":\"https://login.microsoftonline.com/t/oauth2/v2.0/token\"}";
+            var handler = new Mock<HttpMessageHandler>();
+            handler.Protected()
+                .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+                });
+            var factory = new Mock<IHttpClientFactory>();
+            factory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient(handler.Object));
+            var req = ValidSaveRequest();
+            req.Provider = "microsoft";
+            req.WellKnownUrl = "https://login.microsoftonline.com/contoso.onmicrosoft.com/v2.0/.well-known/openid-configuration";
+
+            var result = await new SaveIdentityProviderRequestValidator(factory.Object).TestValidateAsync(req);
+
+            result.ShouldNotHaveValidationErrorFor(x => x.WellKnownUrl);
+            handler.Protected().Verify("SendAsync", Times.Once(), ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>());
+        }
+
         // ---- Update validator ----
 
         private readonly UpdateIdentityProviderRequestValidator _updateValidator = new();

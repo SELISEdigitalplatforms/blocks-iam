@@ -95,6 +95,36 @@ namespace XUnitTest.Auth.Shared
         }
 
         [RealMongoFact]
+        public async Task MicrosoftEntry_WithATenantDiscoveryUrl_IsStoredWithThatTenantsEndpoints()
+        {
+            var entry = Provider("cid-ms-tenant", null, null);
+            entry.Provider = "microsoft";
+            entry.WellKnownUrl = "https://login.microsoftonline.com/contoso.onmicrosoft.com/v2.0/.well-known/openid-configuration";
+
+            var created = await Sut().CreateIdentityProviderAsync(entry);
+
+            var read = (await Sut().GetIdentityProviderByIdAsync(created.ItemId))!;
+            read.AuthorizationUrl.Should().Be("https://login.microsoftonline.com/contoso.onmicrosoft.com/oauth2/v2.0/authorize");
+            read.TokenUrl.Should().Be("https://login.microsoftonline.com/contoso.onmicrosoft.com/oauth2/v2.0/token");
+            read.UserInfoUrl.Should().Be("https://graph.microsoft.com/v1.0/me");
+            read.Scope.Should().Be("openid profile email");
+        }
+
+        [RealMongoFact]
+        public async Task List_IsOldestFirst()
+        {
+            var first = await Sut().CreateIdentityProviderAsync(Provider("cid-first", null, null));
+            var second = await Sut().CreateIdentityProviderAsync(Provider("cid-second", null, null));
+            _mongo.Database.GetCollection<BsonDocument>("IdentityProviders").UpdateOne(
+                Builders<BsonDocument>.Filter.Eq("_id", first.ItemId),
+                Builders<BsonDocument>.Update.Set("CreatedDate", DateTime.UtcNow.AddDays(1)));
+
+            var listed = await Sut().GetIdentityProvidersAsync();
+
+            listed.Select(p => p.ItemId).Should().Equal(second.ItemId, first.ItemId);
+        }
+
+        [RealMongoFact]
         public async Task LegacyProvider_StoresNoReferenceFields()
         {
             // [BsonIgnoreIfNull]: documents without a reference are written as before.
