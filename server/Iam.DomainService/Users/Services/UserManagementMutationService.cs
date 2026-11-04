@@ -2,6 +2,7 @@ using Iam.DomainService.Notifications;
 ﻿using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.Actions;
 using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -28,6 +29,7 @@ namespace Iam.DomainService.Users
         private const string OrganizationIdKey = "organizationId";
         private const string RolesKey = "Roles";
         private const int MaxPermissionsPerUser = 5;
+        private const string ActionByAdmin = "admin";
 
         /// <summary>The log target for a user that has no id yet; the email is kept out of the log.</summary>
         private const string NewUserTarget = "(new user)";
@@ -49,6 +51,7 @@ namespace Iam.DomainService.Users
         private readonly IUserSessionTerminator? _userSessionTerminator;
         private readonly IBuiltInNotificationSender? _notificationSender;
         private readonly IAccessGrantService? _accessGrant;
+        private readonly IActionPublisher? _actionPublisher;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -69,9 +72,12 @@ namespace Iam.DomainService.Users
             IBuiltInNotificationSender? notificationSender = null,
             // Trailing and optional like the dependencies above; DI always supplies it. Without it
             // no access grant rule runs.
-            IAccessGrantService? accessGrant = null
+            IAccessGrantService? accessGrant = null,
+            // Trailing and optional like the dependencies above; DI always supplies it.
+            IActionPublisher? actionPublisher = null
         )
         {
+            _actionPublisher = actionPublisher;
             _logger = logger;
             _createValidator = createValidator;
             _updateValidator = updateValidator;
@@ -178,6 +184,7 @@ namespace Iam.DomainService.Users
             await SendEvent(
                 itemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail,
                 inviter is { IsAuthenticated: true } ? inviter.UserId : null, organizationId);
+            await PublishUserCreatedAsync(itemId, command);
             var bc = BlocksContext.GetContext();
 
             _logger.LogInformation("User creation end -- Success");
@@ -236,6 +243,7 @@ namespace Iam.DomainService.Users
 
             await _userRepository.CreateUserAsync(user);
             await SendEvent(user.ItemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail);
+            await PublishUserCreatedAsync(user.ItemId, command);
 
             _logger.LogInformation("Signup user creation without organization end -- Success");
             return new BaseMutationResponse
@@ -244,6 +252,21 @@ namespace Iam.DomainService.Users
                 ItemId = user.ItemId
             };
         }
+
+
+        /// <summary>Publishes an action after its change was saved. The publisher never throws and keeps only the payload fields the tenant listed.</summary>
+        private Task PublishActionAsync(string action, object data) =>
+            _actionPublisher is null ? Task.CompletedTask : _actionPublisher.PublishAsync(action, data);
+
+        private Task PublishUserCreatedAsync(string userId, CreateUserRequest command) =>
+            PublishActionAsync(IamActionNames.UserCreated, new
+            {
+                userId,
+                roles = command.Roles,
+                permissions = command.Permissions,
+                creationType = command.UserCreationType.ToString(),
+                mfaEnabled = command.MfaEnabled
+            });
 
         private async Task SendEvent(
             string itemId,
@@ -759,6 +782,8 @@ namespace Iam.DomainService.Users
 
             _logger.LogInformation("User update end -- Success");
 
+            await PublishActionAsync(IamActionNames.UserUpdated, new { userId = user.ItemId, by = ActionByAdmin });
+
             await NotifyUserUpdatedAsync(user, blocksContext, changedFields);
 
             return new BaseMutationResponse
@@ -900,6 +925,8 @@ namespace Iam.DomainService.Users
 
             _logger.LogInformation("My account update end -- Success");
 
+            await PublishActionAsync(IamActionNames.UserUpdated, new { userId = user.ItemId, by = "self" });
+
             return new BaseMutationResponse { IsSuccess = true, ItemId = user.ItemId };
         }
 
@@ -1007,6 +1034,8 @@ namespace Iam.DomainService.Users
 
             if (update.Result)
             {
+                await PublishActionAsync(IamActionNames.UserDeactivated, new { userId = user.ItemId });
+
                 await _notificationSender.TrySendAsync(new BuiltInNotification(
                     BlocksContext.GetContext()?.TenantId,
                     BuiltInNotificationNames.UserDeactivated,
@@ -1138,6 +1167,7 @@ namespace Iam.DomainService.Users
                 }));
 
             await SendEvent(user.ItemId, MutationEventType.Update);
+            await PublishActionAsync(IamActionNames.UserActivated, new { userId = user.ItemId, via = ActionByAdmin });
 
             await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
@@ -1289,6 +1319,7 @@ namespace Iam.DomainService.Users
                 }));
 
             await SendEvent(user.ItemId, MutationEventType.Update);
+            await PublishActionAsync(IamActionNames.UserActivated, new { userId = user.ItemId, via = "social" });
 
             await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
@@ -1535,6 +1566,14 @@ namespace Iam.DomainService.Users
 
             await NotifyRolesChangedAsync(user.ItemId, blocksContext?.UserId, organizationId, "updated");
 
+            await PublishActionAsync(IamActionNames.UserRolesChanged, new
+            {
+                userId = user.ItemId,
+                change = "set",
+                roles = command.Roles,
+                permissions = command.Permissions
+            });
+
 
             _logger.LogInformation("Update User Access Control end -- Success");
             return new BaseMutationResponse
@@ -1676,6 +1715,13 @@ namespace Iam.DomainService.Users
             await EndSessionsIfAccessRemovedAsync(grantScope, user.ItemId, removedAccess, "access_revoked").ConfigureAwait(false);
 
             await SendEvent(user.ItemId, MutationEventType.Update);
+            await PublishActionAsync(IamActionNames.UserRolesChanged, new
+            {
+                userId = user.ItemId,
+                change = "revoke",
+                roles = Array.Empty<string>(),
+                permissions = Array.Empty<string>()
+            });
 
             await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
@@ -1772,6 +1818,7 @@ namespace Iam.DomainService.Users
             }
 
             await ProcessCreateUserByEmailAfterActionAsync(@event, itemId);
+            await PublishUserCreatedAsync(itemId, command);
 
             _logger.LogInformation("User creation end -- Success -- CreateUserByEmail");
             return true;
@@ -2363,6 +2410,14 @@ namespace Iam.DomainService.Users
                     "Bulk role change -- batch {BatchId}, user {UserId}: applied",
                     command.BatchId,
                     userId);
+                await PublishActionAsync(IamActionNames.UserRolesChanged, new
+                {
+                    userId = user.ItemId,
+                    change = "bulk",
+                    addRoles = command.AddRoles,
+                    removeRoles = command.RemoveRoles,
+                    batchId = command.BatchId
+                });
                 return removesRole ? BulkUserOutcome.AppliedWithRemoval : BulkUserOutcome.Applied;
             }
             catch (Exception ex)

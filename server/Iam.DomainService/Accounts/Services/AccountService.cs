@@ -5,6 +5,7 @@ using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.AccessGrant;
+using Iam.DomainService.Actions;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Notifications;
@@ -78,6 +79,8 @@ namespace Iam.DomainService.Accounts
         private readonly ISignupOrganizationResolver _signupOrganizationResolver;
         private readonly IBuiltInNotificationSender? _notificationSender;
 
+        private readonly IActionPublisher? _actionPublisher;
+
         public AccountService(
             ILogger<AccountService> logger,
             IIdentityAccessManagementRepository repository,
@@ -104,8 +107,10 @@ namespace Iam.DomainService.Accounts
             IUserSessionTerminator? userSessionTerminator = null,
             IFailedLoginTracker? failedLoginTracker = null,
             IAccessGrantService? accessGrant = null,
-            IBuiltInNotificationSender? notificationSender = null)
+            IBuiltInNotificationSender? notificationSender = null,
+            IActionPublisher? actionPublisher = null)
         {
+            _actionPublisher = actionPublisher;
             _notificationSender = notificationSender;
             _logger = logger;
             _repository = repository;
@@ -931,6 +936,11 @@ namespace Iam.DomainService.Accounts
                 await _cacheClient.RemoveKeyAsync(activateUserRequest.Code);
                 await InvalidateActivationCacheAsync(userId, activateUserRequest.Code);
                 await _userActivityDispatcher.SendUserActivityAsync(AccountActivation.ActivatedEvent(userId, "iam-account"));
+
+                if (_actionPublisher is not null)
+                {
+                    await _actionPublisher.PublishAsync(IamActionNames.UserActivated, new { userId, via = "email_link" });
+                }
 
                 if (!activateUserRequest.PreventPostEvent)
                 {

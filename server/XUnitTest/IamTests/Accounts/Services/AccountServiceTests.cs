@@ -754,6 +754,30 @@ namespace XUnitTest.IamTests.Accounts.Services
             _userActivityDispatcherMock.Verify(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Never);
         }
 
+        [Theory]
+        [InlineData(true, 1)]
+        [InlineData(false, 0)]
+        public async Task Activate_PublishesActivatedViaEmailLink_OnlyWhenTheSaveWorked(bool saved, int times)
+        {
+            var actions = new Mock<Blocks.Genesis.IActionPublisher>();
+            var service = new AccountService(_loggerMock.Object, _repositoryMock.Object, _iamServiceMock.Object, _cacheClientMock.Object, _tenantsMock.Object,
+                _accountValidatorMock.Object, _changePasswordValidatorMock.Object, _recoverValidatorMock.Object,
+                _userMutationMock.Object, _resourceMutationMock.Object, _captchaServiceMock.Object, _captchaConfigurationServiceMock.Object,
+                _userActivityDispatcherMock.Object, new SignupOrganizationResolver(_resourceRepositoryMock.Object),
+                actionPublisher: actions.Object);
+            var user = TestDataBuilder.CreateUser(active: false);
+            _cacheClientMock.Setup(c => c.GetStringValueAsync("code-1")).ReturnsAsync(user.ItemId);
+            _cacheClientMock.Setup(c => c.GetStringValueAsync(AccountCodes.LatestKey(AccountCodes.Activation, user.ItemId))).ReturnsAsync("code-1");
+            _repositoryMock.Setup(r => r.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
+            _repositoryMock.Setup(r => r.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(saved);
+            _accountValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<BaseAccountRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult());
+
+            await service.ActivateAccountAsync(new ActivateUserRequest { Code = "code-1", PreventPostEvent = true });
+
+            actions.Verify(a => a.PublishAsync("iam.user.activated", It.IsAny<object?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Exactly(times));
+        }
+
         #endregion
 
         #region RecoverAccount

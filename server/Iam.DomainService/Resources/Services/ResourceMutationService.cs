@@ -2,6 +2,7 @@ using Iam.DomainService.Notifications;
 ﻿using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.AccessGrant;
+using Iam.DomainService.Actions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
@@ -55,6 +56,7 @@ namespace Iam.DomainService.Resources
 
         private readonly IBuiltInNotificationSender? _notificationSender;
         private readonly IAccessGrantService? _accessGrant;
+        private readonly IActionPublisher? _actionPublisher;
 
         public ResourceMutationService(
             ILogger<ResourceMutationService> logger,
@@ -69,9 +71,11 @@ namespace Iam.DomainService.Resources
             IBuiltInNotificationSender? notificationSender = null,
             // Trailing and optional like the sender above, so existing fixtures keep compiling; DI
             // always supplies it. Without it no access grant rule runs.
-            IAccessGrantService? accessGrant = null
+            IAccessGrantService? accessGrant = null,
+            IActionPublisher? actionPublisher = null
         )
         {
+            _actionPublisher = actionPublisher;
             _notificationSender = notificationSender;
             _accessGrant = accessGrant;
             _logger = logger;
@@ -2335,6 +2339,14 @@ namespace Iam.DomainService.Resources
 
             await _resourceRepository.SaveOrganizationAsync(organization);
 
+            // No organization name: it can be a person's name.
+            await PublishActionAsync(IamActionNames.OrganizationCreated, new
+            {
+                organizationId = organization.ItemId,
+                createdFrom = request.CreatedFrom.ToString(),
+                defaultRoleForMembers = request.DefaultRoleForMembers
+            });
+
             await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
                 UserId = createdByUserId ?? string.Empty,
@@ -2763,8 +2775,13 @@ namespace Iam.DomainService.Resources
             ApplyProperty(request.IsEnable, value => organization.IsDisabled = !(value ?? false), v => v.HasValue);
 
             await _resourceRepository.SaveOrganizationAsync(organization);
+            await PublishActionAsync(IamActionNames.OrganizationUpdated, new { organizationId = id, isEnable = request.IsEnable });
             return new BaseResponse { IsSuccess = true };
         }
+
+        /// <summary>Publishes an action after its change was saved. The publisher never throws and keeps only the payload fields the tenant listed.</summary>
+        private Task PublishActionAsync(string action, object data) =>
+            _actionPublisher is null ? Task.CompletedTask : _actionPublisher.PublishAsync(action, data);
 
         private static void ApplyProperty<T>(T? value, Action<T> apply, Func<T?, bool> isValid)
         {
