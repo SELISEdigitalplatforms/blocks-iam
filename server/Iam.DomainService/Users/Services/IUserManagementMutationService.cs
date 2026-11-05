@@ -20,6 +20,12 @@ namespace Iam.DomainService.Users
         /// </summary>
         Task<BaseMutationResponse> CreateSignupUserWithoutOrganizationAsync(CreateUserRequest command);
         User MapUser(CreateUserRequest command);
+
+        /// <summary>
+        /// Tells the tenant a self-signup finished (<c>iam.user.signed_up</c>). Call once, only after the new
+        /// user was saved. <paramref name="method"/> is one of <c>IamActionNames.SignupMethods</c>. Never throws.
+        /// </summary>
+        Task PublishUserSignedUpAsync(User user, string method);
         Task<BaseMutationResponse> UpdateUserAsync(UpdateUserRequest command);
 
         Task<BaseMutationResponse> UpdateMyAccountAsync(UpdateMyAccountRequest command);

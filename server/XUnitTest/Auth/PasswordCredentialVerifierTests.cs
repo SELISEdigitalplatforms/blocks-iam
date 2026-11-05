@@ -5,6 +5,7 @@ using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.Actions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
@@ -29,6 +30,7 @@ public class PasswordCredentialVerifierTests
     private readonly Mock<IUserActivityDispatcher> _activity = new();
     private readonly Mock<IAuthenticationDomainService> _authDomain = new();
     private readonly Mock<ICaptchaEvaluator> _captcha = new();
+    private readonly Mock<IActionPublisher> _actions = new();
 
     public PasswordCredentialVerifierTests()
     {
@@ -53,7 +55,8 @@ public class PasswordCredentialVerifierTests
         _account.Object,
         _activity.Object,
         _authDomain.Object,
-        withCaptcha ? _captcha.Object : null);
+        withCaptcha ? _captcha.Object : null,
+        _actions.Object);
 
     private static User UserWith(string password, int failed = 0) => new()
     {
@@ -143,6 +146,31 @@ public class PasswordCredentialVerifierTests
         result.AccountLockedNow.Should().BeTrue();
         _account.Verify(a => a.SendAccountLockedNotificationAsync(It.IsAny<User>(), lockedUntil), Times.Once);
         _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e => e.Event == "failed_login_and_account_locked")), Times.Once);
+    }
+
+    [Fact]
+    public async Task WrongPasswordThatLocks_PublishesLockedOnce_WithNoPersonalData()
+    {
+        _repo.Setup(r => r.TryReserveLoginAttemptAsync("u1", 5, It.IsAny<DateTime>()))
+            .ReturnsAsync(new User { ItemId = "u1", FailedLoginCount = 5 });
+        _repo.Setup(r => r.LockAccountIfLoginThresholdReachedAsync("u1", 5, 15, It.IsAny<DateTime>()))
+            .ReturnsAsync(new User { ItemId = "u1", Email = "private@example.com", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15) });
+        var published = new List<(string Action, string Json)>();
+        _actions.Setup(a => a.PublishAsync(It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, object?, string?, CancellationToken>((name, data, _, _) => published.Add((name, System.Text.Json.JsonSerializer.Serialize(data))))
+            .Returns(Task.CompletedTask);
+
+        await Sut().VerifyAsync(UserWith("Correct#1"), "nope", null, Request(), "t1");
+
+        published.Should().ContainSingle().Which.Should().Be((IamActionNames.UserLocked, "{\"userId\":\"u1\",\"reason\":\"failed_logins\"}"));
+    }
+
+    [Fact]
+    public async Task WrongPasswordThatDoesNotLock_PublishesNothing()
+    {
+        await Sut().VerifyAsync(UserWith("Correct#1"), "nope", null, Request(), "t1");
+
+        _actions.Verify(a => a.PublishAsync(It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

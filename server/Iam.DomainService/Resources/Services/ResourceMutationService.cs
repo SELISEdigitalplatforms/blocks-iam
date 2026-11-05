@@ -2780,8 +2780,8 @@ namespace Iam.DomainService.Resources
         }
 
         /// <summary>Publishes an action after its change was saved. The publisher never throws and keeps only the payload fields the tenant listed.</summary>
-        private Task PublishActionAsync(string action, object data) =>
-            _actionPublisher is null ? Task.CompletedTask : _actionPublisher.PublishAsync(action, data);
+        private Task PublishActionAsync(string action, object data, string? organizationId = null) =>
+            _actionPublisher is null ? Task.CompletedTask : _actionPublisher.PublishAsync(action, data, organizationId);
 
         private static void ApplyProperty<T>(T? value, Action<T> apply, Func<T?, bool> isValid)
         {

@@ -166,10 +166,10 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            string itemId;
+            User createdUser;
             try
             {
-                itemId = await ProcessCreateUserAsync(command);
+                createdUser = await SaveNewUserAsync(command);
             }
             catch (ValidationException ex)
             {
@@ -180,11 +180,17 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            var itemId = createdUser.ItemId;
+
             var inviter = BlocksContext.GetContext();
             await SendEvent(
                 itemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail,
                 inviter is { IsAuthenticated: true } ? inviter.UserId : null, organizationId);
             await PublishUserCreatedAsync(itemId, command);
+            if (command.IsSelfSignup)
+            {
+                await PublishUserSignedUpAsync(createdUser, IamActionNames.SignupMethods.Email);
+            }
             var bc = BlocksContext.GetContext();
 
             _logger.LogInformation("User creation end -- Success");
@@ -244,6 +250,10 @@ namespace Iam.DomainService.Users
             await _userRepository.CreateUserAsync(user);
             await SendEvent(user.ItemId, MutationEventType.Create, command.ClientId, command.RedirectUri, command.SendMail);
             await PublishUserCreatedAsync(user.ItemId, command);
+            if (command.IsSelfSignup)
+            {
+                await PublishUserSignedUpAsync(user, IamActionNames.SignupMethods.Email);
+            }
 
             _logger.LogInformation("Signup user creation without organization end -- Success");
             return new BaseMutationResponse
@@ -255,8 +265,8 @@ namespace Iam.DomainService.Users
 
 
         /// <summary>Publishes an action after its change was saved. The publisher never throws and keeps only the payload fields the tenant listed.</summary>
-        private Task PublishActionAsync(string action, object data) =>
-            _actionPublisher is null ? Task.CompletedTask : _actionPublisher.PublishAsync(action, data);
+        private Task PublishActionAsync(string action, object data, string? organizationId = null) =>
+            _actionPublisher is null ? Task.CompletedTask : _actionPublisher.PublishAsync(action, data, organizationId);
 
         private Task PublishUserCreatedAsync(string userId, CreateUserRequest command) =>
             PublishActionAsync(IamActionNames.UserCreated, new
@@ -267,6 +277,28 @@ namespace Iam.DomainService.Users
                 creationType = command.UserCreationType.ToString(),
                 mfaEnabled = command.MfaEnabled
             });
+
+        /// <summary>
+        /// Anonymous signup has no organization in <c>BlocksContext</c>, so the organization the user joined is
+        /// passed explicitly. The payload holds ids and flags only: no email, name, phone or secret.
+        /// </summary>
+        public Task PublishUserSignedUpAsync(User user, string method)
+        {
+            var organizationId = user.OrganizationIds?.FirstOrDefault();
+            var roles = organizationId != null && user.Roles != null && user.Roles.TryGetValue(organizationId, out var orgRoles)
+                ? orgRoles
+                : [];
+
+            return PublishActionAsync(IamActionNames.UserSignedUp, new
+            {
+                userId = user.ItemId,
+                organizationId,
+                method,
+                status = RequiresActivation(user) ? "pending_activation" : "active",
+                roles,
+                mfaEnabled = user.MfaEnabled
+            }, organizationId);
+        }
 
         private async Task SendEvent(
             string itemId,
@@ -616,7 +648,10 @@ namespace Iam.DomainService.Users
             };
         }
 
-        public async Task<string> ProcessCreateUserAsync(CreateUserRequest command)
+        public async Task<string> ProcessCreateUserAsync(CreateUserRequest command) =>
+            (await SaveNewUserAsync(command)).ItemId;
+
+        private async Task<User> SaveNewUserAsync(CreateUserRequest command)
         {
             await ApplyOrganizationDefaultsAsync(command);
 
@@ -633,7 +668,7 @@ namespace Iam.DomainService.Users
             var user = MapUser(command);
             await _userRepository.CreateUserAsync(user);
 
-            return user.ItemId;
+            return user;
         }
 
         public User MapUser(CreateUserRequest command)
@@ -1931,7 +1966,8 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            var itemId = await ProcessSsoUserAsync(command);
+            var ssoUser = await SaveSsoUserAsync(command);
+            var itemId = ssoUser.ItemId;
 
             _logger.LogInformation("User mutation event -- initiate");
             await _messageClient.SendToConsumerAsync(
@@ -1948,6 +1984,18 @@ namespace Iam.DomainService.Users
                 }
             );
 
+            // The SSO path never sent iam.user.created before; the organization is explicit because
+            // BlocksContext is empty on anonymous signup and on the SSO code exchange.
+            await PublishActionAsync(IamActionNames.UserCreated, new
+            {
+                userId = itemId,
+                roles = command.Roles,
+                permissions = command.Permissions,
+                creationType = command.UserCreationType.ToString(),
+                mfaEnabled = false
+            }, command.OrganizationId);
+            await PublishUserSignedUpAsync(ssoUser, IamActionNames.SignupMethods.Social);
+
             _logger.LogInformation("User creation end -- Success");
             return new BaseMutationResponse
             {
@@ -1956,7 +2004,10 @@ namespace Iam.DomainService.Users
             };
         }
 
-        public async Task<string> ProcessSsoUserAsync(CreateUserViaSsoRequest command)
+        public async Task<string> ProcessSsoUserAsync(CreateUserViaSsoRequest command) =>
+            (await SaveSsoUserAsync(command)).ItemId;
+
+        private async Task<User> SaveSsoUserAsync(CreateUserViaSsoRequest command)
         {
             var blocksContext = BlocksContext.GetContext();
             var id = string.IsNullOrWhiteSpace(command.UserId) ? Guid.NewGuid().ToString() : command.UserId;
@@ -2020,7 +2071,7 @@ namespace Iam.DomainService.Users
             };
             await _userRepository.CreateUserAsync(user);
 
-            return user.ItemId;
+            return user;
         }
 
         private static UserProvisioningSource ResolveProvisioningSource(UserCreationType creationType)

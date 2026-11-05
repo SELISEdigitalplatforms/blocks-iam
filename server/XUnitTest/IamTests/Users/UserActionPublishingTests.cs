@@ -35,6 +35,7 @@ namespace XUnitTest.IamTests.Users
         private readonly Mock<IResourceRepository> _resourceRepo = new();
         private readonly Mock<IActionPublisher> _actions = new();
         private readonly List<(string Action, string Json)> _published = new();
+        private readonly List<string?> _publishedOrgs = new();
 
         public UserActionPublishingTests()
         {
@@ -59,8 +60,11 @@ namespace XUnitTest.IamTests.Users
             _userRepo.Setup(r => r.CreateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
 
             _actions.Setup(a => a.PublishAsync(It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-                .Callback<string, object?, string?, CancellationToken>((name, data, _, _) =>
-                    _published.Add((name, JsonSerializer.Serialize(data))))
+                .Callback<string, object?, string?, CancellationToken>((name, data, org, _) =>
+                {
+                    _published.Add((name, JsonSerializer.Serialize(data)));
+                    _publishedOrgs.Add(org);
+                })
                 .Returns(Task.CompletedTask);
         }
 
@@ -148,6 +152,99 @@ namespace XUnitTest.IamTests.Users
             result.IsSuccess.Should().BeTrue();
             _published.Should().ContainSingle().Which.Action.Should().Be(IamActionNames.UserCreated);
             _published[0].Json.Should().Contain("\"roles\":[]");
+        }
+
+        // ---------- self-signup ----------
+
+        private (string Action, string Json) SignedUp() =>
+            _published.Should().ContainSingle(p => p.Action == IamActionNames.UserSignedUp).Subject;
+
+        [Fact]
+        public async Task EmailSignup_PublishesSignedUpPendingActivation_WithTheJoinedOrganizationAndNoPersonalData()
+        {
+            var result = await Create().CreateUserAsync(new CreateUserRequest
+            {
+                Email = "private@example.com", FirstName = "Jane", PhoneNumber = "+4670000", Password = "Secret#123",
+                OrganizationId = "default", Roles = ["viewer"], VerifiedType = UserVerifiedType.None, IsSelfSignup = true
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _published.Select(p => p.Action).Should().Equal(IamActionNames.UserCreated, IamActionNames.UserSignedUp);
+            SignedUp().Json.Should().Be(
+                $"{{\"userId\":\"{result.ItemId}\",\"organizationId\":\"default\",\"method\":\"email\",\"status\":\"pending_activation\",\"roles\":[\"viewer\"],\"mfaEnabled\":false}}");
+            _publishedOrgs[1].Should().Be("default");
+            SignedUp().Json.Should().NotContain("private@").And.NotContain("Jane").And.NotContain("4670000").And.NotContain("Secret");
+        }
+
+        [Fact]
+        public async Task EmailSignupWithoutOrganization_PublishesSignedUpWithANullOrganization()
+        {
+            var result = await Create().CreateSignupUserWithoutOrganizationAsync(
+                new CreateUserRequest { Email = "signup@example.com", VerifiedType = UserVerifiedType.None, IsSelfSignup = true });
+
+            result.IsSuccess.Should().BeTrue();
+            SignedUp().Json.Should().Be(
+                $"{{\"userId\":\"{result.ItemId}\",\"organizationId\":null,\"method\":\"email\",\"status\":\"pending_activation\",\"roles\":[],\"mfaEnabled\":false}}");
+            _publishedOrgs[1].Should().BeNull();
+        }
+
+        [Fact]
+        public async Task AdminCreate_PublishesNoSignedUp()
+        {
+            await Create().CreateUserAsync(new CreateUserRequest { Email = "new@example.com", OrganizationId = "default" });
+            await Create().CreateSignupUserWithoutOrganizationAsync(new CreateUserRequest { Email = "other@example.com" });
+
+            _published.Should().NotContain(p => p.Action == IamActionNames.UserSignedUp);
+        }
+
+        [Fact]
+        public async Task EmailSignup_ForAnEmailThatAlreadyHasAnAccount_PublishesNoSignedUp()
+        {
+            _userRepo.Setup(r => r.GetUserByEmailAsync("old@example.com")).ReturnsAsync(new User { ItemId = "old-1", OrganizationIds = ["default"] });
+
+            await Create().CreateUserAsync(new CreateUserRequest { Email = "old@example.com", OrganizationId = Org, IsSelfSignup = true });
+            await Create().CreateSignupUserWithoutOrganizationAsync(new CreateUserRequest { Email = "old@example.com", IsSelfSignup = true });
+
+            _published.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task EmailSignup_WhenTheSaveThrows_PublishesNothing()
+        {
+            _userRepo.Setup(r => r.CreateUserAsync(It.IsAny<User>())).ThrowsAsync(new InvalidOperationException("db down"));
+
+            var act = () => Create().CreateUserAsync(new CreateUserRequest { Email = "new@example.com", OrganizationId = "default", IsSelfSignup = true });
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+            _published.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task SsoSignup_PublishesCreatedAndSignedUpAsSocial_ActiveWithAnExplicitOrganization()
+        {
+            var result = await Create().CreateUserFromSsoAsync(new CreateUserViaSsoRequest
+            {
+                Email = "social@example.com", FirstName = "Jane", Platform = "google", ExternalUserId = "ext-1", Active = true, IsVerified = true,
+                UserCreationType = UserCreationType.Social, OrganizationId = "default", Roles = ["viewer"]
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _published.Select(p => p.Action).Should().Equal(IamActionNames.UserCreated, IamActionNames.UserSignedUp);
+            SignedUp().Json.Should().Be(
+                $"{{\"userId\":\"{result.ItemId}\",\"organizationId\":\"default\",\"method\":\"social\",\"status\":\"active\",\"roles\":[\"viewer\"],\"mfaEnabled\":false}}");
+            _publishedOrgs.Should().OnlyContain(o => o == "default");
+            SignedUp().Json.Should().NotContain("social@").And.NotContain("Jane").And.NotContain("ext-1");
+        }
+
+        [Fact]
+        public async Task SsoSignIn_OfAnExistingAccount_PublishesNothing()
+        {
+            _userRepo.Setup(r => r.GetUserByEmailAsync("old@example.com")).ReturnsAsync(new User { ItemId = "old-1", OrganizationIds = ["default"] });
+
+            var result = await Create().CreateUserFromSsoAsync(new CreateUserViaSsoRequest { Email = "old@example.com", Platform = "google", OrganizationId = "default" });
+
+            result.ItemId.Should().Be("old-1");
+            _published.Should().BeEmpty();
         }
 
         // ---------- update ----------

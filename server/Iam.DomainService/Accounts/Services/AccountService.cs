@@ -749,7 +749,8 @@ namespace Iam.DomainService.Accounts
                 PhoneNumber = signupUserRequest.PhoneNumber,
                 // Rides the user-mutation event through to the activation email builder.
                 ClientId = signupUserRequest.ClientId,
-                RedirectUri = signupUserRequest.RedirectUri
+                RedirectUri = signupUserRequest.RedirectUri,
+                IsSelfSignup = true
             };
 
             var result = organizationId == null
@@ -937,10 +938,7 @@ namespace Iam.DomainService.Accounts
                 await InvalidateActivationCacheAsync(userId, activateUserRequest.Code);
                 await _userActivityDispatcher.SendUserActivityAsync(AccountActivation.ActivatedEvent(userId, "iam-account"));
 
-                if (_actionPublisher is not null)
-                {
-                    await _actionPublisher.PublishAsync(IamActionNames.UserActivated, new { userId, via = "email_link" });
-                }
+                await PublishActionAsync(IamActionNames.UserActivated, new { userId, via = "email_link" });
 
                 if (!activateUserRequest.PreventPostEvent)
                 {
@@ -1185,6 +1183,7 @@ namespace Iam.DomainService.Accounts
                 // Always, whatever LogoutFromAllDevices says: a reset is how a user takes the account
                 // back, so no session may survive it. Every Blocks reset form sends true anyway.
                 await EndAllSessionsAsync(userId, "password_reset");
+                await PublishActionAsync(IamActionNames.UserPasswordChanged, new { userId, via = "reset_link" });
             }
 
 
@@ -1273,6 +1272,8 @@ namespace Iam.DomainService.Accounts
                 {
                     await EndAllSessionsAsync(bc?.UserId ?? string.Empty, "password_change");
                 }
+
+                await PublishActionAsync(IamActionNames.UserPasswordChanged, new { userId = user.ItemId, via = "self" });
             }
             return (result, false);
         }
@@ -1295,12 +1296,18 @@ namespace Iam.DomainService.Accounts
             return await _failedLoginTracker.CheckPasswordAsync(user.ItemId, IsCorrect);
         }
 
+        /// <summary>Publishes an action after its change was saved. The publisher never throws.</summary>
+        private Task PublishActionAsync(string action, object data) =>
+            _actionPublisher is null ? Task.CompletedTask : _actionPublisher.PublishAsync(action, data);
+
         private async Task NotifyLockedNowAsync(User? lockedUser)
         {
             if (lockedUser?.LockoutUntilUtc == null)
             {
                 return;
             }
+
+            await PublishActionAsync(IamActionNames.UserLocked, new { userId = lockedUser.ItemId, reason = "failed_logins" });
 
             try
             {
@@ -1670,6 +1677,7 @@ namespace Iam.DomainService.Accounts
             if (result)
             {
                 _logger.LogInformation("Account unlocked by admin for user: {UserId}", userId);
+                await PublishActionAsync(IamActionNames.UserUnlocked, new { userId, by = "admin" });
 
                 // Send notification email to user
                 try
