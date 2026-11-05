@@ -454,6 +454,22 @@ namespace XUnitTest.Auth
             response.Template.Should().BeSameAs(storedTemplate);
         }
 
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task GetUiConfigAsync_PublishesLayoutWithOneTemplateRead(bool showAnimationPanel)
+        {
+            var template = OidcUiTemplateTestData.ValidTemplate();
+            template.Layout = new OidcUiTemplateLayout { ShowAnimationPanel = showAnimationPanel };
+            _authRepo.Setup(r => r.GetOidcUiTemplateAsync()).ReturnsAsync(template);
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+
+            var response = result.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
+            response.Template!.Layout!.ShowAnimationPanel.Should().Be(showAnimationPanel);
+            _authRepo.Verify(r => r.GetOidcUiTemplateAsync(), Times.Once);
+        }
+
         [Fact]
         public async Task GetUiConfigAsync_PropagatesTemplateLookupFailure()
         {

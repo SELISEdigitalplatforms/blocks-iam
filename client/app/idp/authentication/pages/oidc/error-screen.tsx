@@ -118,6 +118,7 @@ export const OIDCErrorScreen = () => {
   return (
     <OidcAuthShell
       panelConfig={OIDC_ERROR_PANEL}
+      showAnimationPanel={template.layout.showAnimationPanel}
       theme={template.theme}
       logoUrlLight={template.branding.logoUrlLight}
       logoUrlDark={template.branding.logoUrlDark}

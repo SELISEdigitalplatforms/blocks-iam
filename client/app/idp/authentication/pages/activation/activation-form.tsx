@@ -115,6 +115,7 @@ export const ActivationForm = ({
   const { t } = useT("iam.activation");
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
+  const inlineRequirements = animCtx?.animationPanelVisible === false;
   const formRef = useRef<HTMLFormElement>(null);
   const [requirementsMet, setRequirementsMet] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -171,9 +172,9 @@ export const ActivationForm = ({
    */
   const settleFailure = useCallback(
     async (message: string) => {
-      // Only the automatic path renders this; the form shows its failure through the animation.
+      // The form-only layout has no panel terminal to display failures.
       const report = (text: string) => {
-        if (!collectPassword) setAutoActivationError(text);
+        if (!collectPassword || inlineRequirements) setAutoActivationError(text);
       };
 
       try {
@@ -199,7 +200,7 @@ export const ActivationForm = ({
       report(message);
       await animCtx?.failAnimation(message);
     },
-    [revalidateCode, code, tenantId, collectPassword, animCtx, navigate, successUrl, t],
+    [revalidateCode, code, tenantId, collectPassword, inlineRequirements, animCtx, navigate, successUrl, t],
   );
 
   // Without a password there are no strength requirements to meet, and this guard would
@@ -228,6 +229,7 @@ export const ActivationForm = ({
   /* Inject PasswordStrengthChecker into the right panel's idle slot */
   const setPanelIdleSlot = animCtx?.setPanelIdleSlot;
   useEffect(() => {
+    if (inlineRequirements) return;
     if (!collectPassword) {
       setPanelIdleSlot?.(null);
       return;
@@ -245,7 +247,7 @@ export const ActivationForm = ({
       setPanelIdleSlot?.(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [password, confirmPassword, passwordPolicy, setPanelIdleSlot, collectPassword]);
+  }, [password, confirmPassword, passwordPolicy, setPanelIdleSlot, collectPassword, inlineRequirements]);
 
   const activationCopy = oidcUiConfig?.template?.pages.activation;
 
@@ -363,6 +365,7 @@ export const ActivationForm = ({
       ref={formRef}
       onSubmit={(event) => form.handleSubmit(onSubmitHandler, shake)(event)}
       onInput={() => {
+        if (autoActivationError) setAutoActivationError(null);
         if (animCtx?.phase === "failed") animCtx?.resetAnimation();
       }}
       className="flex flex-col gap-5"
@@ -471,7 +474,22 @@ export const ActivationForm = ({
         </>
       )}
 
+      {inlineRequirements && (
+        <PasswordStrengthChecker
+          password={password}
+          confirmPassword={confirmPassword}
+          policy={passwordPolicy}
+          onRequirementsMet={setRequirementsMet}
+        />
+      )}
+
       {captchaEnabled && canSubmit && <Captcha {...captcha} />}
+
+      {inlineRequirements && autoActivationError && (
+        <p className="text-sm" style={{ color: "var(--danger)" }}>
+          {autoActivationError}
+        </p>
+      )}
 
       <button
         type="submit"

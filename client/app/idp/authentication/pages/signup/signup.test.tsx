@@ -98,6 +98,7 @@ describe("Signup", () => {
       captcha: null,
       template: {
         ...OIDC_UI_TEMPLATE_FIXTURE,
+        layout: { showAnimationPanel: false },
         pages: {
           ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           signup: {
@@ -113,6 +114,7 @@ describe("Signup", () => {
     };
     renderSignup();
     expect(h.shellProps).toEqual(expect.objectContaining({
+      showAnimationPanel: false,
       heading: "Join Acme",
       successTitle: "Welcome aboard",
       successSubtitle: "Check your Acme inbox",

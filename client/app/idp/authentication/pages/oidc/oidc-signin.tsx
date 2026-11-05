@@ -151,6 +151,7 @@ export const OIDCSignin = () => {
     return (
       <OidcAuthShell
         panelConfig={OIDC_LOGIN_PANEL}
+        showAnimationPanel={template.layout.showAnimationPanel}
         theme={template.theme}
         logoUrlLight={template.branding.logoUrlLight}
         logoUrlDark={template.branding.logoUrlDark}

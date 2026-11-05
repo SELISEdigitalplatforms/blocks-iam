@@ -130,6 +130,7 @@ export function DeviceEntryPage() {
   }
 
   const shellTemplateProps = {
+    showAnimationPanel: template.layout.showAnimationPanel,
     theme: template.theme,
     logoUrlLight: template.branding.logoUrlLight,
     logoUrlDark: template.branding.logoUrlDark,

@@ -10,21 +10,26 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
   OidcAuthShell: ({
     children,
     heading,
+    showAnimationPanel,
     successTitle,
     successSubtitle,
   }: {
     children: React.ReactNode;
     heading: string;
+    showAnimationPanel?: boolean;
     successTitle: string;
     successSubtitle: string;
-  }) => (
-    <div>
+  }) => {
+    expect(showAnimationPanel).toBe(false);
+    return (
+    <div data-testid="device-shell" data-animation-panel={String(showAnimationPanel)}>
       <h1>{heading}</h1>
       <p>{successTitle}</p>
       <p>{successSubtitle}</p>
       {children}
     </div>
-  ),
+    );
+  },
   OidcFooter: ({ footerText }: { footerText: string }) => <span>{footerText}</span>,
   useOidcAuthAnimation: () => ({
     phase: "idle" as const,
@@ -52,7 +57,7 @@ const renderAt = (path: string) =>
   );
 
 beforeEach(() => {
-  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
+  h.oidcUiConfig = { captcha: null, template: { ...DEFAULT_OIDC_UI_TEMPLATE_FIXTURE, layout: { showAnimationPanel: false } } };
 });
 
 describe("DeviceSuccessPage", () => {

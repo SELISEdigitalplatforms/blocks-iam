@@ -18,6 +18,7 @@ import { useT } from "@seliseblocks/genesis-os/i18n";
 
 /* ── Animation context ──────────────────────────────────────── */
 export interface OidcAuthAnimContextValue {
+  animationPanelVisible: boolean;
   phase: OidcAnimPhase;
   startAnimation:   () => void;
   succeedAnimation: (opts?: { instant?: boolean }) => Promise<void>;
@@ -177,6 +178,7 @@ export interface OidcAuthShellProps {
   successTitle: string;
   successSubtitle: string;
   showCorners?: boolean;
+  showAnimationPanel?: boolean;
 }
 
 /* ── Auth shell ─────────────────────────────────────────────── */
@@ -194,6 +196,7 @@ export function OidcAuthShell({
   successTitle,
   successSubtitle,
   showCorners = true,
+  showAnimationPanel = true,
 }: Readonly<OidcAuthShellProps>) {
   const htmlTheme = useOidcResolvedTheme();
   const resolvedLogoUrl = htmlTheme === "dark" ? logoUrlDark : logoUrlLight;
@@ -208,18 +211,19 @@ export function OidcAuthShell({
   }, []);
 
   /* Detect panel visibility (≥ md) and reduced-motion preference */
-  const panelVisibleRef = useRef(true);
+  const panelVisibleRef = useRef(showAnimationPanel);
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 768px)");
     const reduce  = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update  = () => { panelVisibleRef.current = desktop.matches && !reduce.matches; };
+    const update  = () => { panelVisibleRef.current = showAnimationPanel && desktop.matches && !reduce.matches; };
     update();
     desktop.addEventListener("change", update);
     reduce.addEventListener("change", update);
     return () => { desktop.removeEventListener("change", update); reduce.removeEventListener("change", update); };
-  }, []);
+  }, [showAnimationPanel]);
 
   const ctx: OidcAuthAnimContextValue = {
+    animationPanelVisible: showAnimationPanel,
     phase,
     startAnimation: () => {
       setErrorMessage(null);
@@ -236,7 +240,7 @@ export function OidcAuthShell({
         return Promise.resolve();
       }
       setCascadeDone(false);
-      const duration = panelVisibleRef.current
+      const duration = showAnimationPanel && panelVisibleRef.current
         ? successDurationMs(panelConfig.successNodes.length)
         : 400;
       return new Promise<void>(resolve => {
@@ -250,7 +254,7 @@ export function OidcAuthShell({
       setPhase("failed");
       if (opts?.instant) return Promise.resolve();
       const prefixLines = panelConfig.errorTerminalPrefix?.length ?? 1;
-      const duration = panelVisibleRef.current
+      const duration = showAnimationPanel && panelVisibleRef.current
         ? failureDurationMs(prefixLines)
         : 150;
       return new Promise<void>(resolve => setTimeout(resolve, duration));
@@ -283,11 +287,15 @@ export function OidcAuthShell({
 
         <main className="relative z-10 flex-1 min-h-0 w-full max-w-5xl mx-auto px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-5 flex items-center justify-center">
           <div
-            className="w-full rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl bg-(--surface)"
+            className={showAnimationPanel
+              ? "w-full rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl bg-(--surface)"
+              : "w-full max-w-lg rounded-3xl overflow-hidden flex flex-col shadow-2xl bg-(--surface)"}
             style={{ height: "min(620px, calc(100dvh - 3rem))" }}
           >
               {/* Left — form / success */}
-              <div className="w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto">
+              <div className={showAnimationPanel
+                ? "w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto"
+                : "w-full px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto"}>
                 {/* Topbar: logo + brand label + theme toggle */}
                 <div className="flex items-center justify-between mb-4">
                   <OidcBrand logoUrl={resolvedLogoUrl} brandName={brandName} />
@@ -315,13 +323,13 @@ export function OidcAuthShell({
               </div>
 
               {/* Right — nodes panel */}
-              <NodesPanelOidc
+              {showAnimationPanel && <NodesPanelOidc
                 config={panelConfig}
                 phase={phase}
                 errorMessage={errorMessage}
                 idleContent={panelIdleSlot}
                 instant={instant}
-              />
+              />}
           </div>
         </main>
       </div>

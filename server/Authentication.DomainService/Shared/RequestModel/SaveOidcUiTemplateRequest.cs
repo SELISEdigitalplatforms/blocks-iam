@@ -10,5 +10,6 @@ namespace Authentication.DomainService.Shared.RequestModel
         public OidcUiTemplateBranding? Branding { get; set; }
         public OidcUiTemplateTheme? Theme { get; set; }
         public OidcUiTemplatePages? Pages { get; set; }
+        public OidcUiTemplateLayout? Layout { get; set; }
     }
 }
