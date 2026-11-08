@@ -129,4 +129,52 @@ describe("ReCaptcha", () => {
     ref.current?.reset();
     expect(reset).not.toHaveBeenCalled();
   });
+
+  describe("when grecaptcha becomes ready late", () => {
+    // grecaptcha.ready queues its callback until the API has loaded; the form can be gone by then.
+    function deferReady() {
+      const pending: Array<() => void> = [];
+      const grender = vi.fn((container: HTMLElement | null) => {
+        if (!container) throw new Error("reCAPTCHA placeholder element must be an element or id");
+        return 1;
+      });
+      setGrecaptcha({
+        render: grender,
+        ready: (cb: () => void) => pending.push(cb),
+        reset: vi.fn(),
+      });
+      return { grender, fireReady: () => pending.forEach((cb) => cb()) };
+    }
+
+    it("renders nothing and does not throw once the form has unmounted (Rollbar #1498)", () => {
+      const { grender, fireReady } = deferReady();
+      const { unmount } = renderComponent(vi.fn());
+
+      unmount();
+
+      expect(fireReady).not.toThrow();
+      expect(grender).not.toHaveBeenCalled();
+    });
+
+    it("renders once into its own container while still mounted", () => {
+      const { grender, fireReady } = deferReady();
+      const { container } = renderComponent(vi.fn());
+
+      fireReady();
+
+      expect(grender).toHaveBeenCalledTimes(1);
+      expect(grender.mock.calls[0][0]).toBe(container.firstChild);
+    });
+
+    it("skips the stale callback and renders the remounted form", () => {
+      const { grender, fireReady } = deferReady();
+      renderComponent(vi.fn()).unmount();
+      const { container } = renderComponent(vi.fn());
+
+      fireReady();
+
+      expect(grender).toHaveBeenCalledTimes(1);
+      expect(grender.mock.calls[0][0]).toBe(container.firstChild);
+    });
+  });
 });

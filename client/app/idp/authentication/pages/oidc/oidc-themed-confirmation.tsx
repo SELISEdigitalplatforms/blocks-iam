@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { CheckCircle2, HelpCircle } from "lucide-react";
-import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
+import { AppearanceControls } from "@/components/appearance-controls/appearance-controls";
 import type { IOidcUiTemplate } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { buildOidcThemeStyle, OidcBrand, OidcFooter, useOidcResolvedTheme } from "./oidc-auth-shell";
 
@@ -28,7 +28,7 @@ export function OidcThemedConfirmation({ template, title, subtitle, actionTitle,
               logoUrl={mode === "dark" ? template.branding.logoUrlDark : template.branding.logoUrlLight}
               brandName={template.branding.brandName}
             />
-            <ModeToggle />
+            <AppearanceControls />
           </div>
           <div className="flex flex-col items-center py-10 text-center">
             <CheckCircle2 className="h-14 w-14 text-(--success)" aria-hidden />

@@ -231,6 +231,38 @@ public class SignupLinkRedemptionOrchestratorTests : IDisposable
     }
 
     [Fact]
+    public async Task Redeem_NewUser_PublishesSignedUpOnce_ViaTheSignupLinkMethod()
+    {
+        var link = ActivePasswordless();
+        _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
+        _users.Setup(u => u.GetUserByEmailAsync(link.Email)).ReturnsAsync((User)null!);
+        SetupNewUserCreate("user-new", link.Email);
+        var redeemed = ActivePasswordless();
+        redeemed.RedemptionCount = 1;
+        _links.Setup(l => l.TryIncrementRedemptionAsync("link-1", "t1", "user-new", It.IsAny<DateTime>())).ReturnsAsync(redeemed);
+
+        var http = Http();
+        await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        _mutation.Verify(m => m.PublishUserSignedUpAsync(It.Is<User>(u => u.ItemId == "user-new"), "signup_link"), Times.Once);
+    }
+
+    [Fact]
+    public async Task Redeem_WhenAConcurrentRequestTookTheLastRedemption_PublishesNoSignedUp()
+    {
+        var link = ActivePasswordless();
+        _links.Setup(l => l.GetByCodeHashAsync(link.CodeHash)).ReturnsAsync(link);
+        _users.Setup(u => u.GetUserByEmailAsync(link.Email)).ReturnsAsync((User)null!);
+        SetupNewUserCreate("user-new", link.Email);
+        _links.Setup(l => l.TryIncrementRedemptionAsync("link-1", "t1", "user-new", It.IsAny<DateTime>())).ReturnsAsync((SignupLink?)null);
+
+        var http = Http();
+        await Sut().RedeemAsync("good-code", "t1", http.Request, http.Response);
+
+        _mutation.Verify(m => m.PublishUserSignedUpAsync(It.IsAny<User>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
     public async Task C15_Redeem_NewUser_UsesTheLinksOrganization_WhileAutoJoinTargetsAnother()
     {
         // C15: signup-link redemption never consults the sign-up auto-join setting.

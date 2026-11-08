@@ -19,15 +19,20 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
   OidcAuthShell: ({
     children,
     heading,
+    showAnimationPanel,
   }: {
     children: React.ReactNode;
     heading: string;
-  }) => (
-    <div>
+    showAnimationPanel?: boolean;
+  }) => {
+    expect(showAnimationPanel).toBe(false);
+    return (
+    <div data-testid="device-shell" data-animation-panel={String(showAnimationPanel)}>
       <h1>{heading}</h1>
       {children}
     </div>
-  ),
+    );
+  },
   OidcFooter: ({ footerText }: { footerText: string }) => <span>{footerText}</span>,
   useOidcAuthAnimation: () => ({
     phase: "idle",
@@ -68,7 +73,7 @@ const renderPage = (tenantId = "tenant-1", search = "") =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
+  h.oidcUiConfig = { captcha: null, template: { ...DEFAULT_OIDC_UI_TEMPLATE_FIXTURE, layout: { showAnimationPanel: false } } };
   assignSpy = vi.fn();
   Object.defineProperty(window, "location", {
     configurable: true,

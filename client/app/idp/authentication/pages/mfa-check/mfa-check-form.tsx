@@ -26,6 +26,7 @@ import { useLocation, useNavigate } from "react-router";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { ArrowRight, Clock, Loader, RotateCcw } from "lucide-react";
 import { useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -47,8 +48,6 @@ const formSchema = z.object({
 // The second leg's answer when the sign-in behind this page is gone: the server keeps it only a
 // few minutes (IdpConstants.OidcStateCacheTtlSeconds), so no code can finish it any more.
 const MFA_SESSION_EXPIRED = "invalid_mfa_session";
-export const SESSION_EXPIRED_MESSAGE =
-  "Your sign-in took too long, so this code can no longer be used. Please sign in again.";
 
 // The tenant of the login being completed, NOT the tenant of the IdP serving this page.
 // `BLOCKS_X_BLOCKS_KEY` is this bundle's own build-time project key -- always the root IdP --
@@ -66,6 +65,7 @@ type MfaCheckFromProps = {
 };
 
 export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
+  const { t } = useT("iam.mfa-check");
   const navigate = useNavigate();
   const location = useLocation();
   const animCtx = useOidcAuthAnimation();
@@ -102,8 +102,8 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
   const backToSignInLabel = resolveLoginReturnTarget(location.pathname.startsWith("/oidc"), {
     preferOidcLogin: true,
   }).external
-    ? "Back to application"
-    : "Back to Sign In";
+    ? t("MFA_CHECK_FORM.BACK_TO_APPLICATION")
+    : t("MFA_CHECK_FORM.BACK_TO_SIGN_IN");
 
   const form = useForm<{ code: string }>({
     resolver: zodResolver(formSchema),
@@ -124,7 +124,7 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
         <div className="flex h-14 w-14 items-center justify-center rounded-full border bg-(--warn-soft) border-(--warn-border)">
           <Clock className="h-7 w-7 text-(--warn)" aria-hidden />
         </div>
-        <p className="max-w-sm text-sm leading-relaxed text-(--fg)">{SESSION_EXPIRED_MESSAGE}</p>
+        <p className="max-w-sm text-sm leading-relaxed text-(--fg)">{t("MFA_CHECK_FORM.SESSION_EXPIRED_MESSAGE")}</p>
         <LoginReturnLink
           preferOidcLogin
           className="oidc-sci-fi-btn flex w-full items-center justify-center gap-2 no-underline"
@@ -154,7 +154,7 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
     }
     await animCtx?.succeedAnimation();
     if (!navigateToUrl(redirectUrl)) {
-      const msg = "Login succeeded but no redirect target was provided";
+      const msg = t("MFA_CHECK_FORM.NO_REDIRECT_TARGET");
       setServerError(msg);
       await animCtx?.failAnimation(msg);
     }
@@ -173,7 +173,7 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
         await animCtx?.succeedAnimation();
         return;
       }
-      const msg = "Login succeeded but the return address is not valid. Open the device link again.";
+      const msg = t("MFA_CHECK_FORM.INVALID_RETURN_ADDRESS");
       setServerError(msg);
       await animCtx?.failAnimation(msg);
       return;
@@ -220,21 +220,20 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
 
       const errorCode = data?.error;
       const errorMsg =
-        data?.error_description || data?.message || "Verification failed";
+        data?.error_description || data?.message || t("MFA_CHECK_FORM.VERIFICATION_FAILED");
 
       if (errorCode === "account_locked") {
-        const msg =
-          "Your account is locked. Please contact support or reset your password.";
+        const msg = t("MFA_CHECK_FORM.ACCOUNT_LOCKED");
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       } else if (errorCode === "invalid_mfa_code") {
-        const msg = "Invalid verification code. Please try again.";
+        const msg = t("MFA_CHECK_FORM.INVALID_CODE");
         setServerError(msg);
         await animCtx?.failAnimation(msg);
         form.reset();
       } else if (errorCode === MFA_SESSION_EXPIRED) {
         expireSession();
-        await animCtx?.failAnimation(SESSION_EXPIRED_MESSAGE);
+        await animCtx?.failAnimation(t("MFA_CHECK_FORM.SESSION_EXPIRED_MESSAGE"));
       } else {
         setServerError(errorMsg);
         await animCtx?.failAnimation(errorMsg);
@@ -242,10 +241,10 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
     } catch (error) {
       if (isErrorWithErrors(error)) {
         showErrorToast({
-          errors: error.errors.error_description || "Something went wrong",
+          errors: error.errors.error_description || t("MFA_CHECK_FORM.SOMETHING_WENT_WRONG"),
         });
       } else {
-        showErrorToast({ errors: "Something went wrong" });
+        showErrorToast({ errors: t("MFA_CHECK_FORM.SOMETHING_WENT_WRONG") });
       }
     } finally {
       setIsLoading(false);
@@ -316,7 +315,7 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
           {isAuthenticating ? (
             <>
               <Loader size={16} className="oidc-spin-slow" />
-              <span>{mfaCopy.submitButton === "Verify" ? "Verifying..." : `${mfaCopy.submitButton}...`}</span>
+              <span>{mfaCopy.submitButton === "Verify" ? t("MFA_CHECK_FORM.VERIFYING") : `${mfaCopy.submitButton}...`}</span>
             </>
           ) : (
             <>

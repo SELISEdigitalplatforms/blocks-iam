@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyRound, Loader } from "lucide-react";
@@ -24,7 +25,7 @@ import { PasswordInput } from "@/components/password-input/password-input";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
 import { useChangePassword } from "@blocks-idp/iam/hooks/use-account";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { isErrorWithErrors } from "@/lib/error";
+import { firstErrorText, isErrorWithErrors } from "@/lib/error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import {
@@ -47,6 +48,7 @@ interface ChangePasswordDialogProps {
 }
 
 const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps) => {
+  const { t } = useT("iam.profile");
   const [passwordRequirementsMet, setPasswordRequirementsMet] = useState(false);
   const { mutateAsync, isPending } = useChangePassword();
   const { passwordPolicy, isLoading: isConfigLoading } = useOidcUiConfig();
@@ -74,17 +76,13 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
   const onSubmit = async (values: ChangePasswordFormType) => {
     try {
       await mutateAsync(values);
-      showSuccessToast({ title: "Password updated", description: "Your password has been changed successfully." });
+      showSuccessToast({ title: t("PROFILE_CHANGE_PASSWORD.PASSWORD_UPDATED"), description: t("PROFILE_CHANGE_PASSWORD.PASSWORD_CHANGED") });
       onClose();
     } catch (error) {
       const message = isErrorWithErrors(error)
-        ? Array.isArray(error.errors)
-          ? (error.errors[0] as string)
-          : typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? "Update failed")
-          : (error.errors as string)
-        : "Please check your current password and try again.";
-      showErrorToast({ title: "Update failed", errors: message });
+        ? firstErrorText(error.errors, t("PROFILE_CHANGE_PASSWORD.UPDATE_FAILED"))
+        : t("PROFILE_CHANGE_PASSWORD.CHECK_CURRENT_PASSWORD");
+      showErrorToast({ title: t("PROFILE_CHANGE_PASSWORD.UPDATE_FAILED"), errors: message });
     }
   };
 
@@ -97,9 +95,9 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
               <KeyRound className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <DialogTitle>Change Password</DialogTitle>
+              <DialogTitle>{t("PROFILE_CHANGE_PASSWORD.CHANGE_PASSWORD")}</DialogTitle>
               <DialogDescription className="mt-0.5">
-                Choose a strong password you don&apos;t use elsewhere.
+                {t("PROFILE_CHANGE_PASSWORD.CHOOSE_STRONG")}
               </DialogDescription>
             </div>
           </div>
@@ -112,9 +110,9 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
               name="oldPassword"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Current Password</FormLabel>
+                  <FormLabel>{t("PROFILE_CHANGE_PASSWORD.CURRENT_PASSWORD")}</FormLabel>
                   <FormControl>
-                    <PasswordInput maxLength={PASSWORD_MAX_INPUT_LENGTH} placeholder="Enter your current password" {...field} />
+                    <PasswordInput maxLength={PASSWORD_MAX_INPUT_LENGTH} placeholder={t("PROFILE_CHANGE_PASSWORD.CURRENT_PASSWORD_PLACEHOLDER")} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -126,9 +124,9 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
               name="newPassword"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>New Password</FormLabel>
+                  <FormLabel>{t("PROFILE_CHANGE_PASSWORD.NEW_PASSWORD")}</FormLabel>
                   <FormControl>
-                    <PasswordInput maxLength={PASSWORD_MAX_INPUT_LENGTH} placeholder="Enter your new password" {...field} />
+                    <PasswordInput maxLength={PASSWORD_MAX_INPUT_LENGTH} placeholder={t("PROFILE_CHANGE_PASSWORD.NEW_PASSWORD_PLACEHOLDER")} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -139,9 +137,9 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
               name="confirmNewPassword"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Confirm New Password</FormLabel>
+                  <FormLabel>{t("PROFILE_CHANGE_PASSWORD.CONFIRM_NEW_PASSWORD")}</FormLabel>
                   <FormControl>
-                    <PasswordInput maxLength={PASSWORD_MAX_INPUT_LENGTH} placeholder="Confirm your new password" {...field} />
+                    <PasswordInput maxLength={PASSWORD_MAX_INPUT_LENGTH} placeholder={t("PROFILE_CHANGE_PASSWORD.CONFIRM_NEW_PASSWORD_PLACEHOLDER")} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -160,12 +158,12 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
             <DialogFooter>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" disabled={isPending} onClick={onClose}>
-                  Cancel
+                  {t("common:CANCEL")}
                 </Button>
               </DialogTrigger>
               <Button type="submit" size="sm" disabled={isConfigLoading || isPending || !passwordRequirementsMet}>
                 {isPending && <Loader className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-                {isPending ? "Saving…" : "Save Changes"}
+                {isPending ? t("PROFILE_CHANGE_PASSWORD.SAVING") : t("PROFILE_CHANGE_PASSWORD.SAVE_CHANGES")}
               </Button>
             </DialogFooter>
           </form>
@@ -176,21 +174,22 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
 };
 
 export const ProfileChangePassword = () => {
+  const { t } = useT("iam.profile");
   const [open, setOpen] = useState(false);
 
   return (
     <Card className="">
       <CardHeader className="mb-3">
         <div className="flex items-center justify-between">
-          <CardTitle>Change Password</CardTitle>
+          <CardTitle>{t("PROFILE_CHANGE_PASSWORD.CHANGE_PASSWORD")}</CardTitle>
           <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-            Update Password
+            {t("PROFILE_CHANGE_PASSWORD.UPDATE_PASSWORD")}
           </Button>
         </div>
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground">
-          Update your password regularly to keep your account secure.
+          {t("PROFILE_CHANGE_PASSWORD.UPDATE_REGULARLY")}
         </p>
       </CardContent>
       <ChangePasswordDialog open={open} onOpenChange={setOpen} />

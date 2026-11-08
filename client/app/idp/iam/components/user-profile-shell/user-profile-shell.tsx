@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { useQueryState } from "nuqs";
 import {
   Tabs,
@@ -72,11 +73,12 @@ export const UserProfileShell = ({
   own = false,
   fixedHeaderOffsetPx = 83,
 }: UserProfileShellProps) => {
+  const { t } = useT("iam.profile");
   const initialTab = defaultTab ?? tabs[0]?.value ?? "";
   const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: initialTab });
-  const activeTab = tabs.find((t) => t.value === tabId) ?? tabs[0];
+  const activeTab = tabs.find((tab) => tab.value === tabId) ?? tabs[0];
 
-  setBreadcrumbTitle("/app/user-detail", "Users");
+  setBreadcrumbTitle("/app/user-detail", t("USER_PROFILE_SHELL.USERS"));
   setBreadcrumbTitle(`/app/user-detail/${id}`, activeTab?.label || "");
 
   return (
@@ -168,6 +170,7 @@ const ProfileHeading = ({
   projectKey: string;
   own: boolean;
 }) => {
+  const { t } = useT("iam.profile");
   const { data: userByIdData } = useGetUserById(
     { id, projectKey },
     { enabled: !own },
@@ -180,7 +183,7 @@ const ProfileHeading = ({
   const displayName =
     firstName && lastName
       ? `${firstName} ${lastName}`
-      : firstName || lastName || "Profile";
+      : firstName || lastName || t("USER_PROFILE_SHELL.PROFILE");
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <div className="flex min-w-0 items-center gap-2">

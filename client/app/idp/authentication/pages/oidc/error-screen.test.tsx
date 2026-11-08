@@ -7,7 +7,7 @@ vi.mock("@/layouts/oidc-layout", () => ({
 }));
 
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
-  useOidcUiConfig: () => ({ data: { template: { theme: {}, branding: { brandName: "Blocks" }, pages: { shared: { footerText: "" } } } } }),
+  useOidcUiConfig: () => ({ data: { template: { layout: { showAnimationPanel: true }, theme: {}, branding: { brandName: "Blocks" }, pages: { shared: { footerText: "" } } } } }),
 }));
 
 vi.mock("./oidc-auth-shell", () => ({

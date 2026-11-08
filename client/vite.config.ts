@@ -89,6 +89,20 @@ export default defineConfig(({ mode }) => {
         // order, so a bare "@seliseblocks/genesis-os" key placed above these would
         // rewrite ".../genesis-os/providers" to ".../blocks-kit.tsx/providers" and
         // the subpath entries would never match.
+        // The i18n runtime and its settings store stay real in tests (English is
+        // registered by the test setup); they sit before the bare package key.
+        "@seliseblocks/genesis-os/i18n": path.resolve(
+          __dirname,
+          "./node_modules/@seliseblocks/genesis-os/dist/i18n/index.js",
+        ),
+        "@seliseblocks/genesis-os/components": path.resolve(
+          __dirname,
+          "./app/test-utils/stubs/genesis-components.tsx",
+        ),
+        "@seliseblocks/genesis-os/store": path.resolve(
+          __dirname,
+          "./node_modules/@seliseblocks/genesis-os/dist/store/index.js",
+        ),
         "@seliseblocks/genesis-os/observability": path.resolve(
           __dirname,
           "./app/test-utils/stubs/observability.tsx",

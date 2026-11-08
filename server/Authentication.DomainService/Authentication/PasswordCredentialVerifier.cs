@@ -3,6 +3,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.Actions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
@@ -32,6 +33,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly ICaptchaEvaluator? _captchaEvaluator;
+        private readonly IActionPublisher? _actionPublisher;
 
         public PasswordCredentialVerifier(
             ILogger<PasswordCredentialVerifier> logger,
@@ -40,8 +42,10 @@ namespace Authentication.DomainService.Authentication
             IAccountService accountService,
             IUserActivityDispatcher userActivityDispatcher,
             IAuthenticationDomainService authenticationDomainService,
-            ICaptchaEvaluator? captchaEvaluator = null)
+            ICaptchaEvaluator? captchaEvaluator = null,
+            IActionPublisher? actionPublisher = null)
         {
+            _actionPublisher = actionPublisher;
             _logger = logger;
             _tenants = tenants;
             _repository = repository;
@@ -143,6 +147,12 @@ namespace Authentication.DomainService.Authentication
 
             if (lockoutUntilUtc.HasValue && updatedUser != null)
             {
+                // Only the attempt that took the last slot gets here, so the lock is announced once.
+                if (_actionPublisher is not null)
+                {
+                    await _actionPublisher.PublishAsync(IamActionNames.UserLocked, new { userId = user.ItemId, reason = "failed_logins" });
+                }
+
                 try
                 {
                     await _accountService.SendAccountLockedNotificationAsync(updatedUser, lockoutUntilUtc.Value);

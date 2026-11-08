@@ -6,12 +6,12 @@ namespace Authentication.DomainService.Entities
     /// <summary>
     /// Tenant-level copy and branding used by the public OIDC user interface.
     /// Properties remain nullable for BSON compatibility with older documents. Runtime
-    /// reads return the stored document unchanged; validated writes require the complete shape.
+    /// reads normalize legacy defaults; validated writes require the complete shape.
     /// </summary>
     [BsonIgnoreExtraElements]
     public sealed class OidcUiTemplate
     {
-        public const int CurrentSchemaVersion = 4;
+        public const int CurrentSchemaVersion = 5;
 
         /// <summary>
         /// Identifies the persisted template value for mutation responses. This is storage
@@ -26,6 +26,14 @@ namespace Authentication.DomainService.Entities
         public OidcUiTemplateBranding? Branding { get; set; }
         public OidcUiTemplateTheme? Theme { get; set; }
         public OidcUiTemplatePages? Pages { get; set; }
+        public OidcUiTemplateLayout? Layout { get; set; }
+    }
+
+    [BsonIgnoreExtraElements]
+    public sealed class OidcUiTemplateLayout
+    {
+        /// <summary>Null (legacy document or omitted on save) means show. Only false hides.</summary>
+        public bool? ShowAnimationPanel { get; set; }
     }
 
     [BsonIgnoreExtraElements]

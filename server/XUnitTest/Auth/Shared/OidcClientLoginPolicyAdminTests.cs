@@ -31,7 +31,8 @@ namespace XUnitTest.Auth.Shared
             _repo.Setup(r => r.GetIdentityProvidersAsync()).ReturnsAsync(
             [
                 Provider("google-1", "social"),
-                Provider("ms-1", "social"),
+                Provider("google-2", "social"),
+                Provider("ms-1", "social", "microsoft"),
                 Provider("okta-1", "byos")
             ]);
             _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>()))
@@ -49,9 +50,9 @@ namespace XUnitTest.Auth.Shared
             BlocksContext.IsTestMode = false;
         }
 
-        private static IdentityProvider Provider(string id, string type) => new()
+        private static IdentityProvider Provider(string id, string type, string name = "google") => new()
         {
-            ItemId = id, Provider = "google", ProviderType = type, IsActive = true,
+            ItemId = id, Provider = name, ProviderType = type, IsActive = true,
             ClientId = id, ClientSecret = "s", TokenEndpointAuthMethod = "client_secret_post"
         };
 
@@ -144,7 +145,26 @@ namespace XUnitTest.Auth.Shared
             { Selected(), "LoginPolicy.SelectedProviderIds" },
             { Selected("unknown"), "LoginPolicy.SelectedProviderIds" },
             { Selected("google-1", "okta-1"), "LoginPolicy.SelectedProviderIds" },
+            { Selected("google-1", "google-2"), "LoginPolicy.SelectedProviderIds" },
         };
+
+        [Fact]
+        public async Task Save_OneEntryPerProvider_IsAccepted()
+        {
+            var result = await DomainService().SaveOIDCClientAsync(SaveRequest(Selected("google-2", "ms-1")));
+
+            result.IsSuccess.Should().BeTrue();
+            _stored!.LoginPolicy!.SelectedProviderIds.Should().Equal("google-2", "ms-1");
+        }
+
+        [Fact]
+        public async Task Save_TwoEntriesOfOneProvider_IsRefused_WithTheReason()
+        {
+            var result = await DomainService().SaveOIDCClientAsync(SaveRequest(Selected("google-1", "ms-1", "google-2")));
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors!["LoginPolicy.SelectedProviderIds"].Should().Be("Select at most one entry per provider.");
+        }
 
         [Theory]
         [MemberData(nameof(InvalidPolicies))]

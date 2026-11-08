@@ -19,7 +19,7 @@ vi.mock("@blocks-idp/authentication/services/signup-link.service", () => ({
 
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
   useOidcUiConfig: () => ({
-    data: { template: { theme: {}, branding: { brandName: "Blocks" }, pages: { shared: { footerText: "" } } } },
+    data: { template: { layout: { showAnimationPanel: true }, theme: {}, branding: { brandName: "Blocks" }, pages: { shared: { footerText: "" } } } },
   }),
 }));
 
@@ -39,7 +39,7 @@ vi.mock("../oidc/oidc-auth-shell", () => ({
 vi.mock("@/hooks/use-toast", () => ({ showErrorToast: vi.fn() }));
 
 import InvitationPage from "./invitation";
-import { NO_CREDENTIAL_YET_COPY, CONFIRM_STEP_TIMED_OUT } from "./invitation";
+import { getNoCredentialYetCopy, getConfirmStepTimedOut } from "./invitation";
 import { CONFIRM_PASSWORD_COPY } from "./invitation-confirm-password";
 
 const originalLocation = globalThis.window.location;
@@ -153,7 +153,7 @@ describe("InvitationPage password step (#593)", () => {
     await reachPasswordStep();
     authenticate.mockRejectedValue({ errors: { error: "invalid_redemption" } });
     submitPassword("Correct#1");
-    await waitFor(() => expect(screen.getByText(CONFIRM_STEP_TIMED_OUT)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(getConfirmStepTimedOut())).toBeInTheDocument());
   });
 
   it("a link that stopped being valid shows the invalid view", async () => {
@@ -166,7 +166,7 @@ describe("InvitationPage password step (#593)", () => {
   it("password_not_set tells the user to sign in first", async () => {
     redeem.mockRejectedValue({ errors: { error: "password_not_set" } });
     renderJoin();
-    await waitFor(() => expect(screen.getByText(NO_CREDENTIAL_YET_COPY)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(getNoCredentialYetCopy())).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "Sign in first" })).toBeInTheDocument();
   });
 });

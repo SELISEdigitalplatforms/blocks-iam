@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { Camera } from "lucide-react";
 import {
   useCompleteUpload,
@@ -32,6 +33,7 @@ export const ProfileImageUploader = ({
   className,
   containerClassName,
 }: ProfileImageUploaderProps) => {
+  const { t } = useT("iam.profile");
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -78,7 +80,7 @@ export const ProfileImageUploader = ({
         });
         if (completion.verificationStatus !== "Verified") {
           return showErrorToast({
-            errors: completion.rejectionReason ?? "Profile picture failed verification",
+            errors: completion.rejectionReason ?? t("PROFILE_IMAGE_UPLOADER.VERIFICATION_FAILED"),
           });
         }
       }
@@ -94,12 +96,12 @@ export const ProfileImageUploader = ({
       if (!updatedUser.isSuccess)
         return showErrorToast({ errors: updatedUser.errors });
       queryClient.invalidateQueries({ queryKey: ["user"] });
-      showSuccessToast({ description: "Profile pic updated successfully" });
+      showSuccessToast({ description: t("PROFILE_IMAGE_UPLOADER.UPDATED") });
     } catch (error) {
       if (isErrorWithErrors(error)) {
         return showErrorToast({ errors: error.errors });
       }
-      return showErrorToast({ errors: "Something went wrong" });
+      return showErrorToast({ errors: t("PROFILE_IMAGE_UPLOADER.SOMETHING_WENT_WRONG") });
     } finally {
       setIsProfileImageUploading(false);
     }
@@ -119,13 +121,13 @@ export const ProfileImageUploader = ({
     if (!ALLOWED_TYPES.includes(selectedFile.type)) {
       event.target.value = "";
       return showErrorToast({
-        errors: "Only image files (PNG, JPG, GIF, WebP, and SVG) are allowed",
+        errors: t("PROFILE_IMAGE_UPLOADER.ONLY_IMAGES"),
       });
     }
     if (selectedFile.size > MAX_SIZE_MB * 1024 * 1024) {
       event.target.value = "";
       return showErrorToast({
-        errors: `File size must be less than ${MAX_SIZE_MB}MB`,
+        errors: t("PROFILE_IMAGE_UPLOADER.FILE_TOO_LARGE", { size: MAX_SIZE_MB }),
       });
     }
     setLocalPreview(URL.createObjectURL(selectedFile));
@@ -147,7 +149,7 @@ export const ProfileImageUploader = ({
       />
       <button
         type="button"
-        aria-label="Change profile image"
+        aria-label={t("PROFILE_IMAGE_UPLOADER.CHANGE_IMAGE")}
         disabled={isProfileImageUploading}
         onClick={(e) => {
           e.stopPropagation();
@@ -159,7 +161,7 @@ export const ProfileImageUploader = ({
         )}>
         <img
           src={image ?? emptyProfilePhoto}
-          alt="Profile Image"
+          alt={t("PROFILE_IMAGE_UPLOADER.PROFILE_IMAGE")}
           className="h-full w-full rounded-[inherit] object-cover object-center"
         />
         <div className="absolute inset-0 flex items-center justify-center rounded-[inherit] bg-black/0 transition-colors group-hover:bg-black/40 group-disabled:bg-black/0">

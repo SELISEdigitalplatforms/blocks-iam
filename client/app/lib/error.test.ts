@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getErrorMessage, isErrorWithErrors, handleErrorMessages } from "./error";
+import { firstErrorText, getErrorMessage, isErrorWithErrors, handleErrorMessages } from "./error";
 
 describe("getErrorMessage", () => {
   it("returns a fallback for empty error maps", () => {
@@ -55,5 +55,22 @@ describe("handleErrorMessages", () => {
   it("returns a generic message for arrays and other shapes", () => {
     expect(handleErrorMessages(["a", "b"])).toBe("An unexpected error occurred.");
     expect(handleErrorMessages(42)).toBe("An unexpected error occurred.");
+  });
+});
+
+describe("firstErrorText", () => {
+  it("takes an array's first entry", () => {
+    expect(firstErrorText(["first", "second"], "fallback")).toBe("first");
+  });
+
+  it("takes an object's first value, or the fallback when it has none", () => {
+    expect(firstErrorText({ email: "taken", name: "short" }, "fallback")).toBe("taken");
+    expect(firstErrorText({}, "fallback")).toBe("fallback");
+  });
+
+  it("returns a string as is, and the fallback for nothing", () => {
+    expect(firstErrorText("plain", "fallback")).toBe("plain");
+    expect(firstErrorText("", "fallback")).toBe("fallback");
+    expect(firstErrorText(null, "fallback")).toBe("fallback");
   });
 });

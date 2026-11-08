@@ -10,8 +10,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router";
 import { Captcha } from "@/components/captcha";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { useAccountResetPassword } from "@blocks-idp/iam/hooks/use-account";
-import { isErrorWithErrors } from "@/lib/error";
+import { firstErrorText, isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
@@ -21,11 +22,15 @@ import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
 import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 import { PASSWORD_MAX_INPUT_LENGTH } from "@blocks-idp/authentication/utils/password-policy.util";
 
+const SOMETHING_WENT_WRONG_KEY = "RESET_PASSWORD_FORM.SOMETHING_WENT_WRONG";
+
 type ResetPasswordFormProps = { code: string; tenantId?: string };
 
 export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) => {
+  const { t } = useT("iam.password");
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
+  const inlineRequirements = animCtx?.animationPanelVisible === false;
   const formRef = useRef<HTMLFormElement>(null);
   const [requirementsMet, setRequirementsMet] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -35,6 +40,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
     data: oidcUiConfig,
     captchaEnabled: tenantCaptchaEnabled,
     passwordPolicy,
+    isLoading: isConfigLoading,
   } = useOidcUiConfig(tenantId);
   const formSchema = useMemo(
     () => buildResetPasswordFormSchema(passwordPolicy),
@@ -73,6 +79,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
   /* Inject PasswordStrengthChecker into the right panel's idle slot */
   const setPanelIdleSlot = animCtx?.setPanelIdleSlot;
   useEffect(() => {
+    if (inlineRequirements) return;
     setPanelIdleSlot?.(
       <PasswordStrengthChecker
         password={password}
@@ -83,7 +90,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
     );
     return () => { setPanelIdleSlot?.(null); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [password, confirmPassword, passwordPolicy, setPanelIdleSlot]);
+  }, [password, confirmPassword, passwordPolicy, setPanelIdleSlot, inlineRequirements]);
 
   const isAuthenticating =
     isPending ||
@@ -117,11 +124,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
       });
       if (!res.isSuccess) {
         resetCaptcha();
-        const msg = Array.isArray(res.errors)
-          ? res.errors[0]
-          : res.errors && typeof res.errors === "object"
-          ? (Object.values(res.errors as Record<string, string>)[0] ?? "Reset failed")
-          : (res.errors as string) || "Reset failed";
+        const msg = firstErrorText(res.errors, t("RESET_PASSWORD_FORM.RESET_FAILED"));
         setServerError(msg);
         shake();
         await animCtx?.failAnimation(msg);
@@ -135,15 +138,11 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
       resetCaptcha();
       shake();
       if (isErrorWithErrors(error)) {
-        const msg = Array.isArray(error.errors)
-          ? (error.errors[0] as string)
-          : error.errors && typeof error.errors === "object"
-          ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
-          : (error.errors as unknown as string) || "Something went wrong";
+        const msg = firstErrorText(error.errors, t(SOMETHING_WENT_WRONG_KEY));
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       } else {
-        const msg = "Something went wrong";
+        const msg = t(SOMETHING_WENT_WRONG_KEY);
         setServerError(msg);
         await animCtx?.failAnimation(msg);
       }
@@ -181,7 +180,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
               onClick={() => setShowPassword(v => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2"
               style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-label={showPassword ? t("RESET_PASSWORD_FORM.HIDE_PASSWORD") : t("RESET_PASSWORD_FORM.SHOW_PASSWORD")}
             >
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
@@ -211,7 +210,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
               onClick={() => setShowConfirmPassword(v => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2"
               style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-              aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+              aria-label={showConfirmPassword ? t("RESET_PASSWORD_FORM.HIDE_PASSWORD") : t("RESET_PASSWORD_FORM.SHOW_PASSWORD")}
             >
               {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
@@ -220,6 +219,15 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
             <p className="text-xs" style={{ color: "var(--danger)" }}>{form.formState.errors.confirmPassword.message}</p>
           )}
         </div>
+
+        {inlineRequirements && (
+          <PasswordStrengthChecker
+            password={password}
+            confirmPassword={confirmPassword}
+            policy={passwordPolicy}
+            onRequirementsMet={setRequirementsMet}
+          />
+        )}
 
         <div
           className="rounded-lg py-2.5 px-3 flex items-center justify-between gap-3"
@@ -244,10 +252,8 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
 
         <button
           type="submit"
-          // TEMPORARY: always enabled. Restore the guard below to gate on config load, submission
-          // in flight, captcha, and the password rules:
-          // disabled={isConfigLoading || isAuthenticating || (captchaEnabled && !captchaCode) || !isValid || !requirementsMet}
-          disabled={false}
+          // Preserve the existing visible-panel override; form-only pages enforce the guard.
+          disabled={inlineRequirements && (isConfigLoading || isAuthenticating || (captchaEnabled && !captchaCode) || !isValid || !requirementsMet)}
           className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
         >
           {isAuthenticating ? (

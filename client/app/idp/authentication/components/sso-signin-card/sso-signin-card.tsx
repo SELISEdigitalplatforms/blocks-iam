@@ -14,6 +14,9 @@ import {
 } from "@blocks-idp/authentication/utils/oidc-utils";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { isAppRedirectUrl } from "@/lib/utils";
+import { tStatic, useT } from "@seliseblocks/genesis-os/i18n";
+
+const IAM_SHARED_MODULE = "iam.shared";
 
 type SSOSigninCardProps = {
   providerConfig: ISsoProviderConfigurationWithMeta;
@@ -66,13 +69,14 @@ export const SSOSigninCard = ({
   mode = "default",
   oidcContext,
 }: SSOSigninCardProps) => {
+  const { t } = useT(IAM_SHARED_MODULE);
   const { resolvedTheme } = useTheme();
   const iamBaseUrl = getRuntimeEnv("BLOCKS_IAM_BASE_URL");
     
   const onClickHandler = useCallback(async () => {
     try {
       if (!providerConfig.provider)
-        return showErrorToast({ errors: "Something went wrong" });
+        return showErrorToast({ errors: tStatic(IAM_SHARED_MODULE, "SSO_SIGNIN_CARD.SOMETHING_WENT_WRONG") });
 
       // OIDC social login flow
       if (mode === "oidc" && oidcContext) {
@@ -93,7 +97,7 @@ export const SSOSigninCard = ({
 
         if (res.error) return showErrorToast({ errors: getSsoStartErrorMessage(res) });
         if (!res.authorizationUrl)
-          return showErrorToast({ errors: "No authorization URL provided." });
+          return showErrorToast({ errors: tStatic(IAM_SHARED_MODULE, "SSO_SIGNIN_CARD.NO_AUTHORIZATION_URL") });
 
         if (oidcContext.returnUrl) {
           sessionStorage.setItem(
@@ -114,7 +118,7 @@ export const SSOSigninCard = ({
       console.error("SSO Sign-in error:", error);
       if (isErrorWithErrors(error))
         return showErrorToast({ errors: getSsoStartErrorMessage(error) });
-      showErrorToast({ errors: "Something went wrong" });
+      showErrorToast({ errors: tStatic(IAM_SHARED_MODULE, "SSO_SIGNIN_CARD.SOMETHING_WENT_WRONG") });
     }
   }, [mode, providerConfig, oidcContext, iamBaseUrl]);
 
@@ -132,7 +136,7 @@ export const SSOSigninCard = ({
         alt={providerConfig.provider}
       />
       {(labelMode === "full" || (labelMode === undefined && withLabel)) && (
-        <>Sign in with {providerConfig.label}</>
+        <>{t("SSO_SIGNIN_CARD.SIGN_IN_WITH", { provider: providerConfig.label })}</>
       )}
       {labelMode === "short" && <>{providerConfig.label}</>}
     </Button>

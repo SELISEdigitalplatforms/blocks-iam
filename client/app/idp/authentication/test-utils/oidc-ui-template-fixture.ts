@@ -11,6 +11,7 @@ export const DEFAULT_OIDC_UI_TEMPLATE_FIXTURE: IOidcUiTemplate =
   structuredClone(DEFAULT_OIDC_UI_TEMPLATE);
 
 export const OIDC_UI_TEMPLATE_FIXTURE: IOidcUiTemplate = {
+  layout: { showAnimationPanel: true },
   branding: { logoUrlLight: null, logoUrlDark: null, brandName: "Test IAM" },
   theme: {
     light: {

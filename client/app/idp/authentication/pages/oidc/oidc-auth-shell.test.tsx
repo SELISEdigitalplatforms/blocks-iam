@@ -1,5 +1,6 @@
 import { render, screen, act, waitFor } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { configureI18n } from "@seliseblocks/genesis-os/i18n";
 
 // The heavy background is irrelevant to the shell's behaviour.
 vi.mock("./sci-fi-background-oidc", () => ({
@@ -15,6 +16,7 @@ function Driver() {
   return (
     <div>
       <span data-testid="phase">{anim?.phase}</span>
+      <span data-testid="panel-visible">{String(anim?.animationPanelVisible)}</span>
       <button type="button" onClick={() => anim?.startAnimation()}>
         start
       </button>
@@ -50,6 +52,7 @@ const renderShell = (props: Partial<React.ComponentProps<typeof OidcAuthShell>> 
   );
 
 beforeEach(() => {
+  configureI18n({ baseUrl: () => "", blocksKey: () => "" });
   // matchMedia is not implemented in jsdom; the shell reads it on mount.
   vi.stubGlobal(
     "matchMedia",
@@ -72,6 +75,83 @@ afterEach(() => {
 });
 
 describe("OidcAuthShell", () => {
+  it.each([undefined, true])("keeps the existing two-column classes when visibility is %s", (showAnimationPanel) => {
+    const { container } = renderShell({ showAnimationPanel });
+    const main = container.querySelector("main")!;
+    expect(main).toHaveClass("max-w-5xl");
+    expect(main.firstElementChild).toHaveAttribute("class", "w-full rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl bg-(--surface)");
+    expect(main.firstElementChild?.firstElementChild).toHaveAttribute("class", "w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto");
+    expect(container.querySelectorAll(".oidc-sci-fi-panel-border")).toHaveLength(1);
+    expect(screen.getByTestId("panel-visible")).toHaveTextContent("true");
+  });
+
+  it("omits the panel, uses a full-width narrow card and keeps the surrounding UI", () => {
+    const { container } = renderShell({ showAnimationPanel: false });
+    const card = container.querySelector("main > div")!;
+    expect(card).toHaveClass("w-full", "max-w-lg", "flex-col");
+    expect(card).not.toHaveClass("md:flex-row");
+    expect(card.firstElementChild).not.toHaveClass("md:w-1/2");
+    expect(container.querySelector(".oidc-sci-fi-panel-border")).toBeNull();
+    expect(screen.getByTestId("panel-visible")).toHaveTextContent("false");
+    expect(screen.getByTestId("scifi-bg")).toBeInTheDocument();
+    expect(screen.getByText("Blocks IAM")).toBeInTheDocument();
+    expect(screen.getByText("footer")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Light" })).toBeInTheDocument();
+  });
+
+  it("schedules no panel cascade timers and completes success in 400 ms when hidden", async () => {
+    vi.useFakeTimers();
+    const { container } = renderShell({ showAnimationPanel: false });
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => screen.getByText("succeed").click());
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(399); });
+    expect(screen.queryByText("Access Granted")).not.toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.getByText("Access Granted")).toBeInTheDocument();
+    expect(container.querySelector(".oidc-sci-fi-panel-border")).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("resolves failure after exactly 150 ms when hidden", async () => {
+    vi.useFakeTimers();
+    const resolved = vi.fn();
+    function FailureDriver() {
+      const anim = useOidcAuthAnimation();
+      return <button onClick={() => void anim?.failAnimation("Rejected").then(resolved)}>reject</button>;
+    }
+    render(
+      <OidcAuthShell panelConfig={OIDC_LOGIN_PANEL} theme={OIDC_UI_TEMPLATE_FIXTURE.theme}
+        logoUrlLight={null} logoUrlDark={null} brandName="IAM" heading="Sign in"
+        footerNote="footer" successTitle="Done" successSubtitle="Ready" showAnimationPanel={false}>
+        <FailureDriver />
+      </OidcAuthShell>,
+    );
+    act(() => screen.getByText("reject").click());
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(149); });
+    expect(resolved).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(resolved).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps the visible panel mounted on mobile and shows success after 400 ms", async () => {
+    vi.useFakeTimers();
+    vi.mocked(window.matchMedia).mockImplementation((query) => ({
+      matches: false, media: query, onchange: null,
+      addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+    }));
+    const { container } = renderShell();
+    expect(container.querySelector(".oidc-sci-fi-panel-border")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-visible")).toHaveTextContent("true");
+    act(() => screen.getByText("succeed").click());
+    await act(async () => { await vi.advanceTimersByTimeAsync(399); });
+    expect(screen.queryByText("Access Granted")).not.toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.getByText("Access Granted")).toBeInTheDocument();
+  });
   it("renders the heading, brand label and children, starting idle", () => {
     renderShell();
     expect(screen.getByText("Blocks IAM")).toBeInTheDocument();

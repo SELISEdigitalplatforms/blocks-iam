@@ -1,3 +1,4 @@
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
 import { z } from "zod";
 import {
   applyPasswordPolicyToSchema,
@@ -5,11 +6,13 @@ import {
   type IOidcPasswordPolicy,
 } from "@blocks-idp/authentication/utils/password-policy.util";
 
+const I18N_MODULE = "iam.password";
+
 export const buildResetPasswordFormSchema = (policy: IOidcPasswordPolicy | null | undefined) => {
   const basePassword = z
     .string()
-    .min(1, "Password is required")
-    .max(PASSWORD_MAX_INPUT_LENGTH, "Password is too long");
+    .min(1, { error: () => tStatic(I18N_MODULE, "RESET_PASSWORD_SCHEMA.PASSWORD_REQUIRED") })
+    .max(PASSWORD_MAX_INPUT_LENGTH, { error: () => tStatic(I18N_MODULE, "RESET_PASSWORD_SCHEMA.PASSWORD_TOO_LONG") });
   const password = applyPasswordPolicyToSchema(basePassword, policy);
 
   return z.object({
@@ -18,7 +21,7 @@ export const buildResetPasswordFormSchema = (policy: IOidcPasswordPolicy | null 
     logoutFromAllDevices: z.boolean().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords must be matched",
+    error: () => tStatic(I18N_MODULE, "RESET_PASSWORD_SCHEMA.PASSWORDS_MUST_MATCH"),
     path: ["confirmPassword"],
   });
 };

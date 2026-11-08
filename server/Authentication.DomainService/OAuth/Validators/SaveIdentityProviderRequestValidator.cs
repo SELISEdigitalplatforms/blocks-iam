@@ -1,3 +1,4 @@
+using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using FluentValidation;
 using System.Net.Http.Json;
@@ -31,6 +32,8 @@ namespace Authentication.DomainService.OAuth
                 .Cascade(CascadeMode.Stop)
                 .Must(BeAValidUrl)
                     .WithMessage("WellKnownUrl must be a valid http(s) URL.")
+                .Must(NameAnEntraTenantWhenMicrosoft)
+                    .WithMessage("A Microsoft sign-in's WellKnownUrl must be https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration.")
                 .MustAsync(HaveValidOidcMetadataAsync)
                     .WithMessage("WellKnownUrl does not expose valid OpenID Connect metadata.")
                 .When(x => !string.IsNullOrWhiteSpace(x.WellKnownUrl));
@@ -79,6 +82,14 @@ namespace Authentication.DomainService.OAuth
             if (string.IsNullOrWhiteSpace(value)) return false;
             return value is "oidc" or "oauth2" or "saml" or "ldap";
         }
+
+        /// <summary>
+        /// A Microsoft social entry's discovery URL only chooses its Entra tenant, so it has to be a
+        /// Microsoft tenant discovery URL. The metadata check that follows then proves the tenant exists.
+        /// </summary>
+        private static bool NameAnEntraTenantWhenMicrosoft(SaveIdentityProviderRequest request, string? wellKnownUrl) =>
+            !SocialProviderEndpoints.IsMicrosoft(request.ProviderType, request.Provider)
+            || SocialProviderEndpoints.TryReadMicrosoftTenant(wellKnownUrl, out _);
 
         private static bool BeAValidUrl(string? url)
         {

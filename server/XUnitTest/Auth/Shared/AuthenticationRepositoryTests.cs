@@ -322,6 +322,46 @@ namespace XUnitTest.Auth.Shared
             palette.ButtonText.Should().Be("#ffffff");
         }
 
+        [Theory]
+        [InlineData(null, true)]
+        [InlineData(true, true)]
+        [InlineData(false, false)]
+        public async Task GetOidcUiTemplateAsync_NormalizesLayoutWithoutWriting(bool? value, bool expected)
+        {
+            var stored = new OidcUiTemplate { Layout = new OidcUiTemplateLayout { ShowAnimationPanel = value } };
+            _keyValueStore.Setup(s => s.GetAsync<OidcUiTemplate>(AuthenticationRepository.OidcUiTemplateStoreKey))
+                .ReturnsAsync(stored);
+
+            var result = await Sut().GetOidcUiTemplateAsync();
+
+            result!.Layout!.ShowAnimationPanel.Should().Be(expected);
+            _keyValueStore.Verify(s => s.GetAsync<OidcUiTemplate>(AuthenticationRepository.OidcUiTemplateStoreKey), Times.Once);
+            _keyValueStore.Verify(s => s.SetAsync(It.IsAny<string>(), It.IsAny<OidcUiTemplate>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(4)]
+        public async Task GetOidcUiTemplateAsync_LegacyBsonAddsVisibleLayoutAndPreservesExistingFields(int version)
+        {
+            var stored = BsonSerializer.Deserialize<OidcUiTemplate>(new BsonDocument
+            {
+                { "SchemaVersion", version },
+                { "Branding", new BsonDocument("BrandName", "Legacy tenant") },
+                { "Pages", new BsonDocument("Login", new BsonDocument("Heading", "Legacy heading")) }
+            });
+            stored.Layout.Should().BeNull();
+            _keyValueStore.Setup(s => s.GetAsync<OidcUiTemplate>(AuthenticationRepository.OidcUiTemplateStoreKey))
+                .ReturnsAsync(stored);
+
+            var result = await Sut().GetOidcUiTemplateAsync();
+
+            result!.Layout!.ShowAnimationPanel.Should().BeTrue();
+            result.SchemaVersion.Should().Be(version);
+            result.Branding!.BrandName.Should().Be("Legacy tenant");
+            result.Pages!.Login!.Heading.Should().Be("Legacy heading");
+        }
+
         [Fact]
         public async Task GetOidcUiTemplateAsync_ReturnsNull_WhenStoreHasNoEntry()
         {

@@ -1,3 +1,4 @@
+import "./i18n";
 import "@seliseblocks/genesis-os/lib";
 import "@/styles/globals.css";
 import { StrictMode } from "react";

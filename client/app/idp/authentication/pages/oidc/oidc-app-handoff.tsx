@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { isAppRedirectUrl } from "@/lib/utils";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 
 interface OidcAppHandoffProps {
   /** Server-returned `redirect_uri` that already passes `isAppRedirectUrl`. */
@@ -13,6 +14,7 @@ interface OidcAppHandoffProps {
  * (no handler, or the user dismissed the prompt), and a custom scheme leaves the page as is.
  */
 export function OidcAppHandoff({ url }: Readonly<OidcAppHandoffProps>) {
+  const { t } = useT("iam.oidc");
   const navigatedRef = useRef(false);
   const linkRef = useRef<HTMLAnchorElement>(null);
 
@@ -37,20 +39,20 @@ export function OidcAppHandoff({ url }: Readonly<OidcAppHandoffProps>) {
         <CheckCircle2 size={22} style={{ color: "var(--success)" }} aria-hidden="true" />
       </div>
       <h2 className="oidc-font-orbitron text-lg" style={{ color: "var(--fg)" }}>
-        Signed in
+        {t("OIDC_APP_HANDOFF.SIGNED_IN")}
       </h2>
       <p
         className="text-sm leading-relaxed"
         style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}
       >
-        Returning you to the app. If it does not open, tap the button below.
+        {t("OIDC_APP_HANDOFF.RETURNING")}
       </p>
       <a
         ref={linkRef}
         href={url}
         className="oidc-sci-fi-btn inline-block w-full px-5 py-2.5 text-center no-underline"
       >
-        Return to the app
+        {t("OIDC_APP_HANDOFF.RETURN_TO_APP")}
       </a>
     </output>
   );

@@ -603,17 +603,18 @@ namespace Authentication.DomainService.Authentication
         }
 
         /// <summary>
-        /// What a login page may offer. With an OIDC client id, the IAM login page's options for that
-        /// client; without one, the embedded login's. Follows the tenant login policy.
+        /// What a login page may offer. With an OIDC client id (client_id), the IAM login page's options
+        /// for that client; without one, the embedded login's. An app's own login form may name its OIDC
+        /// client (oidcClientId) to be narrowed by that client too; leaving it out changes nothing.
+        /// Follows the tenant login policy.
         /// </summary>
-        public async Task<IActionResult> GetLoginOptionsAsync(string? oidcClientId = null)
+        public async Task<IActionResult> GetLoginOptionsAsync(string? oidcClientId = null, string? appClientId = null)
         {
-            var channel = string.IsNullOrWhiteSpace(oidcClientId) ? LoginChannel.Embedded : LoginChannel.Oidc;
-            var client = channel == LoginChannel.Oidc
-                ? await _authenticationRepository.GetOidcClientRegistrationAsync(oidcClientId!)
-                : null;
+            var target = await ResolveLoginOptionsTargetAsync(oidcClientId, appClientId);
+            if (target.Refusal != null)
+                return target.Refusal;
 
-            var options = await _loginPolicy.GetOptionsAsync(channel, client);
+            var options = await _loginPolicy.GetOptionsAsync(target.Channel, target.Client);
             var socialProviders = options.Providers;
 
             // Return only metadata, NOT authorization URLs
@@ -647,9 +648,10 @@ namespace Authentication.DomainService.Authentication
 
         /// <summary>
         /// Initialize social provider authorization - generates state, stores in cache, returns authorization URL
-        /// Standard OAuth 2.0 Authorization Code flow initialization
+        /// Standard OAuth 2.0 Authorization Code flow initialization. An app that names its OIDC client
+        /// (appClientId) is held to that client's sign-in rules as well; naming none changes nothing.
         /// </summary>
-        public async Task<IActionResult> GetSocialAuthorizationUrlAsync(string clientId, string redirectUri)
+        public async Task<IActionResult> GetSocialAuthorizationUrlAsync(string clientId, string redirectUri, string? appClientId = null)
         {
             if (string.IsNullOrWhiteSpace(clientId))
                 return new BadRequestObjectResult(new { error = "client_id_required", error_description = "Client ID is required" });
@@ -667,7 +669,11 @@ namespace Authentication.DomainService.Authentication
                 if (identityProvider.ProviderType != "social")
                     return new BadRequestObjectResult(new { error = "invalid_provider_type", error_description = $"Provider '{clientId}' is not a social provider" });
 
-                var policy = await _loginPolicy.CheckAsync(LoginChannel.Embedded, LoginMethods.Social, provider: identityProvider);
+                var (appClient, appClientRefused) = await ResolveAppClientAsync(appClientId);
+                if (appClientRefused)
+                    return UnknownAppClient();
+
+                var policy = await _loginPolicy.CheckAsync(LoginChannel.Embedded, LoginMethods.Social, appClient, identityProvider);
                 if (!policy.IsAllowed)
                     return LoginNotAllowed(policy);
 
@@ -794,6 +800,47 @@ namespace Authentication.DomainService.Authentication
 
             return provider.RedirectUris.FirstOrDefault(u => string.Equals(u, requested, StringComparison.Ordinal));
         }
+
+        private sealed record LoginOptionsTarget(LoginChannel Channel, OidcClientRegistration? Client, IActionResult? Refusal);
+
+        /// <summary>
+        /// client_id asks for the IAM login page's options; oidcClientId for an app's own form narrowed by
+        /// that client. An unknown client_id narrows nothing, as before; a named app client must exist.
+        /// </summary>
+        private async Task<LoginOptionsTarget> ResolveLoginOptionsTargetAsync(string? oidcClientId, string? appClientId)
+        {
+            if (string.IsNullOrWhiteSpace(appClientId))
+            {
+                return string.IsNullOrWhiteSpace(oidcClientId)
+                    ? new LoginOptionsTarget(LoginChannel.Embedded, null, null)
+                    : new LoginOptionsTarget(LoginChannel.Oidc, await _authenticationRepository.GetOidcClientRegistrationAsync(oidcClientId), null);
+            }
+
+            if (!string.IsNullOrWhiteSpace(oidcClientId))
+            {
+                return new LoginOptionsTarget(LoginChannel.Embedded, null,
+                    OAuthError.InvalidRequest("Send client_id or oidcClientId, not both."));
+            }
+
+            var (appClient, refused) = await ResolveAppClientAsync(appClientId);
+            return new LoginOptionsTarget(LoginChannel.Embedded, appClient, refused ? UnknownAppClient() : null);
+        }
+
+        /// <summary>
+        /// The OIDC client an app's own login form names, if it names one. A named client must exist and
+        /// be active; naming none is not a refusal.
+        /// </summary>
+        private async Task<(OidcClientRegistration? Client, bool Refused)> ResolveAppClientAsync(string? appClientId)
+        {
+            if (string.IsNullOrWhiteSpace(appClientId))
+                return (null, false);
+
+            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(appClientId);
+            return client is { IsActive: true } ? (client, false) : (null, true);
+        }
+
+        private static BadRequestObjectResult UnknownAppClient() =>
+            new(new { error = OAuthError.InvalidClient, error_description = "The named OIDC client is unknown or inactive." });
 
         private static ObjectResult LoginNotAllowed(LoginPolicyDecision decision) =>
             new(new { error = LoginPolicyRules.Error, error_description = decision.Message }) { StatusCode = StatusCodes.Status403Forbidden };

@@ -87,6 +87,7 @@ namespace XUnitTest.Auth.Shared
             var request = OidcUiTemplateTestData.ValidRequest();
             request.Branding!.BrandName = "Acme";
             request.Theme!.Dark!.ButtonText = "#0c1024";
+            request.Layout = new OidcUiTemplateLayout { ShowAnimationPanel = false };
 
             var result = await Create().SaveOidcUiTemplateRequestAsync(request);
 
@@ -95,12 +96,14 @@ namespace XUnitTest.Auth.Shared
             Guid.TryParse(result.ItemId, out _).Should().BeTrue();
             persisted.Should().NotBeNull();
             persisted!.ItemId.Should().Be(result.ItemId);
-            OidcUiTemplate.CurrentSchemaVersion.Should().Be(4);
+            OidcUiTemplate.CurrentSchemaVersion.Should().Be(5);
             persisted.SchemaVersion.Should().Be(OidcUiTemplate.CurrentSchemaVersion);
             persisted.Branding.Should().BeSameAs(request.Branding);
             persisted.Theme.Should().BeSameAs(request.Theme);
             persisted.Theme!.Dark!.ButtonText.Should().Be("#0c1024");
             persisted.Pages.Should().BeSameAs(request.Pages);
+            persisted.Layout.Should().BeSameAs(request.Layout);
+            persisted.Layout!.ShowAnimationPanel.Should().BeFalse();
         }
 
         [Fact]
@@ -120,6 +123,7 @@ namespace XUnitTest.Auth.Shared
 
             result.IsSuccess.Should().BeTrue();
             persisted!.Branding!.LogoUrlLight.Should().BeNull();
+            persisted.Layout.Should().BeNull();
             persisted.Branding.LogoUrlDark.Should().BeNull();
             persisted.Pages!.Mfa!.ResendButton.Should().BeNull();
             persisted.Pages.AccountSelector!.Subheading.Should().BeNull();
@@ -137,7 +141,9 @@ namespace XUnitTest.Auth.Shared
                     new ValidationFailure("Branding.BrandName", "required")
                 ]));
 
-            var result = await Create().SaveOidcUiTemplateRequestAsync(OidcUiTemplateTestData.ValidRequest());
+            var request = OidcUiTemplateTestData.ValidRequest();
+            request.Layout = new OidcUiTemplateLayout { ShowAnimationPanel = false };
+            var result = await Create().SaveOidcUiTemplateRequestAsync(request);
 
             result.IsSuccess.Should().BeFalse();
             result.ItemId.Should().BeNull();
@@ -174,6 +180,7 @@ namespace XUnitTest.Auth.Shared
             var request = OidcUiTemplateTestData.ValidRequest();
             request.Branding!.BrandName = "Visible immediately";
             request.Pages!.Login!.Heading = "New login heading";
+            request.Layout = new OidcUiTemplateLayout { ShowAnimationPanel = false };
             var service = Create();
 
             var save = await service.SaveOidcUiTemplateRequestAsync(request);
@@ -198,6 +205,7 @@ namespace XUnitTest.Auth.Shared
             management.Branding!.BrandName.Should().Be("Visible immediately");
             management.Pages!.Login!.Heading.Should().Be("New login heading");
             publicConfig.Template.Should().BeEquivalentTo(management);
+            publicConfig.Template!.Layout!.ShowAnimationPanel.Should().BeFalse();
         }
 
         [Fact]

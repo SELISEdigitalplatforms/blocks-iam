@@ -90,7 +90,7 @@ describe("ProfileMFA", () => {
     await waitFor(() =>
       expect(screen.getByText("Set up your authenticator app")).toBeInTheDocument(),
     );
-    expect(screen.getByAltText("qr_code")).toBeInTheDocument();
+    expect(screen.getByAltText("QR code")).toBeInTheDocument();
   });
 
   it("shows the disable confirmation when MFA is already enabled", () => {

@@ -1,6 +1,8 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
+import { useI18nStore } from "@seliseblocks/genesis-os/i18n";
+import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
 
 const h = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -167,5 +169,22 @@ describe("SigninForm", () => {
     fillCredentials();
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
     await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "Something went wrong" }));
+  });
+});
+
+describe("SigninForm language", () => {
+  afterEach(() => {
+    useAppSettingsStore.getState().setSettings({ language: "en" });
+  });
+
+  it("shows the remote text for another language", () => {
+    useI18nStore.getState().setRemote("xx", "iam.login", {
+      "SIGNIN_FORM.EMAIL_PLACEHOLDER": "[xx] Enter your email",
+      "SIGNIN_FORM.FORGOT_PASSWORD": "[xx] Forgot password?",
+    });
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
+    renderForm();
+    expect(screen.getByPlaceholderText("[xx] Enter your email")).toBeInTheDocument();
+    expect(screen.getByText("[xx] Forgot password?")).toBeInTheDocument();
   });
 });

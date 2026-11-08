@@ -35,6 +35,7 @@ namespace Authentication.DomainService.OAuth
         public const string InvalidImpersonationRequest = "invalid_impersonation_request";
         public const string InvalidRequestBody = "invalid_request_body";
         public const string InvalidGrantType = "invalid_grant_type";
+        public const string InvalidClient = "invalid_client";
 
         /// <summary>
         /// The one description for every failed password login: unknown user, pending, disabled and

@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
+import { useI18nStore } from "@seliseblocks/genesis-os/i18n";
+import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({ oidcUiConfig: undefined as unknown }));
 
@@ -8,21 +10,26 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
   OidcAuthShell: ({
     children,
     heading,
+    showAnimationPanel,
     successTitle,
     successSubtitle,
   }: {
     children: React.ReactNode;
     heading: string;
+    showAnimationPanel?: boolean;
     successTitle: string;
     successSubtitle: string;
-  }) => (
-    <div>
+  }) => {
+    expect(showAnimationPanel).toBe(false);
+    return (
+    <div data-testid="device-shell" data-animation-panel={String(showAnimationPanel)}>
       <h1>{heading}</h1>
       <p>{successTitle}</p>
       <p>{successSubtitle}</p>
       {children}
     </div>
-  ),
+    );
+  },
   OidcFooter: ({ footerText }: { footerText: string }) => <span>{footerText}</span>,
   useOidcAuthAnimation: () => ({
     phase: "idle" as const,
@@ -32,7 +39,7 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
     resetAnimation: () => {},
   }),
 }));
-vi.mock("./panel-config", () => ({ DEVICE_CONSENT_PANEL: {} }));
+vi.mock("./panel-config", () => ({ buildDeviceConsentPanel: () => ({}) }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
   useOidcUiConfig: () => ({ data: h.oidcUiConfig }),
 }));
@@ -50,7 +57,7 @@ const renderAt = (path: string) =>
   );
 
 beforeEach(() => {
-  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
+  h.oidcUiConfig = { captcha: null, template: { ...DEFAULT_OIDC_UI_TEMPLATE_FIXTURE, layout: { showAnimationPanel: false } } };
 });
 
 describe("DeviceSuccessPage", () => {
@@ -86,5 +93,25 @@ describe("DeviceSuccessPage", () => {
   it("does not render a use-another-code link", () => {
     renderAt("/device/t1/success");
     expect(screen.queryByRole("link", { name: "Use another code" })).not.toBeInTheDocument();
+  });
+});
+
+describe("iam.device language", () => {
+  afterEach(() => {
+    useAppSettingsStore.getState().setSettings({ language: "en" });
+  });
+
+  it("shows the remote text for another language", () => {
+    useI18nStore.getState().setRemote("xx", "iam.device", {
+      "DEVICE_SUCCESS.FLOW_COMPLETE": "[xx] Device Flow Complete",
+      "DEVICE_SUCCESS.APPROVED_SUBTITLE":
+        "[xx] Your device has been authorized. You can close this window.",
+    });
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
+    renderAt("/device/t1/success?outcome=approved");
+    expect(screen.getByText("[xx] Device Flow Complete")).toBeInTheDocument();
+    expect(
+      screen.getByText("[xx] Your device has been authorized. You can close this window."),
+    ).toBeInTheDocument();
   });
 });

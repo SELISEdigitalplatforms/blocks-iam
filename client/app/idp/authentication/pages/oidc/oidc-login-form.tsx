@@ -13,7 +13,7 @@ import { z } from "zod";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Captcha } from "@/components/captcha";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
@@ -31,6 +31,9 @@ import { OidcErrorDialog } from "./oidc-error-dialog";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { OidcAppHandoff } from "./oidc-app-handoff";
 import { isAppRedirectUrl, navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
+import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
+
+const OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED = "OIDC_LOGIN_FORM.SELECT_ACCOUNT_FAILED";
 
 const base64UrlEncode = (bytes: Uint8Array) => {
   const binary = String.fromCharCode(...bytes);
@@ -73,12 +76,13 @@ const mapUserMfaToType = (channel: string | undefined): number => {
   return 2;
 };
 
-const oidcLoginFormSchema = z.object({
-  username: z.string().email("Invalid email address"),
-  password: z.string().min(1, "Password is required"),
-});
+const buildOidcLoginFormSchema = (t: TFunction) =>
+  z.object({
+    username: z.email(t("OIDC_LOGIN_FORM.INVALID_EMAIL")),
+    password: z.string().min(1, t("OIDC_LOGIN_FORM.PASSWORD_REQUIRED")),
+  });
 
-type OidcLoginFormValues = z.infer<typeof oidcLoginFormSchema>;
+type OidcLoginFormValues = z.infer<ReturnType<typeof buildOidcLoginFormSchema>>;
 
 interface OidcLoginFormProps {
   clientId: string;
@@ -112,6 +116,8 @@ export const OidcLoginForm = ({
   tenantId,
   initialError,
 }: OidcLoginFormProps) => {
+  const { t } = useT("iam.oidc");
+  const loginFormSchema = useMemo(() => buildOidcLoginFormSchema(t), [t]);
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const { data: loginOption } = useGetLoginOptions(tenantId, true, clientId);
@@ -154,7 +160,7 @@ export const OidcLoginForm = ({
       username: "",
       password: "",
     },
-    resolver: zodResolver(oidcLoginFormSchema),
+    resolver: zodResolver(loginFormSchema),
   });
 
   const {
@@ -246,7 +252,7 @@ export const OidcLoginForm = ({
       ? navigateToUrl(data.redirect_uri)
       : !!returnUrl && navigateToSameOrigin(returnUrl);
     if (!navigated) {
-      const errMsg = "Login succeeded but no redirect target was provided";
+      const errMsg = t("OIDC_LOGIN_FORM.NO_REDIRECT_TARGET");
       shake();
       setServerError(errMsg);
       await animCtx?.failAnimation(errMsg);
@@ -259,19 +265,19 @@ export const OidcLoginForm = ({
     data: OidcLoginResponseBody | null | undefined,
   ) => {
     const errorMsg =
-      data?.error_description || data?.message || "Login failed";
+      data?.error_description || data?.message || t("OIDC_LOGIN_FORM.LOGIN_FAILED");
     const errorCode = data?.error;
 
     shake();
     if (errorCode === "account_locked") {
-      const msg = "Your account is locked. Please contact support or reset your password.";
+      const msg = t("OIDC_LOGIN_FORM.ACCOUNT_LOCKED");
       setServerError(msg);
       await animCtx?.failAnimation(msg);
     } else if (errorCode === "account_not_verified") {
       animCtx?.resetAnimation();
       setShowActivationError(true);
     } else if (errorCode === "captcha_enabled") {
-      const msg = "Captcha verification is required. Please complete the given captcha.";
+      const msg = t("OIDC_LOGIN_FORM.CAPTCHA_REQUIRED");
       setServerError(msg);
       await animCtx?.failAnimation(msg);
       setCaptchaRequired(true);
@@ -279,8 +285,8 @@ export const OidcLoginForm = ({
     } else if (errorCode === "invalid_credentials" || errorCode === "captcha_invalid") {
       const msg =
         errorCode === "captcha_invalid"
-          ? "Captcha verification failed. Please try again."
-          : "Invalid email or password. Please try again.";
+          ? t("OIDC_LOGIN_FORM.CAPTCHA_FAILED")
+          : t("OIDC_LOGIN_FORM.INVALID_CREDENTIALS");
       setServerError(msg);
       await animCtx?.failAnimation(msg);
       resetCaptcha();
@@ -348,7 +354,7 @@ export const OidcLoginForm = ({
         if (contentType && contentType.includes("application/json")) {
           data = await response.json();
         } else if (!response.ok) {
-          const errMsg = `Server error (HTTP ${response.status})`;
+          const errMsg = t("OIDC_LOGIN_FORM.SERVER_ERROR", { status: response.status });
           shake();
           setServerError(errMsg);
           await animCtx?.failAnimation(errMsg);
@@ -387,7 +393,7 @@ export const OidcLoginForm = ({
       await showLoginFailure(data);
     } catch (error) {
       console.error("Login error:", error);
-      const msg = "An unexpected error occurred during login. Please try again.";
+      const msg = t("OIDC_LOGIN_FORM.UNEXPECTED_ERROR");
       shake();
       setServerError(msg);
       await animCtx?.failAnimation(msg);
@@ -425,7 +431,7 @@ export const OidcLoginForm = ({
       if (response.redirect_url) {
         window.location.href = response.redirect_url;
       } else {
-        setServerError("Failed to select account");
+        setServerError(t(OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED));
       }
     } catch (error: unknown) {
       if (isErrorWithErrors(error)) {
@@ -433,10 +439,10 @@ export const OidcLoginForm = ({
         const errorDesc = error.errors?.error_description;
         const message = Array.isArray(errorDesc)
           ? errorDesc[0]
-          : (errorDesc || errorCode || "Failed to select account") as string;
+          : (errorDesc || errorCode || t(OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED)) as string;
         setServerError(message);
       } else {
-        setServerError("Failed to select account");
+        setServerError(t(OIDC_LOGIN_FORM_SELECT_ACCOUNT_FAILED));
       }
     }
   };
@@ -516,7 +522,7 @@ export const OidcLoginForm = ({
     <>
       {roundTripError && (
         <OidcErrorDialog
-          title="Sign-in Unavailable"
+          title={t("OIDC_LOGIN_FORM.SIGN_IN_UNAVAILABLE")}
           message={roundTripError}
           actionLabel={loginCopy.backToLoginButton}
           onAction={leaveToApplication}
@@ -525,7 +531,7 @@ export const OidcLoginForm = ({
 
       {noSignInMethod && (
         <p className="text-sm" style={{ color: "var(--muted)" }} data-testid="no-sign-in-method">
-          No sign-in method is available for this application. Contact your administrator.
+          {t("OIDC_LOGIN_FORM.NO_SIGN_IN_METHOD")}
         </p>
       )}
 
@@ -552,7 +558,7 @@ export const OidcLoginForm = ({
                         id="oidc-email"
                         type="email"
                         autoComplete="email"
-                        placeholder="name@company.com"
+                        placeholder={t("OIDC_LOGIN_FORM.EMAIL_PLACEHOLDER")}
                         className="oidc-sci-fi-input"
                         aria-invalid={!!form.formState.errors.username}
                         disabled={isAuthenticating}
@@ -603,7 +609,7 @@ export const OidcLoginForm = ({
                           onClick={() => setShowPassword(v => !v)}
                           className="absolute right-3 top-1/2 -translate-y-1/2"
                           style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          aria-label={showPassword ? t("OIDC_LOGIN_FORM.HIDE_PASSWORD") : t("OIDC_LOGIN_FORM.SHOW_PASSWORD")}
                         >
                           {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
@@ -634,7 +640,7 @@ export const OidcLoginForm = ({
               {isAuthenticating ? (
                 <>
                   <Loader size={16} className="oidc-spin-slow" />
-                  <span>Authenticating...</span>
+                  <span>{t("OIDC_LOGIN_FORM.AUTHENTICATING")}</span>
                 </>
               ) : (
                 <>
