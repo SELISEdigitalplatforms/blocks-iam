@@ -1,3 +1,4 @@
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import {
   Table,
   TableBody,
@@ -31,21 +32,25 @@ const LoadingSkeleton = () => (
   </div>
 );
 
-const EmptyState = () => (
+const EmptyState = () => {
+  const { t } = useT("iam.security");
+  return (
   <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 py-10 text-center">
     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
       <History className="h-7 w-7 text-muted-foreground" />
     </div>
     <div>
-      <p className="text-base font-semibold text-foreground">No activity yet</p>
+      <p className="text-base font-semibold text-foreground">{t("ACTIVITY_LIST.NO_ACTIVITY")}</p>
       <p className="mt-1 text-sm text-muted-foreground">
-        We&apos;ll show your account activity here.
+        {t("ACTIVITY_LIST.SHOWN_HERE")}
       </p>
     </div>
   </div>
-);
+  );
+};
 
 export const ActivityList = ({ isLoading, rows }: ActivityListProps) => {
+  const { t } = useT("iam.security");
   if (isLoading) return <LoadingSkeleton />;
   if (rows.length === 0) return <EmptyState />;
 
@@ -53,10 +58,10 @@ export const ActivityList = ({ isLoading, rows }: ActivityListProps) => {
     <Table className="text-sm">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
-          <TableHead>Event</TableHead>
-          <TableHead>Device</TableHead>
-          <TableHead>IP Address</TableHead>
-          <TableHead>Time</TableHead>
+          <TableHead>{t("ACTIVITY_LIST.EVENT")}</TableHead>
+          <TableHead>{t("ACTIVITY_LIST.DEVICE")}</TableHead>
+          <TableHead>{t("ACTIVITY_LIST.IP_ADDRESS")}</TableHead>
+          <TableHead>{t("ACTIVITY_LIST.TIME")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>

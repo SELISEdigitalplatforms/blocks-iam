@@ -169,3 +169,7 @@ if (typeof Element !== "undefined") {
     Element.prototype.scrollIntoView = () => {};
   }
 }
+
+// Registers the bundled English text. Loaded last (dynamic import): genesis-os reads
+// window.matchMedia while it loads, so the polyfills above must already be in place.
+await import("../i18n");

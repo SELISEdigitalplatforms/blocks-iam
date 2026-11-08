@@ -379,8 +379,11 @@ namespace Authentication.DomainService.Authentication
                 return (new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider missing in flow context" }), null, null, cacheKey);
             }
 
-            // Get IdP config
-            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(flowContext.Provider);
+            // Get IdP config by the flow's own client id: several entries can share a provider name
+            // (Google, Microsoft), and the code must be exchanged with the entry the flow started with.
+            var identityProvider = string.IsNullOrWhiteSpace(flowContext.ClientId)
+                ? await _authenticationRepository.GetIdentityProviderAsync(flowContext.Provider)
+                : await _authenticationRepository.GetIdentityProviderByClientIdAsync(flowContext.ClientId);
             if (identityProvider == null || !identityProvider.IsActive)
             {
                 _logger.LogWarning("Identity provider not found or inactive: {Provider}", flowContext.Provider);

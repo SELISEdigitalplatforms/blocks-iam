@@ -1,22 +1,24 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
 import { useTheme } from "@/hooks/use-theme";
+import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
 
 type ThemeOption = "light" | "dark" | "system";
 
-const OPTIONS: Array<{ value: ThemeOption; Icon: React.ElementType; label: string }> = [
-  { value: "system", Icon: Monitor, label: "Auto" },
-  { value: "light",  Icon: Sun,     label: "Light" },
-  { value: "dark",   Icon: Moon,    label: "Dark" },
+const getOptions = (t: TFunction): Array<{ value: ThemeOption; Icon: React.ElementType; label: string }> => [
+  { value: "system", Icon: Monitor, label: t("MODE_TOGGLE.AUTO") },
+  { value: "light",  Icon: Sun,     label: t("MODE_TOGGLE.LIGHT") },
+  { value: "dark",   Icon: Moon,    label: t("MODE_TOGGLE.DARK") },
 ];
 
 export function ModeToggle() {
   const { theme, setTheme } = useTheme();
+  const { t } = useT("iam.shared");
 
   return (
     <Tabs value={theme} onValueChange={(value) => setTheme(value as ThemeOption)}>
       <TabsList className="h-auto p-0.5 rounded-md gap-0.5 bg-transparent!">
-        {OPTIONS.map(({ value, Icon, label }) => (
+        {getOptions(t).map(({ value, Icon, label }) => (
           <TabsTrigger
             key={value}
             value={value}

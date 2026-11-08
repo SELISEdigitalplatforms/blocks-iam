@@ -1,0 +1,11 @@
+{
+  "SSO_ACTIVATE.AGREE": "I agree to the {{terms}} and acknowledge that I have read the {{privacy}}",
+  "SSO_ACTIVATE.CODE_MISSING": "Code is missing",
+  "SSO_ACTIVATE.NO_REDIRECT_URL": "No redirect URL provided.",
+  "SSO_ACTIVATE.PRIVACY_LINK": "Privacy policy.",
+  "SSO_ACTIVATE.SESSION_EXPIRED": "Your session has expired. Please try again.",
+  "SSO_ACTIVATE.SIGNING_IN_WITH": "Signing in with {{provider}} account ({{username}})",
+  "SSO_ACTIVATE.SOMETHING_WENT_WRONG": "Something went wrong",
+  "SSO_ACTIVATE.TERMS_LINK": "Terms of Services",
+  "SSO_ACTIVATE.USE_DIFFERENT_ACCOUNT": "Use a different {{provider}} account"
+}

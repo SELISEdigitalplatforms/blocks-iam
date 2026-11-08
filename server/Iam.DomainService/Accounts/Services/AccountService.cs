@@ -5,6 +5,7 @@ using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.AccessGrant;
+using Iam.DomainService.Actions;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Notifications;
@@ -78,6 +79,8 @@ namespace Iam.DomainService.Accounts
         private readonly ISignupOrganizationResolver _signupOrganizationResolver;
         private readonly IBuiltInNotificationSender? _notificationSender;
 
+        private readonly IActionPublisher? _actionPublisher;
+
         public AccountService(
             ILogger<AccountService> logger,
             IIdentityAccessManagementRepository repository,
@@ -104,8 +107,10 @@ namespace Iam.DomainService.Accounts
             IUserSessionTerminator? userSessionTerminator = null,
             IFailedLoginTracker? failedLoginTracker = null,
             IAccessGrantService? accessGrant = null,
-            IBuiltInNotificationSender? notificationSender = null)
+            IBuiltInNotificationSender? notificationSender = null,
+            IActionPublisher? actionPublisher = null)
         {
+            _actionPublisher = actionPublisher;
             _notificationSender = notificationSender;
             _logger = logger;
             _repository = repository;
@@ -744,7 +749,8 @@ namespace Iam.DomainService.Accounts
                 PhoneNumber = signupUserRequest.PhoneNumber,
                 // Rides the user-mutation event through to the activation email builder.
                 ClientId = signupUserRequest.ClientId,
-                RedirectUri = signupUserRequest.RedirectUri
+                RedirectUri = signupUserRequest.RedirectUri,
+                IsSelfSignup = true
             };
 
             var result = organizationId == null
@@ -932,6 +938,8 @@ namespace Iam.DomainService.Accounts
                 await InvalidateActivationCacheAsync(userId, activateUserRequest.Code);
                 await _userActivityDispatcher.SendUserActivityAsync(AccountActivation.ActivatedEvent(userId, "iam-account"));
 
+                await PublishActionAsync(IamActionNames.UserActivated, new { userId, via = "email_link" });
+
                 if (!activateUserRequest.PreventPostEvent)
                 {
                     await _identityAccessManagementService.SendAccountActivationEmailAsync(user, activateUserRequest.MailPurpose!);
@@ -985,10 +993,14 @@ namespace Iam.DomainService.Accounts
 
             if (!validationResult.IsValid)
             {
+                // One message per field: two failures on the same property must answer 400, not
+                // throw a duplicate-key error (Rollbar #2126, a blank email on this public endpoint).
                 return new BaseAccountResponse
                 {
                     IsSuccess = false,
-                    Errors = validationResult.Errors.ToDictionary(e => e.PropertyName, e => e.ErrorMessage)
+                    Errors = validationResult.Errors
+                        .GroupBy(e => e.PropertyName)
+                        .ToDictionary(g => g.Key, g => g.First().ErrorMessage)
                 };
             }
 
@@ -1171,6 +1183,7 @@ namespace Iam.DomainService.Accounts
                 // Always, whatever LogoutFromAllDevices says: a reset is how a user takes the account
                 // back, so no session may survive it. Every Blocks reset form sends true anyway.
                 await EndAllSessionsAsync(userId, "password_reset");
+                await PublishActionAsync(IamActionNames.UserPasswordChanged, new { userId, via = "reset_link" });
             }
 
 
@@ -1259,6 +1272,8 @@ namespace Iam.DomainService.Accounts
                 {
                     await EndAllSessionsAsync(bc?.UserId ?? string.Empty, "password_change");
                 }
+
+                await PublishActionAsync(IamActionNames.UserPasswordChanged, new { userId = user.ItemId, via = "self" });
             }
             return (result, false);
         }
@@ -1281,12 +1296,18 @@ namespace Iam.DomainService.Accounts
             return await _failedLoginTracker.CheckPasswordAsync(user.ItemId, IsCorrect);
         }
 
+        /// <summary>Publishes an action after its change was saved. The publisher never throws.</summary>
+        private Task PublishActionAsync(string action, object data) =>
+            _actionPublisher is null ? Task.CompletedTask : _actionPublisher.PublishAsync(action, data);
+
         private async Task NotifyLockedNowAsync(User? lockedUser)
         {
             if (lockedUser?.LockoutUntilUtc == null)
             {
                 return;
             }
+
+            await PublishActionAsync(IamActionNames.UserLocked, new { userId = lockedUser.ItemId, reason = "failed_logins" });
 
             try
             {
@@ -1656,6 +1677,7 @@ namespace Iam.DomainService.Accounts
             if (result)
             {
                 _logger.LogInformation("Account unlocked by admin for user: {UserId}", userId);
+                await PublishActionAsync(IamActionNames.UserUnlocked, new { userId, by = "admin" });
 
                 // Send notification email to user
                 try

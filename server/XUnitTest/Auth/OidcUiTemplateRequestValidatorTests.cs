@@ -8,6 +8,22 @@ namespace XUnitTest.Auth
     {
         private readonly SaveOidcUiTemplateRequestValidator _validator = new();
 
+        [Theory]
+        [InlineData(null)]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task OptionalLayout_DoesNotChangeOtherValidation(bool? visible)
+        {
+            var request = OidcUiTemplateTestData.ValidRequest();
+            request.Layout = new Authentication.DomainService.Entities.OidcUiTemplateLayout { ShowAnimationPanel = visible };
+            (await _validator.ValidateAsync(request)).IsValid.Should().BeTrue();
+
+            request.Branding!.BrandName = "";
+            var invalid = await _validator.ValidateAsync(request);
+            invalid.IsValid.Should().BeFalse();
+            invalid.Errors.Should().Contain(e => e.PropertyName == "Branding.BrandName");
+        }
+
         [Fact]
         public async Task CompleteDefaultTemplate_IsValid()
         {

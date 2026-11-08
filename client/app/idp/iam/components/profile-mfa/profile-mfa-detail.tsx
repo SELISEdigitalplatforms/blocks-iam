@@ -1,6 +1,7 @@
 import { useGetMe, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { useContext } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { profileMfaContext } from "./profile-mfa";
 
 const LoadingSkelton = () => {
@@ -14,6 +15,7 @@ const LoadingSkelton = () => {
 };
 
 export const ProfileMFADetails = () => {
+  const { t } = useT("iam.profile");
   const { projectKey, userId, own } = useContext(profileMfaContext);
   const { data: userByIdData, isLoading: isByIdLoading } = useGetUserById(
     { id: userId, projectKey },
@@ -29,16 +31,11 @@ export const ProfileMFADetails = () => {
     <>
       {data?.data.mfaEnabled ? (
         <p className="text-sm text-muted-foreground">
-          Multi-Factor Authentication (MFA) is enabled on your account, providing an extra layer of
-          security against unauthorized access. Even if your password is compromised, MFA helps keep
-          your account safe.
+          {t("PROFILE_MFA_DETAIL.ENABLED_DESCRIPTION")}
         </p>
       ) : (
         <p className="text-sm text-muted-foreground">
-          Enabling Multi-Factor Authentication (MFA) is a simple yet powerful way to protect your
-          online presence. Don’t wait for a security breach to realize the importance of MFA. Enable
-          it today and enjoy the peace of mind that comes with knowing your accounts are more
-          secure.
+          {t("PROFILE_MFA_DETAIL.DISABLED_DESCRIPTION")}
         </p>
       )}
     </>

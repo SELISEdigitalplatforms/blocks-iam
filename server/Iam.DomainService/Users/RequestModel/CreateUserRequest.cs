@@ -42,6 +42,11 @@ namespace Iam.DomainService.Users
         // Only consulted when a brand-new account is created. False suppresses the activation mail.
         // The account is still created and can be sent one later through resend-activation.
         public bool SendMail { get; set; } = true;
+
+        // Set only by IAM's own self-signup code, never read from a request body: it makes a
+        // brand-new account also send iam.user.signed_up. Admin creation leaves it false.
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool IsSelfSignup { get; set; }
     }
 
 }

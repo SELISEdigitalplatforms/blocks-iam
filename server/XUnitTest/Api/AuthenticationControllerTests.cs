@@ -143,6 +143,17 @@ namespace XUnitTest.ApiTests
             result.Should().BeSameAs(sentinel);
         }
 
+        [Fact]
+        public async Task RetrieveLoginOptions_PassesBothClientIdsThrough()
+        {
+            var sentinel = new OkObjectResult("options");
+            _authService.Setup(s => s.GetLoginOptionsAsync("hosted-1", "app-1")).ReturnsAsync(sentinel);
+
+            var result = await CreateController().RetrieveLoginOptions("hosted-1", "app-1");
+
+            result.Should().BeSameAs(sentinel);
+        }
+
         // ---------- ExecutePasswordLogin ----------
 
         [Fact]
@@ -352,6 +363,18 @@ namespace XUnitTest.ApiTests
                 .ReturnsAsync(sentinel);
 
             var result = await CreateController().InitiateSocialAuthentication("client", "https://cb");
+
+            result.Should().BeSameAs(sentinel);
+        }
+
+        [Fact]
+        public async Task InitiateSocialAuthentication_PassesTheAppClientThrough()
+        {
+            var sentinel = new OkObjectResult("url");
+            _authService.Setup(s => s.GetSocialAuthorizationUrlAsync("client", "https://cb", "app-1"))
+                .ReturnsAsync(sentinel);
+
+            var result = await CreateController().InitiateSocialAuthentication("client", "https://cb", "app-1");
 
             result.Should().BeSameAs(sentinel);
         }

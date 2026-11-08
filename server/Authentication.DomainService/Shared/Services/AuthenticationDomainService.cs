@@ -194,6 +194,12 @@ namespace Authentication.DomainService.Services
             ApplyOidcClientTokenLifetimes(credential, request.TokenLifetimes, isNewClient);
             ApplyOidcClientLoginPolicy(credential, request.LoginPolicy);
 
+            var discoveryError = await CheckDiscoveryBeforeProviderCreateAsync(credential);
+            if (discoveryError != null)
+            {
+                return discoveryError;
+            }
+
             OidcClientSecretWrite secretWrite;
             try
             {
@@ -497,14 +503,25 @@ namespace Authentication.DomainService.Services
                 return new() { { idsField, "Select at least one provider, or choose default." } };
             }
 
-            var socialProviderIds = (await _authenticationRepository.GetIdentityProvidersAsync())
+            var socialProviderNames = (await _authenticationRepository.GetIdentityProvidersAsync())
                 .Where(p => p.ProviderType == "social")
-                .Select(p => p.ItemId)
-                .ToHashSet(StringComparer.Ordinal);
+                .ToDictionary(p => p.ItemId, p => p.Provider, StringComparer.Ordinal);
 
-            return ids.All(socialProviderIds.Contains)
-                ? null
-                : new() { { idsField, "Every selected provider must be a social identity provider of this project." } };
+            if (!ids.TrueForAll(socialProviderNames.ContainsKey))
+            {
+                return new() { { idsField, "Every selected provider must be a social identity provider of this project." } };
+            }
+
+            // The login page shows one button per provider, so a client picks which Google and which
+            // Microsoft it uses, never two of the same.
+            var repeatsAProvider = ids
+                .Distinct(StringComparer.Ordinal)
+                .GroupBy(id => socialProviderNames[id], StringComparer.OrdinalIgnoreCase)
+                .Any(group => group.Count() > 1);
+
+            return repeatsAProvider
+                ? new() { { idsField, "Select at most one entry per provider." } }
+                : null;
         }
 
         private async Task<(OidcClientRegistration Credential, bool IsNew)> InitializeOidcClientCredentialAsync(SaveOIDCClientRequest request)
@@ -559,6 +576,43 @@ namespace Authentication.DomainService.Services
             {
                 credential.AllowedResponseTypes = ["code"];
             }
+        }
+
+        /// <summary>
+        /// When this save will create the client's identity provider, checks its discovery URL first,
+        /// with the same rule the identity-provider create uses. Without it an unusable URL fails
+        /// the provider fetch only after the client and its secret are saved: a 500 and a half-saved
+        /// client (Rollbar #1809/#1810). A client already linked to a provider makes no call.
+        /// </summary>
+        private async Task<SaveOIDCClientResponse?> CheckDiscoveryBeforeProviderCreateAsync(OidcClientRegistration credential)
+        {
+            if (!credential.RegisterAsIdentityProvider || string.IsNullOrWhiteSpace(credential.ExternalDiscoveryEndpoint))
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(credential.ClientId)
+                && await _authenticationRepository.GetIdentityProviderByClientIdAsync(credential.ClientId) != null)
+            {
+                return null;
+            }
+
+            var probe = new SaveIdentityProviderRequest { WellKnownUrl = credential.ExternalDiscoveryEndpoint };
+            var result = await _saveIdpValidator.ValidateAsync(probe, o => o.IncludeProperties(x => x.WellKnownUrl));
+            if (result.IsValid)
+            {
+                return null;
+            }
+
+            return new SaveOIDCClientResponse
+            {
+                IsSuccess = false,
+                Errors = new Dictionary<string, string>
+                {
+                    [nameof(SaveOIDCClientRequest.ExternalDiscoveryEndpoint)] =
+                        "ExternalDiscoveryEndpoint does not return OpenID Connect discovery metadata."
+                }
+            };
         }
 
         private static void ApplyOidcClientOptions(OidcClientRegistration credential, SaveOIDCClientRequest request)
@@ -665,7 +719,8 @@ namespace Authentication.DomainService.Services
                 SchemaVersion = OidcUiTemplate.CurrentSchemaVersion,
                 Branding = request.Branding,
                 Theme = request.Theme,
-                Pages = request.Pages
+                Pages = request.Pages,
+                Layout = request.Layout
             };
 
             try
@@ -1231,8 +1286,7 @@ namespace Authentication.DomainService.Services
             var providerName = request.Provider!;
             var clientId = request.ClientId!;
 
-            var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName);
-            if (existingProvider != null)
+            if (await IsProviderNameTakenAsync(providerName, request.ProviderType!))
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "duplicate_provider", $"Provider '{providerName}' already exists." } } };
 
             var existingByClientId = await _authenticationRepository.GetIdentityProviderByClientIdAsync(clientId);
@@ -1503,6 +1557,32 @@ namespace Authentication.DomainService.Services
             return await _authenticationRepository.GetIdentityProviderAsync(provider);
         }
 
+        /// <summary>
+        /// Social entries may share a name: a project can register several Google or Microsoft apps,
+        /// told apart by client id. Every other type keeps its name to itself, and no name is shared
+        /// between a social entry and one of another type.
+        /// </summary>
+        private async Task<bool> IsProviderNameTakenAsync(string providerName, string providerType)
+        {
+            if (!SocialProviderEndpoints.IsSocial(providerType))
+                return await _authenticationRepository.GetIdentityProviderAsync(providerName) != null;
+
+            var providers = await _authenticationRepository.GetIdentityProvidersAsync();
+            return providers.Exists(p =>
+                string.Equals(p.Provider, providerName, StringComparison.Ordinal)
+                && !SocialProviderEndpoints.IsSocial(p.ProviderType));
+        }
+
+        /// <summary>
+        /// Google and Microsoft entries always use the built-in endpoints; a changed discovery URL on a
+        /// Microsoft entry moves it to the Entra tenant that URL names.
+        /// </summary>
+        private static void KeepBuiltInSocialEndpoints(IdentityProvider provider)
+        {
+            if (SocialProviderEndpoints.IsBuiltIn(provider.ProviderType, provider.Provider))
+                SocialProviderEndpoints.Apply(provider);
+        }
+
         public async Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id)
         {
             var provider = await _authenticationRepository.GetIdentityProviderByIdForViewAsync(id);
@@ -1589,7 +1669,16 @@ namespace Authentication.DomainService.Services
             // Discovery re-validation when WellKnownUrl changes.
             if (request.WellKnownUrl != null && !string.Equals(request.WellKnownUrl, existing.WellKnownUrl, StringComparison.OrdinalIgnoreCase))
             {
-                var probe = new SaveIdentityProviderRequest { WellKnownUrl = request.WellKnownUrl };
+                // The stored entry with the new URL: the fields an update cannot change are present,
+                // and the URL is held to the rules of this entry's type.
+                var probe = new SaveIdentityProviderRequest
+                {
+                    Provider = existing.Provider,
+                    ProviderType = existing.ProviderType,
+                    Protocol = existing.Protocol,
+                    ClientId = existing.ClientId,
+                    WellKnownUrl = request.WellKnownUrl
+                };
                 var wellKnownValidation = await _saveIdpValidator.ValidateAsync(probe);
                 if (!wellKnownValidation.IsValid)
                 {
@@ -1629,6 +1718,7 @@ namespace Authentication.DomainService.Services
             if (request.TeamId != null) existing.TeamId = request.TeamId;
             if (request.KeyId != null) existing.KeyId = request.KeyId;
             if (request.AppleAudience != null) existing.AppleAudience = request.AppleAudience;
+            KeepBuiltInSocialEndpoints(existing);
 
             var blocksContext = BlocksContext.GetContext();
             existing.LastUpdatedBy = blocksContext?.UserId;

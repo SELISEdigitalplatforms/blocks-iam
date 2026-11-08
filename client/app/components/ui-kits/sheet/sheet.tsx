@@ -6,6 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -55,6 +56,11 @@ interface SheetContentProps
   hideClose?: boolean;
 }
 
+const CloseLabel = () => {
+  const { t } = useT("iam.shared");
+  return <span className="sr-only">{t("common:CLOSE")}</span>;
+};
+
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
@@ -66,7 +72,7 @@ const SheetContent = React.forwardRef<
       {!hideClose && (
         <SheetPrimitive.Close className="absolute right-6 top-8 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
           <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
+          <CloseLabel />
         </SheetPrimitive.Close>
       )}
     </SheetPrimitive.Content>

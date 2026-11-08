@@ -23,10 +23,12 @@
             Issues access and refresh tokens on success
             </summary>
         </member>
-        <member name="M:Api.Controllers.AuthenticationController.RetrieveLoginOptions(System.String)">
+        <member name="M:Api.Controllers.AuthenticationController.RetrieveLoginOptions(System.String,System.String)">
             <summary>
             Retrieve available login options (identity providers and their metadata)
-            No authentication required - public discovery endpoint
+            No authentication required - public discovery endpoint.
+            client_id: the IAM login page's options for that OIDC client.
+            oidcClientId (optional): an app's own login form, narrowed by its OIDC client's sign-in rules.
             </summary>
         </member>
         <member name="M:Api.Controllers.AuthenticationController.ExecutePasswordLogin(Authentication.DomainService.OAuth.RequestModel.EmbeddedLoginRequest)">
@@ -91,7 +93,7 @@
             <returns>Validation result carrying the code's status</returns>
             <response code="200">Status of the code: Valid, Expired, AlreadyActivated or Invalid</response>
         </member>
-        <member name="M:Api.Controllers.AuthenticationController.InitiateSocialAuthentication(System.String,System.String)">
+        <member name="M:Api.Controllers.AuthenticationController.InitiateSocialAuthentication(System.String,System.String,System.String)">
             <summary>
             Initiate social provider authentication (OAuth 2.0 Authorization Code Flow)
             Generates PKCE code challenge and state parameter

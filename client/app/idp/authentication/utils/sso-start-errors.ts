@@ -1,15 +1,27 @@
-const SSO_START_ERROR_MESSAGES: Record<string, string> = {
-  invalid_redirect_uri:
-    "This sign-in option is not set up for this page. Contact your administrator.",
-  invalid_client: "The application that sent you here is not recognised.",
-  provider_not_found: "This sign-in option is not available. Contact your administrator.",
-  provider_inactive: "This sign-in option is turned off. Contact your administrator.",
-  invalid_oidc_state: "Your sign-in session has expired. Please start again.",
-  authorization_url_generation_failed:
-    "Could not start sign-in with this provider. Please try again.",
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
+
+const IAM_SHARED_MODULE = "iam.shared";
+
+const getKnownMessage = (code: string): string | undefined => {
+  switch (code) {
+    case "invalid_redirect_uri":
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.INVALID_REDIRECT_URI");
+    case "invalid_client":
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.INVALID_CLIENT");
+    case "provider_not_found":
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.PROVIDER_NOT_FOUND");
+    case "provider_inactive":
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.PROVIDER_INACTIVE");
+    case "invalid_oidc_state":
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.INVALID_OIDC_STATE");
+    case "authorization_url_generation_failed":
+      return tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.AUTHORIZATION_URL_GENERATION_FAILED");
+    default:
+      return undefined;
+  }
 };
 
-const FALLBACK_MESSAGE = "Could not start sign-in with this provider. Please try again.";
+const getFallbackMessage = () => tStatic(IAM_SHARED_MODULE, "SSO_START_ERRORS.FALLBACK");
 
 const readCode = (body: unknown): string => {
   const error = (body as { error?: unknown } | null)?.error;
@@ -24,10 +36,11 @@ export const getSsoStartErrorMessage = (error: unknown): string => {
   const thrown = (error as { errors?: unknown } | null)?.errors;
   const body = thrown && typeof thrown === "object" ? thrown : error;
   const code = readCode(body);
-  if (SSO_START_ERROR_MESSAGES[code]) return SSO_START_ERROR_MESSAGES[code];
+  const known = getKnownMessage(code);
+  if (known) return known;
 
   const description = (body as { error_description?: unknown } | null)?.error_description;
   if (typeof description === "string" && description) return description;
   if (code) return code;
-  return typeof thrown === "string" && thrown ? thrown : FALLBACK_MESSAGE;
+  return typeof thrown === "string" && thrown ? thrown : getFallbackMessage();
 };

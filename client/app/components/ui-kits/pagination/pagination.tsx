@@ -9,6 +9,7 @@ import {
 } from "@/components/ui-kits/select/select";
 import { Button } from "@/components/ui-kits/button/button";
 import { cn } from "@/lib/utils";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 
 interface PaginationProps {
   onChange: (pageIndex: number) => void;
@@ -30,6 +31,7 @@ export function Pagination({
   onPageSizeChange,
   compact,
 }: PaginationProps) {
+  const { t } = useT("iam.shared");
   const pageChangeHandler = (page: number) => {
     onChange(page);
   };
@@ -62,7 +64,7 @@ export function Pagination({
     >
       {sizeChoices.length > 1 ? (
         <div className={cn("flex items-center space-x-2", compact && "shrink-0 space-x-1.5")}>
-          <p className={cn("text-sm font-medium", compact && "hidden md:block")}>Rows per page</p>
+          <p className={cn("text-sm font-medium", compact && "hidden md:block")}>{t("PAGINATION.ROWS_PER_PAGE")}</p>
           <Select value={`${pageSize}`} onValueChange={onPageSizeChangeHandler}>
             <SelectTrigger
               className={cn("h-8 w-[70px]", compact && "h-7 w-[58px] text-xs md:h-8 md:w-[70px] md:text-sm")}
@@ -89,7 +91,7 @@ export function Pagination({
             compact && "text-xs md:text-sm",
           )}
         >
-          Page {page + 1} of {totalPage}
+          {t("PAGINATION.PAGE_OF", { page: page + 1, total: totalPage })}
         </div>
         <div className={cn("flex items-center gap-1", compact && "gap-0.5")}>
           <Button

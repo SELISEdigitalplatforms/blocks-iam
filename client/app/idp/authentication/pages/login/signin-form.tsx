@@ -13,6 +13,7 @@ import { useAuthStore } from "@seliseblocks/genesis-os";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router";
 import { useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { Captcha } from "@/components/captcha";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { isErrorWithErrors } from "@/lib/error";
@@ -30,6 +31,7 @@ type SigninFormProps = {
 };
 
 export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) => {
+  const { t } = useT("iam.login");
   const navigate = useNavigate();
   const { setAuthenticated } = useAuthStore();
   const [captchaRequired, setCaptchaRequired] = useState(false);
@@ -98,9 +100,9 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
           }
           resetCaptcha();
         }
-        showErrorToast({ errors: errs?.error_description || `Something went wrong` });
+        showErrorToast({ errors: errs?.error_description || t("SIGNIN_FORM.SOMETHING_WENT_WRONG") });
       } else {
-        showErrorToast({ errors: "Something went wrong" });
+        showErrorToast({ errors: t("SIGNIN_FORM.SOMETHING_WENT_WRONG") });
       }
     }
   };
@@ -120,9 +122,9 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
           name="username"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Email</FormLabel>
+              <FormLabel>{t("common:EMAIL")}</FormLabel>
               <FormControl>
-                <Input placeholder="Enter your email" {...field} />
+                <Input placeholder={t("SIGNIN_FORM.EMAIL_PLACEHOLDER")} {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -133,9 +135,9 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
           name="password"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Password</FormLabel>
+              <FormLabel>{t("SIGNIN_FORM.PASSWORD_LABEL")}</FormLabel>
               <FormControl>
-                <PasswordInput placeholder="Enter your password" {...field} />
+                <PasswordInput placeholder={t("SIGNIN_FORM.PASSWORD_PLACEHOLDER")} {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -143,13 +145,13 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
         />
 
         <Link to={forgotPasswordUrl} className="ml-auto inline-block text-sm text-primary">
-          Forgot password?
+          {t("SIGNIN_FORM.FORGOT_PASSWORD")}
         </Link>
 
         {isTokenNeed && googleSiteKey && <Captcha {...captcha} />}
 
         <Button type="submit" variant="primary" className="w-full rounded" disabled={isPending || (isTokenNeed && !captchaCode)}>
-          Log in
+          {t("SIGNIN_FORM.LOG_IN")}
         </Button>
       </form>
     </Form>

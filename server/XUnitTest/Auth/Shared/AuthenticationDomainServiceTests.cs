@@ -40,6 +40,7 @@ namespace XUnitTest.Auth.Shared
             _oidcUiTemplateValidator.Setup(v => v.ValidateAsync(It.IsAny<SaveOidcUiTemplateRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
             _saveIdpValidator.Setup(v => v.ValidateAsync(It.IsAny<SaveIdentityProviderRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
             _updateIdpValidator.Setup(v => v.ValidateAsync(It.IsAny<UpdateIdentityProviderRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
+            _repo.Setup(r => r.GetIdentityProvidersAsync()).ReturnsAsync(new List<IdentityProvider>());
         }
 
         public void Dispose()
@@ -86,11 +87,44 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
-        public async Task CreateIdp_DuplicateProvider_ReturnsError()
+        public async Task CreateIdp_SecondSocialEntryOfTheSameProvider_IsCreated()
         {
+            // A project may register several Google apps; they differ by client id.
+            _repo.Setup(r => r.GetIdentityProvidersAsync()).ReturnsAsync(new List<IdentityProvider> { Idp() });
             _repo.Setup(r => r.GetIdentityProviderAsync("google")).ReturnsAsync(Idp());
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync("cid-2")).ReturnsAsync((IdentityProvider)null!);
+            _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(Idp(clientId: "cid-2", id: "idp-2"));
+
+            var result = await Create().CreateIdentityProviderAsync(SaveReq(clientId: "cid-2"));
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.Is<IdentityProvider>(p => p.Provider == "google" && p.ClientId == "cid-2")), Times.Once);
+        }
+
+        [Fact]
+        public async Task CreateIdp_SocialEntry_NamedLikeAnEntryOfAnotherType_IsRefused()
+        {
+            var enterprise = Idp(provider: "google", clientId: "okta-cid");
+            enterprise.ProviderType = "byos";
+            _repo.Setup(r => r.GetIdentityProvidersAsync()).ReturnsAsync(new List<IdentityProvider> { enterprise });
+
             var result = await Create().CreateIdentityProviderAsync(SaveReq());
+
             result.Errors.Should().ContainKey("duplicate_provider");
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task CreateIdp_NonSocialEntry_WithATakenName_IsRefused()
+        {
+            _repo.Setup(r => r.GetIdentityProviderAsync("okta")).ReturnsAsync(Idp(provider: "okta"));
+            var request = SaveReq(provider: "okta", clientId: "okta-2");
+            request.ProviderType = "byos";
+
+            var result = await Create().CreateIdentityProviderAsync(request);
+
+            result.Errors.Should().ContainKey("duplicate_provider");
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
         }
 
         [Fact]
@@ -206,9 +240,73 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
-        public async Task UpdateIdp_WellKnownUrlChanged_DiscoveryValid_MergesAllFields()
+        public async Task UpdateIdp_WellKnownUrlChanged_IsValidatedAsTheStoredEntryWithTheNewUrl()
+        {
+            var existing = Idp(provider: "microsoft");
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            var probes = new List<SaveIdentityProviderRequest>();
+            _saveIdpValidator.Setup(v => v.ValidateAsync(Capture.In(probes), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
+            const string tenantUrl = "https://login.microsoftonline.com/contoso.onmicrosoft.com/v2.0/.well-known/openid-configuration";
+
+            await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { WellKnownUrl = tenantUrl });
+
+            var probe = probes.Should().ContainSingle().Subject;
+            probe.Provider.Should().Be("microsoft");
+            probe.ProviderType.Should().Be("social");
+            probe.Protocol.Should().Be("oidc");
+            probe.ClientId.Should().Be("cid");
+            probe.WellKnownUrl.Should().Be(tenantUrl);
+        }
+
+        [Fact]
+        public async Task UpdateIdp_MicrosoftTenantUrl_MovesTheEntryToThatTenant_KeepingGraph()
+        {
+            var existing = Idp(provider: "microsoft");
+            SocialProviderEndpoints.Apply(existing);
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+            const string tenant = "8b1d2c3e-0000-4e72-9a7f-000000000001";
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest
+            {
+                WellKnownUrl = $"https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            existing.AuthorizationUrl.Should().Be($"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize");
+            existing.TokenUrl.Should().Be($"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token");
+            existing.UserInfoUrl.Should().Be("https://graph.microsoft.com/v1.0/me");
+            _repo.Verify(r => r.UpdateIdentityProviderAsync(It.Is<IdentityProvider>(p => p.TokenUrl!.Contains(tenant))), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateIdp_BuiltInSocialEntry_KeepsTheBuiltInEndpoints()
         {
             var existing = Idp();
+            SocialProviderEndpoints.Apply(existing);
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest
+            {
+                AuthorizationUrl = "https://elsewhere.example/authorize",
+                UserInfoUrl = "https://elsewhere.example/userinfo",
+                DisplayName = "Staff accounts"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            existing.DisplayName.Should().Be("Staff accounts");
+            existing.AuthorizationUrl.Should().Be("https://accounts.google.com/o/oauth2/v2/auth");
+            existing.UserInfoUrl.Should().Be("https://www.googleapis.com/oauth2/v1/userinfo?access_token={0}");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_WellKnownUrlChanged_DiscoveryValid_MergesAllFields()
+        {
+            // An entry with its own discovery document: every supplied field is taken as given.
+            var existing = Idp(provider: "okta");
+            existing.ProviderType = "byos";
             _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
             _repo.Setup(r => r.GetIdentityProviderByIdForViewAsync("idp-1")).ReturnsAsync(existing);
             _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
@@ -666,6 +764,79 @@ namespace XUnitTest.Auth.Shared
             _repo.Verify(r => r.CreateIdentityProviderAsync(It.Is<IdentityProvider>(p =>
                 p.Provider == "my-app" && p.ProviderType == "blocks-oidc"
                 && p.ClientSecretReference == "oidc-ref-1" && p.ClientSecret == string.Empty)), Times.Once);
+        }
+
+        private static SaveOIDCClientRequest RegisterWithDiscovery(string discoveryUrl) => new()
+        {
+            RedirectUris = new() { "https://app/cb" },
+            AllowedScopes = new() { "openid" },
+            ClientType = "confidential",
+            ClientDisplayName = "My App",
+            RegisterAsIdentityProvider = true,
+            ExternalDiscoveryEndpoint = discoveryUrl
+        };
+
+        private void DiscoveryCheckAnswers(ValidationResult result) =>
+            _saveIdpValidator.Setup(v => v.ValidateAsync(It.IsAny<IValidationContext>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(result);
+
+        [Fact]
+        public async Task SaveOIDCClient_RegisterAsProvider_UnusableDiscovery_RefusesBeforeSavingAnything()
+        {
+            // Rollbar #1809/#1810: the discovery URL answered HTML, the provider fetch failed after
+            // the client and its secret were saved, and the caller got a 500.
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+            DiscoveryCheckAnswers(new ValidationResult(new[]
+            {
+                new ValidationFailure("WellKnownUrl", "WellKnownUrl does not expose valid OpenID Connect metadata.")
+            }));
+
+            var result = await Create().SaveOIDCClientAsync(RegisterWithDiscovery("https://example.com/"));
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("ExternalDiscoveryEndpoint");
+            _saveIdpValidator.Verify(v => v.ValidateAsync(
+                It.Is<IValidationContext>(c => ((SaveIdentityProviderRequest)c.InstanceToValidate).WellKnownUrl == "https://example.com/"),
+                It.IsAny<CancellationToken>()), Times.Once);
+            _repo.Verify(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()), Times.Never);
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+            _secrets.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_RegisterAsProvider_UsableDiscovery_SavesAndCreatesProvider()
+        {
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+            _repo.Setup(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(Idp());
+            OidcSecretStoreAccepts();
+            DiscoveryCheckAnswers(new ValidationResult());
+
+            var result = await Create().SaveOIDCClientAsync(RegisterWithDiscovery("https://iam.example.com/t1/.well-known/openid-configuration"));
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.CreateIdentityProviderAsync(It.Is<IdentityProvider>(p =>
+                p.WellKnownUrl == "https://iam.example.com/t1/.well-known/openid-configuration")), Times.Once);
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_RegisterAsProvider_AlreadyLinked_MakesNoDiscoveryCheck()
+        {
+            // An edit of a client that already has its provider creates nothing, so it must not gain
+            // a new way to fail.
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(Idp(provider: "my-app"));
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(Idp(provider: "my-app"));
+            OidcSecretStoreAccepts();
+            DiscoveryCheckAnswers(new ValidationResult(new[] { new ValidationFailure("WellKnownUrl", "unreachable") }));
+
+            var result = await Create().SaveOIDCClientAsync(RegisterWithDiscovery("https://example.com/"));
+
+            result.IsSuccess.Should().BeTrue();
+            _saveIdpValidator.Verify(v => v.ValidateAsync(It.IsAny<IValidationContext>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
         [Fact]

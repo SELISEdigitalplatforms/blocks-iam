@@ -8,6 +8,7 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.Actions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
@@ -1194,7 +1195,8 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         SignupLink link,
         HttpRequest request)
     {
-        var userId = await CreateSignupLinkUserAsync(link, passwordRequired: true);
+        var newUser = await CreateSignupLinkUserAsync(link, passwordRequired: true);
+        var userId = newUser.ItemId;
         if (string.IsNullOrWhiteSpace(userId))
         {
             _logger.LogError("Signup link redeem failed to create PendingVerification user for link {LinkId}", link.ItemId);
@@ -1209,6 +1211,8 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
                 detail: "a concurrent request took the last redemption after the user was created");
             return InvalidLink();
         }
+
+        await _userMutation.PublishUserSignedUpAsync(newUser, IamActionNames.SignupMethods.SignupLink);
 
         var user = await _userRepository.GetUserByIdAsync(userId);
         if (user == null)
@@ -1233,7 +1237,8 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
         HttpRequest request,
         HttpResponse response)
     {
-        var userId = await CreateSignupLinkUserAsync(link, passwordRequired: false);
+        var newUser = await CreateSignupLinkUserAsync(link, passwordRequired: false);
+        var userId = newUser.ItemId;
         if (string.IsNullOrWhiteSpace(userId))
         {
             _logger.LogError("Signup link redeem failed to create user for link {LinkId}", link.ItemId);
@@ -1249,6 +1254,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             return InvalidLink();
         }
 
+        await _userMutation.PublishUserSignedUpAsync(newUser, IamActionNames.SignupMethods.SignupLink);
         await RecordSuccessAsync(link, userId, SignupLinkRedemptionOutcome.UserCreated, request, updated.RedemptionCount, grant: true);
 
         var user = await _userRepository.GetUserByIdAsync(userId);
@@ -1555,7 +1561,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
     private static string DescribeMaxRedemptions(SignupLink link) =>
         link.MaxRedemptions == SignupLink.UnlimitedMaxRedemptions ? "unlimited" : link.MaxRedemptions.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-    private async Task<string> CreateSignupLinkUserAsync(SignupLink link, bool passwordRequired)
+    private async Task<User> CreateSignupLinkUserAsync(SignupLink link, bool passwordRequired)
     {
         var previous = BlocksContext.GetContext();
         try
@@ -1621,7 +1627,7 @@ public sealed class SignupLinkRedemptionOrchestrator : ISignupLinkRedemptionOrch
             user.Password = string.Empty;
 
             await _userRepository.CreateUserAsync(user);
-            return user.ItemId;
+            return user;
         }
         finally
         {

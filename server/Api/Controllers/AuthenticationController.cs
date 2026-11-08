@@ -86,13 +86,17 @@ public class AuthenticationController : ControllerBase
 
     /// <summary>
     /// Retrieve available login options (identity providers and their metadata)
-    /// No authentication required - public discovery endpoint
+    /// No authentication required - public discovery endpoint.
+    /// client_id: the IAM login page's options for that OIDC client.
+    /// oidcClientId (optional): an app's own login form, narrowed by its OIDC client's sign-in rules.
     /// </summary>
     [HttpGet("login-options")]
     [AllowAnonymous]
-    public Task<IActionResult> RetrieveLoginOptions([FromQuery(Name = "client_id")] string? clientId = null)
+    public Task<IActionResult> RetrieveLoginOptions(
+        [FromQuery(Name = "client_id")] string? clientId = null,
+        [FromQuery(Name = "oidcClientId")] string? appClientId = null)
     {
-        return _authenticationService.GetLoginOptionsAsync(clientId);
+        return _authenticationService.GetLoginOptionsAsync(clientId, appClientId);
     }
 
     /// <summary>
@@ -252,9 +256,12 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpGet("social/initiate")]
     [AllowAnonymous]
-    public Task<IActionResult> InitiateSocialAuthentication([FromQuery] string clientId, [FromQuery] string redirectUri)
+    public Task<IActionResult> InitiateSocialAuthentication(
+        [FromQuery] string clientId,
+        [FromQuery] string redirectUri,
+        [FromQuery(Name = "oidcClientId")] string? appClientId = null)
     {
-        return _authenticationService.GetSocialAuthorizationUrlAsync(clientId, redirectUri);
+        return _authenticationService.GetSocialAuthorizationUrlAsync(clientId, redirectUri, appClientId);
     }
 
     /// <summary>

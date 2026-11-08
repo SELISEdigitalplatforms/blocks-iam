@@ -454,6 +454,22 @@ namespace XUnitTest.Auth
             response.Template.Should().BeSameAs(storedTemplate);
         }
 
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task GetUiConfigAsync_PublishesLayoutWithOneTemplateRead(bool showAnimationPanel)
+        {
+            var template = OidcUiTemplateTestData.ValidTemplate();
+            template.Layout = new OidcUiTemplateLayout { ShowAnimationPanel = showAnimationPanel };
+            _authRepo.Setup(r => r.GetOidcUiTemplateAsync()).ReturnsAsync(template);
+
+            var result = (OkObjectResult)await Create().GetUiConfigAsync();
+
+            var response = result.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
+            response.Template!.Layout!.ShowAnimationPanel.Should().Be(showAnimationPanel);
+            _authRepo.Verify(r => r.GetOidcUiTemplateAsync(), Times.Once);
+        }
+
         [Fact]
         public async Task GetUiConfigAsync_PropagatesTemplateLookupFailure()
         {
@@ -873,6 +889,24 @@ namespace XUnitTest.Auth
                 .Callback<HttpMethod, Dictionary<string, string>, string, Dictionary<string, string>, CancellationToken, int?>((_, f, _, _, _, _) => form = f)
                 .ReturnsAsync(((OidcTokenEndpointResponse)null!, "stop"));
             return () => form;
+        }
+
+        [Fact]
+        public async Task HandleCallback_FindsTheEntryByTheFlowsClientId_NotByItsSharedName()
+        {
+            // Two entries are named "google"; the code is exchanged with the one the flow started with.
+            var (req, res) = HttpPair();
+            SetupFlowContext("st", new { provider = "google", clientId = "client-2", tenantId = TenantId, redirectUri = "https://app.example.com/callback", codeVerifier = (string?)null });
+            _authRepo.Setup(r => r.GetIdentityProviderAsync("google")).ReturnsAsync(ActiveProvider());
+            var second = ActiveProvider();
+            second.ClientId = "client-2";
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync("client-2")).ReturnsAsync(second);
+            var form = CaptureTokenForm();
+
+            await Create().HandleCallbackAsync("code-1", "st", null, null, req, res);
+
+            form()!["client_id"].Should().Be("client-2");
+            _authRepo.Verify(r => r.GetIdentityProviderAsync(It.IsAny<string>()), Times.Never);
         }
 
         private void SetupReferencedProvider()

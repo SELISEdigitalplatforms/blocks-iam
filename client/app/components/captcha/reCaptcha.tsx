@@ -40,8 +40,11 @@ export const ReCaptcha = forwardRef<CaptchaRef, ReCaptchaProps>(
     const renderReCaptcha = useCallback(() => {
       if (!containerRef.current) return;
       window.grecaptcha?.ready(() => {
-        if (widgetIdRef.current !== null) return null;
-        widgetIdRef.current = window.grecaptcha!.render(containerRef.current!, {
+        // ready() can fire after the form has unmounted (the user moved on); the container is
+        // gone then, and rendering into it throws "placeholder element must be an element or id".
+        const container = containerRef.current;
+        if (!container || widgetIdRef.current !== null) return;
+        widgetIdRef.current = window.grecaptcha!.render(container, {
           sitekey: siteKey,
           theme,
           size,

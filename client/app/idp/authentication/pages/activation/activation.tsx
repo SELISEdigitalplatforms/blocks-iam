@@ -305,6 +305,7 @@ export const Activation = ({
   return (
     <OidcAuthShell
       panelConfig={getActivatePanel(collectPasswordOnActivation)}
+      showAnimationPanel={template.layout.showAnimationPanel}
       theme={template.theme}
       logoUrlLight={template.branding.logoUrlLight}
       logoUrlDark={template.branding.logoUrlDark}

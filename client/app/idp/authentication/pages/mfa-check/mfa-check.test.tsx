@@ -1,5 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useI18nStore } from "@seliseblocks/genesis-os/i18n";
+import { useAppSettingsStore } from "@seliseblocks/genesis-os/store";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({ mfaType: 0, mfaId: "mfa-1", oidcUiConfig: undefined as unknown }));
 
@@ -78,5 +80,20 @@ describe("MfaCheck", () => {
     render(<MfaCheck />);
     expect(screen.getByRole("heading", { name: "Sign-in expired" })).toBeInTheDocument();
     expect(screen.queryByText(/Check your email for the verification code/)).not.toBeInTheDocument();
+  });
+});
+
+describe("iam.mfa-check language", () => {
+  afterEach(() => {
+    useAppSettingsStore.getState().setSettings({ language: "en" });
+  });
+
+  it("shows the remote text for another language", () => {
+    useI18nStore.getState().setRemote("xx", "iam.mfa-check", {
+      "MFA_CHECK.MESSAGE_EMAIL": "[xx] Check your email for the verification code and enter it here to continue.",
+    });
+    useAppSettingsStore.getState().setSettings({ language: "xx" });
+    render(<MfaCheck />);
+    expect(screen.getByText("[xx] Check your email for the verification code and enter it here to continue.")).toBeInTheDocument();
   });
 });

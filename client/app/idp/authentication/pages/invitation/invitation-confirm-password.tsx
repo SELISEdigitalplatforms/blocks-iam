@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "react-router";
 import { z } from "zod";
+import { tStatic, useT } from "@seliseblocks/genesis-os/i18n";
 import { Eye, EyeOff, Loader } from "lucide-react";
 import {
   Form,
@@ -21,21 +22,37 @@ import { useAuthenticateSignupLink } from "@blocks-idp/authentication/hooks/use-
 import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 import type { RedeemSignupLinkResponse } from "@blocks-idp/authentication/services/signup-link.service";
 
+const IAM_INVITATION_MODULE = "iam.invitation";
+
 export const CONFIRM_PASSWORD_COPY = {
-  heading: "Confirm it's you",
-  body: "You already have an account. Enter your password to accept this invitation.",
-  wrongCredential: "That password is not correct.",
-  locked: "Your account is locked. Please contact support or reset your password.",
-  captchaRequired: "Captcha verification is required. Please complete the given captcha.",
-  captchaInvalid: "Captcha verification failed. Please try again.",
-  generic: "Something went wrong. Please try again.",
-} as const;
+  get heading() {
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.HEADING");
+  },
+  get body() {
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.BODY");
+  },
+  get wrongCredential() {
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.WRONG_PASSWORD");
+  },
+  get locked() {
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.LOCKED");
+  },
+  get captchaRequired() {
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.CAPTCHA_REQUIRED");
+  },
+  get captchaInvalid() {
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.CAPTCHA_INVALID");
+  },
+  get generic() {
+    return tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.GENERIC");
+  },
+};
 
 /** Server outcomes that end the password step; the page renders the matching view. */
 export type ConfirmPasswordExit = "invalid_redemption" | "invalid_link";
 
 const schema = z.object({
-  password: z.string().min(1, "Enter your password."),
+  password: z.string().min(1, { error: () => tStatic(IAM_INVITATION_MODULE, "CONFIRM_PASSWORD.ENTER_PASSWORD") }),
 });
 
 type Values = z.infer<typeof schema>;
@@ -67,6 +84,7 @@ export function InvitationConfirmPassword({
   onSuccess,
   onExit,
 }: Props) {
+  const { t } = useT(IAM_INVITATION_MODULE);
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [rejected, setRejected] = useState(false);
@@ -179,7 +197,7 @@ export function InvitationConfirmPassword({
           {CONFIRM_PASSWORD_COPY.locked}
         </div>
         <LoginReturnLink preferOidcLogin className="oidc-sci-fi-link">
-          Back to login
+          {t("CONFIRM_PASSWORD.BACK_TO_LOGIN")}
         </LoginReturnLink>
       </div>
     );
@@ -220,10 +238,10 @@ export function InvitationConfirmPassword({
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between items-center">
                   <label htmlFor="invitation-password" className="oidc-sci-fi-label">
-                    Password
+                    {t("CONFIRM_PASSWORD.PASSWORD_LABEL")}
                   </label>
                   <Link to={forgotPasswordUrl} className="oidc-sci-fi-link" style={{ fontSize: "0.75rem" }}>
-                    Forgot password?
+                    {t("CONFIRM_PASSWORD.FORGOT_PASSWORD")}
                   </Link>
                 </div>
                 <FormControl>
@@ -248,7 +266,7 @@ export function InvitationConfirmPassword({
                       onClick={() => setShowPassword((v) => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2"
                       style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={showPassword ? t("CONFIRM_PASSWORD.HIDE_PASSWORD") : t("CONFIRM_PASSWORD.SHOW_PASSWORD")}
                     >
                       {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -276,10 +294,10 @@ export function InvitationConfirmPassword({
           {pending ? (
             <>
               <Loader size={16} className="oidc-spin-slow" />
-              <span>Verifying…</span>
+              <span>{t("CONFIRM_PASSWORD.VERIFYING")}</span>
             </>
           ) : (
-            <span>Continue</span>
+            <span>{t("common:CONTINUE")}</span>
           )}
         </button>
       </form>

@@ -23,6 +23,7 @@ import { useGetMe, useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/u
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Pen } from "lucide-react";
 import { useState } from "react";
+import { useT } from "@seliseblocks/genesis-os/i18n";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { inviteUserFormDefaultValue, inviteUserFormSchema } from "./utils";
@@ -35,6 +36,7 @@ type UpdateUserProps = {
 };
 
 export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: UpdateUserProps) => {
+  const { t } = useT("iam.profile");
   const [open, setOpen] = useState<boolean>(false);
   const { data: userByIdData, isLoading, isFetching } = useGetUserById(
     { id, projectKey },
@@ -65,99 +67,107 @@ export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: Up
         lastName: values.lastName,
       });
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });
-      showSuccessToast({ description: "User updated successfully" });
+      showSuccessToast({ description: t("UPDATE_USER.UPDATED") });
       form.reset();
       setOpen(false);
     } catch (error) {
       if (isErrorWithErrors(error)) return showErrorToast({ errors: error.errors });
-      showErrorToast({ errors: "Something went wrong" });
+      showErrorToast({ errors: t("UPDATE_USER.SOMETHING_WENT_WRONG") });
     }
   };
 
+  const renderTrigger = () => {
+    if (iconOnly) {
+      return (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={own ? t("UPDATE_USER.EDIT_PROFILE_ARIA") : t("UPDATE_USER.EDIT_USER_ARIA")}
+          className="h-7 w-7 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <Pen className="h-3.5 w-3.5" />
+        </Button>
+      );
+    }
+    if (own) {
+      return (
+        <Button
+          className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-xs transition-all hover:bg-muted"
+        >
+          <Pen className="h-4 w-4" />
+          {t("UPDATE_USER.EDIT_PROFILE")}
+        </Button>
+      );
+    }
+    return (
+      <Button variant="outline" size="sm" className="gap-2">
+        <Pen className="h-4 w-4" />
+        <span className="sr-only sm:not-sr-only">{t("UPDATE_USER.EDIT_USER")}</span>
+      </Button>
+    );
+  };
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(value) => {
-        if (userData?.data) {
-          form.reset({
-            firstName: userData.data.firstName || "",
-            lastName: userData.data.lastName || "",
-          });
-        } else {
-          form.reset(inviteUserFormDefaultValue);
-        }
-        setOpen(value);
-      }}
-    >
-      <DialogTrigger asChild>
-        {iconOnly ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={own ? "Edit profile" : "Edit user"}
-            className="h-7 w-7 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <Pen className="h-3.5 w-3.5" />
-          </Button>
-        ) : own ? (
-          <Button
-            className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-xs transition-all hover:bg-muted"
-          >
-            <Pen className="h-4 w-4" />
-            Edit Profile
-          </Button>
-        ) : (
-          <Button variant="outline" size="sm" className="gap-2">
-            <Pen className="h-4 w-4" />
-            <span className="sr-only sm:not-sr-only">Edit User</span>
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Edit User</DialogTitle>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmitHandler)}>
-            <div className="flex flex-col gap-4">
-              <FormField
-                control={form.control}
-                name="firstName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>First name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter first name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="lastName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Last name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter last name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-            <DialogFooter className="mt-6">
-              <DialogClose asChild>
-                <Button variant="secondary" disabled={isPending}>
-                  Cancel
-                </Button>
-              </DialogClose>
-              <Button disabled={isPending || isLoading || isFetching || !isDirty}>Save</Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+  <Dialog
+    open={open}
+    onOpenChange={(value) => {
+      if (userData?.data) {
+        form.reset({
+          firstName: userData.data.firstName || "",
+          lastName: userData.data.lastName || "",
+        });
+      } else {
+        form.reset(inviteUserFormDefaultValue);
+      }
+      setOpen(value);
+    }}
+  >
+    <DialogTrigger asChild>{renderTrigger()}</DialogTrigger>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>{t("UPDATE_USER.EDIT_USER")}</DialogTitle>
+      </DialogHeader>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmitHandler)}>
+          <div className="flex flex-col gap-4">
+            <FormField
+              control={form.control}
+              name="firstName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("UPDATE_USER.FIRST_NAME")}</FormLabel>
+                  <FormControl>
+                    <Input placeholder={t("UPDATE_USER.FIRST_NAME_PLACEHOLDER")} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="lastName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("UPDATE_USER.LAST_NAME")}</FormLabel>
+                  <FormControl>
+                    <Input placeholder={t("UPDATE_USER.LAST_NAME_PLACEHOLDER")} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          <DialogFooter className="mt-6">
+            <DialogClose asChild>
+              <Button variant="secondary" disabled={isPending}>
+                {t("common:CANCEL")}
+              </Button>
+            </DialogClose>
+            <Button disabled={isPending || isLoading || isFetching || !isDirty}>{t("common:SAVE")}</Button>
+          </DialogFooter>
+        </form>
+      </Form>
+    </DialogContent>
+  </Dialog>
   );
 };

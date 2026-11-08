@@ -10,6 +10,7 @@ import {
   Code2,
   type LucideIcon,
 } from "lucide-react";
+import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
 
 export type OidcAnimPhase = "idle" | "submitting" | "succeeded" | "failed";
 
@@ -140,30 +141,59 @@ function ProgressBar({
 }
 
 /* ── Service node card ──────────────────────────────────────── */
+function getNodeBadgeText(
+  t: TFunction,
+  { isFailed, isDone, isActive }: { isFailed: boolean; isDone: boolean; isActive: boolean },
+) {
+  if (isFailed) return t("NODES_PANEL.BADGE_FAILED");
+  if (isDone) return t("NODES_PANEL.BADGE_COMPLETE");
+  if (isActive) return t("NODES_PANEL.BADGE_PROCESSING");
+  return t("NODES_PANEL.BADGE_STANDBY");
+}
+
+type NodeTone = "failed" | "done" | "active" | "idle";
+
+function nodeTone({ isFailed, isDone, isActive }: { isFailed: boolean; isDone: boolean; isActive: boolean }): NodeTone {
+  if (isFailed) return "failed";
+  if (isDone) return "done";
+  if (isActive) return "active";
+  return "idle";
+}
+
+const NODE_LOOK: Record<NodeTone, { badge: React.CSSProperties; text: string }> = {
+  failed: { badge: { background: "var(--danger-soft)", color: "var(--danger)" }, text: "var(--danger)" },
+  done: { badge: { background: "var(--success-soft)", color: "var(--success)" }, text: "var(--success)" },
+  active: { badge: { background: "var(--accent-soft)", color: "var(--accent2)" }, text: "var(--accent2)" },
+  idle: { badge: { background: "var(--node-divider)", color: "var(--fg)" }, text: "var(--muted)" },
+};
+
+function getNodeDescription(
+  t: TFunction,
+  node: OidcServiceNode,
+  { isFailed, isDone }: { isFailed: boolean; isDone: boolean },
+) {
+  if (isFailed) return node.failLabel ?? t("NODES_PANEL.STEP_FAILED");
+  if (isDone) return node.successLabel;
+  return node.activeLabel;
+}
+
 function NodeCard({
   node, state, floatIdx, indeterminate = false, showProgress = true, floating = true,
 }: {
   node: OidcServiceNode; state: NodeState; floatIdx: number;
   indeterminate?: boolean; showProgress?: boolean; floating?: boolean;
 }) {
+  const { t } = useT("iam.oidc");
   const isActive = state === "active";
   const isDone   = state === "complete";
   const isFailed = state === "failed";
 
-  const badgeStyle: React.CSSProperties = isFailed
-    ? { background: "var(--danger-soft)", color: "var(--danger)" }
-    : isDone
-    ? { background: "var(--success-soft)", color: "var(--success)" }
-    : isActive
-    ? { background: "var(--accent-soft)",  color: "var(--accent2)" }
-    : { background: "var(--node-divider)", color: "var(--fg)" };
-
-  const badgeText = isFailed ? "Failed" : isDone ? "Complete" : isActive ? "Processing" : "Standby";
-  const descColor = isFailed ? "var(--danger)" : isDone ? "var(--success)" : isActive ? "var(--accent2)" : "var(--muted)";
-  const description = isFailed
-    ? (node.failLabel ?? "Step failed — see details below")
-    : isDone   ? node.successLabel
-    : node.activeLabel;
+  const look = NODE_LOOK[nodeTone({ isFailed, isDone, isActive })];
+  const badgeStyle = look.badge;
+  const badgeText = getNodeBadgeText(t, { isFailed, isDone, isActive });
+  const stateLabel = isFailed ? t("NODES_PANEL.ABORTED") : t("NODES_PANEL.COMPLETE");
+  const descColor = look.text;
+  const description = getNodeDescription(t, node, { isFailed, isDone });
 
   const IconComp = ICON_MAP[node.icon] ?? KeyRound;
   const floatClass = floating ? `oidc-node-float-${floatIdx}` : "";
@@ -201,7 +231,7 @@ function NodeCard({
           failed={isFailed}
           completed={isDone}
           indeterminate={indeterminate}
-          label={isFailed ? "Aborted" : isDone ? "Complete" : node.activeLabel}
+          label={isFailed || isDone ? stateLabel : node.activeLabel}
         />
       )}
     </div>
@@ -453,6 +483,9 @@ function CascadeBody({
 }
 
 export function NodesPanelOidc({ config, phase, errorMessage, idleContent, instant }: Readonly<NodesPanelOidcProps>) {
+  // Subscribes the panel to the text of this module, so it redraws when another language arrives. The
+  // labels are read from `config` as they are drawn.
+  useT("iam.oidc");
   const [visible, setVisible] = useState<VisibleNode[]>([]);
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([]);
   const terminalRef = useRef<HTMLDivElement>(null);

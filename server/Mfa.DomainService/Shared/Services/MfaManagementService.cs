@@ -1,6 +1,7 @@
 ﻿using Blocks.Genesis;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
+using Iam.DomainService.Actions;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Shared;
 using Blocks.Genesis.Entities.Iam;
@@ -16,14 +17,17 @@ namespace Mfa.DomainService.Services
         private readonly IMfaAuditService? _auditService;
         private readonly ICacheClient _cacheClient;
         private readonly ITotpSecretResolver _totpSecrets;
+        private readonly IActionPublisher? _actionPublisher;
 
         public MfaManagementService(IOtpServiceFactory otpServiceFactory,
                                     IMfaManagementRepository mdmRepository,
                                     IMfaConfigurationService configurationService,
                                     ICacheClient cacheClient,
                                     ITotpSecretResolver totpSecrets,
-                                    IMfaAuditService? auditService = null)
+                                    IMfaAuditService? auditService = null,
+                                    IActionPublisher? actionPublisher = null)
         {
+            _actionPublisher = actionPublisher;
             _otpServiceFactory = otpServiceFactory;
             _mfaRepository = mdmRepository;
             _configurationService = configurationService;
@@ -99,6 +103,7 @@ namespace Mfa.DomainService.Services
                               };
 
                     await _mfaRepository.UpdatePartialAsync<UserMfaInfo>(verificationResponse.UserId ?? string.Empty, updates, "Users");
+                    await PublishMfaChangedAsync(verificationResponse.UserId, enabled: true, by: "self");
                 }
 
                 await WriteAuditAsync("mfa_verification_success", verificationResponse.UserId, request.AuthType, "success");
@@ -110,6 +115,11 @@ namespace Mfa.DomainService.Services
 
             return verificationResponse;
         }
+
+        private Task PublishMfaChangedAsync(string? userId, bool enabled, string by) =>
+            _actionPublisher is null || string.IsNullOrWhiteSpace(userId)
+                ? Task.CompletedTask
+                : _actionPublisher.PublishAsync(IamActionNames.UserMfaChanged, new { userId, enabled, by });
 
         public async Task<BaseResponse> DisableUserMfa(DisableUserMfaRequest request)
         {
@@ -141,6 +151,8 @@ namespace Mfa.DomainService.Services
             // A disabled authenticator must not keep working: the old secret goes (retired in Blocks
             // Secrets), and the next setup makes a new one.
             await TotpSecretRows.DeleteAsync(_mfaRepository, _totpSecrets, request.UserId);
+
+            await PublishMfaChangedAsync(request.UserId, enabled: false, by: isAdmin ? "admin" : "self");
 
             if (isAdmin)
             {

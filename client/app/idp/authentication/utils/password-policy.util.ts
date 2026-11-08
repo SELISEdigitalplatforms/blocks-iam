@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
+
+const IAM_SHARED_MODULE = "iam.shared";
 
 /**
  * The tenant's structured password rule, as published by `GET /api/idp/oidc-ui-config`
@@ -96,20 +99,20 @@ export const buildPasswordPolicyRequirements = (
   if (hasValidBounds(policy)) {
     requirements.push({
       key: "length",
-      label: `Between ${policy.minLength} and ${policy.maxLength} characters`,
+      label: tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.LENGTH_RANGE", { min: policy.minLength, max: policy.maxLength }),
     });
   }
   if (policy.requireUppercase) {
-    requirements.push({ key: "uppercase", label: "At least one uppercase letter (A-Z)" });
+    requirements.push({ key: "uppercase", label: tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.UPPERCASE") });
   }
   if (policy.requireLowercase) {
-    requirements.push({ key: "lowercase", label: "At least one lowercase letter (a-z)" });
+    requirements.push({ key: "lowercase", label: tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.LOWERCASE") });
   }
   if (policy.requireNumbers) {
-    requirements.push({ key: "number", label: "At least one number (0-9)" });
+    requirements.push({ key: "number", label: tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.NUMBER") });
   }
   if (policy.requireSpecialChars) {
-    requirements.push({ key: "special", label: "At least one special character" });
+    requirements.push({ key: "special", label: tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.SPECIAL") });
   }
   return requirements;
 };
@@ -149,13 +152,13 @@ export const applyPasswordPolicyToSchema = (
   let result = schema;
   if (hasValidBounds(resolved)) {
     result = result
-      .min(resolved.minLength, `Password must be at least ${resolved.minLength} characters long`)
-      .max(resolved.maxLength, `Password must be at most ${resolved.maxLength} characters long`);
+      .min(resolved.minLength, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_MIN", { min: resolved.minLength }))
+      .max(resolved.maxLength, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_MAX", { max: resolved.maxLength }));
   }
-  if (resolved.requireUppercase) result = result.regex(ASCII_UPPER, "Must include an uppercase letter");
-  if (resolved.requireLowercase) result = result.regex(ASCII_LOWER, "Must include a lowercase letter");
-  if (resolved.requireNumbers) result = result.regex(ASCII_DIGIT, "Must include a number");
-  if (resolved.requireSpecialChars) result = result.regex(ASCII_SPECIAL, "Must include a special character");
+  if (resolved.requireUppercase) result = result.regex(ASCII_UPPER, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_UPPERCASE"));
+  if (resolved.requireLowercase) result = result.regex(ASCII_LOWER, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_LOWERCASE"));
+  if (resolved.requireNumbers) result = result.regex(ASCII_DIGIT, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_NUMBER"));
+  if (resolved.requireSpecialChars) result = result.regex(ASCII_SPECIAL, tStatic(IAM_SHARED_MODULE, "PASSWORD_POLICY.ERROR_SPECIAL"));
 
   // No client-side rule for a server-checked policy: the form must not pre-reject a password the
   // server would accept, and the server reports its own verdict on submit.

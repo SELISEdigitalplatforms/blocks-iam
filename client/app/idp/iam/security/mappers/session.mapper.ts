@@ -1,3 +1,4 @@
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
 import type {
   IApplicationApi,
   ISessionDetailsApi,
@@ -14,19 +15,24 @@ import type {
 } from "../view-models/session.view-model";
 import { formatAbsoluteWithSeconds, formatAbsoluteUtcWithSeconds, formatRelative } from "../utils/date-format";
 
-const STATUS_LABEL: Record<string, string> = {
-  Active: "Active",
-  Expired: "Expired",
-  Revoked: "Revoked",
+const IAM_SECURITY_MODULE = "iam.security";
+
+const statusLabel = (status: string): string => {
+  const labels: Record<string, string> = {
+    Active: tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.STATUS_ACTIVE"),
+    Expired: tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.STATUS_EXPIRED"),
+    Revoked: tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.STATUS_REVOKED"),
+  };
+  return labels[status] ?? status;
 };
 
 export const toSessionCardViewModel = (api: IUserSessionApi): ISessionCardViewModel => {
   const extraApps = Math.max(0, api.applicationCount - 1);
   return {
     id: api.sessionId,
-    deviceName: api.primaryDeviceName ?? "Unknown device",
-    browser: api.primaryBrowser ?? "Unknown browser",
-    operatingSystem: api.primaryOperatingSystem ?? "Unknown OS",
+    deviceName: api.primaryDeviceName ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_DEVICE"),
+    browser: api.primaryBrowser ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_BROWSER"),
+    operatingSystem: api.primaryOperatingSystem ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_OS"),
     ipAddress: api.primaryIpAddress ?? "—",
     lastActivityDisplay: formatRelative(api.lastActivityAt),
     expiresDisplay: formatAbsoluteWithSeconds(api.absoluteExpiry),
@@ -34,8 +40,8 @@ export const toSessionCardViewModel = (api: IUserSessionApi): ISessionCardViewMo
     isCurrent: api.isCurrent,
     applicationSummary:
       extraApps > 0
-        ? `+${extraApps} more app${extraApps === 1 ? "" : "s"}`
-        : `${api.applicationCount} app${api.applicationCount === 1 ? "" : "s"}`,
+        ? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.MORE_APPS", { count: extraApps })
+        : tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.APPS", { count: api.applicationCount }),
   };
 };
 
@@ -43,10 +49,10 @@ export const toSessionOverviewViewModel = (
   api: ISessionOverviewApi,
 ): ISessionOverviewViewModel => ({
   sessionId: api.sessionId,
-  statusLabel: STATUS_LABEL[api.status] ?? api.status,
-  deviceName: api.deviceName ?? "Unknown device",
-  browser: api.browser ?? "Unknown browser",
-  operatingSystem: api.operatingSystem ?? "Unknown OS",
+  statusLabel: statusLabel(api.status),
+  deviceName: api.deviceName ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_DEVICE"),
+  browser: api.browser ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_BROWSER"),
+  operatingSystem: api.operatingSystem ?? tStatic(IAM_SECURITY_MODULE, "SESSION_MAPPER.UNKNOWN_OS"),
   ipAddress: api.ipAddress ?? "—",
   startedAtDisplay: formatAbsoluteUtcWithSeconds(api.startedAt),
   lastActivityAtDisplay: formatRelative(api.lastActivityAt),
@@ -57,7 +63,7 @@ export const toSessionOverviewViewModel = (
 
 export const toApplicationViewModel = (api: IApplicationApi): IApplicationViewModel => ({
   clientName: api.clientName ?? api.clientId,
-  statusLabel: STATUS_LABEL[api.status] ?? api.status,
+  statusLabel: statusLabel(api.status),
   expiresDisplay: formatAbsoluteUtcWithSeconds(api.expiresAt),
   lastRotationDisplay: api.lastRotationAt ? formatAbsoluteUtcWithSeconds(api.lastRotationAt) : "—",
   rotationCountLabel: `${api.rotationCount}`,
