@@ -111,6 +111,23 @@ No Node process is required on the server at runtime.
 
 Controller route templates omit the `api` segment in code; `GlobalApiRoutePrefixConvention` in `Program.cs` prefixes `api` for all attribute-routed controllers. `/api` is reserved for the HTTP API; the React router redirects mistaken navigations to `/api` back home.
 
+## Role assignment
+
+After the endpoint permission check, organization callers may assign live roles they already
+hold and roles below their management roles. A role above the caller or in another branch is
+refused unless the caller has the existing top/system administrator authority. Roles and
+permissions are resolved from the database in the caller's current organization.
+
+This shared rule applies to user role grants and to the creator's automatic membership when
+`POST /api/iam/organizations/create` uses `createdFrom: 3`. A creator holding `org_admin` can
+receive `org_admin` in the new organization, either explicitly through `defaultRoleForMembers`
+or through the fallback to their current roles. The assignable-role picker and
+`GET /api/iam/grant-scope` include held roles too.
+
+Assigning a held role does not make it editable or make an existing peer user manageable.
+The separate checks for managing users, editing roles, direct permissions and organization
+scope still apply.
+
 ## Delegated access (RFC 8693 token exchange)
 
 IAM lets a background worker redeem a **delegation grant** for a short-lived access token carrying the

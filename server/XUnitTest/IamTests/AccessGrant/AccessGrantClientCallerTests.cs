@@ -106,10 +106,10 @@ namespace XUnitTest.IamTests.AccessGrant
 
         [Theory]
         [InlineData("viewer", true)]   // below the client's role
-        [InlineData("manager", false)] // held, but needs a role above it
+        [InlineData("manager", true)]  // held by the client
         [InlineData("admin", false)]   // above the client's tree
         [InlineData("owner", false)]   // outside the tree, carries billing
-        public async Task ClientAssignsOnlyRolesItManages(string slug, bool allowed)
+        public async Task ClientAssignsRolesItHoldsOrManages(string slug, bool allowed)
         {
             var service = _kit.Service();
 

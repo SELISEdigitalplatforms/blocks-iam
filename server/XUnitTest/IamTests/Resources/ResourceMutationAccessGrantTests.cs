@@ -306,19 +306,45 @@ namespace XUnitTest.IamTests.Resources
 
         // ---------- organizations/create (R7) ----------
 
-        [Fact]
-        public async Task CreatorMayOnlyBeGivenRolesTheCallerCouldAssign()
+        [Theory]
+        [InlineData("admin")]
+        [InlineData("owner")]
+        public async Task CreatorMayOnlyBeGivenRolesTheCallerCouldAssign(string requestedRole)
         {
             BeDescendant();
             var refused = await Create().CreateOrganizationAsync(new CreateOrganizationRequest
             {
                 Name = "New",
                 CreatedFrom = CreatedFrom.ConstructPortal,
-                DefaultRoleForMembers = ["owner"]
+                DefaultRoleForMembers = [requestedRole]
             });
 
             ShouldBeRefused(refused);
             _repo.Verify(r => r.SaveOrganizationAsync(It.IsAny<Organization>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("manager")]
+        [InlineData(null)]
+        public async Task DescendantCreatorReceivesItsOwnRoleExplicitlyOrByDefault(string? requestedRole)
+        {
+            BeDescendant();
+            var caller = _kit.FindUser("caller")!;
+            _users.Setup(u => u.GetUserByIdAsync("caller")).ReturnsAsync(caller);
+            _users.Setup(u => u.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
+
+            var result = await Create().CreateOrganizationAsync(new CreateOrganizationRequest
+            {
+                Name = "New",
+                CreatedFrom = CreatedFrom.ConstructPortal,
+                DefaultRoleForMembers = requestedRole is null ? [] : [requestedRole]
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.SaveOrganizationAsync(It.Is<Organization>(o => o.ItemId == result.ItemId)), Times.Once);
+            caller.OrganizationIds.Should().Contain(result.ItemId);
+            caller.Roles[result.ItemId].Should().Equal("manager");
+            _users.Verify(u => u.UpdateUserAsync(caller), Times.Once);
         }
 
         [Fact]
