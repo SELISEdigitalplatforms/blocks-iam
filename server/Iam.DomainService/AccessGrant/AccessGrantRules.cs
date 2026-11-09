@@ -10,7 +10,8 @@ namespace Iam.DomainService.AccessGrant
     /// refuse; the service logs it and refuses the request. Every check passes for the system user, so a
     /// single-organization tenant -- whose callers always resolve to <c>default</c> -- is never
     /// affected. Any other caller is a top user (its manage power comes from a standalone role or a
-    /// direct permission: the organization's owner) or a descendant (acts only below its own roles).
+    /// direct permission: the organization's owner) or a descendant (may assign held roles and
+    /// roles below its management roles, but manages only users and roles below itself).
     /// Nobody edits itself or a role it holds, copies from <c>default</c> are read-only outside
     /// <c>default</c>, and a slug the organization does not know is never a source of power.
     /// </remarks>
@@ -39,8 +40,8 @@ namespace Iam.DomainService.AccessGrant
             || string.Equals(resource, MutateUsersPermission, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
-        /// R1. Role R may be given when it is a live role in O and the caller is a top user, or R is
-        /// below a role the caller holds. A copy from <c>default</c> may be given like any role.
+        /// R1. Role R may be given when it is a live role in O and the caller is a top user, holds R,
+        /// or manages R through a role above it. A copy from <c>default</c> may be given like any role.
         /// </summary>
         public static GrantDenial? CheckAssignRole(GrantScope scope, string slug, string rule = AssignRole)
         {
@@ -56,7 +57,7 @@ namespace Iam.DomainService.AccessGrant
                 return new GrantDenial(rule, slug ?? string.Empty, "role_not_found_or_archived");
             }
 
-            return scope.IsTop || scope.ManagedRoles.Contains(role.Slug)
+            return scope.IsTop || scope.HoldsOrManages(role.Slug)
                 ? null
                 : new GrantDenial(rule, role.Slug, "role_not_below_caller");
         }

@@ -273,7 +273,7 @@ namespace XUnitTest.IamTests.AccessGrant
             var result = await _kit.Service().GetAssignableRolesAsync();
 
             result.Hierarchy.Select(r => r.Slug).Concat(result.Standalone.Select(r => r.Slug))
-                .Should().BeEquivalentTo("viewer");
+                .Should().BeEquivalentTo("manager", "viewer");
         }
 
         [Fact]
@@ -297,7 +297,7 @@ namespace XUnitTest.IamTests.AccessGrant
             result.HeldRoles.Should().Equal("manager");
             result.PowerRoles.Should().Equal("manager");
             result.ManagedRoles.Should().Equal("viewer");
-            result.AssignableRoles.Should().Equal("viewer");
+            result.AssignableRoles.Should().Equal("manager", "viewer");
             result.HeldPermissions.Should().Equal(
                 AccessGrantRules.MutateRolesPermission, AccessGrantRules.MutateUsersPermission, "read", "write");
             result.OwnPermissions.Should().Equal(result.HeldPermissions);

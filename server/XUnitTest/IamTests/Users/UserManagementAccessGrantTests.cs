@@ -121,6 +121,30 @@ namespace XUnitTest.IamTests.Users
             _created.Should().BeEmpty();
         }
 
+        [Theory]
+        [InlineData("manager", true)]
+        [InlineData("admin", false)]
+        public async Task CreateUserMayAssignTheCallersRoleButNotAHigherRole(string role, bool allowed)
+        {
+            var result = await Create().CreateUserAsync(new CreateUserRequest
+            {
+                Email = "new@example.com",
+                OrganizationId = Org,
+                Roles = [role]
+            });
+
+            result.IsSuccess.Should().Be(allowed);
+            if (allowed)
+            {
+                _created.Should().ContainSingle().Which.Roles[Org].Should().Equal(role);
+            }
+            else
+            {
+                ShouldBeRefused(result);
+                _created.Should().BeEmpty();
+            }
+        }
+
         [Fact]
         public async Task TopUserCreatesAUserWithAnyRoleAndPermission()
         {
@@ -225,6 +249,27 @@ namespace XUnitTest.IamTests.Users
         }
 
         // ---------- users/access ----------
+
+        [Theory]
+        [InlineData("manager", true)]
+        [InlineData("admin", false)]
+        public async Task AccessChangeMayPromoteAMemberToTheCallersRoleButNotAboveIt(string role, bool allowed)
+        {
+            var member = _kit.WithUser("member", ["viewer"]);
+
+            var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "member", OrganizationId = Org, Roles = [role]
+            });
+
+            result.IsSuccess.Should().Be(allowed);
+            member.Roles[Org].Should().Equal(allowed ? role : "viewer");
+            if (!allowed)
+            {
+                ShouldBeRefused(result);
+                _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+            }
+        }
 
         [Fact]
         public async Task AccessChangeIsCheckedOnTheDeltaOnly()
