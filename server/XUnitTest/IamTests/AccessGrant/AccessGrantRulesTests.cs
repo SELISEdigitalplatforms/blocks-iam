@@ -131,15 +131,30 @@ namespace XUnitTest.IamTests.AccessGrant
 
         [Theory]
         [InlineData("viewer", true)]   // below the held role
-        [InlineData("manager", false)] // its own role: a peer, not below
+        [InlineData("manager", true)]  // the role the caller holds
+        [InlineData("MANAGER", true)]  // role slugs are case-insensitive
         [InlineData("admin", false)]   // above
         [InlineData("auditor", false)] // standalone
         [InlineData("owner", false)]
-        public void DescendantMayGiveOnlyRolesBelowIt(string slug, bool allowed)
+        public void DescendantMayGiveHeldRolesAndRolesBelowIt(string slug, bool allowed)
         {
             var scope = ScopeOf("c", roles: ["manager"]);
 
             (AccessGrantRules.CheckAssignRole(scope, slug) is null).Should().Be(allowed);
+        }
+
+        [Fact]
+        public void CallerMayAssignEachLiveHeldRoleButNotAnUnknownOrArchivedRole()
+        {
+            _kit.WithRole("retired");
+            RoleOf("retired").IsArchived = true;
+            var scope = ScopeOf("c", roles: ["manager", "auditor", "retired", "ghost"]);
+
+            AccessGrantRules.CheckAssignRole(scope, "manager").Should().BeNull();
+            AccessGrantRules.CheckAssignRole(scope, "auditor").Should().BeNull();
+            AccessGrantRules.CheckAssignRole(scope, "retired")!.Reason.Should().Be("role_not_found_or_archived");
+            AccessGrantRules.CheckAssignRole(scope, "ghost")!.Reason.Should().Be("role_not_found_or_archived");
+            AccessGrantRules.CheckAssignRole(scope, "admin")!.Reason.Should().Be("role_not_below_caller");
         }
 
         [Fact]
