@@ -1016,6 +1016,88 @@ namespace XUnitTest.Auth
             info["email"].Should().Be("jane@x.com");
         }
 
+        // ---------- BuildStandardOidcUserInfoAsync ----------
+
+        [Fact]
+        public async Task BuildStandardOidcUserInfo_NoSub_ReturnsNull()
+        {
+            var info = await Create().BuildStandardOidcUserInfoAsync(new ClaimsPrincipal());
+
+            info.Should().BeNull();
+            _repo.Verify(r => r.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task BuildStandardOidcUserInfo_UnknownUser_ReturnsNull()
+        {
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("sub", "client-1") }));
+            _repo.Setup(r => r.GetUserByIdAsync("client-1")).ReturnsAsync((User)null!);
+
+            var info = await Create().BuildStandardOidcUserInfoAsync(principal);
+
+            info.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task BuildStandardOidcUserInfo_TokenWithoutScopeClaim_ReturnsProfileAndEmailOnly()
+        {
+            // IAM access tokens carry no scope claim, and they do carry Blocks claims that must stay out.
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim("sub", "user-9"),
+                new Claim(BlocksContext.TENANT_ID_CLAIM, TenantId),
+                new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, "default"),
+                new Claim(BlocksContext.ROLES_CLAIM, "admin"),
+                new Claim(BlocksContext.PERMISSION_CLAIM, "p1")
+            }));
+            _repo.Setup(r => r.GetUserByIdAsync("user-9")).ReturnsAsync(new User
+            {
+                ItemId = "user-9", UserName = "jane@x.com", Email = "jane@x.com", PhoneNumber = "+8801700000000"
+            });
+
+            var info = await Create().BuildStandardOidcUserInfoAsync(principal);
+
+            info.Should().BeEquivalentTo(new Dictionary<string, object>
+            {
+                ["sub"] = "user-9",
+                ["preferred_username"] = "jane@x.com",
+                ["email"] = "jane@x.com"
+            });
+        }
+
+        [Fact]
+        public async Task BuildStandardOidcUserInfo_TokenWithScopeClaim_HonoursIt()
+        {
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim("sub", "user-9"),
+                new Claim("scope", "openid phone")
+            }));
+            _repo.Setup(r => r.GetUserByIdAsync("user-9")).ReturnsAsync(new User
+            {
+                ItemId = "user-9", FirstName = "Jane", UserName = "jane", Email = "jane@x.com", PhoneNumber = "+8801700000000"
+            });
+
+            var info = await Create().BuildStandardOidcUserInfoAsync(principal);
+
+            info.Should().BeEquivalentTo(new Dictionary<string, object>
+            {
+                ["sub"] = "user-9",
+                ["phone_number"] = "+8801700000000"
+            });
+        }
+
+        [Fact]
+        public async Task BuildStandardOidcUserInfo_UserIdClaimFallback_IsUsedAsSub()
+        {
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(BlocksContext.USER_ID_CLAIM, "user-9") }));
+            _repo.Setup(r => r.GetUserByIdAsync("user-9")).ReturnsAsync(new User { ItemId = "user-9", UserName = "jane" });
+
+            var info = await Create().BuildStandardOidcUserInfoAsync(principal);
+
+            info!["sub"].Should().Be("user-9");
+        }
+
         // ---------- Identity provider pass-throughs ----------
 
         [Fact]

@@ -1112,6 +1112,33 @@ namespace Authentication.DomainService.Authentication
             return (true, userInfo);
         }
 
+        public async Task<Dictionary<string, object>?> BuildStandardOidcUserInfoAsync(ClaimsPrincipal principal)
+        {
+            ArgumentNullException.ThrowIfNull(principal);
+
+            var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                ?? principal.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value;
+
+            if (string.IsNullOrWhiteSpace(sub))
+            {
+                return null;
+            }
+
+            // A token whose sub is not a user (a client-credentials token, a deleted user) has no
+            // UserInfo to give.
+            var user = await _authenticationRepository.GetUserByIdAsync(sub);
+            if (user == null)
+            {
+                return null;
+            }
+
+            var grantedScopes = GetGrantedScopes(principal);
+            return OidcStandardUserInfo.Build(
+                user,
+                sub,
+                grantedScopes.Count == 0 ? OidcStandardUserInfo.DefaultScopes : grantedScopes);
+        }
+
         private static HashSet<string> GetGrantedScopes(ClaimsPrincipal principal)
         {
             var scopeValues = principal.FindAll("scope")

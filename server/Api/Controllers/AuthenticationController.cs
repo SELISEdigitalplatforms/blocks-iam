@@ -447,10 +447,9 @@ public class AuthenticationController : ControllerBase
     #region User Information & Discovery
 
     /// <summary>
-    /// Retrieve authenticated user information (OIDC UserInfo Endpoint)
-    /// Returns user claims per OpenID Connect 1.0 specification
-    /// Includes standard OIDC claims (sub, email, name, picture) and custom Blocks claims
-    /// RFC 3986: OpenID Connect UserInfo Endpoint
+    /// Retrieve authenticated user information for Blocks apps.
+    /// Returns sub, name, preferred_username and email plus the Blocks claims (tenant, organization,
+    /// roles, permissions). Third-party relying parties use the standard GET/POST auth/userinfo.
     /// </summary>
     [HttpGet("me")]
     [Authorize]
@@ -460,6 +459,29 @@ public class AuthenticationController : ControllerBase
         if (!isValid)
         {
             return Unauthorized(new { error = "invalid_token", error_description = "Missing required 'sub' claim in token" });
+        }
+
+        return Ok(userInfo);
+    }
+
+    /// <summary>
+    /// OpenID Connect UserInfo endpoint (OpenID Connect Core 1.0 §5.3), the URL discovery advertises
+    /// as userinfo_endpoint. Accepts GET and POST with a Bearer access token and returns standard
+    /// claims only (sub, profile and email claims); Blocks-specific data stays on GET auth/me.
+    /// </summary>
+    [HttpGet("userinfo")]
+    [HttpPost("userinfo")]
+    [Authorize]
+    [Produces("application/json")]
+    public async Task<IActionResult> GetOidcUserInfo()
+    {
+        var userInfo = await _authenticationService.BuildStandardOidcUserInfoAsync(User);
+        if (userInfo == null)
+        {
+            const string description = "The access token does not identify a user";
+            // RFC 6750 §3, as OpenID Connect Core 1.0 §5.3.3 requires for UserInfo errors.
+            Response.Headers.WWWAuthenticate = $"Bearer error=\"invalid_token\", error_description=\"{description}\"";
+            return Unauthorized(new { error = "invalid_token", error_description = description });
         }
 
         return Ok(userInfo);

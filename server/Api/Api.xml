@@ -150,10 +150,16 @@
         </member>
         <member name="M:Api.Controllers.AuthenticationController.RetrieveUserInformation">
             <summary>
-            Retrieve authenticated user information (OIDC UserInfo Endpoint)
-            Returns user claims per OpenID Connect 1.0 specification
-            Includes standard OIDC claims (sub, email, name, picture) and custom Blocks claims
-            RFC 3986: OpenID Connect UserInfo Endpoint
+            Retrieve authenticated user information for Blocks apps.
+            Returns sub, name, preferred_username and email plus the Blocks claims (tenant, organization,
+            roles, permissions). Third-party relying parties use the standard GET/POST auth/userinfo.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.GetOidcUserInfo">
+            <summary>
+            OpenID Connect UserInfo endpoint (OpenID Connect Core 1.0 §5.3), the URL discovery advertises
+            as userinfo_endpoint. Accepts GET and POST with a Bearer access token and returns standard
+            claims only (sub, profile and email claims); Blocks-specific data stays on GET auth/me.
             </summary>
         </member>
         <member name="M:Api.Controllers.AuthenticationController.CreateIdentityProvider(Authentication.DomainService.Shared.RequestModel.SaveIdentityProviderRequest)">
