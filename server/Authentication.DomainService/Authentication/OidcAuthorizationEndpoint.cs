@@ -534,13 +534,24 @@ namespace Authentication.DomainService.Authentication
                     OrganizationAccessResolver.Resolve(user, requestedOrganizationId: null, settings.IsMultiOrgEnabled));
             }
 
+            // A link session's organization is used as it is, as before (Q10): only its status is checked.
+            if (matchedLinkSession != null)
+            {
+                return await OrganizationAccessResolver.RecheckStoredOrganizationAsync(
+                    _resourceRepository,
+                    _logger,
+                    user,
+                    matchedLinkSession.OrganizationId,
+                    settings);
+            }
+
             return await OrganizationAccessResolver.ResolveForIssuanceAsync(
                 _resourceRepository,
                 _logger,
                 user,
-                requestedOrganizationId: matchedLinkSession?.OrganizationId,
-                isExplicit: matchedLinkSession != null,
-                isLinkOrganization: matchedLinkSession != null,
+                requestedOrganizationId: null,
+                isExplicit: false,
+                isLinkOrganization: false,
                 settings);
         }
 

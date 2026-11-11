@@ -124,7 +124,7 @@ namespace XUnitTest.Auth.DisabledOrganizations
             _jwtProvider.Setup(p => p.ResolveOrganizationAsync(It.IsAny<User>(), It.IsAny<TokenRequest>()))
                 .ReturnsAsync(JwtAccessTokenProvider.OrganizationRefusal(outcome));
 
-            var result = await Create().ManageTokenAsync(MakeRequest(GrantTypes.Password), new IdentityConfiguration(), new User { ItemId = "u1", Email = "e@x.com" });
+            var result = await Create().ManageTokenAsync(MakeRequest(GrantTypes.Social), new IdentityConfiguration(), new User { ItemId = "u1", Email = "e@x.com" });
 
             result.StatusCode.Should().Be(status);
             result.Error.Should().Be(error);

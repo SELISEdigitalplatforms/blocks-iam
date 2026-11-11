@@ -19,12 +19,11 @@ using Microsoft.AspNetCore.Http;
 namespace Authentication.DomainService.OAuth
 {
     /// <summary>The resolved roles/permissions of a token together with the organization scope they were read from.</summary>
-    /// <param name="OrganizationStatus">The <c>org_status</c> claim (<c>"disabled"</c> for the all-disabled "no-org" token), or null.</param>
-    public sealed record TokenClaimSet(ResolvedAuthorizationClaims ResolvedClaims, OrganizationScope OrganizationScope, string? OrganizationStatus = null);
+    public sealed record TokenClaimSet(ResolvedAuthorizationClaims ResolvedClaims, OrganizationScope OrganizationScope);
 
     public sealed class JwtAccessTokenProvider : IJwtAccessTokenProvider
     {
-        /// <summary>The organization status claim; see <see cref="TokenClaimSet.OrganizationStatus"/>.</summary>
+        /// <summary>The organization status claim, <c>"disabled"</c> on the all-disabled "no-org" token only (spec #668 §6.4).</summary>
         public const string OrganizationStatusClaim = "org_status";
 
         private readonly ILogger<JwtAccessTokenProvider> _logger;
@@ -83,7 +82,7 @@ namespace Authentication.DomainService.OAuth
             // the requested organization here instead would mint a token whose claim and whose
             // role set disagree.
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, decision.Scope.ClaimValue, state?.Scope);
-            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, new TokenClaimSet(resolvedClaims, decision.Scope, decision.OrganizationStatus), tokenRequest, stateInfo: state);
+            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, new TokenClaimSet(resolvedClaims, decision.Scope), tokenRequest, stateInfo: state);
         }
 
         /// <inheritdoc />
@@ -184,13 +183,13 @@ namespace Authentication.DomainService.OAuth
             };
 
             var claimsIdentity = new ClaimsIdentity("seliseblocks-authentication");
-            AddClaims(claimsIdentity, tenant, user, effectiveClaims, tokenRequest, organizationScope, stateInfo: stateInfo, organizationStatus: claimSet.OrganizationStatus);
+            AddClaims(claimsIdentity, tenant, user, effectiveClaims, tokenRequest, organizationScope, stateInfo: stateInfo);
             jwtAccessToken.Claims = claimsIdentity.Claims;
 
             return jwtAccessToken;
         }
 
-        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, User user, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, OrganizationScope organizationScope, StateInfo? stateInfo = null, string? organizationStatus = null)
+        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, User user, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, OrganizationScope organizationScope, StateInfo? stateInfo = null)
         {
 
             claimsIdentity.AddClaim(new Claim(BlocksContext.SUBJECT_CLAIM, $"blocks|{user.ItemId}"));
@@ -205,6 +204,7 @@ namespace Authentication.DomainService.OAuth
             claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, organizationScope.ClaimValue));
             // Only on the all-disabled "no-org" token (spec #668 D3), so apps show the disabled message rather
             // than new-user onboarding. Absent on every other token.
+            var organizationStatus = tokenRequest.OrganizationDecision?.OrganizationStatus;
             if (!string.IsNullOrWhiteSpace(organizationStatus))
             {
                 claimsIdentity.AddClaim(new Claim(OrganizationStatusClaim, organizationStatus));

@@ -204,18 +204,8 @@ namespace Iam.DomainService.Utilities
             ArgumentNullException.ThrowIfNull(organizationStatuses);
             ArgumentNullException.ThrowIfNull(hasAccess);
 
-            // Rule 3: active means the document exists and is not disabled; a missing document is not active.
-            bool IsActive(string? organizationId) =>
-                IsReservedOrganizationId(organizationId)
-                || (organizationId is not null
-                    && organizationStatuses.TryGetValue(organizationId, out var isDisabled)
-                    && !isDisabled);
-
-            var isRequestedMembership = !string.IsNullOrWhiteSpace(requestedOrganizationId)
-                && !string.Equals(requestedOrganizationId, IdpConstants.NoOrganizationId, StringComparison.Ordinal)
-                && hasAccess(user, requestedOrganizationId);
-
-            if (isExplicit && isLinkOrganization && !string.IsNullOrWhiteSpace(requestedOrganizationId) && !IsActive(requestedOrganizationId))
+            var hasRequest = !string.IsNullOrWhiteSpace(requestedOrganizationId);
+            if (hasRequest && isExplicit && isLinkOrganization && !IsActive(requestedOrganizationId, organizationStatuses))
             {
                 return Refused(OrganizationIssuanceOutcome.OrganizationDisabled);
             }
@@ -223,9 +213,11 @@ namespace Iam.DomainService.Utilities
             // Rule 4: an explicit organization the user belongs to is that organization or a refusal, never a
             // fallback. One the user does not belong to is ignored, as before; "no-org" is never honoured.
             // A server-filled preference is honoured only while active; otherwise rule 5 decides.
-            if (isRequestedMembership)
+            if (hasRequest
+                && !string.Equals(requestedOrganizationId, IdpConstants.NoOrganizationId, StringComparison.Ordinal)
+                && hasAccess(user, requestedOrganizationId))
             {
-                if (IsActive(requestedOrganizationId))
+                if (IsActive(requestedOrganizationId, organizationStatuses))
                 {
                     return Issued(Organization(requestedOrganizationId!));
                 }
@@ -236,15 +228,25 @@ namespace Iam.DomainService.Utilities
                 }
             }
 
+            return ResolveFallback(user, organizationStatuses, allowNoOrgSignIn, hasAccess);
+        }
+
+        // Rules 5-7: nothing (usable) was requested.
+        private static OrganizationIssuanceDecision ResolveFallback(
+            User user,
+            IReadOnlyDictionary<string, bool> organizationStatuses,
+            bool allowNoOrgSignIn,
+            Func<User, string?, bool> hasAccess)
+        {
             // Rule 5: last used if it is still a membership and active, else the first active membership in the
             // order the sign-in path has always used.
-            if (hasAccess(user, user.LastUsedOrganizationId) && IsActive(user.LastUsedOrganizationId))
+            if (hasAccess(user, user.LastUsedOrganizationId) && IsActive(user.LastUsedOrganizationId, organizationStatuses))
             {
                 return Issued(Organization(user.LastUsedOrganizationId!));
             }
 
             var memberships = Memberships(user).ToList();
-            var firstActive = memberships.FirstOrDefault(IsActive);
+            var firstActive = memberships.FirstOrDefault(id => IsActive(id, organizationStatuses));
             if (firstActive is not null)
             {
                 return Issued(Organization(firstActive));
@@ -260,6 +262,20 @@ namespace Iam.DomainService.Utilities
             return allowNoOrgSignIn
                 ? Issued(NoOrganizationScope, DisabledOrganizationStatus)
                 : Refused(OrganizationIssuanceOutcome.OrganizationDisabled);
+        }
+
+        // Rule 3: active means the document exists and is not disabled; a missing document is not active. The
+        // sentinels always count as active.
+        private static bool IsActive(string? organizationId, IReadOnlyDictionary<string, bool> organizationStatuses)
+        {
+            if (IsReservedOrganizationId(organizationId))
+            {
+                return true;
+            }
+
+            return organizationId is not null
+                && organizationStatuses.TryGetValue(organizationId, out var isDisabled)
+                && !isDisabled;
         }
 
         /// <summary>The decision for an issuance whose organization was not status-checked (multi-org off, impersonation).</summary>

@@ -202,7 +202,7 @@ namespace XUnitTest.Auth.DisabledOrganizations
             VerifyLastUsedUnchanged();
 
             // C2: the following plain sign-in (server-filled pre-fill) lands in the active organization.
-            var signIn = new TokenRequest { GrantType = GrantTypes.Password, OrganizationId = user.LastUsedOrganizationId };
+            var signIn = new TokenRequest { GrantType = GrantTypes.Social, OrganizationId = user.LastUsedOrganizationId };
             (await DisabledOrganizationsKit.RealProvider(_resources).ResolveOrganizationAsync(user, signIn)).Should().BeNull();
             signIn.OrganizationId.Should().Be(A);
         }
@@ -331,7 +331,7 @@ namespace XUnitTest.Auth.DisabledOrganizations
                 .ReturnsAsync(JwtAccessTokenProvider.OrganizationRefusal(OrganizationIssuanceOutcome.OrganizationDisabled));
 
             var result = await Password(repo, tokenManager).AuthenticateAsync(
-                new TokenRequest { GrantType = GrantTypes.Password, Username = "jane", Password = "secret" }, new IdentityConfiguration());
+                new TokenRequest { GrantType = GrantTypes.Social, Username = "jane", Password = "secret" }, new IdentityConfiguration());
 
             result.StatusCode.Should().Be(403);
             tokenManager.Verify(m => m.ManageTokenAsync(
@@ -352,7 +352,7 @@ namespace XUnitTest.Auth.DisabledOrganizations
                 .ReturnsAsync(new TokenResponse { AccessToken = "tok" });
 
             await Password(repo, tokenManager).AuthenticateAsync(
-                new TokenRequest { GrantType = GrantTypes.Password, Username = "jane", Password = "secret", OrganizationId = D }, new IdentityConfiguration());
+                new TokenRequest { GrantType = GrantTypes.Social, Username = "jane", Password = "secret", OrganizationId = D }, new IdentityConfiguration());
 
             repo.Verify(r => r.UpdatePartialAsync<User>("u1",
                 It.Is<Dictionary<string, object>>(d => d.ContainsKey(nameof(User.LastUsedOrganizationId)) && (string)d[nameof(User.LastUsedOrganizationId)] == D),

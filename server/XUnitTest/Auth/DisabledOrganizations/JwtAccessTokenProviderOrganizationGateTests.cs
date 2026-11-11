@@ -86,7 +86,7 @@ namespace XUnitTest.Auth.DisabledOrganizations
         {
             _resourceRepository.WithOrganizationStatuses(disabled: [D]);
             var user = new User { ItemId = "u1", OrganizationIds = [D, A], LastUsedOrganizationId = D };
-            var request = new TokenRequest { GrantType = GrantTypes.Password, OrganizationId = D };
+            var request = new TokenRequest { GrantType = GrantTypes.Social, OrganizationId = D };
 
             var refusal = await Sut().ResolveOrganizationAsync(user, request);
 
@@ -120,7 +120,7 @@ namespace XUnitTest.Auth.DisabledOrganizations
         public async Task C4_StatusReadThrows_Returns503()
         {
             _resourceRepository.Setup(r => r.GetOrganizationStatusesAsync(It.IsAny<IReadOnlyCollection<string>>())).ThrowsAsync(new TimeoutException());
-            var request = new TokenRequest { GrantType = GrantTypes.Password };
+            var request = new TokenRequest { GrantType = GrantTypes.Social };
 
             var refusal = await Sut().ResolveOrganizationAsync(new User { ItemId = "u1", OrganizationIds = [A] }, request);
 
@@ -202,7 +202,7 @@ namespace XUnitTest.Auth.DisabledOrganizations
             var userRepository = new Mock<IUserRepository>();
 
             var token = await Sut(new AuthorizationClaimsResolver(userRepository.Object))
-                .GetJwtAccessToken(Config(), MakeTenant(), user, new TokenRequest { GrantType = GrantTypes.Password });
+                .GetJwtAccessToken(Config(), MakeTenant(), user, new TokenRequest { GrantType = GrantTypes.Social });
 
             token.Claims.Should().ContainSingle(c => c.Type == BlocksContext.ORGANIZATION_ID_CLAIM).Which.Value.Should().Be("no-org");
             token.Claims.Should().ContainSingle(c => c.Type == JwtAccessTokenProvider.OrganizationStatusClaim).Which.Value.Should().Be("disabled");

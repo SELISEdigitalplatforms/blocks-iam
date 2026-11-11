@@ -123,7 +123,12 @@ namespace Authentication.DomainService.Utilities
                 return OrganizationScopeResolver.Issued(Resolve(user, requestedOrganizationId, isMultiOrgEnabled: false));
             }
 
-            var candidates = OrganizationScopeResolver.CollectStatusCandidates(user, requestedOrganizationId);
+            // Only the user's own memberships are looked up (Q3); a requested id the user does not belong to is
+            // ignored anyway, except a link organization, whose status is the only check links get.
+            var lookedUpRequest = isLinkOrganization || HasOrganizationAccess(user, requestedOrganizationId)
+                ? requestedOrganizationId
+                : null;
+            var candidates = OrganizationScopeResolver.CollectStatusCandidates(user, lookedUpRequest);
             IReadOnlyDictionary<string, bool> statuses = new Dictionary<string, bool>();
             if (candidates.Count > 0)
             {
@@ -150,7 +155,7 @@ namespace Authentication.DomainService.Utilities
             if (decision.Outcome == OrganizationIssuanceOutcome.OrganizationDisabled)
             {
                 // Ids only: never organization names (spec #668 C10).
-                logger.LogInformation("Token refused for user {UserId}: organization {OrganizationId} is disabled or no membership is active.", user.ItemId, requestedOrganizationId ?? user.LastUsedOrganizationId);
+                logger.LogInformation("Token refused for user {UserId}: organization {OrganizationId} is disabled or no membership is active.", user.ItemId, LogSafe(requestedOrganizationId ?? user.LastUsedOrganizationId));
             }
 
             return decision;
@@ -159,7 +164,7 @@ namespace Authentication.DomainService.Utilities
         /// <summary>
         /// The re-check at OIDC code and device-code exchange of the organization stored at authorize or approval
         /// (spec #668 C6). A stored organization is minted as before unless it is now disabled or missing, which
-        /// refuses the exchange. A stored "no-org" (or blank) is decided again from the user's current memberships
+        /// refuses the exchange. A stored "no-org" is decided again from the user's current memberships
         /// and the setting, so a status that changed in between applies (Q2). One status read at most.
         /// </summary>
         public static async Task<OrganizationIssuanceDecision> RecheckStoredOrganizationAsync(
@@ -176,8 +181,13 @@ namespace Authentication.DomainService.Utilities
                 return OrganizationScopeResolver.Issued(stored);
             }
 
-            if (string.IsNullOrWhiteSpace(storedOrganizationId)
-                || string.Equals(storedOrganizationId, IdpConstants.NoOrganizationId, StringComparison.Ordinal))
+            // A blank one (only from codes issued before the organization claim was always set) is minted as stored.
+            if (string.IsNullOrWhiteSpace(storedOrganizationId))
+            {
+                return OrganizationScopeResolver.Issued(stored);
+            }
+
+            if (string.Equals(storedOrganizationId, IdpConstants.NoOrganizationId, StringComparison.Ordinal))
             {
                 return await ResolveForIssuanceAsync(resourceRepository, logger, user, requestedOrganizationId: null, isExplicit: false, isLinkOrganization: false, settings);
             }
@@ -198,7 +208,7 @@ namespace Authentication.DomainService.Utilities
                 return OrganizationScopeResolver.Issued(stored);
             }
 
-            logger.LogInformation("Token refused for user {UserId}: organization {OrganizationId} is disabled or no membership is active.", user.ItemId, storedOrganizationId);
+            logger.LogInformation("Token refused for user {UserId}: organization {OrganizationId} is disabled or no membership is active.", user.ItemId, LogSafe(storedOrganizationId));
             return OrganizationScopeResolver.Refused(OrganizationIssuanceOutcome.OrganizationDisabled);
         }
 
@@ -210,6 +220,10 @@ namespace Authentication.DomainService.Utilities
             decision.Scope == OrganizationScopeResolver.ForStoredOrganization(storedOrganizationId)
                 ? storedOrganizationId
                 : decision.Scope.ClaimValue;
+
+        // Organization ids can come from requests, so line breaks are removed before they reach a log entry.
+        private static string? LogSafe(string? value) =>
+            value?.Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", string.Empty, StringComparison.Ordinal);
 
         /// <summary>
         /// Membership is a three-way test -- OrganizationIds, Roles keys, or Permissions keys --

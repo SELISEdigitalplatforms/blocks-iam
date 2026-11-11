@@ -46,7 +46,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
         private readonly IResourceRepository _resourceRepository;
 
-        public AuthorizationCodeExchangeService(
+        public AuthorizationCodeExchangeService( // NOSONAR S107 — already 13 dependencies on dev; grouping them needs a DI change outside spec #668's paths
             IAuthorizationCodeRepository authCodeRepo,
             IRefreshTokenRepository refreshTokenRepo,
             ITokenGenerationService tokenService,
@@ -331,8 +331,7 @@ namespace Authentication.DomainService.Authentication
                 authCode.Scope,
                 accessTokenLifetimeSeconds,
                 accessExpiry,
-                refreshExpiry,
-                organizationDecision.OrganizationStatus);
+                refreshExpiry).WithOrganizationStatus(organizationDecision.OrganizationStatus);
         }
 
         /// <summary>
@@ -630,6 +629,13 @@ namespace Authentication.DomainService.Authentication
             public DateTime RefreshExpiry { get; private set; }
             public string? OrganizationStatus { get; private set; }
 
+            /// <summary>Carries <c>org_status</c> for the response body (spec #668 §6.4).</summary>
+            public OidcExchangeResult WithOrganizationStatus(string? organizationStatus)
+            {
+                OrganizationStatus = organizationStatus;
+                return this;
+            }
+
             public static OidcExchangeResult FromError(IActionResult errorResult)
             {
                 return new OidcExchangeResult { ErrorResult = errorResult };
@@ -645,12 +651,10 @@ namespace Authentication.DomainService.Authentication
                 string scope,
                 int expiresIn,
                 DateTime accessExpiry,
-                DateTime refreshExpiry,
-                string? organizationStatus = null)
+                DateTime refreshExpiry)
             {
                 return new OidcExchangeResult
                 {
-                    OrganizationStatus = organizationStatus,
                     AccessToken = accessToken,
                     IdToken = idToken,
                     RefreshToken = refreshToken,

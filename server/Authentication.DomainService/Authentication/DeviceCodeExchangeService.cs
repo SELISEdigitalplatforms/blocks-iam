@@ -14,7 +14,6 @@ using Microsoft.Extensions.Options;
 using Blocks.Genesis.Entities.Iam;
 using Authentication.DomainService.Utilities;
 using Iam.DomainService.Resources;
-using Iam.DomainService.Utilities;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -38,7 +37,7 @@ namespace Authentication.DomainService.Authentication
 
         private readonly IResourceRepository _resourceRepository;
 
-        public DeviceCodeExchangeService(
+        public DeviceCodeExchangeService( // NOSONAR S107 — already 8 dependencies on dev; grouping them needs a DI change outside spec #668's paths
             IDeviceAuthorizationRepository repository,
             DeviceCodeGenerator codeGenerator,
             IOidcTokenMintService mintService,

@@ -229,6 +229,33 @@ namespace XUnitTest.Auth.DisabledOrganizations
         }
 
         [Fact]
+        public async Task Q10_LinkSessionActiveOrganization_IsUsedAsIs_EvenWhenEveryMembershipIsDisabled()
+        {
+            // Link handling stays as before: only the link organization's status is checked.
+            UserIs(MakeUser(id: "link-user", lastUsed: D, organizationIds: [D]));
+            _linkSessions.Setup(l => l.GetBySessionIdAsync("t1", "LS")).ReturnsAsync(new LinkSessionModel
+            {
+                SessionId = "LS",
+                UserId = "link-user",
+                TenantId = "t1",
+                ClientId = "client-1",
+                OrganizationId = A,
+                Roles = ["r1"],
+                Amr = ["link"],
+                IssuedAtUtc = DateTime.UtcNow,
+                ExpiresAtUtc = DateTime.UtcNow.AddMinutes(20)
+            });
+            var ctx = new DefaultHttpContext();
+            ctx.Request.Headers["Cookie"] = "blocks-link-session-t1=LS";
+
+            var result = await Authorize(returnRedirectResponse: false, ctx: ctx, tenantId: "t1", blocksUserId: null);
+
+            result.Should().BeOfType<OkObjectResult>();
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m =>
+                m.OrganizationId == A && m.IsLinkAuthentication && m.OrganizationStatus == null)), Times.Once);
+        }
+
+        [Fact]
         public async Task C12_ImpersonatedAuthorize_IsNotGated()
         {
             UserIs(MakeUser(lastUsed: D, organizationIds: D));

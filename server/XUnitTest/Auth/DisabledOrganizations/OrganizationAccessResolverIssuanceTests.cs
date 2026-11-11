@@ -269,5 +269,47 @@ namespace XUnitTest.Auth.DisabledOrganizations
 
             OrganizationAccessResolver.MintedOrganizationId(IdpConstants.NoOrganizationId, redecided).Should().Be(A);
         }
+
+        // ---------- review fixes: Q3 own memberships only, blank stored kept ----------
+
+        [Fact]
+        public async Task Q3_RequestedNonMember_IsNotLookedUp()
+        {
+            _repository.WithActiveOrganizations();
+            var user = new User { OrganizationIds = [A] };
+
+            var decision = await Resolve(user, requested: X, isExplicit: true);
+
+            decision.Scope.ClaimValue.Should().Be(A);
+            _repository.Verify(r => r.GetOrganizationStatusesAsync(
+                It.Is<IReadOnlyCollection<string>>(ids => ids.Contains(A) && !ids.Contains(X))), Times.Once);
+        }
+
+        [Fact]
+        public async Task Q10_LinkOrganization_IsLookedUp_EvenWhenNotAMembership()
+        {
+            _repository.WithOrganizationStatuses(disabled: [X]);
+            var user = new User { OrganizationIds = [A] };
+
+            var decision = await OrganizationAccessResolver.ResolveForIssuanceAsync(
+                _repository.Object, NullLogger.Instance, user, X, isExplicit: true, isLinkOrganization: true, MultiOrg);
+
+            decision.Outcome.Should().Be(OrganizationIssuanceOutcome.OrganizationDisabled);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        public async Task Recheck_StoredBlank_KeptAsStored_WithoutStatusRead(string? stored)
+        {
+            _repository.WithActiveOrganizations();
+            var user = new User { OrganizationIds = [A] };
+
+            var decision = await Recheck(user, stored);
+
+            decision.IsIssued.Should().BeTrue();
+            OrganizationAccessResolver.MintedOrganizationId(stored, decision).Should().Be(stored);
+            VerifyStatusReads(Times.Never());
+        }
     }
 }
