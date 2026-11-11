@@ -330,6 +330,7 @@ namespace XUnitTest.Auth.DisabledOrganizations
             tokenManager.Setup(m => m.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()))
                 .ReturnsAsync(JwtAccessTokenProvider.OrganizationRefusal(OrganizationIssuanceOutcome.OrganizationDisabled));
 
+            // The password service does not read the grant type; it is left on the social grant on purpose.
             var result = await Password(repo, tokenManager).AuthenticateAsync(
                 new TokenRequest { GrantType = GrantTypes.Social, Username = "jane", Password = "secret" }, new IdentityConfiguration());
 

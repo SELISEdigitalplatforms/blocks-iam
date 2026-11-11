@@ -108,7 +108,7 @@ namespace Authentication.DomainService.Utilities
         /// </summary>
         /// <param name="requestedOrganizationId">The organization the request names, if any.</param>
         /// <param name="isExplicit">See <see cref="OrganizationScopeResolver.ResolveIssuance"/>: explicit or a server-filled preference.</param>
-        /// <param name="isLinkOrganization">The requested organization comes from a signup link or link session.</param>
+        /// <param name="isLinkOrganization">The requested organization comes from a signup link.</param>
         public static async Task<OrganizationIssuanceDecision> ResolveForIssuanceAsync(
             IResourceRepository resourceRepository,
             ILogger logger,
@@ -162,8 +162,8 @@ namespace Authentication.DomainService.Utilities
         }
 
         /// <summary>
-        /// The re-check at OIDC code and device-code exchange of the organization stored at authorize or approval
-        /// (spec #668 C6). A stored organization is minted as before unless it is now disabled or missing, which
+        /// The re-check of an organization stored at authorize or approval, at OIDC code and device-code exchange
+        /// (spec #668 C6); also the status-only check of an OIDC link session's organization at authorize (Q10). A stored organization is minted as before unless it is now disabled or missing, which
         /// refuses the exchange. A stored "no-org" is decided again from the user's current memberships
         /// and the setting, so a status that changed in between applies (Q2). One status read at most.
         /// </summary>

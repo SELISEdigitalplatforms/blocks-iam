@@ -166,7 +166,7 @@ public sealed class OidcSigningKeyMaterial
     {
         if (!string.IsNullOrWhiteSpace(claims.OrganizationStatus))
         {
-            jwtClaims.Add(new Claim("org_status", claims.OrganizationStatus));
+            jwtClaims.Add(new Claim(JwtAccessTokenProvider.OrganizationStatusClaim, claims.OrganizationStatus));
         }
     }
 

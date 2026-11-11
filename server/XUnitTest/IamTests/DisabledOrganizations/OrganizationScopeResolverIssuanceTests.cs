@@ -333,7 +333,7 @@ namespace XUnitTest.IamTests.DisabledOrganizations
         // ---------- candidate collection ----------
 
         [Fact]
-        public void Candidates_RequestedThenLastUsedThenOrgIdsRolesPermissions_Deduplicated()
+        public void Candidates_RequestedThenOrgIdsRolesPermissions_Deduplicated()
         {
             var user = new User
             {
@@ -344,7 +344,15 @@ namespace XUnitTest.IamTests.DisabledOrganizations
             };
 
             OrganizationScopeResolver.CollectStatusCandidates(user, "org-r")
-                .Should().Equal("org-r", B, A, D, X);
+                .Should().Equal("org-r", A, B, D, X);
+        }
+
+        [Fact]
+        public void Q3_Candidates_StaleLastUsed_IsNotLookedUp()
+        {
+            var user = new User { LastUsedOrganizationId = X, OrganizationIds = [A] };
+
+            OrganizationScopeResolver.CollectStatusCandidates(user, null).Should().Equal(A);
         }
 
         [Fact]

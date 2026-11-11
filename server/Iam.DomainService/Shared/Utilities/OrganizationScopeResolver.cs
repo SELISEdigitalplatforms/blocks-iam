@@ -156,8 +156,9 @@ namespace Iam.DomainService.Utilities
         public const string DisabledOrganizationStatus = "disabled";
 
         /// <summary>
-        /// The ids one status lookup has to cover for <see cref="ResolveIssuance"/>: the requested organization, the
-        /// last-used one and every membership (organization ids, then role keys, then permission keys). Blanks and
+        /// The ids one status lookup has to cover for <see cref="ResolveIssuance"/>: the requested organization and every
+        /// membership (organization ids, then role keys, then permission keys). Last-used is only honoured while it is
+        /// a membership, so it is covered by them and a stale one is never looked up. Blanks and
         /// the sentinels are left out, because <c>"default"</c> and <c>"no-org"</c> always count as active.
         /// Empty means no lookup is needed.
         /// </summary>
@@ -165,7 +166,7 @@ namespace Iam.DomainService.Utilities
         {
             ArgumentNullException.ThrowIfNull(user);
 
-            return new[] { requestedOrganizationId, user.LastUsedOrganizationId }
+            return new[] { requestedOrganizationId }
                 .Concat(Memberships(user))
                 .Where(id => !string.IsNullOrWhiteSpace(id) && !IsReservedOrganizationId(id))
                 .Select(id => id!)
@@ -185,8 +186,8 @@ namespace Iam.DomainService.Utilities
         /// is only a preference: honoured while it is an active membership, else the fallback applies.
         /// </param>
         /// <param name="isLinkOrganization">
-        /// The explicit organization comes from a signup link or link session. Links keep their own handling;
-        /// only the status check is added: a disabled or missing link organization is refused.
+        /// The explicit organization comes from a signup link. Links keep their own handling; only the status check is
+        /// added: a disabled or missing link organization is refused.
         /// </param>
         /// <param name="organizationStatuses">Id -> IsDisabled for the ids that have an organization document.</param>
         /// <param name="allowNoOrgSignIn">The tenant's <c>AllowNoOrgSignInForDisabledOrganizations</c>.</param>
