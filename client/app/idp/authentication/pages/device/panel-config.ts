@@ -47,7 +47,7 @@ export const buildDeviceEntryPanel = (t: TFunction): OidcPanelConfig => ({
     { text: "$ POST /api/device",                 color: "var(--accent2)" },
     { text: "  > content-type: application/json", color: "var(--muted)"   },
     { text: "  > X-Blocks-Key: <tenantId>",       color: "var(--muted)"   },
-    { text: "200 OK — interaction prepared",      color: "var(--success)" },
+    { text: `200 OK — ${t("PANEL_CONFIG.TERMINAL_INTERACTION_PREPARED")}`, color: "var(--success)" },
     { text: "$ device.beginInteraction(code)",    color: "var(--fg)"      },
     { text: "  > interactionId issued",           color: "var(--muted)"   },
     { text: "window.location → /device/continue", color: "var(--success)" },
@@ -104,11 +104,11 @@ export const buildDeviceConsentPanel = (t: TFunction): OidcPanelConfig => ({
   terminalMessages: [
     { text: "$ GET /api/device/continue/{id}",     color: "var(--accent2)" },
     { text: "  > X-Blocks-Key: <tenantId>",        color: "var(--muted)"   },
-    { text: "200 OK — consent payload loaded",     color: "var(--success)" },
+    { text: `200 OK — ${t("PANEL_CONFIG.TERMINAL_CONSENT_LOADED")}`, color: "var(--success)" },
     { text: "$ POST /api/device/approve",          color: "var(--accent2)" },
     { text: "  > decision=allow",                  color: "var(--muted)"   },
     { text: "  > X-Blocks-Key: <tenantId>",        color: "var(--muted)"   },
-    { text: "200 OK — request marked Approved",    color: "var(--success)" },
+    { text: `200 OK — ${t("PANEL_CONFIG.TERMINAL_REQUEST_APPROVED")}`, color: "var(--success)" },
     { text: "window.location → /device/success",   color: "var(--success)" },
   ],
 

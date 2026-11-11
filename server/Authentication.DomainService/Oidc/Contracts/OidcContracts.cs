@@ -12,6 +12,9 @@ public sealed class OidcClaims
     public string Sub { get; set; } = string.Empty;
     public string TenantId { get; set; } = string.Empty;
     public string? OrgId { get; set; }
+
+    /// <summary>The <c>org_status</c> claim: <c>"disabled"</c> for the all-disabled "no-org" sign-in, else null (omitted).</summary>
+    public string? OrganizationStatus { get; set; }
     public string? Nonce { get; set; }
     public long AuthTime { get; set; }
     public long Iat { get; set; }
@@ -75,6 +78,12 @@ public sealed class AuthorizationCodeModel
     public string? CreatedByIpAddress { get; set; }
     public string? CreatedByUserAgent { get; set; }
     public string? IdpSessionId { get; set; }
+
+    /// <summary>
+    /// <c>"disabled"</c> when the code is for the all-disabled <c>"no-org"</c> sign-in; null otherwise (spec #668 §6.4).
+    /// The exchange re-decides the organization, so a status that changed in between wins (C6).
+    /// </summary>
+    public string? OrganizationStatus { get; set; }
     public bool IsRevoked { get; set; }
     public DateTime? RevokedAt { get; set; }
 

@@ -93,11 +93,13 @@ namespace Authentication.DomainService.Authentication
             // what makes it usable for the invalid_client and unregistered-redirect_uri refusals
             // that RFC 6749 section 4.1.2.1 forbids bouncing to the client. API callers
             // (returnRedirectResponse: false) keep the body they already parse.
-            IActionResult BuildBrowserError(string error, string errorDescription)
+            IActionResult BuildBrowserError(string error, string errorDescription, int statusCode = StatusCodes.Status400BadRequest)
             {
                 if (!returnRedirectResponse)
                 {
-                    return new BadRequestObjectResult(new { error, error_description = errorDescription });
+                    return statusCode == StatusCodes.Status400BadRequest
+                        ? new BadRequestObjectResult(new { error, error_description = errorDescription })
+                        : new OrganizationRefusalResult(error, errorDescription, statusCode);
                 }
 
                 return new RedirectResult(OidcRedirectUrlBuilder.BuildLoginErrorUrl(
@@ -370,15 +372,34 @@ namespace Authentication.DomainService.Authentication
                     return BuildAuthorizeError("account_locked", "Account is temporarily locked due to failed authentication attempts");
                 }
 
+                // Blocks Cloud Impersonation Support. Detected before the organization is decided: an
+                // impersonated authorize is not status-gated and resolves exactly as before (spec #668 Q6).
+                var userPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(request, BlocksContext.GetContext()?.TenantId ?? "", IsUserInfoGetRequest: false);
+                var impersonated = false;
+                if (userPrincipal != null)
+                {
+                    bool.TryParse(userPrincipal.FindFirst("impersonated")?.Value, out impersonated);
+                }
+
                 // Authoritative on this path: the value is stored on the authorization code and
-                // becomes the claim at exchange time without being re-validated, so the tenant's
-                // real multi-organization mode has to be read here.
+                // becomes the claim at exchange time, so the tenant's real multi-organization mode
+                // has to be read here.
                 var tenantConfiguration = await _resourceRepository.GetTenantConfigurationAsync();
+                var issuanceSettings = new OrganizationIssuanceSettings(
+                    tenantConfiguration?.IsMultiOrgEnabled ?? false,
+                    tenantConfiguration?.AllowNoOrgSignInForDisabledOrganizations ?? false);
+                var organizationDecision = await DecideAuthorizeOrganizationAsync(user, matchedLinkSession, impersonated, issuanceSettings);
+                if (!organizationDecision.IsIssued)
+                {
+                    // Never to the client redirect_uri: the IAM error page in redirect mode, 403/503 JSON otherwise.
+                    // Nothing is stored and last-used is left as it is (spec #668 §6.3, C5).
+                    var refusal = OAuth.JwtAccessTokenProvider.OrganizationRefusal(organizationDecision.Outcome);
+                    return BuildBrowserError(refusal.Error!, refusal.ErrorDescription, refusal.StatusCode);
+                }
+
                 var effectiveOrganizationId = matchedLinkSession != null
                     ? matchedLinkSession.OrganizationId
-                    : OrganizationAccessResolver.ResolveEffectiveOrganizationId(
-                        user,
-                        tenantConfiguration?.IsMultiOrgEnabled ?? false);
+                    : organizationDecision.Scope.ClaimValue;
                 await PersistLastUsedOrganizationAsync(user, effectiveOrganizationId);
 
                 var authCode = _pkceService.GenerateRandomCode(32);
@@ -413,18 +434,14 @@ namespace Authentication.DomainService.Authentication
                     CreatedByIpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request),
                     CreatedByUserAgent = request.Headers.UserAgent.ToString(),
                     IdpSessionId = idpSessionId,
+                    OrganizationStatus = organizationDecision.OrganizationStatus,
                     IsLinkAuthentication = matchedLinkSession != null,
                     RestrictedRoles = matchedLinkSession?.Roles?.ToList() ?? [],
                     RestrictedPermissions = matchedLinkSession?.Permissions?.ToList() ?? [],
                 };
 
-                // Blocks Cloud Impersonation Support
-                var userPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(request, BlocksContext.GetContext()?.TenantId ?? "", IsUserInfoGetRequest: false);
-
                 if (userPrincipal != null)
                 {
-                    bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
-
                     var claimUserId = string.IsNullOrWhiteSpace(userPrincipal?.FindFirst("sub")?.Value) ?
                                         userPrincipal?.FindFirst("user_id")?.Value :
                                         userPrincipal?.FindFirst("sub")?.Value;
@@ -455,6 +472,17 @@ namespace Authentication.DomainService.Authentication
                 if (returnRedirectResponse)
                 {
                     return new RedirectResult(callbackUri);
+                }
+
+                // org_status rides along for the all-disabled "no-org" sign-in, so IAM's own forms can show the
+                // disabled message instead of navigating on (spec #668 H10).
+                if (!string.IsNullOrWhiteSpace(organizationDecision.OrganizationStatus))
+                {
+                    return new OkObjectResult(new
+                    {
+                        redirect_uri = callbackUri,
+                        org_status = organizationDecision.OrganizationStatus
+                    });
                 }
 
                 return new OkObjectResult(new
@@ -488,6 +516,43 @@ namespace Authentication.DomainService.Authentication
                     StatusCode = 500
                 };
             }
+        }
+
+        /// <summary>
+        /// The organization an authorization code is issued for (spec #668 §6.1). A link session keeps its own
+        /// organization, as before, with only the status check added; an impersonated authorize resolves as before.
+        /// </summary>
+        private async Task<OrganizationIssuanceDecision> DecideAuthorizeOrganizationAsync(
+            User user,
+            LinkSessionModel? matchedLinkSession,
+            bool impersonated,
+            OrganizationIssuanceSettings settings)
+        {
+            if (impersonated)
+            {
+                return OrganizationScopeResolver.Issued(
+                    OrganizationAccessResolver.Resolve(user, requestedOrganizationId: null, settings.IsMultiOrgEnabled));
+            }
+
+            // A link session's organization is used as it is, as before (Q10): only its status is checked.
+            if (matchedLinkSession != null)
+            {
+                return await OrganizationAccessResolver.RecheckStoredOrganizationAsync(
+                    _resourceRepository,
+                    _logger,
+                    user,
+                    matchedLinkSession.OrganizationId,
+                    settings);
+            }
+
+            return await OrganizationAccessResolver.ResolveForIssuanceAsync(
+                _resourceRepository,
+                _logger,
+                user,
+                requestedOrganizationId: null,
+                isExplicit: false,
+                isLinkOrganization: false,
+                settings);
         }
 
         private static List<string> BuildAmr(User user, bool mfaCompleted)

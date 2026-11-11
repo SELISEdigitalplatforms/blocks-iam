@@ -49,22 +49,46 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
   });
   const isTokenNeed = captchaRequired;
 
+  const buildRequestPayload = (values: z.infer<typeof signinFormSchema>) => {
+    const captcha = isTokenNeed && captchaCode ? { captchaCode } : {};
+    if (mode !== "oidc") {
+      return { ...values, ...captcha };
+    }
+    return {
+      ...values,
+      clientId: oidcContext?.clientId,
+      scope: oidcContext?.scope,
+      state: oidcContext?.state,
+      redirectUri: oidcContext?.redirectUri,
+      nonce: oidcContext?.nonce,
+      ...captcha,
+    };
+  };
+
+  const showSigninError = (error: unknown) => {
+    if (!isErrorWithErrors(error)) {
+      showErrorToast({ errors: t("SIGNIN_FORM.SOMETHING_WENT_WRONG") });
+      return;
+    }
+    const errs = error.errors;
+    const errorCode = errs?.error;
+    if (errorCode === "captcha_enabled" || errorCode === "captcha_invalid") {
+      setCaptchaRequired(true);
+      if (errs?.captcha_site_key) {
+        setCaptchaSiteKey(String(errs.captcha_site_key));
+      }
+      resetCaptcha();
+    }
+    if (errorCode === "organization_disabled") {
+      showErrorToast({ errors: t("iam.shared:ORGANIZATION.DISABLED_MESSAGE") });
+      return;
+    }
+    showErrorToast({ errors: errs?.error_description || t("SIGNIN_FORM.SOMETHING_WENT_WRONG") });
+  };
+
   const onSubmitHandler = async (values: z.infer<typeof signinFormSchema>) => {
     try {
-      const requestPayload = mode === "oidc"
-        ? {
-            ...values,
-            clientId: oidcContext?.clientId,
-            scope: oidcContext?.scope,
-            state: oidcContext?.state,
-            redirectUri: oidcContext?.redirectUri,
-            nonce: oidcContext?.nonce,
-            ...(isTokenNeed && captchaCode ? { captchaCode } : {}),
-          }
-        : {
-            ...values,
-            ...(isTokenNeed && captchaCode ? { captchaCode } : {}),
-          };
+      const requestPayload = buildRequestPayload(values);
 
       const res = await mutateAsync(requestPayload as z.infer<typeof signinFormSchema> & { captchaCode?: string });
       setCaptchaRequired(false);
@@ -79,6 +103,13 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
         return navigate(mode === "oidc" ? buildOIDCNavigationUrl(mfaPath) : mfaPath);
       }
 
+      // A portal sign-in into a disabled organization stays here; an OIDC login goes on
+      // and the client app shows the status.
+      if (mode !== "oidc" && res.org_status === "disabled") {
+        showErrorToast({ errors: t("iam.shared:ORGANIZATION.DISABLED_MESSAGE") });
+        return;
+      }
+
       // Root tenant FE uses only HttpOnly cookies; no token handling from response needed
 
       setAuthenticated();
@@ -90,20 +121,7 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
         navigate("/app/profile");
       }
     } catch (error: unknown) {
-      if (isErrorWithErrors(error)) {
-        const errs = error.errors;
-        const errorCode = errs?.error;
-        if (errorCode === "captcha_enabled" || errorCode === "captcha_invalid") {
-          setCaptchaRequired(true);
-          if (errs?.captcha_site_key) {
-            setCaptchaSiteKey(String(errs.captcha_site_key));
-          }
-          resetCaptcha();
-        }
-        showErrorToast({ errors: errs?.error_description || t("SIGNIN_FORM.SOMETHING_WENT_WRONG") });
-      } else {
-        showErrorToast({ errors: t("SIGNIN_FORM.SOMETHING_WENT_WRONG") });
-      }
+      showSigninError(error);
     }
   };
 

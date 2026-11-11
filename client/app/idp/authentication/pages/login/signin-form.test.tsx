@@ -122,6 +122,47 @@ describe("SigninForm", () => {
     await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "Bad login" }));
   });
 
+  describe("disabled organization", () => {
+    const ORGANIZATION_DISABLED_MESSAGE =
+      "Your organization is disabled. Please contact your administrator or support.";
+
+    it("shows the message in the error toast for organization_disabled", async () => {
+      h.mutateAsync.mockRejectedValue({
+        errors: { error: "organization_disabled", error_description: "Server text" },
+      });
+      renderForm();
+      fillCredentials();
+      fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+      await waitFor(() =>
+        expect(h.showError).toHaveBeenCalledWith({ errors: ORGANIZATION_DISABLED_MESSAGE }),
+      );
+      expect(h.navigate).not.toHaveBeenCalled();
+    });
+
+    it("stays on the form when the sign-in succeeds with org_status disabled", async () => {
+      h.mutateAsync.mockResolvedValue({ mfa_required: false, org_status: "disabled" });
+      renderForm();
+      fillCredentials();
+      fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+      await waitFor(() =>
+        expect(h.showError).toHaveBeenCalledWith({ errors: ORGANIZATION_DISABLED_MESSAGE }),
+      );
+      expect(h.navigate).not.toHaveBeenCalled();
+      expect(h.setAuthenticated).not.toHaveBeenCalled();
+    });
+
+    it("still continues an oidc sign-in that succeeds with org_status disabled", async () => {
+      h.mutateAsync.mockResolvedValue({ mfa_required: false, org_status: "disabled" });
+      renderForm({ mode: "oidc", oidcContext: { clientId: "c1" } });
+      fillCredentials();
+      fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+      await waitFor(() =>
+        expect(h.navigate).toHaveBeenCalledWith(expect.stringContaining("/oidc/permission?")),
+      );
+      expect(h.showError).not.toHaveBeenCalled();
+    });
+  });
+
   it("navigates to the oidc permission page on success in oidc mode", async () => {
     h.mutateAsync.mockResolvedValue({ mfa_required: false });
     renderForm({ mode: "oidc", oidcContext: { clientId: "c1", scope: "openid" } });

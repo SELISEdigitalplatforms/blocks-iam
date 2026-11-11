@@ -120,8 +120,14 @@ namespace Authentication.DomainService.OAuth.Services
                 // account completed its login with organization_id "default" and no roles or
                 // permissions at all — while the same account logging in without mfa got the right ones.
                 request.OrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
+                var signInOrganizationId = request.OrganizationId;
 
                 var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
+
+                // The mint wrote the organization it issued for back to request.OrganizationId, as the refresh
+                // token's hint (spec #668 Q1). Last-used keeps following the sign-in pre-fill, as the password and
+                // social legs do, so the pre-fill is put back for the stickiness write below.
+                request.OrganizationId = signInOrganizationId;
                 if (string.IsNullOrWhiteSpace(tokenResponse.Error))
                 {
                     // The counter reset and the organization stickiness the password leg writes

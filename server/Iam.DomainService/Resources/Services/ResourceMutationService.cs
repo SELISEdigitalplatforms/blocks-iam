@@ -3026,6 +3026,11 @@ namespace Iam.DomainService.Resources
                 tenantConfig.SignupAutoJoinOrganizationId = NormalizeSignupAutoJoinTarget(request.SignupAutoJoinOrganizationId);
             }
 
+            if (request.AllowNoOrgSignInForDisabledOrganizations.HasValue)
+            {
+                tenantConfig.AllowNoOrgSignInForDisabledOrganizations = request.AllowNoOrgSignInForDisabledOrganizations.Value;
+            }
+
             tenantConfig.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             tenantConfig.LastUpdatedDate = DateTime.UtcNow;
 
@@ -3123,7 +3128,8 @@ namespace Iam.DomainService.Resources
         }
 
         /// <summary>
-        /// The signed-in read for portals: the anonymous keys plus the auto-join target.
+        /// The signed-in read for portals: the anonymous keys plus the auto-join target and the all-disabled
+        /// sign-in setting.
         /// </summary>
         public async Task<Dictionary<string, object>> GetAdminOrganizationConfigAsync()
         {
@@ -3136,6 +3142,8 @@ namespace Iam.DomainService.Resources
                 ? target
                 : (object?)null;
 #pragma warning restore CS8601
+            // Admin read only: the anonymous sign-up read must not carry it (spec #668 C7).
+            response["allowNoOrgSignInForDisabledOrganizations"] = tenantConfig?.AllowNoOrgSignInForDisabledOrganizations ?? false;
             return response;
         }
 

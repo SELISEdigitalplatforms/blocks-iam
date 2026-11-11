@@ -332,6 +332,53 @@ describe("MfaCheckFrom", () => {
     vi.unstubAllGlobals();
   });
 
+  describe("disabled organization", () => {
+    const ORGANIZATION_DISABLED_MESSAGE =
+      "Your organization is disabled. Please contact your administrator or support.";
+
+    const respondWith = (ok: boolean, body: unknown) =>
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+        ok,
+        headers: { get: () => "application/json" },
+        json: async () => body,
+      }));
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("shows the message in the alert slot with the fail animation for organization_disabled", async () => {
+      h.animCtx = { startAnimation: vi.fn(), failAnimation: vi.fn(), succeedAnimation: vi.fn(), resetAnimation: vi.fn() };
+      respondWith(false, { error: "organization_disabled", error_description: "Server text" });
+      const { container } = render(<MfaCheckFrom />);
+      await submitCode(container);
+      expect(await screen.findByRole("alert")).toHaveTextContent(ORGANIZATION_DISABLED_MESSAGE);
+      expect(screen.queryByText("Server text")).not.toBeInTheDocument();
+      expect(h.animCtx.failAnimation).toHaveBeenCalledWith(ORGANIZATION_DISABLED_MESSAGE);
+      expect(h.navigateMock).not.toHaveBeenCalled();
+    });
+
+    it("stays on the form when a portal sign-in succeeds with org_status disabled", async () => {
+      h.pathname = "/mfa-check";
+      respondWith(true, { org_status: "disabled" });
+      const { container } = render(<MfaCheckFrom />);
+      await submitCode(container);
+      expect(await screen.findByRole("alert")).toHaveTextContent(ORGANIZATION_DISABLED_MESSAGE);
+      expect(h.navigateMock).not.toHaveBeenCalled();
+      expect(h.setAuthenticated).not.toHaveBeenCalled();
+    });
+
+    it("still follows the redirect of an OIDC login that succeeds with org_status disabled", async () => {
+      const location = { href: "" };
+      Object.defineProperty(window, "location", { value: location, configurable: true });
+      respondWith(true, { redirect_uri: "https://redirect.test", org_status: "disabled" });
+      const { container } = render(<MfaCheckFrom />);
+      await submitCode(container);
+      await waitFor(() => expect(location.href).toBe("https://redirect.test"));
+      expect(screen.queryByText(ORGANIZATION_DISABLED_MESSAGE)).not.toBeInTheDocument();
+    });
+  });
+
   // Regression: the tenant used to come only from BLOCKS_X_BLOCKS_KEY -- this bundle's
   // own key, always the root IdP -- so every construct's second leg was addressed to the
   // root tenant. CompleteMfaLoginAsync resolves the user against the tenant named by

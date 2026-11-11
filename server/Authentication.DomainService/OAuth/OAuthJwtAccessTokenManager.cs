@@ -79,6 +79,14 @@ namespace Authentication.DomainService.OAuth
         {
             var bc = BlocksContext.GetContext();
 
+            // The organization is decided first (spec #668 Q7): a sign-in refused for a disabled organization
+            // must not send an MFA code, create an IdP session or rotate a refresh token on its way to the refusal.
+            var organizationRefusal = await _jwtAccessTokenProvider.ResolveOrganizationAsync(user, tokenRequest);
+            if (organizationRefusal != null)
+            {
+                return organizationRefusal;
+            }
+
             var checkpointResponse = await ProcessCheckPointsAsync(tokenRequest, user, tokenRequest.ClientId);
             if (checkpointResponse != null)
             {
@@ -147,6 +155,7 @@ namespace Authentication.DomainService.OAuth
                 RefreshToken = refreshToken,
                 RefreshExpiresUtc = refreshValidity,
                 CookieDomain = cookieDomain,
+                OrganizationStatus = tokenRequest.OrganizationDecision?.OrganizationStatus,
                 StatusCode = 200
             };
         }

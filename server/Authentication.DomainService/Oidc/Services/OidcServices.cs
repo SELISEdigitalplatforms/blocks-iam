@@ -161,6 +161,15 @@ public sealed class OidcSigningKeyMaterial
             };
         }
 
+    // Only the all-disabled "no-org" sign-in carries org_status (spec #668 §6.4); every other token omits it.
+    private static void AddOrganizationStatus(List<Claim> jwtClaims, Contracts.OidcClaims claims)
+    {
+        if (!string.IsNullOrWhiteSpace(claims.OrganizationStatus))
+        {
+            jwtClaims.Add(new Claim(JwtAccessTokenProvider.OrganizationStatusClaim, claims.OrganizationStatus));
+        }
+    }
+
     private async Task<string> GenerateTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds, bool includeNonce)
     {
         var now = DateTime.UtcNow;
@@ -189,6 +198,8 @@ public sealed class OidcSigningKeyMaterial
         jwtClaims.Add(new Claim(
             BlocksContext.ORGANIZATION_ID_CLAIM,
             string.IsNullOrWhiteSpace(claims.OrgId) ? IdpConstants.NoOrganizationId : claims.OrgId));
+
+        AddOrganizationStatus(jwtClaims, claims);
 
         if (!string.IsNullOrWhiteSpace(claims.ClientId))
         {

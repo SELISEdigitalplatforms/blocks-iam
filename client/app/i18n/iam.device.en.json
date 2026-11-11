@@ -92,5 +92,8 @@
   "PANEL_CONFIG.ENTRY_SUCCESS_BADGE": "Resolved",
   "PANEL_CONFIG.ENTRY_VALIDATING_FAIL": "Code rejected by Device Service",
   "PANEL_CONFIG.ENTRY_VALIDATING_SUCCESS": "User code resolved",
-  "PANEL_CONFIG.ENTRY_VALIDATING_TITLE": "Resolving User Code"
+  "PANEL_CONFIG.ENTRY_VALIDATING_TITLE": "Resolving User Code",
+  "PANEL_CONFIG.TERMINAL_CONSENT_LOADED": "consent payload loaded",
+  "PANEL_CONFIG.TERMINAL_INTERACTION_PREPARED": "interaction prepared",
+  "PANEL_CONFIG.TERMINAL_REQUEST_APPROVED": "request marked Approved"
 }

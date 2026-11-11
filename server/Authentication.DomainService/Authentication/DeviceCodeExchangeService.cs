@@ -12,6 +12,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Blocks.Genesis.Entities.Iam;
+using Authentication.DomainService.Utilities;
+using Iam.DomainService.Resources;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -33,7 +35,9 @@ namespace Authentication.DomainService.Authentication
         private readonly IOptions<DeviceFlowOptions> _options;
         private readonly ILogger<DeviceCodeExchangeService> _logger;
 
-        public DeviceCodeExchangeService(
+        private readonly IResourceRepository _resourceRepository;
+
+        public DeviceCodeExchangeService( // NOSONAR S107 — already 8 dependencies on dev; grouping them needs a DI change outside spec #668's paths
             IDeviceAuthorizationRepository repository,
             DeviceCodeGenerator codeGenerator,
             IOidcTokenMintService mintService,
@@ -41,8 +45,10 @@ namespace Authentication.DomainService.Authentication
             IOidcClientSecretResolver clientSecrets,
             IUserRepository userRepository,
             IOptions<DeviceFlowOptions> options,
+            IResourceRepository resourceRepository,
             ILogger<DeviceCodeExchangeService> logger)
         {
+            _resourceRepository = resourceRepository;
             _repository = repository;
             _codeGenerator = codeGenerator;
             _mintService = mintService;
@@ -225,11 +231,30 @@ namespace Authentication.DomainService.Authentication
                 return DeviceEndpointErrors.AccessDenied("device_code already used");
             }
 
+            // Re-checked at exchange (spec #668 C6, Q2): an organization disabled since approval is refused, and a
+            // stored "no-org" is decided again from current memberships and the setting, so the newer status
+            // applies. The device code stays consumed, like any other failed exchange.
+            var organizationDecision = await OrganizationAccessResolver.RecheckStoredOrganizationAsync(
+                _resourceRepository,
+                _logger,
+                user,
+                entity.OrganizationId,
+                await OrganizationAccessResolver.ReadIssuanceSettingsAsync(_resourceRepository, _logger, user.ItemId));
+            if (!organizationDecision.IsIssued)
+            {
+                var refusal = JwtAccessTokenProvider.OrganizationRefusal(organizationDecision.Outcome);
+                return new ObjectResult(new { error = refusal.Error, error_description = refusal.ErrorDescription })
+                {
+                    StatusCode = refusal.StatusCode
+                };
+            }
+
             var mintResult = await _mintService.MintAsync(new OidcTokenMintRequest
             {
                 User = user,
                 TenantId = entity.TenantId,
-                OrganizationId = entity.OrganizationId,
+                OrganizationId = OrganizationAccessResolver.MintedOrganizationId(entity.OrganizationId, organizationDecision),
+                OrganizationStatus = organizationDecision.OrganizationStatus,
                 Scope = entity.RequestedScopes,
                 ClientId = entity.ClientId,
                 Amr = new List<string> { "device_code" },
@@ -253,6 +278,10 @@ namespace Authentication.DomainService.Authentication
                 ["scope"] = mintResult.Scope,
                 ["cookie_set"] = false
             };
+            if (!string.IsNullOrWhiteSpace(organizationDecision.OrganizationStatus))
+            {
+                response["org_status"] = organizationDecision.OrganizationStatus;
+            }
             if (includeRefreshToken && !string.IsNullOrWhiteSpace(mintResult.RefreshToken))
             {
                 response["refresh_token"] = mintResult.RefreshToken;

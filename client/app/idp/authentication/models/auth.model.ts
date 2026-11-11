@@ -46,6 +46,8 @@ export interface ISigninByEmailResponse extends IMfaChallengeFields {
   token_type: string;
   expires_in: number;
   refresh_token: string;
+  /** `"disabled"` when the sign-in succeeded into a disabled organization; absent otherwise. */
+  org_status?: string;
 }
 export interface IVerifyMfaPayload {
   code: string;

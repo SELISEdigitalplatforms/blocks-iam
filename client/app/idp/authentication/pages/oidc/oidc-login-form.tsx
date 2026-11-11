@@ -273,6 +273,10 @@ export const OidcLoginForm = ({
       const msg = t("OIDC_LOGIN_FORM.ACCOUNT_LOCKED");
       setServerError(msg);
       await animCtx?.failAnimation(msg);
+    } else if (errorCode === "organization_disabled") {
+      const msg = t("iam.shared:ORGANIZATION.DISABLED_MESSAGE");
+      setServerError(msg);
+      await animCtx?.failAnimation(msg);
     } else if (errorCode === "account_not_verified") {
       animCtx?.resetAnimation();
       setShowActivationError(true);
@@ -626,7 +630,7 @@ export const OidcLoginForm = ({
 
             {/* Inline server error */}
             {serverError && (
-              <p className="text-sm" style={{ color: "var(--danger)", fontFamily: "system-ui, sans-serif" }}>
+              <p role="alert" className="text-sm" style={{ color: "var(--danger)", fontFamily: "system-ui, sans-serif" }}>
                 {serverError}
               </p>
             )}

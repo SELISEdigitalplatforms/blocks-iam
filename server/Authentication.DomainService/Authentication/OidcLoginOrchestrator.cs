@@ -196,9 +196,7 @@ namespace Authentication.DomainService.Authentication
                 mfaCompleted: false,
                 loginMethod: LoginMethods.Password);
 
-            await _auditWriter.WriteAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
-
-            return authorizeResult;
+            return await AuditLoginSuccessUnlessRefusedAsync(authorizeResult, () => _auditWriter.WriteAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess));
         }
 
         private async Task<(IActionResult? Error, User? User, Tenant? Tenant, string? RequestedTenantId)> ValidateInputsAsync(OidcLoginRequest request)
@@ -494,7 +492,16 @@ namespace Authentication.DomainService.Authentication
                 mfaCompleted: true,
                 loginMethod: LoginMethods.Password);
 
-            await _auditWriter.WriteAsync(mfaContext.TenantId, mfaContext.ClientId, user, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
+            return await AuditLoginSuccessUnlessRefusedAsync(authorizeResult, () => _auditWriter.WriteAsync(mfaContext.TenantId, mfaContext.ClientId, user, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess));
+        }
+
+        // A sign-in refused for a disabled organization is not a successful login (spec #668 Q7).
+        private static async Task<IActionResult> AuditLoginSuccessUnlessRefusedAsync(IActionResult authorizeResult, Func<Task> writeLoginSuccess)
+        {
+            if (authorizeResult is not OrganizationRefusalResult)
+            {
+                await writeLoginSuccess();
+            }
 
             return authorizeResult;
         }

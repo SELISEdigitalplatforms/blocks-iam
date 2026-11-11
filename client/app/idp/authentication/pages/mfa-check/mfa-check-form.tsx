@@ -182,6 +182,12 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
     navigate("/app/profile");
   };
 
+  const showOrganizationDisabled = async () => {
+    const msg = t("iam.shared:ORGANIZATION.DISABLED_MESSAGE");
+    setServerError(msg);
+    await animCtx?.failAnimation(msg);
+  };
+
   const submitHandler = async ({ code }: { code: string }) => {
     setIsLoading(true);
     setServerError(null);
@@ -211,9 +217,15 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
         : null;
 
       if (response.ok) {
-        setAuthenticated();
         const redirectUrl =
           data?.redirect_uri || data?.redirect_url || data?.redirectUrl;
+        // A portal sign-in (no redirect target) into a disabled organization stays here;
+        // an OIDC or device-flow login goes on and the client app shows the status.
+        if (!redirectUrl && !returnUrl && data?.org_status === "disabled") {
+          await showOrganizationDisabled();
+          return;
+        }
+        setAuthenticated();
         await completeVerifiedLogin(redirectUrl);
         return;
       }
@@ -226,6 +238,8 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
         const msg = t("MFA_CHECK_FORM.ACCOUNT_LOCKED");
         setServerError(msg);
         await animCtx?.failAnimation(msg);
+      } else if (errorCode === "organization_disabled") {
+        await showOrganizationDisabled();
       } else if (errorCode === "invalid_mfa_code") {
         const msg = t("MFA_CHECK_FORM.INVALID_CODE");
         setServerError(msg);
@@ -297,6 +311,7 @@ export const MfaCheckFrom = ({ onSessionExpired }: MfaCheckFromProps = {}) => {
 
         {serverError && (
           <p
+            role="alert"
             className="text-sm"
             style={{
               color: "var(--danger)",

@@ -48,6 +48,8 @@ namespace Authentication.DomainService.OAuth.Services
              var result = await _userManagementMutationService.CreateUserFromSsoAsync(ssoUser);
              user = await _authenticationRepository.GetUserByIdAsync(result.ItemId ?? "");
 
+            // An organization the client sent is explicit: a disabled one is refused, never replaced (spec #668 D2).
+            request.OrganizationSource = OrganizationRequestSource.Explicit;
             return await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
         }
     }

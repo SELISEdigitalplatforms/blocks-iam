@@ -1,3 +1,4 @@
+using Iam.DomainService.Resources;
 using Blocks.Genesis;
 using Blocks.Secrets;
 using Authentication.DomainService.Authentication;
@@ -39,6 +40,7 @@ namespace XUnitTest.Auth.Oidc
                 XUnitTest.TestDoubles.OidcClientSecretTestDoubles.Resolver(oidcSecrets),
                 userRepo.Object,
                 Options.Create(new DeviceFlowOptions()),
+                new Mock<IResourceRepository>().Object,
                 NullLogger<DeviceCodeExchangeService>.Instance);
 
             return (svc, repo, userRepo, authRepo);

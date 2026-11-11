@@ -1,3 +1,4 @@
+using Iam.DomainService.Resources;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -144,7 +145,7 @@ public sealed class AuthorizationCodeReuseIntegrationTests : IDisposable
 
     private AuthorizationCodeExchangeService Exchange() =>
         new(_codes, _refresh, _tokens.Object, Mock.Of<IPkceService>(), _users.Object, _claims.Object,
-            _auth.Object, XUnitTest.TestDoubles.OidcClientSecretTestDoubles.Resolver(), _tenants.Object, _revocations, _cache, NullLogger<AuthorizationCodeExchangeService>.Instance);
+            _auth.Object, XUnitTest.TestDoubles.OidcClientSecretTestDoubles.Resolver(), _tenants.Object, _revocations, _cache, Mock.Of<IResourceRepository>(), NullLogger<AuthorizationCodeExchangeService>.Instance);
 
     private RefreshSessionResolver Resolver() => new(_cache, _refresh, NullLogger<RefreshSessionResolver>.Instance);
 

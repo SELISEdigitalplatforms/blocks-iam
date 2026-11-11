@@ -58,6 +58,16 @@ describe("OIDCErrorScreen", () => {
     expect(screen.getByRole("heading", { name: "Already signed in" })).toBeInTheDocument();
   });
 
+  it("shows the organization disabled copy from the shared keys, not the query description", () => {
+    renderAt("/oidc/error?error=organization_disabled&error_description=Server%20text");
+    expect(screen.getByRole("heading", { name: "Organization disabled" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Your organization is disabled. Please contact your administrator or support."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Server text")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Back to Sign In/ })).toBeInTheDocument();
+  });
+
   // The link reads the flow off the real URL (window.location), not the router entry.
   const atUrl = (url: string, name: RegExp = /Back to Sign In/) => {
     window.history.replaceState(null, "", url);

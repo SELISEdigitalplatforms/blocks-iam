@@ -55,6 +55,13 @@ namespace Authentication.DomainService.OAuth
                 ? authenticationConfiguration
                 : (await _clientTokenLifetimes.ApplyAsync(authenticationConfiguration, request.ClientId))!;
 
+            // Decided before the mint and the rotation, so a refused refresh leaves the lineage untouched.
+            var organizationRefusal = await _jwtAccessTokenProvider.ResolveOrganizationAsync(user, request);
+            if (organizationRefusal != null)
+            {
+                return organizationRefusal;
+            }
+
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
                 accessConfiguration,
                 tenant,
@@ -101,6 +108,7 @@ namespace Authentication.DomainService.OAuth
                 RefreshToken = newRefreshToken,
                 RefreshExpiresUtc = refreshTokenExpiry,
                 CookieDomain = cookieDomain,
+                OrganizationStatus = request.OrganizationDecision?.OrganizationStatus,
             };
         }
     }

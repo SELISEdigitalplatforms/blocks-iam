@@ -45,6 +45,14 @@ namespace Iam.DomainService.Resources
         Task<Organization> GetOrganizationByNameAsync(string name);
         Task<List<string>> GetOrganizationIdsByUserIdAsync(string userId);
         Task<List<Organization>> GetOrganizationsByIdsAsync(List<string> organizationIds);
+
+        /// <summary>
+        /// Organization status for token issuance: id -> <c>IsDisabled</c> for each of <paramref name="organizationIds"/>
+        /// that has an organization document. Ids without a document are absent from the result. One <c>$in</c> read of
+        /// <c>ItemId</c> and <c>IsDisabled</c> only, without the row policy, so a policy that hides an organization from
+        /// the caller can never read as "missing" or "disabled". Throws when the read fails.
+        /// </summary>
+        Task<IReadOnlyDictionary<string, bool>> GetOrganizationStatusesAsync(IReadOnlyCollection<string> organizationIds);
         Task SaveOrganizationAsync(Organization organization);
         Task DeleteOrganizationAsync(string organizationId);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);

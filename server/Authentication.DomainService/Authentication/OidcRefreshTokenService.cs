@@ -121,6 +121,9 @@ namespace Authentication.DomainService.Authentication
                 // a refresh. The blank -> "default" collapse that used to live here handed the
                 // tenant-wide scope to any cache entry that had lost its organization.
                 OrganizationId = tokenCache.OrganizationId ?? string.Empty,
+                // Explicit (spec #668 D2): a hint naming a now-disabled membership is refused with 403, and the
+                // lineage is neither rotated nor revoked. A blank hint is treated as none.
+                OrganizationSource = OrganizationRequestSource.Explicit,
                 ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,
                 Request = request,
