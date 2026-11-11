@@ -143,6 +143,7 @@
   "SSO_CALLBACK.REDIRECTING": "Redirecting to your application…",
   "SSO_CALLBACK.SIGN_IN_FAILED": "Sign-in could not be completed.",
   "SSO_CALLBACK.SOCIAL_SIGN_IN_FAILED": "Social sign in failed. Please try again.",
+  "SSO_PROVIDERS.OWN_SSO_LABEL": "Bring your own SSO",
   "SSO_SIGNIN_CARD.NO_AUTHORIZATION_URL": "No authorization URL provided.",
   "SSO_SIGNIN_CARD.SIGN_IN_WITH": "Sign in with {{provider}}",
   "SSO_SIGNIN_CARD.SOMETHING_WENT_WRONG": "Something went wrong",

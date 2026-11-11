@@ -3,6 +3,18 @@ import type { OidcPanelConfig, OidcServiceNode } from "./nodes-panel-oidc";
 
 const OIDC_LOGIN_PANEL_IDLE_BADGE = "OIDC_LOGIN_PANEL.IDLE_BADGE";
 
+/**
+ * A decorative terminal line whose prose is translated: `prefix` is the pseudo-protocol part
+ * ("200 OK — ", "  > "), kept verbatim like the other command lines. The getter reads the key
+ * at render time, so a language change is picked up without rebuilding the panel.
+ */
+function terminalProse(prefix: string, key: string, color: string): { text: string; color: string } {
+  return {
+    get text() { return prefix + tStatic("iam.oidc", key); },
+    color,
+  };
+}
+
 /* ──────────────────────────────────────────────────────────────
    OIDC LOGIN — real service flow:
      IAM Service validates credentials against POST /api/oidc/login →
@@ -62,12 +74,12 @@ export const OIDC_LOGIN_PANEL: OidcPanelConfig = {
     { text: "$ POST /api/oidc/login",               color: "var(--accent2)" },
     { text: "  > grant_type=authorization_code",    color: "var(--muted)"   },
     { text: "  > code_challenge_method=S256",        color: "var(--muted)"   },
-    { text: "200 OK — credentials verified",         color: "var(--success)" },
+    terminalProse("200 OK — ", "PANEL_TERMINAL.CREDENTIALS_VERIFIED", "var(--success)"),
     { text: "$ iam.issueAuthCode(client_id, scope)", color: "var(--fg)"      },
     { text: "  > code_challenge verified",           color: "var(--muted)"   },
     { text: "  > code=xxxxxxxx issued",              color: "var(--success)" },
     { text: "$ buildRedirectUri(redirect_uri, code)", color: "var(--fg)"    },
-    { text: "  > state preserved",                   color: "var(--muted)"  },
+    terminalProse("  > ", "PANEL_TERMINAL.STATE_PRESERVED", "var(--muted)"),
     { text: "window.location → client app",          color: "var(--success)"},
   ],
 
@@ -127,12 +139,12 @@ export const SIGNUP_PANEL: OidcPanelConfig = {
   terminalMessages: [
     { text: "$ POST /api/account/signup",           color: "var(--accent2)" },
     { text: "  > content-type: application/json",   color: "var(--muted)"   },
-    { text: "200 OK — email accepted",               color: "var(--success)" },
+    terminalProse("200 OK — ", "PANEL_TERMINAL.EMAIL_ACCEPTED", "var(--success)"),
     { text: "$ iam.createAccount(email)",            color: "var(--fg)"      },
     { text: "  > user_id provisioned",               color: "var(--muted)"   },
     { text: "$ mail.sendActivation(email)",          color: "var(--fg)"      },
     { text: "  > template: account-activation",      color: "var(--muted)"   },
-    { text: "activation email dispatched",           color: "var(--success)" },
+    terminalProse("", "PANEL_TERMINAL.ACTIVATION_EMAIL_DISPATCHED", "var(--success)"),
   ],
 
   errorTerminalPrefix: [
@@ -191,12 +203,12 @@ export const RESET_PASSWORD_PANEL: OidcPanelConfig = {
   terminalMessages: [
     { text: "$ POST /api/account/reset-password",  color: "var(--accent2)" },
     { text: "  > content-type: application/json",  color: "var(--muted)"   },
-    { text: "200 OK — reset code verified",        color: "var(--success)" },
+    terminalProse("200 OK — ", "PANEL_TERMINAL.RESET_CODE_VERIFIED", "var(--success)"),
     { text: "$ iam.updatePassword(user_id)",        color: "var(--fg)"      },
     { text: "  > password_hash updated",            color: "var(--muted)"   },
     { text: "$ iam.revokeSessions(user_id)",        color: "var(--fg)"      },
     { text: "  > active_tokens revoked",            color: "var(--muted)"   },
-    { text: "password reset complete",              color: "var(--success)" },
+    terminalProse("", "PANEL_TERMINAL.PASSWORD_RESET_COMPLETE", "var(--success)"),
   ],
 
   errorTerminalPrefix: [
@@ -250,12 +262,12 @@ export const ACTIVATE_PANEL: OidcPanelConfig = {
   terminalMessages: [
     { text: "$ POST /api/account/activate",        color: "var(--accent2)" },
     { text: "  > content-type: application/json",  color: "var(--muted)"   },
-    { text: "200 OK — activation code verified",   color: "var(--success)" },
+    terminalProse("200 OK — ", "PANEL_TERMINAL.ACTIVATION_CODE_VERIFIED", "var(--success)"),
     { text: "$ iam.updatePassword(user_id)",       color: "var(--fg)"      },
     { text: "  > password_hash updated",           color: "var(--muted)"   },
     { text: "$ iam.activateAccount(user_id)",      color: "var(--fg)"      },
     { text: "  > is_active = true",                color: "var(--muted)"   },
-    { text: "account activation complete",         color: "var(--success)" },
+    terminalProse("", "PANEL_TERMINAL.ACCOUNT_ACTIVATION_COMPLETE", "var(--success)"),
   ],
 
   errorTerminalPrefix: [
@@ -291,10 +303,10 @@ export const ACTIVATE_PANEL_WITHOUT_PASSWORD: OidcPanelConfig = {
   terminalMessages: [
     { text: "$ POST /api/account/activate",        color: "var(--accent2)" },
     { text: "  > content-type: application/json",  color: "var(--muted)"   },
-    { text: "200 OK — activation code verified",   color: "var(--success)" },
+    terminalProse("200 OK — ", "PANEL_TERMINAL.ACTIVATION_CODE_VERIFIED", "var(--success)"),
     { text: "$ iam.activateAccount(user_id)",      color: "var(--fg)"      },
     { text: "  > is_active = true",                color: "var(--muted)"   },
-    { text: "account activation complete",         color: "var(--success)" },
+    terminalProse("", "PANEL_TERMINAL.ACCOUNT_ACTIVATION_COMPLETE", "var(--success)"),
   ],
 };
 
@@ -350,9 +362,9 @@ export const JOIN_PANEL: OidcPanelConfig = {
   terminalMessages: [
     { text: "$ GET /api/iam/signup-links/context", color: "var(--accent2)" },
     { text: "  > X-Signup-Link-Code: (header)", color: "var(--muted)" },
-    { text: "200 OK — link valid", color: "var(--success)" },
+    terminalProse("200 OK — ", "PANEL_TERMINAL.LINK_VALID", "var(--success)"),
     { text: "$ POST /api/iam/signup-links/redeem", color: "var(--fg)" },
-    { text: "  > restricted session cookie set", color: "var(--muted)" },
+    terminalProse("  > ", "PANEL_TERMINAL.RESTRICTED_SESSION_COOKIE_SET", "var(--muted)"),
     { text: "window.location → authorizeUrl", color: "var(--success)" },
   ],
 
@@ -396,6 +408,6 @@ export const OIDC_ERROR_PANEL: OidcPanelConfig = {
 
   errorTerminalPrefix: [
     { text: "$ GET /api/oidc/callback",  color: "var(--accent2)" },
-    { text: "  > state checked",          color: "var(--muted)"   },
+    terminalProse("  > ", "PANEL_TERMINAL.STATE_CHECKED", "var(--muted)"),
   ],
 };
