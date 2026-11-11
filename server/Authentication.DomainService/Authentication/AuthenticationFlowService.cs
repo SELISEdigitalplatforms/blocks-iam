@@ -494,6 +494,8 @@ namespace Authentication.DomainService.Authentication
             {
                 GrantType = GrantTypes.SwitchOrganization,
                 OrganizationId = request.OrganizationId,
+                // The switch target is explicit: a disabled one is refused with 403, never replaced (spec #668 D2).
+                OrganizationSource = OrganizationRequestSource.Explicit,
                 // The lineage keeps its OIDC client across the switch, as /oidc/token does. Without it the
                 // successor was stored client-less and the next /oidc/token refresh failed invalid_client.
                 ClientId = refreshCache.ClientId,
@@ -667,6 +669,9 @@ namespace Authentication.DomainService.Authentication
                 // organization into the tenant-wide scope for any user who holds "default", now that
                 // a requested "default" is honoured for its members.
                 OrganizationId = tokenCache.OrganizationId ?? string.Empty,
+                // The hint is explicit (spec #668 D2): a hint naming a now-disabled membership is refused with
+                // 403 and the lineage is neither rotated nor revoked; a blank hint is treated as none.
+                OrganizationSource = OrganizationRequestSource.Explicit,
                 // Keep the lineage's OIDC client on the successor (empty stays empty: nothing is repaired).
                 ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,

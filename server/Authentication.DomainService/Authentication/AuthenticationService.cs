@@ -1105,6 +1105,8 @@ namespace Authentication.DomainService.Authentication
 
             AddSingleClaimIfPresent(principal, userInfo, BlocksContext.TENANT_ID_CLAIM, BlocksContext.TENANT_ID_CLAIM);
             AddSingleClaimIfPresent(principal, userInfo, BlocksContext.ORGANIZATION_ID_CLAIM, BlocksContext.ORGANIZATION_ID_CLAIM);
+            // Present only on the all-disabled "no-org" token (spec #668 H5), like org_id: echoed from the token.
+            AddSingleClaimIfPresent(principal, userInfo, OAuth.JwtAccessTokenProvider.OrganizationStatusClaim, OAuth.JwtAccessTokenProvider.OrganizationStatusClaim);
 
             AddArrayClaimIfPresent(principal, userInfo, BlocksContext.ROLES_CLAIM, BlocksContext.ROLES_CLAIM);
             AddArrayClaimIfPresent(principal, userInfo, BlocksContext.PERMISSION_CLAIM, BlocksContext.PERMISSION_CLAIM);

@@ -14,7 +14,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
+using System.Text.Json;
 using Blocks.Genesis.Entities.Iam;
+using Iam.DomainService.Resources;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -42,6 +44,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ITenants _tenants;
         private readonly ILogger<AuthorizationCodeExchangeService> _logger;
         private readonly IOidcClientTokenLifetimeService? _clientTokenLifetimes;
+        private readonly IResourceRepository _resourceRepository;
 
         public AuthorizationCodeExchangeService(
             IAuthorizationCodeRepository authCodeRepo,
@@ -55,6 +58,7 @@ namespace Authentication.DomainService.Authentication
             ITenants tenants,
             ITokenRevocationRepository tokenRevocationRepo,
             ICacheClient cacheClient,
+            IResourceRepository resourceRepository,
             ILogger<AuthorizationCodeExchangeService> logger,
             IOidcClientTokenLifetimeService? clientTokenLifetimes = null)
         {
@@ -70,6 +74,7 @@ namespace Authentication.DomainService.Authentication
             _authorizationClaimsResolver = authorizationClaimsResolver;
             _authenticationRepository = authenticationRepository;
             _tenants = tenants;
+            _resourceRepository = resourceRepository;
             _logger = logger;
         }
 
@@ -139,7 +144,7 @@ namespace Authentication.DomainService.Authentication
                 if (!cookiesSet)
                 {
                     _logger.LogWarning("Failed to set authentication cookies for client {ClientId}, domain {TokenDomain}. Falling back to token response body.", clientId, tokenDomain);
-                    return new OkObjectResult(new
+                    return TokenBody(exchangeResult, new
                     {
                         access_token = exchangeResult.AccessToken,
                         id_token = exchangeResult.IdToken,
@@ -151,7 +156,7 @@ namespace Authentication.DomainService.Authentication
                     });
                 }
 
-                return new OkObjectResult(new
+                return TokenBody(exchangeResult, new
                 {
                     id_token = exchangeResult.IdToken,
                     token_type = "Bearer",
@@ -166,7 +171,7 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogWarning("Cannot set cookies for client {ClientId}: domain resolution failed. Returning tokens in response body.", clientId);
             }
 
-            return new OkObjectResult(new
+            return TokenBody(exchangeResult, new
             {
                 access_token = exchangeResult.AccessToken,
                 id_token = exchangeResult.IdToken,
@@ -195,10 +200,23 @@ namespace Authentication.DomainService.Authentication
                 return validation;
             }
 
+            // Re-decided at exchange (spec #668 C6): an organization disabled after the code was issued is
+            // refused, and the code stays consumed like any other failed exchange.
+            var organizationDecision = await DecideExchangeOrganizationAsync(user!, authCode!);
+            if (!organizationDecision.IsIssued)
+            {
+                var refusal = JwtAccessTokenProvider.OrganizationRefusal(organizationDecision.Outcome);
+                return OidcExchangeResult.FromError(new ObjectResult(new { error = refusal.Error, error_description = refusal.ErrorDescription })
+                {
+                    StatusCode = refusal.StatusCode
+                });
+            }
+
+            var organizationId = OrganizationAccessResolver.MintedOrganizationId(authCode.OrganizationId, organizationDecision);
             var tenant = _tenants.GetTenantByID(effectiveTenantId!);
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(
                 user!,
-                authCode!.OrganizationId,
+                organizationId,
                 authCode.Scope,
                 requireExplicitScope: true);
 
@@ -223,7 +241,8 @@ namespace Authentication.DomainService.Authentication
             {
                 Sub = authCode.UserId,
                 TenantId = effectiveTenantId!,
-                OrgId = authCode.OrganizationId,
+                OrgId = organizationId,
+                OrganizationStatus = organizationDecision.OrganizationStatus,
                 Nonce = authCode.Nonce,
                 AuthTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 Iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
@@ -312,7 +331,45 @@ namespace Authentication.DomainService.Authentication
                 authCode.Scope,
                 accessTokenLifetimeSeconds,
                 accessExpiry,
-                refreshExpiry);
+                refreshExpiry,
+                organizationDecision.OrganizationStatus);
+        }
+
+        /// <summary>
+        /// The token endpoint body, plus <c>org_status</c> for the all-disabled "no-org" sign-in only (spec #668 §6.4).
+        /// </summary>
+        private static OkObjectResult TokenBody(OidcExchangeResult exchangeResult, object body)
+        {
+            if (string.IsNullOrWhiteSpace(exchangeResult.OrganizationStatus))
+            {
+                return new OkObjectResult(body);
+            }
+
+            var withStatus = JsonSerializer.SerializeToNode(body)!.AsObject();
+            withStatus["org_status"] = exchangeResult.OrganizationStatus;
+            return new OkObjectResult(withStatus);
+        }
+
+        /// <summary>
+        /// The organization the exchanged tokens are for: the code's organization, re-checked (spec #668 C6). An
+        /// impersonated code is minted exactly as before.
+        /// </summary>
+        private async Task<OrganizationIssuanceDecision> DecideExchangeOrganizationAsync(User user, AuthorizationCodeModel authCode)
+        {
+            if (authCode.Impersonated)
+            {
+                return OrganizationScopeResolver.Issued(
+                    OrganizationScopeResolver.ForStoredOrganization(authCode.OrganizationId),
+                    authCode.OrganizationStatus);
+            }
+
+            var settings = await OrganizationAccessResolver.ReadIssuanceSettingsAsync(_resourceRepository, _logger, user.ItemId);
+            return await OrganizationAccessResolver.RecheckStoredOrganizationAsync(
+                _resourceRepository,
+                _logger,
+                user,
+                authCode.OrganizationId,
+                settings);
         }
 
         private async Task<(OidcExchangeResult? Error, AuthorizationCodeModel? AuthCode, User? User, string? EffectiveTenantId)> ValidateInputsAsync(
@@ -571,6 +628,7 @@ namespace Authentication.DomainService.Authentication
             public int ExpiresIn { get; private set; }
             public DateTime AccessExpiry { get; private set; }
             public DateTime RefreshExpiry { get; private set; }
+            public string? OrganizationStatus { get; private set; }
 
             public static OidcExchangeResult FromError(IActionResult errorResult)
             {
@@ -587,10 +645,12 @@ namespace Authentication.DomainService.Authentication
                 string scope,
                 int expiresIn,
                 DateTime accessExpiry,
-                DateTime refreshExpiry)
+                DateTime refreshExpiry,
+                string? organizationStatus = null)
             {
                 return new OidcExchangeResult
                 {
+                    OrganizationStatus = organizationStatus,
                     AccessToken = accessToken,
                     IdToken = idToken,
                     RefreshToken = refreshToken,

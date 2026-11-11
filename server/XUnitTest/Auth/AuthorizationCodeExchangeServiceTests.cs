@@ -1,3 +1,4 @@
+using Iam.DomainService.Resources;
 using Blocks.Secrets;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
@@ -31,6 +32,7 @@ namespace XUnitTest.Auth
         private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<ITokenRevocationRepository> _tokenRevocation = new();
         private readonly Mock<ICacheClient> _cache = new();
+        private readonly Mock<IResourceRepository> _resources = new();
         private readonly Mock<ISecretService> _oidcSecrets = new(MockBehavior.Strict);
 
         public AuthorizationCodeExchangeServiceTests()
@@ -443,7 +445,7 @@ namespace XUnitTest.Auth
         private AuthorizationCodeExchangeService Create() =>
             new(_authCodeRepo.Object, _refreshTokenRepo.Object, _tokenService.Object, _pkce.Object,
                 _userRepo.Object, _claimsResolver.Object, _repo.Object, XUnitTest.TestDoubles.OidcClientSecretTestDoubles.Resolver(_oidcSecrets), _tenants.Object, _tokenRevocation.Object, _cache.Object,
-                NullLogger<AuthorizationCodeExchangeService>.Instance);
+                _resources.Object, NullLogger<AuthorizationCodeExchangeService>.Instance);
 
         private static DefaultHttpContext BuildContext(
             string code = "auth-code", string codeVerifier = "", string clientId = "cid",

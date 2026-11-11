@@ -25,6 +25,33 @@ namespace Iam.DomainService.Utilities
     /// </param>
     public sealed record OrganizationScope(OrganizationScopeKind Kind, string ClaimValue);
 
+    /// <summary>How an issuance ends once organization status is taken into account (spec #668 §6.1).</summary>
+    public enum OrganizationIssuanceOutcome
+    {
+        /// <summary>A token may be issued for <see cref="OrganizationIssuanceDecision.Scope"/>.</summary>
+        Issue,
+
+        /// <summary>403 <c>organization_disabled</c>: no token, code or approval is created.</summary>
+        OrganizationDisabled,
+
+        /// <summary>503 <c>temporarily_unavailable</c>: the status could not be read, so nothing is issued.</summary>
+        StatusUnavailable
+    }
+
+    /// <param name="Outcome">Whether the issuance may go ahead.</param>
+    /// <param name="Scope">The scope to mint when <see cref="Outcome"/> is <see cref="OrganizationIssuanceOutcome.Issue"/>.</param>
+    /// <param name="OrganizationStatus">
+    /// <c>"disabled"</c> only for the <c>"no-org"</c> token a user whose organizations are all disabled gets while
+    /// the tenant allows it; null otherwise. Becomes the <c>org_status</c> claim and response field.
+    /// </param>
+    public sealed record OrganizationIssuanceDecision(
+        OrganizationIssuanceOutcome Outcome,
+        OrganizationScope Scope,
+        string? OrganizationStatus = null)
+    {
+        public bool IsIssued => Outcome == OrganizationIssuanceOutcome.Issue;
+    }
+
     /// <summary>
     /// The one place that decides which organization a token is scoped to.
     /// </summary>
@@ -124,6 +151,136 @@ namespace Iam.DomainService.Utilities
             // R6. A member of nothing. Explicitly so -- not tenant-wide by omission.
             return firstMembership is null ? NoOrganizationScope : Organization(firstMembership);
         }
+
+        /// <summary>The <c>org_status</c> value of a "no-org" token issued because every membership is disabled.</summary>
+        public const string DisabledOrganizationStatus = "disabled";
+
+        /// <summary>
+        /// The ids one status lookup has to cover for <see cref="ResolveIssuance"/>: the requested organization, the
+        /// last-used one and every membership (organization ids, then role keys, then permission keys). Blanks and
+        /// the sentinels are left out, because <c>"default"</c> and <c>"no-org"</c> always count as active.
+        /// Empty means no lookup is needed.
+        /// </summary>
+        public static IReadOnlyList<string> CollectStatusCandidates(User user, string? requestedOrganizationId)
+        {
+            ArgumentNullException.ThrowIfNull(user);
+
+            return new[] { requestedOrganizationId, user.LastUsedOrganizationId }
+                .Concat(Memberships(user))
+                .Where(id => !string.IsNullOrWhiteSpace(id) && !IsReservedOrganizationId(id))
+                .Select(id => id!)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+        }
+
+        /// <summary>
+        /// The issuance decision under multi-org once organization status is known (spec #668 §6.1, rules 3-7).
+        /// The caller handles multi-org off (always <c>"default"</c>, no lookup) and a failed lookup (503).
+        /// </summary>
+        /// <param name="user">The user the token is being minted for.</param>
+        /// <param name="requestedOrganizationId">The organization the request names, if any.</param>
+        /// <param name="isExplicit">
+        /// The requested organization was carried in explicitly (client-sent, refresh hint, switch target,
+        /// token-exchange grant, link): a disabled membership is refused. Otherwise the server filled it in, and it
+        /// is only a preference: honoured while it is an active membership, else the fallback applies.
+        /// </param>
+        /// <param name="isLinkOrganization">
+        /// The explicit organization comes from a signup link or link session. Links keep their own handling;
+        /// only the status check is added: a disabled or missing link organization is refused.
+        /// </param>
+        /// <param name="organizationStatuses">Id -> IsDisabled for the ids that have an organization document.</param>
+        /// <param name="allowNoOrgSignIn">The tenant's <c>AllowNoOrgSignInForDisabledOrganizations</c>.</param>
+        /// <param name="hasAccess">The membership test, normally <c>OrganizationAccessResolver.HasOrganizationAccess</c>.</param>
+        public static OrganizationIssuanceDecision ResolveIssuance(
+            User user,
+            string? requestedOrganizationId,
+            bool isExplicit,
+            bool isLinkOrganization,
+            IReadOnlyDictionary<string, bool> organizationStatuses,
+            bool allowNoOrgSignIn,
+            Func<User, string?, bool> hasAccess)
+        {
+            ArgumentNullException.ThrowIfNull(user);
+            ArgumentNullException.ThrowIfNull(organizationStatuses);
+            ArgumentNullException.ThrowIfNull(hasAccess);
+
+            // Rule 3: active means the document exists and is not disabled; a missing document is not active.
+            bool IsActive(string? organizationId) =>
+                IsReservedOrganizationId(organizationId)
+                || (organizationId is not null
+                    && organizationStatuses.TryGetValue(organizationId, out var isDisabled)
+                    && !isDisabled);
+
+            var isRequestedMembership = !string.IsNullOrWhiteSpace(requestedOrganizationId)
+                && !string.Equals(requestedOrganizationId, IdpConstants.NoOrganizationId, StringComparison.Ordinal)
+                && hasAccess(user, requestedOrganizationId);
+
+            if (isExplicit && isLinkOrganization && !string.IsNullOrWhiteSpace(requestedOrganizationId) && !IsActive(requestedOrganizationId))
+            {
+                return Refused(OrganizationIssuanceOutcome.OrganizationDisabled);
+            }
+
+            // Rule 4: an explicit organization the user belongs to is that organization or a refusal, never a
+            // fallback. One the user does not belong to is ignored, as before; "no-org" is never honoured.
+            // A server-filled preference is honoured only while active; otherwise rule 5 decides.
+            if (isRequestedMembership)
+            {
+                if (IsActive(requestedOrganizationId))
+                {
+                    return Issued(Organization(requestedOrganizationId!));
+                }
+
+                if (isExplicit)
+                {
+                    return Refused(OrganizationIssuanceOutcome.OrganizationDisabled);
+                }
+            }
+
+            // Rule 5: last used if it is still a membership and active, else the first active membership in the
+            // order the sign-in path has always used.
+            if (hasAccess(user, user.LastUsedOrganizationId) && IsActive(user.LastUsedOrganizationId))
+            {
+                return Issued(Organization(user.LastUsedOrganizationId!));
+            }
+
+            var memberships = Memberships(user).ToList();
+            var firstActive = memberships.FirstOrDefault(IsActive);
+            if (firstActive is not null)
+            {
+                return Issued(Organization(firstActive));
+            }
+
+            // Rule 6: a member of nothing keeps today's "no-org", with no status, whatever the setting.
+            if (memberships.Count == 0)
+            {
+                return Issued(NoOrganizationScope);
+            }
+
+            // Rule 7: memberships exist, but none is active.
+            return allowNoOrgSignIn
+                ? Issued(NoOrganizationScope, DisabledOrganizationStatus)
+                : Refused(OrganizationIssuanceOutcome.OrganizationDisabled);
+        }
+
+        /// <summary>The decision for an issuance whose organization was not status-checked (multi-org off, impersonation).</summary>
+        public static OrganizationIssuanceDecision Issued(OrganizationScope scope, string? organizationStatus = null) =>
+            new(OrganizationIssuanceOutcome.Issue, scope, organizationStatus);
+
+        /// <summary>The scope of an organization stored at authorize or approval, minted as it was stored.</summary>
+        public static OrganizationScope ForStoredOrganization(string? organizationId) =>
+            string.IsNullOrWhiteSpace(organizationId) || string.Equals(organizationId, IdpConstants.NoOrganizationId, StringComparison.Ordinal)
+                ? NoOrganizationScope
+                : Organization(organizationId);
+
+        /// <summary>A refusal; the scope is never minted.</summary>
+        public static OrganizationIssuanceDecision Refused(OrganizationIssuanceOutcome outcome) =>
+            new(outcome, NoOrganizationScope);
+
+        private static IEnumerable<string> Memberships(User user) =>
+            (user.OrganizationIds ?? [])
+                .Concat(user.Roles?.Keys ?? Enumerable.Empty<string>())
+                .Concat(user.Permissions?.Keys ?? Enumerable.Empty<string>())
+                .Where(id => !string.IsNullOrWhiteSpace(id));
 
         // A "default" reached through a membership is the tenant-wide scope, whichever rule found it.
         private static OrganizationScope Organization(string organizationId) =>

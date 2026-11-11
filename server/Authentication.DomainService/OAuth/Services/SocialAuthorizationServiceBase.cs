@@ -85,10 +85,13 @@ namespace Authentication.DomainService.OAuth.Services
                 return userStateError;
             }
 
-            request.OrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
+            // The mint writes the organization it actually issued for back to request.OrganizationId (it is the
+            // refresh token's hint); last-used keeps following the sign-in pre-fill, as before (spec #668 Q1).
+            var signInOrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
+            request.OrganizationId = signInOrganizationId;
             var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
 
-            await PersistLastUsedOrganizationAsync(user, request.OrganizationId, tokenResponse);
+            await PersistLastUsedOrganizationAsync(user, signInOrganizationId, tokenResponse);
 
             return tokenResponse;
         }

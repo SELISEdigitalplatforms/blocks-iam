@@ -190,6 +190,11 @@ public sealed class OidcSigningKeyMaterial
             BlocksContext.ORGANIZATION_ID_CLAIM,
             string.IsNullOrWhiteSpace(claims.OrgId) ? IdpConstants.NoOrganizationId : claims.OrgId));
 
+        if (!string.IsNullOrWhiteSpace(claims.OrganizationStatus))
+        {
+            jwtClaims.Add(new Claim("org_status", claims.OrganizationStatus));
+        }
+
         if (!string.IsNullOrWhiteSpace(claims.ClientId))
         {
             jwtClaims.Add(new Claim("client_id", claims.ClientId));

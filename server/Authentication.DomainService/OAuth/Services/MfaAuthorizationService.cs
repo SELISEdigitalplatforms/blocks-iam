@@ -119,7 +119,8 @@ namespace Authentication.DomainService.OAuth.Services
                 // fall through to the "default" bucket in AuthorizationClaimsResolver, so an org-scoped
                 // account completed its login with organization_id "default" and no roles or
                 // permissions at all — while the same account logging in without mfa got the right ones.
-                request.OrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
+                var signInOrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
+                request.OrganizationId = signInOrganizationId;
 
                 var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
                 if (string.IsNullOrWhiteSpace(tokenResponse.Error))
@@ -146,10 +147,12 @@ namespace Authentication.DomainService.OAuth.Services
                     // Same stickiness the password leg persists, so the organization this account
                     // just signed into is the one its next login resolves to by default. Without it
                     // an mfa user's LastUsedOrganizationId would never advance.
-                    if (!string.IsNullOrWhiteSpace(request.OrganizationId)
-                        && !string.Equals(user.LastUsedOrganizationId, request.OrganizationId, StringComparison.OrdinalIgnoreCase))
+                    // It follows the sign-in pre-fill: request.OrganizationId now holds the organization the
+                    // mint issued for, which is the refresh token's hint (spec #668 Q1).
+                    if (!string.IsNullOrWhiteSpace(signInOrganizationId)
+                        && !string.Equals(user.LastUsedOrganizationId, signInOrganizationId, StringComparison.OrdinalIgnoreCase))
                     {
-                        postLoginUpdates[nameof(User.LastUsedOrganizationId)] = request.OrganizationId;
+                        postLoginUpdates[nameof(User.LastUsedOrganizationId)] = signInOrganizationId;
                     }
 
                     if (postLoginUpdates.Count > 0)

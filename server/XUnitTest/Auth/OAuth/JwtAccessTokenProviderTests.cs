@@ -1,3 +1,4 @@
+using XUnitTest.TestDoubles;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -35,6 +36,8 @@ namespace XUnitTest.Auth.OAuth
 
         public JwtAccessTokenProviderTests()
         {
+            // The issuance gate (spec #668) reads organization status; these tests assume enabled organizations.
+            _resourceRepository.WithActiveOrganizations();
             _cacheClient.Setup(c => c.CacheDatabase()).Returns(_cacheDb.Object);
             _cryptoService.Setup(c => c.Hash(It.IsAny<byte[]>(), It.IsAny<bool>())).Returns("cache-key");
             _certificateProviderFactory.Setup(f => f.GetProvider(It.IsAny<CertificateStorageType>())).Returns(_certificateProvider.Object);

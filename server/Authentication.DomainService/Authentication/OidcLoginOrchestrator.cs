@@ -196,7 +196,11 @@ namespace Authentication.DomainService.Authentication
                 mfaCompleted: false,
                 loginMethod: LoginMethods.Password);
 
-            await _auditWriter.WriteAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
+            // A sign-in refused for a disabled organization is not a successful login (spec #668 Q7).
+            if (authorizeResult is not OrganizationRefusalResult)
+            {
+                await _auditWriter.WriteAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
+            }
 
             return authorizeResult;
         }
@@ -494,7 +498,11 @@ namespace Authentication.DomainService.Authentication
                 mfaCompleted: true,
                 loginMethod: LoginMethods.Password);
 
-            await _auditWriter.WriteAsync(mfaContext.TenantId, mfaContext.ClientId, user, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
+            // A sign-in refused for a disabled organization is not a successful login (spec #668 Q7).
+            if (authorizeResult is not OrganizationRefusalResult)
+            {
+                await _auditWriter.WriteAsync(mfaContext.TenantId, mfaContext.ClientId, user, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
+            }
 
             return authorizeResult;
         }

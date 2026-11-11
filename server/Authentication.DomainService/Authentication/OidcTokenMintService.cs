@@ -32,6 +32,9 @@ namespace Authentication.DomainService.Authentication
         public required User User { get; init; }
         public required string TenantId { get; init; }
         public string? OrganizationId { get; init; }
+
+        /// <summary>The <c>org_status</c> claim (<c>"disabled"</c> for the all-disabled "no-org" sign-in), or null.</summary>
+        public string? OrganizationStatus { get; init; }
         public string? Scope { get; init; }
         public string? Nonce { get; init; }
         public string ClientId { get; init; } = string.Empty;
@@ -111,6 +114,7 @@ namespace Authentication.DomainService.Authentication
                 Sub = request.User.ItemId,
                 TenantId = request.TenantId,
                 OrgId = request.OrganizationId,
+                OrganizationStatus = request.OrganizationStatus,
                 Nonce = request.Nonce,
                 AuthTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 Iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
