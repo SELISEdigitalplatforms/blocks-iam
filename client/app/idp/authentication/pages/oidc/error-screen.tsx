@@ -61,6 +61,13 @@ const resolveCopy = (
         icon: CheckCircle2,
         tone: "success",
       };
+    case "organization_disabled":
+      return {
+        title: t("iam.shared:ORGANIZATION.DISABLED_TITLE"),
+        message: t("iam.shared:ORGANIZATION.DISABLED_MESSAGE"),
+        icon: AlertCircle,
+        tone: "danger",
+      };
     default:
       break;
   }

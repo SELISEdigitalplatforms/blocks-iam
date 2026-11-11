@@ -1,7 +1,7 @@
 // i18n modules (iam): module -> folders it covers (key count).
 //   iam.shared      components, hooks, layouts, guards, providers, lib, routes, constants,
 //                   idp/authentication/{components,utils,constants,hooks,services,models},
-//                   idp/captcha, idp/mfa, cross-modules/storage (164)
+//                   idp/captcha, idp/mfa, cross-modules/storage (166)
 //   iam.oidc        idp/authentication/pages/oidc (162)
 //   iam.login       pages/login (15)
 //   iam.signup      pages/signup, pages/signup-email-sent (22)
@@ -14,7 +14,7 @@
 //   iam.sso         pages/sso-activate (9)
 //   iam.profile     idp/iam components, modules, models/hooks text (93)
 //   iam.security    idp/iam/security (53)
-//   total 716
+//   total 718
 import shared from "./iam.shared.en.json";
 import oidc from "./iam.oidc.en.json";
 import login from "./iam.login.en.json";

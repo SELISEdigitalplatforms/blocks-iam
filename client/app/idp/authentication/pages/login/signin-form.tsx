@@ -79,6 +79,13 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
         return navigate(mode === "oidc" ? buildOIDCNavigationUrl(mfaPath) : mfaPath);
       }
 
+      // A portal sign-in into a disabled organization stays here; an OIDC login goes on
+      // and the client app shows the status.
+      if (mode !== "oidc" && res.org_status === "disabled") {
+        showErrorToast({ errors: t("iam.shared:ORGANIZATION.DISABLED_MESSAGE") });
+        return;
+      }
+
       // Root tenant FE uses only HttpOnly cookies; no token handling from response needed
 
       setAuthenticated();
@@ -100,7 +107,10 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
           }
           resetCaptcha();
         }
-        showErrorToast({ errors: errs?.error_description || t("SIGNIN_FORM.SOMETHING_WENT_WRONG") });
+        const message = errorCode === "organization_disabled"
+          ? t("iam.shared:ORGANIZATION.DISABLED_MESSAGE")
+          : errs?.error_description || t("SIGNIN_FORM.SOMETHING_WENT_WRONG");
+        showErrorToast({ errors: message });
       } else {
         showErrorToast({ errors: t("SIGNIN_FORM.SOMETHING_WENT_WRONG") });
       }

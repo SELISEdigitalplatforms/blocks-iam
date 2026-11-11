@@ -110,6 +110,8 @@
   "OIDC_UI_TEMPLATE.SIGNUP_TERMS_CONJUNCTION": "and the",
   "OIDC_UI_TEMPLATE.SIGNUP_TERMS_LINK_TEXT": "Terms of Service",
   "OIDC_UI_TEMPLATE.SIGNUP_TERMS_PREFIX": "I agree to the",
+  "ORGANIZATION.DISABLED_MESSAGE": "Your organization is disabled. Please contact your administrator or support.",
+  "ORGANIZATION.DISABLED_TITLE": "Organization disabled",
   "PAGINATION.PAGE_OF": "Page {{page}} of {{total}}",
   "PAGINATION.ROWS_PER_PAGE": "Rows per page",
   "PASSWORD_POLICY.ERROR_LOWERCASE": "Must include a lowercase letter",

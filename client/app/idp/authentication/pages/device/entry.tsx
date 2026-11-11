@@ -226,6 +226,9 @@ export function DeviceEntryPage() {
         setServerError(t("DEVICE_ENTRY.SESSION_EXPIRED"));
       } else if (code === "slow_down") {
         setServerError(t("DEVICE_ENTRY.ERROR_SLOW_DOWN"));
+      } else if (code === "organization_disabled") {
+        // The request stays pending on the server; only the message changes.
+        setServerError(t("iam.shared:ORGANIZATION.DISABLED_MESSAGE"));
       } else {
         setServerError(t("DEVICE_ENTRY.DECISION_NOT_RECORDED"));
       }

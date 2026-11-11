@@ -285,4 +285,24 @@ describe("DeviceEntryPage", () => {
       await screen.findByText("We could not record your decision. Please try again."),
     ).toBeInTheDocument();
   });
+
+  it("shows the organization disabled message when approving is refused for organization_disabled", async () => {
+    h.verify.mockResolvedValue({ status: "ready", payload: readyPayload });
+    h.decide.mockRejectedValue({
+      errors: { error: "organization_disabled", error_description: "Server text" },
+    });
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Verification Code"), { target: { value: "ABCDEFGH" } });
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Allow" }));
+    expect(
+      await screen.findByText(
+        "Your organization is disabled. Please contact your administrator or support.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Server text")).not.toBeInTheDocument();
+    expect(assignSpy).not.toHaveBeenCalled();
+    // The consent stays open, so the user can still deny or retry later.
+    expect(screen.getByRole("button", { name: "Allow" })).toBeEnabled();
+  });
 });

@@ -436,6 +436,43 @@ describe("OidcLoginForm", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the organization disabled message in the alert slot for organization_disabled", async () => {
+    h.animCtx = {
+      phase: "idle",
+      startAnimation: vi.fn(),
+      succeedAnimation: vi.fn().mockResolvedValue(undefined),
+      failAnimation: vi.fn().mockResolvedValue(undefined),
+      resetAnimation: vi.fn(),
+    };
+    const message = "Your organization is disabled. Please contact your administrator or support.";
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(403, { error: "organization_disabled", error_description: "Server text" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderForm();
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.queryByText("Server text")).not.toBeInTheDocument();
+    expect(h.animCtx.failAnimation).toHaveBeenCalledWith(message);
+    expect(window.location.href).toBe("");
+  });
+
+  it("still follows the redirect when a successful login carries org_status disabled", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, { redirect_uri: "https://app.example.com/next", org_status: "disabled" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderForm();
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    await waitFor(() => expect(window.location.href).toBe("https://app.example.com/next"));
+  });
+
   it("shows the activation screen for account_not_verified and can return to login", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, { error: "account_not_verified" }));
     vi.stubGlobal("fetch", fetchMock);
