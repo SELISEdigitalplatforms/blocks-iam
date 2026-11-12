@@ -292,6 +292,23 @@ test.describe("OIDC error screen", () => {
       await expect(back).toHaveAttribute("href", /^\/oidc\/login\?.*clientId=client-1/);
     });
 
+    // blocks-iam#668 H9 (error screen) and its design contract: the "Organization disabled" title, the
+    // exact message from the iam.shared key, and the existing way back to sign in.
+    await test.step("[Positive] H9: organization_disabled shows the disabled-organization message", async () => {
+      const message =
+        "Your organization is disabled. Please contact your administrator or support.";
+      await page.goto("/oidc/error?error=organization_disabled", { waitUntil: "domcontentloaded" });
+
+      await expect(page.getByRole("heading", { name: /organization\s*disabled/i })).toBeVisible({
+        timeout: 30_000,
+      });
+      // The message is matched on its own; .first() only guards against a second rendering of it.
+      await expect(page.getByText(message, { exact: true }).first()).toBeVisible();
+      // The code is never humanized into the generic "Sign In Failed" card.
+      await expect(page.getByRole("heading", { name: /sign\s*in\s*failed/i })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: /back to sign in/i })).toBeVisible();
+    });
+
     // With no application in the URL, a bare /oidc/login is a dead end, so the link goes to
     // IAM's own login launcher instead (0472d5b5, "send /oidc/login with no application to IAM's own login").
     await test.step("[Positive] 'Back to Sign In' without a client returns to IAM's own /login", async () => {
