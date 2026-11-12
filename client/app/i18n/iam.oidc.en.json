@@ -103,6 +103,7 @@
   "OIDC_LOGIN_PANEL.VALIDATING_SUCCESS": "Credentials verified",
   "OIDC_LOGIN_PANEL.VALIDATING_TITLE": "Validating Credentials",
   "OIDC_SIGNIN.ACCESS_GRANTED": "Access Granted",
+  "OIDC_SIGNIN.LOADING": "Loading sign-in options…",
   "OIDC_SIGNIN.REDIRECTING": "Redirecting to your application…",
   "OIDC_SIGNIN.SOCIAL_SIGN_IN_FAILED": "Social sign in failed. Please try again.",
   "PANEL_TERMINAL.ACCOUNT_ACTIVATION_COMPLETE": "account activation complete",

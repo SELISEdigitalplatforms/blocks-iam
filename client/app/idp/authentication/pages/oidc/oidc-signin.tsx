@@ -9,8 +9,11 @@ import { useOIDCContext } from "@/layouts/oidc-layout";
 import { buildOIDCNavigationUrl, getCurrentOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 import { OidcLoginForm } from "./oidc-login-form";
 import { OidcAuthShell, OidcFooter } from "./oidc-auth-shell";
+import { OidcLoginPageSkeleton } from "./oidc-login-skeleton";
 import { OIDC_LOGIN_PANEL } from "./oidc-panel-config";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
+import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { tStatic, useT } from "@seliseblocks/genesis-os/i18n";
 
 export const OIDCSignin = () => {
@@ -21,7 +24,7 @@ export const OIDCSignin = () => {
   const [isActivatingSocial, setIsActivatingSocial] = useState(false);
   const oidcContext = useOIDCContext();
   const tenantId = oidcContext.tenantId || searchParams.get("tenant_id") || undefined;
-  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  const { data: oidcUiConfig, isLoading: isUiConfigLoading } = useOidcUiConfig(tenantId);
   const template = oidcUiConfig?.template;
 
   const code = searchParams.get("code") || "";
@@ -53,6 +56,26 @@ export const OIDCSignin = () => {
   const urlReturnUrl = searchParams.get("returnUrl");
   const effectiveReturnUrl = oidcContext.returnUrl || urlReturnUrl || undefined;
   const effectiveClientId = urlClientId || oidcContext.clientId || "";
+  const effectiveRedirectUri = oidcContext.redirectUri || urlRedirectUri || "";
+  // Pure OIDC password/email flow: the sci-fi shell with the nodes panel. Also covers the
+  // device-flow return trip, which has returnUrl instead of redirect_uri.
+  const rendersLoginShell =
+    isOidcPasswordFlow && !!effectiveClientId && !!(effectiveRedirectUri || effectiveReturnUrl);
+
+  // The page is drawn from three answers: the tenant's template (theme, brand, side panel), the
+  // application's login options (password, which social providers) and the tenant's sign-up
+  // setting (the "create an account" link). All three are asked for here, side by side, and the
+  // page waits for all of them, so it renders once, as configured, instead of drawing defaults
+  // and correcting them. The form reads the same queries (same keys) from the cache.
+  const { isLoading: isLoginOptionsLoading } = useGetLoginOptions(
+    tenantId,
+    rendersLoginShell,
+    effectiveClientId,
+  );
+  const { isLoading: isSignUpSettingLoading } = useGetSignUpSetting(tenantId, {
+    enabled: rendersLoginShell,
+  });
+  const isPageConfigLoading = isUiConfigLoading || isLoginOptionsLoading || isSignUpSettingLoading;
 
   useEffect(() => {
     if (!code || !state) {
@@ -132,22 +155,11 @@ export const OIDCSignin = () => {
     );
   }
 
-  if (isOidcPasswordFlow && !template) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader className="h-8 w-8 animate-spin" />
-      </div>
-    );
+  if (rendersLoginShell && (isPageConfigLoading || !template)) {
+    return <OidcLoginPageSkeleton />;
   }
 
-  // Pure OIDC password/email flow — sci-fi shell with nodes panel. Also covers the
-  // device-flow return trip, which has returnUrl instead of redirect_uri.
-  if (
-    isOidcPasswordFlow &&
-    template &&
-    effectiveClientId &&
-    (oidcContext.redirectUri || urlRedirectUri || effectiveReturnUrl)
-  ) {
+  if (rendersLoginShell && template) {
     return (
       <OidcAuthShell
         panelConfig={OIDC_LOGIN_PANEL}
@@ -165,7 +177,7 @@ export const OIDCSignin = () => {
       >
         <OidcLoginForm
           clientId={effectiveClientId}
-          redirectUri={oidcContext.redirectUri || urlRedirectUri || ""}
+          redirectUri={effectiveRedirectUri}
           returnUrl={effectiveReturnUrl}
           scope={oidcContext.scope || searchParams.get("scope") || undefined}
           state={oidcContext.state || searchParams.get("state") || undefined}

@@ -28,6 +28,7 @@ import { sha256 } from "js-sha256";
 import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 import { useOidcAuthAnimation } from "./oidc-auth-shell";
 import { OidcErrorDialog } from "./oidc-error-dialog";
+import { OidcLoginFormSkeleton } from "./oidc-login-skeleton";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { OidcAppHandoff } from "./oidc-app-handoff";
 import { isAppRedirectUrl, navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
@@ -120,9 +121,13 @@ export const OidcLoginForm = ({
   const loginFormSchema = useMemo(() => buildOidcLoginFormSchema(t), [t]);
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
-  const { data: loginOption } = useGetLoginOptions(tenantId, true, clientId);
+  const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions(
+    tenantId,
+    true,
+    clientId,
+  );
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
-  const { data: signUpSetting } = useGetSignUpSetting(tenantId);
+  const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting(tenantId);
   const isSignUpEnabled = signUpSetting?.isSignUpEnable ?? false;
   const [accounts, setAccounts] = useState<OidcAccountInfo[]>([]);
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
@@ -460,6 +465,13 @@ export const OidcLoginForm = ({
   if (!oidcUiConfig?.template) return null;
   const loginCopy = oidcUiConfig.template.pages.login;
 
+  // Which methods to draw is the server's answer, so none is drawn before it arrives: drawing
+  // the password form first and removing it once a social-only answer lands reads as a blink.
+  // OIDCSignin normally has both answers cached before this form mounts.
+  if (isLoginOptionLoading || isSignUpSettingLoading) {
+    return <OidcLoginFormSkeleton />;
+  }
+
   if (isSelectingAccount && accounts.length > 0) {
     return (
       <OidcAccountSelector
@@ -470,8 +482,8 @@ export const OidcLoginForm = ({
     );
   }
 
-  // The project and this application decide the methods. Until the options load (or if they
-  // fail to), the password form stays: the server still refuses a method that is turned off.
+  // The project and this application decide the methods. If the options fail to load, the
+  // password form stays: the server still refuses a method that is turned off.
   const allowedGrantTypes = loginOption?.allowedGrantTypes;
   const showPasswordLogin = !allowedGrantTypes || allowedGrantTypes.includes(GRANT_TYPES.password);
   const showSocialLogin = !!loginOption?.ssoInfo?.length;

@@ -8,6 +8,8 @@ const h = vi.hoisted(() => ({
   resetCaptcha: vi.fn(),
   selectOidcAccount: vi.fn(),
   loginOption: undefined as unknown,
+  loginOptionLoading: false,
+  signUpSettingLoading: false,
   oidcUiConfig: undefined as unknown,
   captchaEnabled: false,
   signUpSetting: { isSignUpEnable: false } as unknown,
@@ -50,13 +52,13 @@ vi.mock("@blocks-idp/authentication/services/auth.service", () => ({
   authService: { selectOidcAccount: (...args: unknown[]) => h.selectOidcAccount(...args) },
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-auth", () => ({
-  useGetLoginOptions: vi.fn(() => ({ data: h.loginOption })),
+  useGetLoginOptions: vi.fn(() => ({ data: h.loginOption, isLoading: h.loginOptionLoading })),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
   useOidcUiConfig: vi.fn(() => ({ data: h.oidcUiConfig, captchaEnabled: h.captchaEnabled })),
 }));
 vi.mock("@blocks-idp/iam/hooks/use-user", () => ({
-  useGetSignUpSetting: vi.fn(() => ({ data: h.signUpSetting })),
+  useGetSignUpSetting: vi.fn(() => ({ data: h.signUpSetting, isLoading: h.signUpSettingLoading })),
 }));
 vi.mock("@blocks-idp/captcha/hooks/use-captcha", () => ({
   useCaptcha: vi.fn(() => ({ captcha: {}, code: h.captchaCode, reset: h.resetCaptcha })),
@@ -110,6 +112,8 @@ const originalLocation = window.location;
 beforeEach(() => {
   vi.clearAllMocks();
   h.loginOption = undefined;
+  h.loginOptionLoading = false;
+  h.signUpSettingLoading = false;
   h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
   h.captchaEnabled = false;
   h.signUpSetting = { isSignUpEnable: false };
@@ -588,6 +592,45 @@ describe("OidcLoginForm", () => {
     h.loginOption = { ssoInfo: [] };
     renderForm();
     expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+  });
+
+  describe("before the server has said which methods are allowed", () => {
+    it("draws a skeleton, not the password form, while the login options load", () => {
+      h.loginOptionLoading = true;
+      renderForm();
+      expect(screen.getByTestId("oidc-login-form-skeleton")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("Loading sign-in options…");
+      expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("sso-signin")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("no-sign-in-method")).not.toBeInTheDocument();
+    });
+
+    it("draws a skeleton, not a late sign-up link, while the sign-up setting loads", () => {
+      h.signUpSettingLoading = true;
+      h.loginOption = { allowedGrantTypes: ["social"], ssoInfo: [{ provider: "google" }] };
+      renderForm();
+      expect(screen.getByTestId("oidc-login-form-skeleton")).toBeInTheDocument();
+      expect(screen.queryByTestId("sso-signin")).not.toBeInTheDocument();
+      expect(screen.queryByText("Create an account")).not.toBeInTheDocument();
+    });
+
+    it("goes straight to the configured methods once both answers are in", () => {
+      h.loginOption = { allowedGrantTypes: ["social"], ssoInfo: [{ provider: "google" }] };
+      h.signUpSetting = { isSignUpEnable: true };
+      renderForm();
+      expect(screen.queryByTestId("oidc-login-form-skeleton")).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+      expect(screen.getByTestId("sso-signin")).toBeInTheDocument();
+      expect(screen.getByText("Create an account")).toBeInTheDocument();
+    });
+
+    it("falls back to the password form when the options fail to load", () => {
+      // Settled with no data (the request failed): the server still refuses a disabled method.
+      h.loginOption = undefined;
+      renderForm();
+      expect(screen.queryByTestId("oidc-login-form-skeleton")).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+    });
   });
 
   it("says so when no sign-in method is available", () => {
