@@ -302,7 +302,7 @@ test.describe("OIDC error screen", () => {
       await expect(page.getByRole("heading", { name: /organization\s*disabled/i })).toBeVisible({
         timeout: 30_000,
       });
-      // The side panel may repeat the message, so the first match is enough.
+      // The message is matched on its own; .first() only guards against a second rendering of it.
       await expect(page.getByText(message, { exact: true }).first()).toBeVisible();
       // The code is never humanized into the generic "Sign In Failed" card.
       await expect(page.getByRole("heading", { name: /sign\s*in\s*failed/i })).toHaveCount(0);
