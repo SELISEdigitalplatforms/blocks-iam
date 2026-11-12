@@ -591,6 +591,23 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
+        public void AccessLists_OmittedFromJson_AreNull_ButSentEmpty_AreEmpty()
+        {
+            // users/access keeps an omitted list and clears one sent empty, so the two must not
+            // deserialize to the same value.
+            var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+
+            var omitted = System.Text.Json.JsonSerializer.Deserialize<UpdateUserAccessControlRequest>(
+                """{"userId":"u-1","roles":["admin"]}""", options)!;
+            omitted.Permissions.Should().BeNull();
+            omitted.Roles.Should().Equal("admin");
+
+            System.Text.Json.JsonSerializer.Deserialize<UpdateUserAccessControlRequest>(
+                """{"userId":"u-1","roles":["admin"],"permissions":[]}""", options)!
+                .Permissions.Should().NotBeNull().And.BeEmpty();
+        }
+
+        [Fact]
         public void NotifyUser_FalseInJson_IsHonoured()
         {
             var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);

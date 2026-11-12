@@ -294,6 +294,39 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
+        public async Task AccessChangeThatSendsTheLastPermissionEmptyRemovesItAndEndsTheUsersSessions()
+        {
+            _kit.WithUser("top", ["admin"]);
+            AccessGrantTestKit.SignIn("top");
+            var member = _kit.WithUser("member", ["viewer"], ["read"]);
+
+            var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "member", OrganizationId = Org, Roles = ["viewer"], Permissions = []
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            member.Permissions[Org].Should().BeEmpty();
+            member.Roles[Org].Should().Equal("viewer");
+            _kit.Terminator.Verify(t => t.EndAllSessionsAsync("member", "access_replaced"), Times.Once);
+        }
+
+        [Fact]
+        public async Task DescendantCannotTakeAwayADirectPermissionBySendingAnEmptyList()
+        {
+            var member = _kit.WithUser("member", ["viewer"], ["read"]);
+
+            var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "member", OrganizationId = Org, Roles = ["viewer"], Permissions = []
+            });
+
+            ShouldBeRefused(result);
+            member.Permissions[Org].Should().Equal("read");
+            _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
         public async Task AccessChangeThatOnlyAddsEndsNoSession()
         {
             _kit.WithUser("member", ["viewer"]);

@@ -292,6 +292,32 @@ namespace XUnitTest.IamTests.AccessGrant
         }
 
         [Fact]
+        public void EmptyRequestListClearsWhenAskedButAnOmittedOneIsStillKept()
+        {
+            var (added, removed) = AccessGrantRules.Delta(["viewer", "auditor"], [], emptyClears: true);
+            added.Should().BeEmpty();
+            removed.Should().BeEquivalentTo("viewer", "auditor");
+
+            var (omittedAdded, omittedRemoved) = AccessGrantRules.Delta(["viewer"], null, emptyClears: true);
+            omittedAdded.Should().BeEmpty();
+            omittedRemoved.Should().BeEmpty("an omitted list is always kept");
+        }
+
+        [Fact]
+        public void TakingAwayTheLastPermissionWithAnEmptyListIsCheckedLikeAnyOtherRemoval()
+        {
+            var descendant = ScopeOf("d", roles: ["manager"]);
+            var top = ScopeOf("c", roles: ["admin"]);
+            var user = _kit.WithUser("u", ["viewer"], ["read"]);
+
+            AccessGrantRules.CheckAccessChange(descendant, user, ["viewer"], [], emptyListClears: true)!
+                .Reason.Should().Be("descendant_cannot_grant_direct_permission");
+            AccessGrantRules.CheckAccessChange(descendant, user, ["viewer"], [])
+                .Should().BeNull("without the flag an empty list keeps what is stored, so nothing changes");
+            AccessGrantRules.CheckAccessChange(top, user, ["viewer"], [], emptyListClears: true).Should().BeNull();
+        }
+
+        [Fact]
         public void RoleDeltaSkipsRemovingARoleTheOrganizationNoLongerKnows()
         {
             var scope = ScopeOf("d", roles: ["manager"]);

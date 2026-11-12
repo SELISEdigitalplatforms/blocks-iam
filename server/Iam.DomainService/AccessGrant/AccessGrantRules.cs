@@ -201,14 +201,16 @@ namespace Iam.DomainService.AccessGrant
         /// <summary>
         /// R4 with R3. A list replace (users/access, the existing-email create) is checked on its
         /// delta only: every added or removed role passes R1, every added or removed permission
-        /// passes R2. R3 applies to U as stored before the change. An empty request list keeps what
-        /// is stored, exactly as the write does.
+        /// passes R2. R3 applies to U as stored before the change. A null request list keeps what
+        /// is stored, and so does an empty one unless <paramref name="emptyListClears"/> is set,
+        /// exactly as the write does -- so taking away a user's last permission is checked too.
         /// </summary>
         public static GrantDenial? CheckAccessChange(
             GrantScope scope,
             User user,
             IReadOnlyCollection<string>? requestedRoles,
-            IReadOnlyCollection<string>? requestedPermissions)
+            IReadOnlyCollection<string>? requestedPermissions,
+            bool emptyListClears = false)
         {
             ArgumentNullException.ThrowIfNull(scope);
             ArgumentNullException.ThrowIfNull(user);
@@ -223,8 +225,8 @@ namespace Iam.DomainService.AccessGrant
                 return manage;
             }
 
-            var (addedRoles, removedRoles) = Delta(GrantsIn(user.Roles, scope.OrganizationId), requestedRoles);
-            var (addedPermissions, removedPermissions) = Delta(GrantsIn(user.Permissions, scope.OrganizationId), requestedPermissions);
+            var (addedRoles, removedRoles) = Delta(GrantsIn(user.Roles, scope.OrganizationId), requestedRoles, emptyListClears);
+            var (addedPermissions, removedPermissions) = Delta(GrantsIn(user.Permissions, scope.OrganizationId), requestedPermissions, emptyListClears);
             return CheckRoleDelta(scope, addedRoles, removedRoles)
                 ?? addedPermissions.Concat(removedPermissions)
                     .Select(p => CheckGrantPermission(scope, p, AccessDelta))
@@ -446,16 +448,24 @@ namespace Iam.DomainService.AccessGrant
         }
 
         /// <summary>
-        /// What a list replace adds and removes. An empty or null request keeps what is stored, so
-        /// it changes nothing -- matching <c>GrantOrganization</c>.
+        /// What a list replace adds and removes, matching <c>GrantOrganization</c>. A null request
+        /// keeps what is stored, so it changes nothing. An empty request does the same unless
+        /// <paramref name="emptyClears"/> is set, in which case it removes everything stored.
         /// </summary>
+        /// <param name="stored">The user's grants in the organization as stored.</param>
+        /// <param name="requested">The list the request sent.</param>
+        /// <param name="emptyClears">
+        /// True on a users/access request that edits the user's access, where a list sent empty
+        /// takes every stored entry away.
+        /// </param>
         public static (List<string> Added, List<string> Removed) Delta(
             IEnumerable<string> stored,
-            IReadOnlyCollection<string>? requested)
+            IReadOnlyCollection<string>? requested,
+            bool emptyClears = false)
         {
             ArgumentNullException.ThrowIfNull(stored);
             var current = new HashSet<string>(Clean(stored), StringComparer.OrdinalIgnoreCase);
-            if (requested is null || requested.Count == 0)
+            if (requested is null || (requested.Count == 0 && !emptyClears))
             {
                 return ([], []);
             }
