@@ -26,6 +26,12 @@ namespace Authentication.DomainService.Authentication.LoginPolicies
     /// <summary>What a login page may offer: the password form, social buttons, and which providers.</summary>
     public sealed record LoginOptions(bool Password, bool Social, IReadOnlyList<IdentityProvider> Providers);
 
+    /// <summary>What a login page may offer in each place, for one tenant and (optionally) one OIDC client.</summary>
+    public sealed record LoginOptionsByPlace(LoginOptions Embedded, LoginOptions Oidc)
+    {
+        public LoginOptions For(LoginChannel channel) => channel == LoginChannel.Oidc ? Oidc : Embedded;
+    }
+
     /// <summary>
     /// The tenant login policy as pure rules. The tenant decides where (embedded, OIDC) and how
     /// (password, social); an OIDC client can only narrow that; a provider must be enabled, and for an

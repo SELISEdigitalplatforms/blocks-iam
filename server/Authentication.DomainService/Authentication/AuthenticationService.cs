@@ -614,7 +614,8 @@ namespace Authentication.DomainService.Authentication
             if (target.Refusal != null)
                 return target.Refusal;
 
-            var options = await _loginPolicy.GetOptionsAsync(target.Channel, target.Client);
+            var byPlace = await _loginPolicy.GetOptionsByPlaceAsync(target.Client);
+            var options = byPlace.For(target.Channel);
             var socialProviders = options.Providers;
 
             // Return only metadata, NOT authorization URLs
@@ -641,8 +642,17 @@ namespace Authentication.DomainService.Authentication
 
             return new OkObjectResult(new
             {
+                // Unchanged for existing callers: these two describe the place that was asked about.
                 AllowedGrantTypes = gts,
-                SsoInfo = ssoInfo
+                SsoInfo = ssoInfo,
+                // Added for apps that run their own login page: what works in both places for this app,
+                // so one call decides its form, its provider buttons and whether the IAM login page has
+                // anything to offer. Provider details stay in ssoInfo (the place that was asked about).
+                SignIn = new
+                {
+                    Embedded = new { byPlace.Embedded.Password, byPlace.Embedded.Social },
+                    Oidc = new { byPlace.Oidc.Password, byPlace.Oidc.Social }
+                }
             });
         }
 
