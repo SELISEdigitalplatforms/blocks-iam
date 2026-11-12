@@ -773,26 +773,40 @@ export const OidcLoginForm = ({
         </div>
       )}
 
+      {/* While the page leaves for the only provider, this row says so plainly and the
+          provider's button below holds still; if the start fails the row goes and the button
+          comes back as the way on. */}
       {autoStartProvider && (
-        <p
+        <div
           role="status"
           data-testid="oidc-auto-start"
-          className="mb-3 flex items-center gap-2 text-sm"
-          style={{ color: "var(--muted)" }}
+          className="mb-4 flex items-center gap-3 rounded-lg px-4 py-3"
+          // Tinted from the accent over the card's own surface rather than --accent-soft,
+          // which tenants set freely (sometimes a solid colour): the text keeps the theme's
+          // --fg-on---surface contrast whatever the palette.
+          style={{
+            background: "color-mix(in srgb, var(--accent) 8%, var(--surface))",
+            border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--surface))",
+          }}
         >
-          <Loader size={16} className="oidc-spin-slow" aria-hidden />
-          <span>
+          <Loader size={18} className="oidc-spin-slow shrink-0" style={{ color: "var(--accent)" }} aria-hidden />
+          <span className="text-sm font-semibold" style={{ color: "var(--fg)" }}>
             {/* A tenant's own SSO has no brand name here ("Bring your own SSO" is a setup
                 label), so it gets a generic line. */}
             {autoStartProvider.provider === SSO_PROVIDERS.ownsso
               ? t("OIDC_LOGIN_FORM.REDIRECTING_TO_SIGN_IN")
               : t("OIDC_LOGIN_FORM.REDIRECTING_TO_PROVIDER", { provider: autoStartProvider.label })}
           </span>
-        </p>
+        </div>
       )}
 
       {showSocialLogin && (
-        <SsoSignin loginOption={loginOption} mode="oidc" oidcContext={ssoContext} />
+        <SsoSignin
+          loginOption={loginOption}
+          mode="oidc"
+          oidcContext={ssoContext}
+          disabled={!!autoStartProvider}
+        />
       )}
 
       {isSignUpEnabled && (

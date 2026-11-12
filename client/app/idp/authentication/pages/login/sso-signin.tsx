@@ -53,6 +53,8 @@ type SsoSigninProps = {
     tenantId?: string;
     returnUrl?: string;
   };
+  // Every provider button inert, e.g. while the page is already leaving for one of them.
+  disabled?: boolean;
 };
 
 // Static map so Tailwind's JIT scanner can detect all class names at build
@@ -70,6 +72,7 @@ export const SsoSignin = ({
   loginOption,
   mode = "default",
   oidcContext,
+  disabled = false,
 }: SsoSigninProps) => {
   const { isPending } = useSsoActivation();
   const ssoContext = useOidcSsoContext(oidcContext);
@@ -88,6 +91,7 @@ export const SsoSignin = ({
             labelMode={providers.length === 1 ? "full" : "short"}
             mode={ssoContext ? "oidc" : mode}
             oidcContext={ssoContext}
+            disabled={disabled}
           />
         ))}
       </div>

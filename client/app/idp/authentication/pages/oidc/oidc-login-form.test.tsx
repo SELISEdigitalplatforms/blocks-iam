@@ -47,7 +47,9 @@ vi.mock("./oidc-account-selector", () => ({
 }));
 vi.mock("./oidc-auth-shell", () => ({ useOidcAuthAnimation: vi.fn(() => h.animCtx) }));
 vi.mock("@blocks-idp/authentication/pages/login/sso-signin", () => ({
-  SsoSignin: () => <div data-testid="sso-signin" />,
+  SsoSignin: ({ disabled }: { disabled?: boolean }) => (
+    <div data-testid="sso-signin" data-disabled={String(!!disabled)} />
+  ),
 }));
 vi.mock("@blocks-idp/authentication/services/auth.service", () => ({
   authService: { selectOidcAccount: (...args: unknown[]) => h.selectOidcAccount(...args) },
@@ -694,7 +696,14 @@ describe("OidcLoginForm", () => {
         }),
       });
       expect(screen.getByTestId("oidc-auto-start")).toHaveTextContent(status);
-      expect(screen.getByTestId("sso-signin")).toBeInTheDocument();
+      // The button stays in view but cannot start a second sign-in while this one leaves.
+      expect(screen.getByTestId("sso-signin")).toHaveAttribute("data-disabled", "true");
+    });
+
+    it("leaves the provider buttons usable when nothing is started", () => {
+      h.loginOption = onlyProvider("google");
+      renderForm({ autoStartSingleProvider: false });
+      expect(screen.getByTestId("sso-signin")).toHaveAttribute("data-disabled", "false");
     });
 
     it.each([
@@ -754,7 +763,7 @@ describe("OidcLoginForm", () => {
       renderForm({ autoStartSingleProvider: true, state: "st-1" });
       await waitFor(() => expect(h.startSso).toHaveBeenCalled());
       await waitFor(() => expect(screen.queryByTestId("oidc-auto-start")).not.toBeInTheDocument());
-      expect(screen.getByTestId("sso-signin")).toBeInTheDocument();
+      expect(screen.getByTestId("sso-signin")).toHaveAttribute("data-disabled", "false");
     });
   });
 

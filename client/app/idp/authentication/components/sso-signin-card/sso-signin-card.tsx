@@ -17,6 +17,8 @@ type SSOSigninCardProps = {
   labelMode?: "full" | "short" | "icon";
   mode?: "default" | "oidc";
   oidcContext?: OidcSocialSignInContext;
+  // Set while this sign-in is already under way (e.g. the page started it for the user).
+  disabled?: boolean;
 };
 
 export const SSOSigninCard = ({
@@ -25,6 +27,7 @@ export const SSOSigninCard = ({
   labelMode,
   mode = "default",
   oidcContext,
+  disabled = false,
 }: SSOSigninCardProps) => {
   const { t } = useT(IAM_SHARED_MODULE);
   const { resolvedTheme } = useTheme();
@@ -55,7 +58,7 @@ export const SSOSigninCard = ({
   }, [providerConfig, resolvedTheme]);
 
   return (
-    <Button variant="outline" className="w-full gap-2" onClick={onClickHandler}>
+    <Button variant="outline" className="w-full gap-2" onClick={onClickHandler} disabled={disabled}>
       <img
         src={imageSrc}
         className="size-5 object-contain"
