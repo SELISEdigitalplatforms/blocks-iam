@@ -29,6 +29,12 @@ import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 import { useOidcAuthAnimation } from "./oidc-auth-shell";
 import { OidcErrorDialog } from "./oidc-error-dialog";
 import { OidcLoginFormSkeleton } from "./oidc-login-skeleton";
+import { getAvailableSsoProviders } from "@blocks-idp/authentication/utils/sso-providers.util";
+import { SSO_PROVIDERS } from "@blocks-idp/authentication/constants/sso-providers.constant";
+import {
+  startOidcSocialSignIn,
+  type OidcSocialSignInContext,
+} from "@blocks-idp/authentication/utils/start-oidc-social-sign-in";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { OidcAppHandoff } from "./oidc-app-handoff";
 import { isAppRedirectUrl, navigateToSameOrigin, navigateToUrl } from "@/lib/utils";
@@ -103,7 +109,33 @@ interface OidcLoginFormProps {
   // here with `error_description`, and it belongs in the same inline slot as a
   // failed password attempt instead of being dropped.
   initialError?: string;
+  /**
+   * When the configured page would offer exactly one action -- no password form, no sign-up
+   * link, a single social provider of any kind -- start that provider's sign-in for the user
+   * instead of waiting for the one possible click. Never on a page reached with an error, in
+   * device flow, or a second time for the same sign-in request. Off unless the caller opts in.
+   */
+  autoStartSingleProvider?: boolean;
 }
+
+/** One automatic start per sign-in request: the request this tab last started one for. */
+const AUTO_START_STORAGE_KEY = "oidc-auto-start-attempt";
+
+const readAutoStartAttempt = (): string | null => {
+  try {
+    return sessionStorage.getItem(AUTO_START_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+};
+
+const recordAutoStartAttempt = (attempt: string) => {
+  try {
+    sessionStorage.setItem(AUTO_START_STORAGE_KEY, attempt);
+  } catch {
+    // Storage blocked: the in-memory guard still holds for this page load.
+  }
+};
 
 export const OidcLoginForm = ({
   clientId,
@@ -116,6 +148,7 @@ export const OidcLoginForm = ({
   codeChallengeMethod,
   tenantId,
   initialError,
+  autoStartSingleProvider = false,
 }: OidcLoginFormProps) => {
   const { t } = useT("iam.oidc");
   const loginFormSchema = useMemo(() => buildOidcLoginFormSchema(t), [t]);
@@ -460,6 +493,74 @@ export const OidcLoginForm = ({
     if (!isValid && captchaCode) resetCaptcha();
   }, [captchaCode, isValid, resetCaptcha]);
 
+  // The project and this application decide the methods. If the options fail to load, the
+  // password form stays: the server still refuses a method that is turned off.
+  const isOptionsLoading = isLoginOptionLoading || isSignUpSettingLoading;
+  const allowedGrantTypes = loginOption?.allowedGrantTypes;
+  const showPasswordLogin = !allowedGrantTypes || allowedGrantTypes.includes(GRANT_TYPES.password);
+  const showSocialLogin = !!loginOption?.ssoInfo?.length;
+  const noSignInMethod = !showPasswordLogin && !showSocialLogin;
+  const ssoProviders = getAvailableSsoProviders(loginOption);
+
+  // The request the provider buttons (and the automatic start) sign in for.
+  const ssoContext = useMemo<OidcSocialSignInContext>(
+    () => ({
+      clientId,
+      redirectUri,
+      scope,
+      state,
+      nonce,
+      code_challenge: activeCodeChallenge,
+      code_challenge_method: activeCodeChallengeMethod,
+      tenantId,
+      returnUrl,
+    }),
+    [clientId, redirectUri, scope, state, nonce, activeCodeChallenge, activeCodeChallengeMethod, tenantId, returnUrl],
+  );
+
+  // One provider and nothing else to choose (see autoStartSingleProvider): the only provider.
+  const onlyProvider =
+    autoStartSingleProvider &&
+    !isOptionsLoading &&
+    !!loginOption &&
+    !showPasswordLogin &&
+    !isSignUpEnabled &&
+    !initialError &&
+    !returnUrl &&
+    ssoProviders.length === 1
+      ? ssoProviders[0]
+      : undefined;
+  // Keyed by the sign-in request: once it has been tried (and the user is back here, e.g.
+  // having left the provider without finishing), the page waits for their click instead. The
+  // last attempt is read once, as this page loads, so recording this one does not hide it.
+  const autoStartAttempt = `${clientId}|${state ?? ""}|${nonce ?? ""}`;
+  const [attemptBeforeThisPage] = useState(readAutoStartAttempt);
+  const [autoStartFailed, setAutoStartFailed] = useState(false);
+  const autoStartedRef = useRef(false);
+  // The provider being started, while the page leaves for it.
+  const autoStartProvider =
+    onlyProvider && attemptBeforeThisPage !== autoStartAttempt && !autoStartFailed
+      ? onlyProvider
+      : undefined;
+  const autoStartProviderId = autoStartProvider?.provider;
+  const autoStartProviderClientId = autoStartProvider?.clientId;
+
+  useEffect(() => {
+    if (!autoStartProviderId || !autoStartProviderClientId || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    recordAutoStartAttempt(autoStartAttempt);
+    void startOidcSocialSignIn({
+      provider: autoStartProviderId,
+      providerClientId: autoStartProviderClientId,
+      oidcContext: ssoContext,
+      // Back from the provider returns to the application, not to this page.
+      replace: true,
+    }).then((leaving) => {
+      // It failed and said why in a toast; the provider's button below is the way on.
+      if (!leaving) setAutoStartFailed(true);
+    });
+  }, [autoStartProviderId, autoStartProviderClientId, autoStartAttempt, ssoContext]);
+
   if (appHandoffUrl) return <OidcAppHandoff url={appHandoffUrl} />;
 
   if (!oidcUiConfig?.template) return null;
@@ -468,7 +569,7 @@ export const OidcLoginForm = ({
   // Which methods to draw is the server's answer, so none is drawn before it arrives: drawing
   // the password form first and removing it once a social-only answer lands reads as a blink.
   // OIDCSignin normally has both answers cached before this form mounts.
-  if (isLoginOptionLoading || isSignUpSettingLoading) {
+  if (isOptionsLoading) {
     return <OidcLoginFormSkeleton />;
   }
 
@@ -481,13 +582,6 @@ export const OidcLoginForm = ({
       />
     );
   }
-
-  // The project and this application decide the methods. If the options fail to load, the
-  // password form stays: the server still refuses a method that is turned off.
-  const allowedGrantTypes = loginOption?.allowedGrantTypes;
-  const showPasswordLogin = !allowedGrantTypes || allowedGrantTypes.includes(GRANT_TYPES.password);
-  const showSocialLogin = !!loginOption?.ssoInfo?.length;
-  const noSignInMethod = !showPasswordLogin && !showSocialLogin;
 
   /**
    * Hands the user back to the application that sent them. Falls back to dismissing the modal
@@ -679,22 +773,26 @@ export const OidcLoginForm = ({
         </div>
       )}
 
+      {autoStartProvider && (
+        <p
+          role="status"
+          data-testid="oidc-auto-start"
+          className="mb-3 flex items-center gap-2 text-sm"
+          style={{ color: "var(--muted)" }}
+        >
+          <Loader size={16} className="oidc-spin-slow" aria-hidden />
+          <span>
+            {/* A tenant's own SSO has no brand name here ("Bring your own SSO" is a setup
+                label), so it gets a generic line. */}
+            {autoStartProvider.provider === SSO_PROVIDERS.ownsso
+              ? t("OIDC_LOGIN_FORM.REDIRECTING_TO_SIGN_IN")
+              : t("OIDC_LOGIN_FORM.REDIRECTING_TO_PROVIDER", { provider: autoStartProvider.label })}
+          </span>
+        </p>
+      )}
+
       {showSocialLogin && (
-        <SsoSignin
-          loginOption={loginOption}
-          mode="oidc"
-          oidcContext={{
-            clientId,
-            redirectUri,
-            scope,
-            state,
-            nonce,
-            code_challenge: activeCodeChallenge,
-            code_challenge_method: activeCodeChallengeMethod,
-            tenantId,
-            returnUrl,
-          }}
-        />
+        <SsoSignin loginOption={loginOption} mode="oidc" oidcContext={ssoContext} />
       )}
 
       {isSignUpEnabled && (

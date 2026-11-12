@@ -1,19 +1,12 @@
 import { Button } from "@/components/ui-kits/button/button";
 import { showErrorToast } from "@/hooks/use-toast";
-import { isErrorWithErrors } from "@/lib/error";
 import { ISsoProviderConfigurationWithMeta } from "@blocks-idp/authentication/models/sso.model";
-import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { useTheme } from "@/hooks/use-theme";
 import { useCallback, useMemo } from "react";
-import { sanitizeProviderUrl } from "@blocks-idp/authentication/utils/sanitize-provider-url.util";
-import { getSsoStartErrorMessage } from "@blocks-idp/authentication/utils/sso-start-errors";
 import {
-  OIDC_APP_HANDOFF_STORAGE_KEY,
-  OIDC_DEVICE_RETURN_URL_STORAGE_KEY,
-  OIDC_SSO_RETURN_URI_STORAGE_KEY,
-} from "@blocks-idp/authentication/utils/oidc-utils";
-import { getRuntimeEnv } from "@/lib/runtime-env";
-import { isAppRedirectUrl } from "@/lib/utils";
+  startOidcSocialSignIn,
+  type OidcSocialSignInContext,
+} from "@blocks-idp/authentication/utils/start-oidc-social-sign-in";
 import { tStatic, useT } from "@seliseblocks/genesis-os/i18n";
 
 const IAM_SHARED_MODULE = "iam.shared";
@@ -23,43 +16,7 @@ type SSOSigninCardProps = {
   withLabel?: boolean;
   labelMode?: "full" | "short" | "icon";
   mode?: "default" | "oidc";
-  oidcContext?: {
-    clientId?: string;
-    redirectUri?: string;
-    scope?: string;
-    state?: string;
-    nonce?: string;
-    code_challenge?: string;
-    code_challenge_method?: string;
-    tenantId?: string;
-    // Device-flow (RFC 8628) logins have no redirect_uri — this is the device
-    // verification page to send the browser back to once the provider returns.
-    returnUrl?: string;
-  };
-};
-
-/**
- * A native-app login cannot be finished by navigating the callback page to the backend
- * (the backend's 302 to a custom scheme leaves a blank page), so mark it for the
- * callback page to fetch the result as JSON and show the hand-off instead. Any other
- * login clears the marker, so a stale one never changes it.
- */
-const updateAppHandoffMarker = (redirectUri: string | undefined) => {
-  if (isAppRedirectUrl(redirectUri ?? "")) {
-    sessionStorage.setItem(OIDC_APP_HANDOFF_STORAGE_KEY, "1");
-  } else {
-    sessionStorage.removeItem(OIDC_APP_HANDOFF_STORAGE_KEY);
-  }
-};
-
-/** Kept for the error page, in case the server loses the sign-in while the user is at the provider. */
-const rememberSsoReturnUri = (redirectUri: string | undefined) => {
-  try {
-    if (redirectUri) sessionStorage.setItem(OIDC_SSO_RETURN_URI_STORAGE_KEY, redirectUri);
-    else sessionStorage.removeItem(OIDC_SSO_RETURN_URI_STORAGE_KEY);
-  } catch {
-    // Storage blocked: the error page falls back to IAM's own login.
-  }
+  oidcContext?: OidcSocialSignInContext;
 };
 
 export const SSOSigninCard = ({
@@ -71,56 +28,25 @@ export const SSOSigninCard = ({
 }: SSOSigninCardProps) => {
   const { t } = useT(IAM_SHARED_MODULE);
   const { resolvedTheme } = useTheme();
-  const iamBaseUrl = getRuntimeEnv("BLOCKS_IAM_BASE_URL");
-    
+
   const onClickHandler = useCallback(async () => {
-    try {
-      if (!providerConfig.provider)
-        return showErrorToast({ errors: tStatic(IAM_SHARED_MODULE, "SSO_SIGNIN_CARD.SOMETHING_WENT_WRONG") });
+    if (!providerConfig.provider)
+      return showErrorToast({ errors: tStatic(IAM_SHARED_MODULE, "SSO_SIGNIN_CARD.SOMETHING_WENT_WRONG") });
 
-      // OIDC social login flow
-      if (mode === "oidc" && oidcContext) {
-        const res = await authService.signinByOidcEmail({
-          provider: providerConfig.provider,
-          clientId: oidcContext.clientId || "",
-          redirectUri: oidcContext.redirectUri || "",
-          scope: oidcContext.scope,
-          state: oidcContext.state,
-          nonce: oidcContext.nonce,
-          code_challenge: oidcContext.code_challenge,
-          code_challenge_method: oidcContext.code_challenge_method,
-          tenantId: oidcContext.tenantId,
-          provider_client_id: providerConfig.clientId,
-          provider_redirect_uri: `${iamBaseUrl}/oidc/${providerConfig.provider}/callback/${oidcContext.tenantId}`
-          
-        });
-
-        if (res.error) return showErrorToast({ errors: getSsoStartErrorMessage(res) });
-        if (!res.authorizationUrl)
-          return showErrorToast({ errors: tStatic(IAM_SHARED_MODULE, "SSO_SIGNIN_CARD.NO_AUTHORIZATION_URL") });
-
-        if (oidcContext.returnUrl) {
-          sessionStorage.setItem(
-            OIDC_DEVICE_RETURN_URL_STORAGE_KEY,
-            oidcContext.returnUrl,
-          );
-        }
-        rememberSsoReturnUri(oidcContext.redirectUri);
-        updateAppHandoffMarker(oidcContext.redirectUri);
-        window.location.href = sanitizeProviderUrl(res.authorizationUrl);
-        return;
-      }
-
-      // No OIDC request on this page, so there is nothing for the provider callback to return
-      // to. IAM's own /login starts one and shows these same buttons inside it.
-      window.location.href = "/login";
-    } catch (error) {
-      console.error("SSO Sign-in error:", error);
-      if (isErrorWithErrors(error))
-        return showErrorToast({ errors: getSsoStartErrorMessage(error) });
-      showErrorToast({ errors: tStatic(IAM_SHARED_MODULE, "SSO_SIGNIN_CARD.SOMETHING_WENT_WRONG") });
+    // OIDC social login flow
+    if (mode === "oidc" && oidcContext) {
+      await startOidcSocialSignIn({
+        provider: providerConfig.provider,
+        providerClientId: providerConfig.clientId,
+        oidcContext,
+      });
+      return;
     }
-  }, [mode, providerConfig, oidcContext, iamBaseUrl]);
+
+    // No OIDC request on this page, so there is nothing for the provider callback to return
+    // to. IAM's own /login starts one and shows these same buttons inside it.
+    window.location.href = "/login";
+  }, [mode, providerConfig, oidcContext]);
 
   const imageSrc = useMemo(() => {
     return resolvedTheme === "light"

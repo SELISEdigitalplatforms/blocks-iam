@@ -17,7 +17,9 @@ const h = vi.hoisted(() => ({
   signUpSettingLoading: false,
   useGetLoginOptions: vi.fn(),
   useGetSignUpSetting: vi.fn(),
+  uiConfigLoaded: false,
   shellProps: null as Record<string, unknown> | null,
+  formProps: null as Record<string, unknown> | null,
 }));
 
 vi.mock("react-router", async (importOriginal) => {
@@ -54,14 +56,21 @@ vi.mock("./oidc-auth-shell", () => ({
   OidcFooter: ({ footerText }: { footerText: string }) => <span>{footerText}</span>,
 }));
 vi.mock("./oidc-login-form", () => ({
-  OidcLoginForm: (props: { clientId: string; redirectUri: string }) => (
-    <div data-testid="login-form">
-      form client={props.clientId} redirect={props.redirectUri}
-    </div>
-  ),
+  OidcLoginForm: (props: { clientId: string; redirectUri: string }) => {
+    h.formProps = props;
+    return (
+      <div data-testid="login-form">
+        form client={props.clientId} redirect={props.redirectUri}
+      </div>
+    );
+  },
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
-  useOidcUiConfig: () => ({ data: h.oidcUiConfig, isLoading: h.uiConfigLoading }),
+  useOidcUiConfig: () => ({
+    data: h.oidcUiConfig,
+    isLoading: h.uiConfigLoading,
+    isSuccess: h.uiConfigLoaded,
+  }),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-auth", () => ({
   useGetLoginOptions: (...args: unknown[]) => h.useGetLoginOptions(...args),
@@ -96,6 +105,9 @@ beforeEach(() => {
   h.getCurrentOIDCParams.mockReturnValue(new URLSearchParams());
   h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
   h.uiConfigLoading = false;
+  h.uiConfigLoaded = false;
+  h.formProps = null;
+  localStorage.clear();
   h.loginOptionsLoading = false;
   h.signUpSettingLoading = false;
   h.useGetLoginOptions.mockImplementation(() => ({ isLoading: h.loginOptionsLoading }));
@@ -202,6 +214,41 @@ describe("OIDCSignin", () => {
       // Same (tenant, client) as the form's own calls, so the form reads them from the cache.
       expect(h.useGetLoginOptions).toHaveBeenCalledWith("tenant-1", true, "client-1");
       expect(h.useGetSignUpSetting).toHaveBeenCalledWith("tenant-1", { enabled: true });
+    });
+
+    it("shapes the skeleton like this tenant's last-seen layout", () => {
+      localStorage.setItem("oidc-login-side-panel:tenant-1", "false");
+      h.uiConfigLoading = true;
+      const { container } = renderAt(LOGIN_URL);
+      expect(container.querySelector("main > div")).toHaveClass("max-w-lg");
+    });
+
+    it("uses the default layout for the skeleton on a first visit", () => {
+      h.uiConfigLoading = true;
+      const { container } = renderAt(LOGIN_URL);
+      expect(container.querySelector("main > div")).toHaveClass("md:flex-row");
+    });
+
+    it("remembers the tenant's side-panel setting once the template is in", () => {
+      h.uiConfigLoaded = true;
+      h.oidcUiConfig = {
+        captcha: null,
+        template: { ...OIDC_UI_TEMPLATE_FIXTURE, layout: { showAnimationPanel: false } },
+      };
+      renderAt(LOGIN_URL);
+      expect(localStorage.getItem("oidc-login-side-panel:tenant-1")).toBe("false");
+    });
+
+    it("lets the form start a single provider by itself", () => {
+      renderAt(LOGIN_URL);
+      expect(h.formProps).toEqual(expect.objectContaining({ autoStartSingleProvider: true }));
+    });
+
+    it("does not let it on a return trip that carries a provider code", async () => {
+      h.signinBySSO.mockRejectedValue(new Error("expired"));
+      renderAt(`${LOGIN_URL}&code=abc&state=xyz`);
+      await waitFor(() => expect(h.formProps).not.toBeNull());
+      expect(h.formProps).toEqual(expect.objectContaining({ autoStartSingleProvider: false }));
     });
 
     it("does not ask for them outside the sign-in form flow", () => {

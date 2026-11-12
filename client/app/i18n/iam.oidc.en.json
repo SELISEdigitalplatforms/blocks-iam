@@ -76,6 +76,8 @@
   "OIDC_LOGIN_FORM.LOGIN_FAILED": "Login failed",
   "OIDC_LOGIN_FORM.NO_REDIRECT_TARGET": "Login succeeded but no redirect target was provided",
   "OIDC_LOGIN_FORM.NO_SIGN_IN_METHOD": "No sign-in method is available for this application. Contact your administrator.",
+  "OIDC_LOGIN_FORM.REDIRECTING_TO_PROVIDER": "Redirecting to {{provider}}…",
+  "OIDC_LOGIN_FORM.REDIRECTING_TO_SIGN_IN": "Redirecting to your organization's sign-in…",
   "OIDC_LOGIN_FORM.PASSWORD_REQUIRED": "Password is required",
   "OIDC_LOGIN_FORM.SELECT_ACCOUNT_FAILED": "Failed to select account",
   "OIDC_LOGIN_FORM.SERVER_ERROR": "Server error (HTTP {{status}})",

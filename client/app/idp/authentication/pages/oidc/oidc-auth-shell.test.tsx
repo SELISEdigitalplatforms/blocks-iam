@@ -80,7 +80,7 @@ describe("OidcAuthShell", () => {
     const main = container.querySelector("main")!;
     expect(main).toHaveClass("max-w-5xl");
     expect(main.firstElementChild).toHaveAttribute("class", "w-full rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl bg-(--surface)");
-    expect(main.firstElementChild?.firstElementChild).toHaveAttribute("class", "w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto");
+    expect(main.firstElementChild?.firstElementChild).toHaveAttribute("class", "w-full md:w-1/2 max-md:flex-1 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto");
     expect(container.querySelectorAll(".oidc-sci-fi-panel-border")).toHaveLength(1);
     expect(screen.getByTestId("panel-visible")).toHaveTextContent("true");
   });
@@ -91,6 +91,8 @@ describe("OidcAuthShell", () => {
     expect(card).toHaveClass("w-full", "max-w-lg", "flex-col");
     expect(card).not.toHaveClass("md:flex-row");
     expect(card.firstElementChild).not.toHaveClass("md:w-1/2");
+    // Stacked, the column fills the card's height so the form is centred, not parked at the top.
+    expect(card.firstElementChild).toHaveClass("flex-1", "min-h-0", "overflow-y-auto");
     expect(container.querySelector(".oidc-sci-fi-panel-border")).toBeNull();
     expect(screen.getByTestId("panel-visible")).toHaveTextContent("false");
     expect(screen.getByTestId("scifi-bg")).toBeInTheDocument();

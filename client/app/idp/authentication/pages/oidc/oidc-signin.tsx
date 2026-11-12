@@ -9,7 +9,11 @@ import { useOIDCContext } from "@/layouts/oidc-layout";
 import { buildOIDCNavigationUrl, getCurrentOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 import { OidcLoginForm } from "./oidc-login-form";
 import { OidcAuthShell, OidcFooter } from "./oidc-auth-shell";
-import { OidcLoginPageSkeleton } from "./oidc-login-skeleton";
+import {
+  OidcLoginPageSkeleton,
+  readRememberedSidePanel,
+  rememberSidePanel,
+} from "./oidc-login-skeleton";
 import { OIDC_LOGIN_PANEL } from "./oidc-panel-config";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
@@ -24,8 +28,20 @@ export const OIDCSignin = () => {
   const [isActivatingSocial, setIsActivatingSocial] = useState(false);
   const oidcContext = useOIDCContext();
   const tenantId = oidcContext.tenantId || searchParams.get("tenant_id") || undefined;
-  const { data: oidcUiConfig, isLoading: isUiConfigLoading } = useOidcUiConfig(tenantId);
+  const {
+    data: oidcUiConfig,
+    isLoading: isUiConfigLoading,
+    isSuccess: isUiConfigLoaded,
+  } = useOidcUiConfig(tenantId);
   const template = oidcUiConfig?.template;
+  const showAnimationPanel = template?.layout.showAnimationPanel;
+
+  // Remembered so the next visit's skeleton already has this tenant's shape (panel or not).
+  useEffect(() => {
+    if (isUiConfigLoaded && showAnimationPanel !== undefined) {
+      rememberSidePanel(tenantId, showAnimationPanel);
+    }
+  }, [isUiConfigLoaded, showAnimationPanel, tenantId]);
 
   const code = searchParams.get("code") || "";
   const state = searchParams.get("state") || "";
@@ -156,7 +172,7 @@ export const OIDCSignin = () => {
   }
 
   if (rendersLoginShell && (isPageConfigLoading || !template)) {
-    return <OidcLoginPageSkeleton />;
+    return <OidcLoginPageSkeleton showSidePanel={readRememberedSidePanel(tenantId) ?? true} />;
   }
 
   if (rendersLoginShell && template) {
@@ -186,6 +202,9 @@ export const OIDCSignin = () => {
           codeChallenge={searchParams.get("code_challenge") || undefined}
           codeChallengeMethod={searchParams.get("code_challenge_method") || "S256"}
           initialError={ssoError}
+          // Not on a return trip that carries a provider code: that round trip is this page's
+          // own social sign-in, and starting another one from it could loop.
+          autoStartSingleProvider={!code}
         />
       </OidcAuthShell>
     );

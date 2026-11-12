@@ -292,10 +292,13 @@ export function OidcAuthShell({
               : "w-full max-w-lg rounded-3xl overflow-hidden flex flex-col shadow-2xl bg-(--surface)"}
             style={{ height: "min(620px, calc(100dvh - 3rem))" }}
           >
-              {/* Left — form / success */}
+              {/* Left — form / success. Wherever the card stacks its children (no panel, or below
+                  md), this column must fill the card's fixed height itself: a stacked child is only
+                  as tall as its content, which left the body nothing to centre in and parked the
+                  form at the top above an empty card. Side by side (md and up) it stretches anyway. */}
               <div className={showAnimationPanel
-                ? "w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto"
-                : "w-full px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto"}>
+                ? "w-full md:w-1/2 max-md:flex-1 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto"
+                : "w-full flex-1 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto"}>
                 {/* Topbar: logo + brand label + theme toggle */}
                 <div className="flex items-center justify-between mb-4">
                   <OidcBrand logoUrl={resolvedLogoUrl} brandName={brandName} />
