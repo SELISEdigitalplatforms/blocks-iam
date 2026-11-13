@@ -12,6 +12,7 @@ using Authentication.DomainService.Shared.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
+using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -34,6 +35,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IRefreshSessionResolver _refreshSessionResolver;
         private readonly IUnknownUserLoginGuard _unknownUserLoginGuard;
         private readonly ILoginPolicyService _loginPolicy;
+        private readonly IAccessStampWriter? _accessStampWriter;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
@@ -46,7 +48,9 @@ namespace Authentication.DomainService.Authentication
             IRefreshTokenRepository refreshTokenRepository,
             IRefreshSessionResolver refreshSessionResolver,
             IUnknownUserLoginGuard unknownUserLoginGuard,
-            ILoginPolicyService loginPolicy)
+            ILoginPolicyService loginPolicy,
+            // Trailing and optional so existing fixtures keep compiling; DI always supplies it.
+            IAccessStampWriter? accessStampWriter = null)
         {
             _authenticationRepository = authenticationRepository;
             _authStrategy = authStrategy;
@@ -59,6 +63,7 @@ namespace Authentication.DomainService.Authentication
             _refreshSessionResolver = refreshSessionResolver;
             _unknownUserLoginGuard = unknownUserLoginGuard;
             _loginPolicy = loginPolicy;
+            _accessStampWriter = accessStampWriter;
         }
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
@@ -502,6 +507,14 @@ namespace Authentication.DomainService.Authentication
                 RefreshToken = refreshToken,
                 Request = httpRequest
             };
+
+            // One organization at a time: every access token this session holds for the previous
+            // organization stops on its next request. Stamped before the mint, so the new token is
+            // never older than the stamp.
+            if (_accessStampWriter != null)
+            {
+                await _accessStampWriter.StampSessionAsync(refreshCache.SessionId);
+            }
 
             var tokenResponse = await _tokenRefresher.AuthenticateAsync(tokenRequest, configuration, user!);
 

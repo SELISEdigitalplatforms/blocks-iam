@@ -18,6 +18,7 @@ namespace Iam.DomainService.AccessGrant
         private readonly ILogger<AccessGrantService> _logger;
         private readonly IGrantAuthorizationService _systemGrantAuthorization;
         private readonly IUserSessionTerminator? _userSessionTerminator;
+        private readonly IAccessStampWriter? _accessStampWriter;
 
         public AccessGrantService(
             IAccessGrantRepository repository,
@@ -27,7 +28,9 @@ namespace Iam.DomainService.AccessGrant
             IGrantAuthorizationService systemGrantAuthorization,
             // Optional: registered by RegisterAllServices (Api and Worker) but not by the iam-only
             // registration. Without it R12 falls back to the logout-all queue.
-            IUserSessionTerminator? userSessionTerminator = null)
+            IUserSessionTerminator? userSessionTerminator = null,
+            // Optional for the same reason. Without it a removal waits for the access token to expire.
+            IAccessStampWriter? accessStampWriter = null)
         {
             _repository = repository;
             _tenants = tenants;
@@ -35,6 +38,7 @@ namespace Iam.DomainService.AccessGrant
             _logger = logger;
             _systemGrantAuthorization = systemGrantAuthorization;
             _userSessionTerminator = userSessionTerminator;
+            _accessStampWriter = accessStampWriter;
         }
 
         public GrantCaller CurrentCaller()
@@ -165,24 +169,34 @@ namespace Iam.DomainService.AccessGrant
             }
         }
 
-        public async Task<IReadOnlyList<string>> GetRoleHoldersAsync(GrantScope scope, string slug)
+        public async Task<IReadOnlyList<string>> GetRoleHoldersAsync(GrantScope scope, string slug, string organizationId)
         {
             ArgumentNullException.ThrowIfNull(scope);
-            return scope.IsSystem
-                ? []
-                : await _repository.GetUserIdsWithRoleAsync(slug, scope.OrganizationId).ConfigureAwait(false);
+            return await _repository.GetUserIdsWithRoleAsync(slug, organizationId).ConfigureAwait(false);
         }
 
         public async Task EndSessionsAfterRemovalAsync(GrantScope scope, IEnumerable<string> userIds, string reason)
         {
             ArgumentNullException.ThrowIfNull(scope);
             ArgumentNullException.ThrowIfNull(userIds);
+            var distinctUserIds = userIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
+
+            // Every removal, the system's too: the user's current access tokens stop on their next
+            // request, and the refresh hands out what the user still holds.
+            if (_accessStampWriter != null)
+            {
+                foreach (var userId in distinctUserIds)
+                {
+                    await _accessStampWriter.StampUserAsync(userId).ConfigureAwait(false);
+                }
+            }
+
             if (scope.IsSystem)
             {
                 return;
             }
 
-            foreach (var userId in userIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal))
+            foreach (var userId in distinctUserIds)
             {
                 await EndSessionsAsync(userId, reason).ConfigureAwait(false);
             }

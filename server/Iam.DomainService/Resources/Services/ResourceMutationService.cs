@@ -57,6 +57,7 @@ namespace Iam.DomainService.Resources
         private readonly IBuiltInNotificationSender? _notificationSender;
         private readonly IAccessGrantService? _accessGrant;
         private readonly IActionPublisher? _actionPublisher;
+        private readonly IAccessStampWriter? _accessStampWriter;
 
         public ResourceMutationService(
             ILogger<ResourceMutationService> logger,
@@ -72,10 +73,13 @@ namespace Iam.DomainService.Resources
             // Trailing and optional like the sender above, so existing fixtures keep compiling; DI
             // always supplies it. Without it no access grant rule runs.
             IAccessGrantService? accessGrant = null,
-            IActionPublisher? actionPublisher = null
+            IActionPublisher? actionPublisher = null,
+            // Trailing and optional like the dependencies above; DI always supplies it.
+            IAccessStampWriter? accessStampWriter = null
         )
         {
             _actionPublisher = actionPublisher;
+            _accessStampWriter = accessStampWriter;
             _notificationSender = notificationSender;
             _accessGrant = accessGrant;
             _logger = logger;
@@ -847,7 +851,7 @@ namespace Iam.DomainService.Resources
             }
 
             // R12 needs to know whose access the cleanup below removes, and only before it runs.
-            var removedFromUserIds = await _accessGrant.GetRoleHoldersIfWiredAsync(grantScope, role.Slug).ConfigureAwait(false);
+            var removedFromUserIds = await _accessGrant.GetRoleHoldersIfWiredAsync(grantScope, role.Slug, role.OrganizationId).ConfigureAwait(false);
 
             // Cleanup precedes the archive deliberately. If the archive write then fails, a slug
             // removed from permissions without the role being archived is the safer half-state and
@@ -2775,6 +2779,12 @@ namespace Iam.DomainService.Resources
             ApplyProperty(request.IsEnable, value => organization.IsDisabled = !(value ?? false), v => v.HasValue);
 
             await _resourceRepository.SaveOrganizationAsync(organization);
+            if (request.IsEnable == false && _accessStampWriter != null)
+            {
+                // Its members' access tokens stop on their next request; the refresh refuses a disabled organization.
+                await _accessStampWriter.StampOrganizationAsync(id);
+            }
+
             await PublishActionAsync(IamActionNames.OrganizationUpdated, new { organizationId = id, isEnable = request.IsEnable });
             return new BaseResponse { IsSuccess = true };
         }

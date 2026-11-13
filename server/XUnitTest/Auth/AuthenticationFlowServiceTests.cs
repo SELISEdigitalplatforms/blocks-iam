@@ -38,6 +38,7 @@ namespace XUnitTest.Auth
         private readonly Mock<IRefreshSessionResolver> _sessionResolver = new();
         private readonly Mock<IAuthenticationDomainService> _authDomain = new();
         private readonly Mock<IUserActivityDispatcher> _activity = new();
+        private readonly Mock<Iam.DomainService.Services.IAccessStampWriter> _stamps = new();
         private readonly Mock<IUnknownUserLoginGuard> _guard = XUnitTest.TestSupport.UnknownLoginGuardStub.Create();
         private FakeLoginPolicy LoginPolicy { get; } = new();
         private readonly OidcLoginAuditWriter _auditWriter;
@@ -76,7 +77,7 @@ namespace XUnitTest.Auth
 
         private AuthenticationFlowService Create() =>
             new(_repo.Object, _strategy.Object, _refresher.Object, _authService.Object, _captcha.Object,
-                _auditWriter, NullLogger<AuthenticationFlowService>.Instance, _refreshRepo.Object, _sessionResolver.Object, _guard.Object, LoginPolicy);
+                _auditWriter, NullLogger<AuthenticationFlowService>.Instance, _refreshRepo.Object, _sessionResolver.Object, _guard.Object, LoginPolicy, _stamps.Object);
 
         private static HttpRequest Req() => new DefaultHttpContext().Request;
 
@@ -479,6 +480,39 @@ namespace XUnitTest.Auth
                 t.GrantType == GrantTypes.SwitchOrganization
                 && t.OrganizationId == "org-x"
                 && t.RefreshToken == "rt"), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task SwitchOrg_StampsTheSessionBeforeMinting()
+        {
+            // One organization at a time: older tokens of this session stop, the new one must not.
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            Resolves(Session());
+            var order = new List<string>();
+            _stamps.Setup(s => s.StampSessionAsync("session-1")).Callback(() => order.Add("stamp")).Returns(Task.CompletedTask);
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .Callback(() => order.Add("mint"))
+                .ReturnsAsync(new TokenResponse { AccessToken = "switch-at" });
+
+            await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            order.Should().Equal("stamp", "mint");
+        }
+
+        [Fact]
+        public async Task SwitchOrg_NotAMember_StampsNothing()
+        {
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-y" } });
+
+            var result = await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            result.Error.Should().Be("organization_not_available");
+            _stamps.Verify(s => s.StampSessionAsync(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

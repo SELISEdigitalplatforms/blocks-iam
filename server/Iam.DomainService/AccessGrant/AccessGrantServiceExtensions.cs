@@ -54,14 +54,15 @@ namespace Iam.DomainService.AccessGrant
             }
         }
 
-        /// <summary>Holders of a role, read before a removal so R12 can end their sessions.</summary>
+        /// <summary>Holders of a role, read before a removal so their access can be cut.</summary>
         public static async Task<IReadOnlyList<string>> GetRoleHoldersIfWiredAsync(
             this IAccessGrantService? service,
             GrantScope? scope,
-            string slug) =>
+            string slug,
+            string organizationId) =>
             service is null || scope is null
                 ? []
-                : await service.GetRoleHoldersAsync(scope, slug).ConfigureAwait(false);
+                : await service.GetRoleHoldersAsync(scope, slug, organizationId).ConfigureAwait(false);
 
         /// <summary>R12 for users who lost at least one role or permission.</summary>
         public static async Task EndSessionsAfterRemovalIfWiredAsync(

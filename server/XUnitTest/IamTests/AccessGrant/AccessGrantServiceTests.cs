@@ -260,9 +260,35 @@ namespace XUnitTest.IamTests.AccessGrant
             var scope = await service.GetScopeAsync();
 
             await service.EndSessionsAfterRemovalAsync(scope, ["u1"], "access_replaced");
-            (await service.GetRoleHoldersAsync(scope, "viewer")).Should().BeEmpty();
 
             _kit.Terminator.Verify(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SystemUserRemovalsStillStampTheUsersAccess()
+        {
+            // The live access token must stop even when no session is ended.
+            AccessGrantTestKit.SignIn("caller", "default");
+            var service = _kit.Service();
+            var scope = await service.GetScopeAsync();
+
+            await service.EndSessionsAfterRemovalAsync(scope, ["u1", "u1", " "], "access_replaced");
+
+            _kit.Stamps.Verify(s => s.StampUserAsync("u1"), Times.Once);
+            _kit.Stamps.Verify(s => s.StampUserAsync(It.Is<string>(id => id != "u1")), Times.Never);
+        }
+
+        [Fact]
+        public async Task SystemUserReadsRoleHoldersOfTheRolesOrganization()
+        {
+            // A tenant-wide admin archiving an organization's role must still find who held it.
+            _kit.WithRole("viewer");
+            _kit.WithUser("u1", ["viewer"]);
+            AccessGrantTestKit.SignIn("caller", "default");
+            var service = _kit.Service();
+            var scope = await service.GetScopeAsync();
+
+            (await service.GetRoleHoldersAsync(scope, "viewer", AccessGrantTestKit.Org)).Should().Equal("u1");
         }
 
         // ---------- GET roles/assignable and GET iam/grant-scope ----------
