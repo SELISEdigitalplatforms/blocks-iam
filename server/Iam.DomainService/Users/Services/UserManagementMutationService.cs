@@ -500,9 +500,9 @@ namespace Iam.DomainService.Users
         /// </para>
         /// </summary>
         /// <param name="emptyListClears">
-        /// True only for a users/access request that edits the user's access (<see cref="EditsAccess"/>):
-        /// a list it sends empty is the new, empty list. False on the invite paths, which only place
-        /// the user in the organization.
+        /// True only for a users/access request on a user who already belongs to the organization: a
+        /// list it sends empty is the new, empty list. False on the invite and create paths, which
+        /// only place the user in the organization.
         /// </param>
         private static void GrantOrganization(
             User user,
@@ -529,18 +529,6 @@ namespace Iam.DomainService.Users
             requested is not null && (requested.Count > 0 || emptyListClears)
                 ? requested
                 : stored.GetValueOrDefault(organizationId, []);
-
-        /// <summary>
-        /// True when a users/access request edits the user's access rather than only placing them
-        /// in the organization: it names at least one role or permission. Only then does a list sent
-        /// empty clear what is stored -- that is how the console takes away a user's last permission
-        /// (it sends the whole list, so the last one goes out as <c>[]</c>). A request with nothing in
-        /// either list is what the invite dialogs send to add an existing account, and keeps
-        /// everything the user already holds; taking all access away is <c>users/revoke-access</c>.
-        /// An omitted (null) list is kept either way.
-        /// </summary>
-        private static bool EditsAccess(List<string>? roles, List<string>? permissions) =>
-            roles is { Count: > 0 } || permissions is { Count: > 0 };
 
         /// <summary>The access grant refusal; the controller answers it with 403.</summary>
         private static BaseMutationResponse GrantNotAllowed() =>
@@ -1608,7 +1596,12 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            var emptyListClears = EditsAccess(command.Roles, command.Permissions);
+            // For a user who already belongs to the organization this request edits their access: a list
+            // it sends is stored exactly as sent, so [] takes the last role or permission away, and both
+            // lists empty leaves the user in the organization with no access. For a user who does not
+            // belong yet it adds them (the invite dialogs send [] and []), and the lists start as sent.
+            // An omitted (null) list keeps what is stored either way.
+            var emptyListClears = IsOrganizationMember(user, organizationId);
 
             var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
             if (!await AuthorizeAccessChangeAsync(grantScope, user, command.Roles, command.Permissions, emptyListClears).ConfigureAwait(false))
