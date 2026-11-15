@@ -31,13 +31,22 @@ namespace Iam.DomainService.AccessGrant
         /// <summary>The permission that guards role create, edit, archive and permission changes.</summary>
         public const string MutateRolesPermission = "blocks-iam::iam::mutate-roles";
 
-        /// <summary>The permission that guards user create, access changes, activation and deactivation.</summary>
+        /// <summary>
+        /// The former single user-management permission. No endpoint checks it any more (each action
+        /// has its own, <see cref="global::Iam.DomainService.Users.UserPermissions"/>); it still counts as manage power so a
+        /// role that holds it keeps its place in the tree until the rows are retired.
+        /// </summary>
         public const string MutateUsersPermission = "blocks-iam::iam::mutate-users";
 
-        /// <summary>True for a permission that gives the power to manage roles or users.</summary>
+        /// <summary>
+        /// True for a permission that gives the power to manage roles or users: mutate-roles,
+        /// mutate-users, or any of the per-action user permissions. A role holding one manages the
+        /// roles below it, and a standalone role holding one is a top user.
+        /// </summary>
         public static bool IsManagePermission(string? resource) =>
             string.Equals(resource, MutateRolesPermission, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(resource, MutateUsersPermission, StringComparison.OrdinalIgnoreCase);
+            || string.Equals(resource, MutateUsersPermission, StringComparison.OrdinalIgnoreCase)
+            || global::Iam.DomainService.Users.UserPermissions.All.Contains(resource ?? string.Empty, StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// R1. Role R may be given when it is a live role in O and the caller is a top user, holds R,

@@ -220,15 +220,15 @@ namespace Api.Controllers
         #region User
 
         [HttpPost("users/create")]
-        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        [ProtectedEndPoint(UserPermissions.CreateUsers)]
         public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest command)
         {
-            var result = await _userManagementMutationService.CreateUserAsync(command);
+            var result = await _userManagementMutationService.CreateUserByAdminAsync(command);
             return MutationResult(result, result.IsSuccess, result.Errors);
         }
 
         [HttpPost("users/{id}")]
-        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        [ProtectedEndPoint(UserPermissions.UpdateUserProfiles)]
         public async Task<IActionResult> UpdateUser([FromRoute] string id, [FromBody] UpdateUserRequest command)
         {
             command.ItemId = id;
@@ -237,7 +237,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("users/deactivate")]
-        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        [ProtectedEndPoint(UserPermissions.DeactivateUsers)]
         public async Task<IActionResult> DeactivateUser([FromBody] DeactivateUserRequest request)
         {
             var result = await _userManagementMutationService.DeactivateUserAsync(request);
@@ -245,7 +245,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("users/activate")]
-        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        [ProtectedEndPoint(UserPermissions.ActivateUsers)]
         public async Task<IActionResult> ActivateUser([FromBody] ActivateUserByAdminRequest request)
         {
             var result = await _userManagementMutationService.ActivateUserAsync(request);
@@ -284,7 +284,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("users/access")]
-        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        [ProtectedEndPoint(UserPermissions.ManageUserRoles)]
         public async Task<IActionResult> UpdateUserAccessControl(UpdateUserAccessControlRequest command)
         {
             var result = await _userManagementMutationService.UpdateUserAccessControlAsync(command);
@@ -295,7 +295,7 @@ namespace Api.Controllers
         /// Dry-run a bulk role delta. Writes nothing; answers how many users would change.
         /// </summary>
         [HttpPost("users/roles/bulk/preview")]
-        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        [ProtectedEndPoint(UserPermissions.ManageUserRoles)]
         public async Task<IActionResult> PreviewBulkRoleChange(BulkRoleChangeRequest command)
         {
             var result = await _userManagementMutationService.PreviewBulkRoleChangeAsync(command);
@@ -312,7 +312,7 @@ namespace Api.Controllers
         /// contract can say the change has not happened yet.
         /// </summary>
         [HttpPost("users/roles/bulk")]
-        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        [ProtectedEndPoint(UserPermissions.ManageUserRoles)]
         public async Task<IActionResult> SubmitBulkRoleChange(BulkRoleChangeRequest command)
         {
             var result = await _userManagementMutationService.SubmitBulkRoleChangeAsync(command);
@@ -325,7 +325,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("users/revoke-access")]
-        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        [ProtectedEndPoint(UserPermissions.RevokeUserAccess)]
         public async Task<IActionResult> RevokeUserAccessControl(RevokeUserAccessControlRequest command)
         {
             var result = await _userManagementMutationService.RevokeUserAccessControlAsync(command);
@@ -590,7 +590,7 @@ namespace Api.Controllers
                 return Ok(result);
             }
 
-            if (AccessGrantErrors.IsGrantNotAllowed(errors))
+            if (AccessGrantErrors.IsForbidden(errors))
             {
                 return GrantNotAllowed(result);
             }

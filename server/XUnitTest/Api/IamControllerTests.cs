@@ -3,6 +3,7 @@ using Authentication.DomainService.Authentication;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.RequestModel;
 using Iam.DomainService.Resources.ResponseModel;
@@ -447,7 +448,7 @@ namespace XUnitTest.ApiTests
         [Fact]
         public async Task Create_Success_ReturnsOk()
         {
-            _userMutation.Setup(s => s.CreateUserAsync(It.IsAny<CreateUserRequest>()))
+            _userMutation.Setup(s => s.CreateUserByAdminAsync(It.IsAny<CreateUserRequest>()))
                 .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
 
             var result = await CreateController().CreateUser(new CreateUserRequest());
@@ -458,7 +459,7 @@ namespace XUnitTest.ApiTests
         [Fact]
         public async Task Create_Failure_ReturnsBadRequest()
         {
-            _userMutation.Setup(s => s.CreateUserAsync(It.IsAny<CreateUserRequest>()))
+            _userMutation.Setup(s => s.CreateUserByAdminAsync(It.IsAny<CreateUserRequest>()))
                 .ReturnsAsync(new BaseMutationResponse { IsSuccess = false });
 
             var result = await CreateController().CreateUser(new CreateUserRequest());
@@ -469,13 +470,41 @@ namespace XUnitTest.ApiTests
         [Fact]
         public async Task Create_ForwardsMailFlagsUntouched()
         {
-            _userMutation.Setup(s => s.CreateUserAsync(It.IsAny<CreateUserRequest>()))
+            _userMutation.Setup(s => s.CreateUserByAdminAsync(It.IsAny<CreateUserRequest>()))
                 .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
 
             await CreateController().CreateUser(new CreateUserRequest { SendMail = false, NotifyUser = false });
 
-            _userMutation.Verify(s => s.CreateUserAsync(
+            _userMutation.Verify(s => s.CreateUserByAdminAsync(
                 It.Is<CreateUserRequest>(c => !c.SendMail && !c.NotifyUser)), Times.Once);
+        }
+
+        /// <summary>
+        /// Every user-management endpoint has its own permission; mutate-users guards none of them.
+        /// </summary>
+        [Theory]
+        [InlineData(nameof(IamController.CreateUser), UserPermissions.CreateUsers)]
+        [InlineData(nameof(IamController.UpdateUser), UserPermissions.UpdateUserProfiles)]
+        [InlineData(nameof(IamController.UpdateUserAccessControl), UserPermissions.ManageUserRoles)]
+        [InlineData(nameof(IamController.PreviewBulkRoleChange), UserPermissions.ManageUserRoles)]
+        [InlineData(nameof(IamController.SubmitBulkRoleChange), UserPermissions.ManageUserRoles)]
+        [InlineData(nameof(IamController.RevokeUserAccessControl), UserPermissions.RevokeUserAccess)]
+        [InlineData(nameof(IamController.DeactivateUser), UserPermissions.DeactivateUsers)]
+        [InlineData(nameof(IamController.ActivateUser), UserPermissions.ActivateUsers)]
+        public void UserEndpoints_AreGuardedByTheirOwnPermission(string methodName, string expectedPermission)
+        {
+            var guard = typeof(IamController).GetMethod(methodName)!.GetCustomAttribute<ProtectedEndPointAttribute>();
+
+            guard.Should().NotBeNull();
+            guard!.ResourceName.Should().Be(expectedPermission);
+        }
+
+        [Fact]
+        public void NoIamEndpoint_IsGuardedByMutateUsersAnyMore()
+        {
+            typeof(IamController).GetMethods()
+                .Select(m => m.GetCustomAttribute<ProtectedEndPointAttribute>()?.ResourceName)
+                .Should().NotContain(AccessGrantRules.MutateUsersPermission);
         }
 
         [Fact]

@@ -12,6 +12,14 @@ namespace Iam.DomainService.Users
         Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command);
 
         /// <summary>
+        /// users/create, the admin endpoint. As <see cref="CreateUserAsync"/>, except that an email
+        /// whose account already belongs to the organization is refused (<c>user_already_member</c>)
+        /// instead of having its roles replaced: changing a member's roles is users/access, under its
+        /// own permission. An existing account that is not yet a member is still added.
+        /// </summary>
+        Task<BaseMutationResponse> CreateUserByAdminAsync(CreateUserRequest command);
+
+        /// <summary>
         /// Sign-up only: creates a new account that belongs to no organization (empty <c>OrganizationIds</c>,
         /// <c>Roles</c> and <c>Permissions</c>), so its tokens carry <c>"no-org"</c>. Ignores any organization, roles
         /// or permissions on <paramref name="command"/>. Called only by <c>AccountService.SignupAccountAsync</c>;
