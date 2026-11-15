@@ -494,25 +494,41 @@ namespace Iam.DomainService.Users
         /// reads it -- an organization can have been granted through a <c>Roles</c> or <c>Permissions</c>
         /// key without ever reaching <c>OrganizationIds</c>. Testing <c>OrganizationIds</c> alone would
         /// read such a member as a new joiner and overwrite the roles they already hold with an empty
-        /// list. Falling back to what is already stored means an empty request never clears anything,
-        /// while <c>OrganizationIds</c> is brought back in step with the other two.
+        /// list. Falling back to what is already stored means an omitted list never clears anything,
+        /// and neither does an empty one unless <paramref name="emptyListClears"/> is set, while
+        /// <c>OrganizationIds</c> is brought back in step with the other two.
         /// </para>
         /// </summary>
-        private static void GrantOrganization(User user, string organizationId, List<string>? roles, List<string>? permissions)
+        /// <param name="emptyListClears">
+        /// True only for a users/access request on a user who already belongs to the organization: a
+        /// list it sends empty is the new, empty list. False on the invite and create paths, which
+        /// only place the user in the organization.
+        /// </param>
+        private static void GrantOrganization(
+            User user,
+            string organizationId,
+            List<string>? roles,
+            List<string>? permissions,
+            bool emptyListClears = false)
         {
             if (!user.OrganizationIds.Contains(organizationId))
             {
                 user.OrganizationIds.Add(organizationId);
             }
 
-            user.Roles[organizationId] = roles?.Count > 0
-                ? roles
-                : user.Roles.GetValueOrDefault(organizationId, []);
-
-            user.Permissions[organizationId] = permissions?.Count > 0
-                ? permissions
-                : user.Permissions.GetValueOrDefault(organizationId, []);
+            user.Roles[organizationId] = NextGrants(roles, user.Roles, organizationId, emptyListClears);
+            user.Permissions[organizationId] = NextGrants(permissions, user.Permissions, organizationId, emptyListClears);
         }
+
+        /// <summary>The list <see cref="GrantOrganization"/> stores for one organization.</summary>
+        private static List<string> NextGrants(
+            List<string>? requested,
+            Dictionary<string, List<string>> stored,
+            string organizationId,
+            bool emptyListClears) =>
+            requested is not null && (requested.Count > 0 || emptyListClears)
+                ? requested
+                : stored.GetValueOrDefault(organizationId, []);
 
         /// <summary>The access grant refusal; the controller answers it with 403.</summary>
         private static BaseMutationResponse GrantNotAllowed() =>
@@ -520,12 +536,17 @@ namespace Iam.DomainService.Users
 
         /// <summary>
         /// True when writing these lists through <see cref="GrantOrganization"/> would take at least
-        /// one role or permission away from the user in the organization (R12). An empty list keeps
-        /// what is stored, so it removes nothing.
+        /// one role or permission away from the user in the organization (R12). An omitted list keeps
+        /// what is stored, and so does an empty one unless <paramref name="emptyListClears"/> is set.
         /// </summary>
-        private static bool RemovesAccess(User user, string organizationId, List<string>? roles, List<string>? permissions) =>
-            AccessGrantRules.Delta(AccessGrantRules.GrantsIn(user.Roles, organizationId), roles).Removed.Count > 0
-            || AccessGrantRules.Delta(AccessGrantRules.GrantsIn(user.Permissions, organizationId), permissions).Removed.Count > 0;
+        private static bool RemovesAccess(
+            User user,
+            string organizationId,
+            List<string>? roles,
+            List<string>? permissions,
+            bool emptyListClears = false) =>
+            AccessGrantRules.Delta(AccessGrantRules.GrantsIn(user.Roles, organizationId), roles, emptyListClears).Removed.Count > 0
+            || AccessGrantRules.Delta(AccessGrantRules.GrantsIn(user.Permissions, organizationId), permissions, emptyListClears).Removed.Count > 0;
 
         /// <summary>True when the user holds at least one role or permission in the organization.</summary>
         private static bool HoldsAccessIn(User user, string organizationId) =>
@@ -536,7 +557,12 @@ namespace Iam.DomainService.Users
         /// R4 with R3 for a list replace of the user's access in the scope's organization, plus the
         /// R11 warning for the roles it adds.
         /// </summary>
-        private async Task<bool> AuthorizeAccessChangeAsync(GrantScope? scope, User user, List<string>? roles, List<string>? permissions)
+        private async Task<bool> AuthorizeAccessChangeAsync(
+            GrantScope? scope,
+            User user,
+            List<string>? roles,
+            List<string>? permissions,
+            bool emptyListClears = false)
         {
             if (scope is null || scope.IsSystem)
             {
@@ -544,10 +570,10 @@ namespace Iam.DomainService.Users
             }
 
             var (addedRoles, _) = AccessGrantRules.Delta(
-                AccessGrantRules.GrantsIn(user.Roles, scope.OrganizationId), roles);
+                AccessGrantRules.GrantsIn(user.Roles, scope.OrganizationId), roles, emptyListClears);
             await _accessGrant.WarnOnPolicyPowerIfWiredAsync(scope, addedRoles).ConfigureAwait(false);
             return _accessGrant.AuthorizeScopeIfWired(scope, s =>
-                AccessGrantRules.CheckAccessChange(s, user, roles, permissions));
+                AccessGrantRules.CheckAccessChange(s, user, roles, permissions, emptyListClears));
         }
 
         /// <summary>R12 for one user, when the write took at least one role or permission away.</summary>
@@ -1570,16 +1596,23 @@ namespace Iam.DomainService.Users
                 };
             }
 
+            // For a user who already belongs to the organization this request edits their access: a list
+            // it sends is stored exactly as sent, so [] takes the last role or permission away, and both
+            // lists empty leaves the user in the organization with no access. For a user who does not
+            // belong yet it adds them (the invite dialogs send [] and []), and the lists start as sent.
+            // An omitted (null) list keeps what is stored either way.
+            var emptyListClears = IsOrganizationMember(user, organizationId);
+
             var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
-            if (!await AuthorizeAccessChangeAsync(grantScope, user, command.Roles, command.Permissions).ConfigureAwait(false))
+            if (!await AuthorizeAccessChangeAsync(grantScope, user, command.Roles, command.Permissions, emptyListClears).ConfigureAwait(false))
             {
                 return GrantNotAllowed();
             }
 
             var addedToOrganization = !IsOrganizationMember(user, organizationId);
-            var removedAccess = RemovesAccess(user, organizationId, command.Roles, command.Permissions);
+            var removedAccess = RemovesAccess(user, organizationId, command.Roles, command.Permissions, emptyListClears);
 
-            GrantOrganization(user, organizationId, command.Roles, command.Permissions);
+            GrantOrganization(user, organizationId, command.Roles, command.Permissions, emptyListClears);
 
             user.LastUpdatedDate = DateTime.UtcNow;
             user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
@@ -1605,8 +1638,9 @@ namespace Iam.DomainService.Users
             {
                 userId = user.ItemId,
                 change = "set",
-                roles = command.Roles,
-                permissions = command.Permissions
+                // An omitted list is null on the request now; keep the payload's array shape.
+                roles = command.Roles ?? [],
+                permissions = command.Permissions ?? []
             });
 
 

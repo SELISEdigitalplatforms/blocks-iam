@@ -313,6 +313,7 @@ namespace Iam.DomainService.Services
                     .Set(c => c.IsOrgNameUniquenessEnabled, tenantConfiguration.IsOrgNameUniquenessEnabled)
                     .Set(c => c.IsSignupAutoJoinEnabled, tenantConfiguration.IsSignupAutoJoinEnabled)
                     .Set(c => c.SignupAutoJoinOrganizationId, tenantConfiguration.SignupAutoJoinOrganizationId)
+                    .Set(c => c.AllowNoOrgSignInForDisabledOrganizations, tenantConfiguration.AllowNoOrgSignInForDisabledOrganizations)
                     .Set(c => c.ConsentForMultiOrgEnable, tenantConfiguration.ConsentForMultiOrgEnable)
                     .Set(c => c.LastUpdatedBy, tenantConfiguration.LastUpdatedBy)
                     .Set(c => c.DefaultPermissionsForNewUserOnSignUp, tenantConfiguration.DefaultPermissionsForNewUserOnSignUp)

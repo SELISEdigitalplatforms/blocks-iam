@@ -2,9 +2,9 @@ import LogoLoadingSpinner from "@/components/loader-spinner/loader-spinner";
 import { cn } from "@/lib/utils";
 import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { SSOSigninCard } from "@blocks-idp/authentication/components/sso-signin-card";
-import { SOCIAL_AUTH_PROVIDERS_CONFIG } from "@blocks-idp/authentication/constants/sso-providers.constant";
 import { useSsoActivation } from "@blocks-idp/authentication/hooks/use-sso-activation";
 import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
+import { getAvailableSsoProviders } from "@blocks-idp/authentication/utils/sso-providers.util";
 import { useMemo } from "react";
 import { useParams } from "react-router";
 
@@ -53,6 +53,8 @@ type SsoSigninProps = {
     tenantId?: string;
     returnUrl?: string;
   };
+  // Every provider button inert, e.g. while the page is already leaving for one of them.
+  disabled?: boolean;
 };
 
 // Static map so Tailwind's JIT scanner can detect all class names at build
@@ -70,24 +72,12 @@ export const SsoSignin = ({
   loginOption,
   mode = "default",
   oidcContext,
+  disabled = false,
 }: SsoSigninProps) => {
   const { isPending } = useSsoActivation();
   const ssoContext = useOidcSsoContext(oidcContext);
 
-  const providers = Object.values(SOCIAL_AUTH_PROVIDERS_CONFIG)
-    .map((config) => {
-      const sso = loginOption?.ssoInfo?.find(
-        (s) => s.provider === config.provider && config.isAvailable,
-      );
-      if (!sso) return null;
-
-      return {
-        ...config,
-        provider: sso.provider as typeof config.provider,
-        clientId: sso.clientId as string,
-      };
-    })
-    .filter((item) => !!item);
+  const providers = getAvailableSsoProviders(loginOption);
 
   const gridColsClass = GRID_COLS_MAP[Math.min(providers.length, 6)];
 
@@ -101,6 +91,7 @@ export const SsoSignin = ({
             labelMode={providers.length === 1 ? "full" : "short"}
             mode={ssoContext ? "oidc" : mode}
             oidcContext={ssoContext}
+            disabled={disabled}
           />
         ))}
       </div>

@@ -614,7 +614,8 @@ namespace Authentication.DomainService.Authentication
             if (target.Refusal != null)
                 return target.Refusal;
 
-            var options = await _loginPolicy.GetOptionsAsync(target.Channel, target.Client);
+            var byPlace = await _loginPolicy.GetOptionsByPlaceAsync(target.Client);
+            var options = byPlace.For(target.Channel);
             var socialProviders = options.Providers;
 
             // Return only metadata, NOT authorization URLs
@@ -641,8 +642,17 @@ namespace Authentication.DomainService.Authentication
 
             return new OkObjectResult(new
             {
+                // Unchanged for existing callers: these two describe the place that was asked about.
                 AllowedGrantTypes = gts,
-                SsoInfo = ssoInfo
+                SsoInfo = ssoInfo,
+                // Added for apps that run their own login page: what works in both places for this app,
+                // so one call decides its form, its provider buttons and whether the IAM login page has
+                // anything to offer. Provider details stay in ssoInfo (the place that was asked about).
+                SignIn = new
+                {
+                    Embedded = new { byPlace.Embedded.Password, byPlace.Embedded.Social },
+                    Oidc = new { byPlace.Oidc.Password, byPlace.Oidc.Social }
+                }
             });
         }
 
@@ -1105,11 +1115,40 @@ namespace Authentication.DomainService.Authentication
 
             AddSingleClaimIfPresent(principal, userInfo, BlocksContext.TENANT_ID_CLAIM, BlocksContext.TENANT_ID_CLAIM);
             AddSingleClaimIfPresent(principal, userInfo, BlocksContext.ORGANIZATION_ID_CLAIM, BlocksContext.ORGANIZATION_ID_CLAIM);
+            // Present only on the all-disabled "no-org" token (spec #668 H5), like org_id: echoed from the token.
+            AddSingleClaimIfPresent(principal, userInfo, OAuth.JwtAccessTokenProvider.OrganizationStatusClaim, OAuth.JwtAccessTokenProvider.OrganizationStatusClaim);
 
             AddArrayClaimIfPresent(principal, userInfo, BlocksContext.ROLES_CLAIM, BlocksContext.ROLES_CLAIM);
             AddArrayClaimIfPresent(principal, userInfo, BlocksContext.PERMISSION_CLAIM, BlocksContext.PERMISSION_CLAIM);
 
             return (true, userInfo);
+        }
+
+        public async Task<Dictionary<string, object>?> BuildStandardOidcUserInfoAsync(ClaimsPrincipal principal)
+        {
+            ArgumentNullException.ThrowIfNull(principal);
+
+            var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                ?? principal.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value;
+
+            if (string.IsNullOrWhiteSpace(sub))
+            {
+                return null;
+            }
+
+            // A token whose sub is not a user (a client-credentials token, a deleted user) has no
+            // UserInfo to give.
+            var user = await _authenticationRepository.GetUserByIdAsync(sub);
+            if (user == null)
+            {
+                return null;
+            }
+
+            var grantedScopes = GetGrantedScopes(principal);
+            return OidcStandardUserInfo.Build(
+                user,
+                sub,
+                grantedScopes.Count == 0 ? OidcStandardUserInfo.DefaultScopes : grantedScopes);
         }
 
         private static HashSet<string> GetGrantedScopes(ClaimsPrincipal principal)

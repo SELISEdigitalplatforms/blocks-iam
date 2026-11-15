@@ -26,6 +26,7 @@ namespace XUnitTest.IamTests.Resources
 
         private readonly Mock<IResourceRepository> _repo = new();
         private readonly Mock<IActionPublisher> _actions = new();
+        private readonly Mock<IAccessStampWriter> _stamps = new();
         private readonly List<(string Action, string Json)> _published = new();
 
         public OrganizationActionPublishingTests()
@@ -65,7 +66,7 @@ namespace XUnitTest.IamTests.Resources
             return new(NullLogger<ResourceMutationService>.Instance, _repo.Object, iam.Object,
                 new Mock<IValidator<CreatePermissionRequest>>().Object, new Mock<IValidator<UpdatePermissionRequest>>().Object,
                 new Mock<IValidator<CreateRoleRequest>>().Object, Mock.Of<ITenantPermissionPropagator>(), activity.Object,
-                Mock.Of<IUserRepository>(), actionPublisher: _actions.Object);
+                Mock.Of<IUserRepository>(), actionPublisher: _actions.Object, accessStampWriter: _stamps.Object);
         }
 
         [Fact]
@@ -99,6 +100,24 @@ namespace XUnitTest.IamTests.Resources
 
             result.IsSuccess.Should().BeTrue();
             _published.Should().ContainSingle().Which.Should().Be((IamActionNames.OrganizationUpdated, "{\"organizationId\":\"org-a\",\"isEnable\":false}"));
+        }
+
+        [Fact]
+        public async Task DisablingAnOrganization_StampsIt_SoItsMembersTokensStop()
+        {
+            await Create().UpdateOrganizationAsync(OrgA, new SaveOrganizationRequest { IsEnable = false });
+
+            _stamps.Verify(s => s.StampOrganizationAsync(OrgA), Times.Once);
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(null)]
+        public async Task EnablingOrLeavingTheStatus_StampsNothing(bool? isEnable)
+        {
+            await Create().UpdateOrganizationAsync(OrgA, new SaveOrganizationRequest { Name = "New", IsEnable = isEnable });
+
+            _stamps.Verify(s => s.StampOrganizationAsync(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

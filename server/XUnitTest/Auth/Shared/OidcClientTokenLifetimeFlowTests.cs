@@ -1,3 +1,4 @@
+using Iam.DomainService.Resources;
 using System.Security.Claims;
 using System.Text.Json;
 using Authentication.DomainService.Authentication;
@@ -616,7 +617,7 @@ namespace XUnitTest.Auth.Shared
             var exchange = new AuthorizationCodeExchangeService(
                 authCodes.Object, _refreshRepo.Object, tokenService.Object, new Mock<IPkceService>().Object, users.Object,
                 claims.Object, _repo.Object, XUnitTest.TestDoubles.OidcClientSecretTestDoubles.Resolver(XUnitTest.TestDoubles.OidcClientSecretTestDoubles.AcceptingStore()), tenants.Object, new Mock<ITokenRevocationRepository>().Object, _cache.Object,
-                NullLogger<AuthorizationCodeExchangeService>.Instance, _lifetimes.Object);
+                new Mock<IResourceRepository>().Object, NullLogger<AuthorizationCodeExchangeService>.Instance, _lifetimes.Object);
 
             var context = new DefaultHttpContext();
             context.Request.Form = new FormCollection(new Dictionary<string, StringValues>

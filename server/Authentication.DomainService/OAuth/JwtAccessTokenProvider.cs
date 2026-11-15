@@ -13,6 +13,8 @@ using Iam.DomainService.Utilities;
 using Iam.DomainService.Resources;
 using Authentication.DomainService.OAuth.RequestModel;
 using Blocks.Genesis.Entities.Iam;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Microsoft.AspNetCore.Http;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -21,6 +23,9 @@ namespace Authentication.DomainService.OAuth
 
     public sealed class JwtAccessTokenProvider : IJwtAccessTokenProvider
     {
+        /// <summary>The organization status claim, <c>"disabled"</c> on the all-disabled "no-org" token only (spec #668 §6.4).</summary>
+        public const string OrganizationStatusClaim = "org_status";
+
         private readonly ILogger<JwtAccessTokenProvider> _logger;
         private readonly IDatabase _cacheDb;
         private readonly ICryptoService _cryptoService;
@@ -63,42 +68,81 @@ namespace Authentication.DomainService.OAuth
             // The authoritative organization decision for every OAuth-family token: password,
             // social, mfa, embedded login, refresh and token exchange all arrive here. The sign-in
             // legs only pre-fill TokenRequest.OrganizationId; it is re-validated against current
-            // membership below, so a stale or unauthorised value cannot survive into a token.
-            var organizationScope = await ResolveOrganizationScopeAsync(user, tokenRequest.OrganizationId);
+            // membership and organization status, so a stale, unauthorised or disabled value cannot
+            // survive into a token. Callers that can answer a refusal decide first (ManageTokenAsync,
+            // the OIDC refresh and token exchange); this is the fail-closed backstop for any other.
+            if (tokenRequest.OrganizationDecision is null && await ResolveOrganizationAsync(user, tokenRequest) is { } refusal)
+            {
+                throw new InvalidOperationException($"No token may be minted: {refusal.Error}.");
+            }
+
+            var decision = tokenRequest.OrganizationDecision!;
 
             // Roles and permissions are read out of the SAME scope that becomes the claim. Passing
             // the requested organization here instead would mint a token whose claim and whose
             // role set disagree.
-            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, organizationScope.ClaimValue, state?.Scope);
-            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, new TokenClaimSet(resolvedClaims, organizationScope), tokenRequest, stateInfo: state);
+            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, decision.Scope.ClaimValue, state?.Scope);
+            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, new TokenClaimSet(resolvedClaims, decision.Scope), tokenRequest, stateInfo: state);
         }
 
-        /// <summary>
-        /// Resolves the organization scope a token is minted for, reading the tenant's
-        /// multi-organization mode so a single-organization project always lands on "default".
-        /// </summary>
+        /// <inheritdoc />
         /// <remarks>
-        /// A configuration that cannot be read is treated as multi-org disabled, which resolves to
-        /// "default" and therefore preserves the behavior every caller had before the three-state
-        /// claim existed. Failing the other way would drop every caller into "no-org" on a
-        /// transient read failure and lock them out of their own organization.
+        /// Reads the tenant's multi-organization mode and the all-disabled setting from the one tenant-configuration
+        /// read the mint already did; a configuration that cannot be read is treated as multi-org disabled, which
+        /// resolves to "default" and preserves the behavior every caller had before the three-state claim existed.
+        /// Failing the other way would drop every caller into "no-org" on a transient read failure.
         /// </remarks>
-        private async Task<OrganizationScope> ResolveOrganizationScopeAsync(User user, string? requestedOrganizationId)
+        public async Task<TokenResponse?> ResolveOrganizationAsync(User user, TokenRequest tokenRequest)
         {
-            var isMultiOrgEnabled = false;
+            var settings = await OrganizationAccessResolver.ReadIssuanceSettingsAsync(_resourceRepository, _logger, user.ItemId);
 
-            try
+            // Impersonation (start, switch, stop and its refresh) is not gated: it resolves exactly as before,
+            // including the organization its refresh token remembers.
+            if (IsImpersonationIssuance(tokenRequest))
             {
-                var tenantConfiguration = await _resourceRepository.GetTenantConfigurationAsync();
-                isMultiOrgEnabled = tenantConfiguration?.IsMultiOrgEnabled ?? false;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Could not read the tenant configuration while minting a token for user {UserId}; treating multi-organization mode as disabled.", user.ItemId);
+                tokenRequest.OrganizationDecision = OrganizationScopeResolver.Issued(
+                    OrganizationAccessResolver.Resolve(user, tokenRequest.OrganizationId, settings.IsMultiOrgEnabled));
+                return null;
             }
 
-            return OrganizationAccessResolver.Resolve(user, requestedOrganizationId, isMultiOrgEnabled);
+            var decision = await OrganizationAccessResolver.ResolveForIssuanceAsync(
+                _resourceRepository,
+                _logger,
+                user,
+                tokenRequest.OrganizationId,
+                isExplicit: tokenRequest.OrganizationSource != OrganizationRequestSource.ServerFilled,
+                isLinkOrganization: tokenRequest.OrganizationSource == OrganizationRequestSource.Link,
+                settings);
+
+            if (!decision.IsIssued)
+            {
+                return OrganizationRefusal(decision.Outcome);
+            }
+
+            tokenRequest.OrganizationDecision = decision;
+            tokenRequest.OrganizationId = decision.Scope.ClaimValue;
+            return null;
         }
+
+        /// <summary>The 403/503 response of a refused issuance (spec #668 §6.2). The body never names the organization.</summary>
+        public static TokenResponse OrganizationRefusal(OrganizationIssuanceOutcome outcome) =>
+            outcome == OrganizationIssuanceOutcome.StatusUnavailable
+                ? new TokenResponse
+                {
+                    Error = OAuthError.TemporarilyUnavailable,
+                    ErrorDescription = OAuthError.OrganizationStatusUnavailableDescription,
+                    StatusCode = StatusCodes.Status503ServiceUnavailable
+                }
+                : new TokenResponse
+                {
+                    Error = OAuthError.OrganizationDisabled,
+                    ErrorDescription = OAuthError.OrganizationDisabledDescription,
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+
+        private static bool IsImpersonationIssuance(TokenRequest tokenRequest) =>
+            tokenRequest.IsImpersonation
+            || string.Equals(tokenRequest.GrantType, GrantTypes.ImpersonationCloud, StringComparison.OrdinalIgnoreCase);
 
         public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, TokenClaimSet claimSet, TokenRequest tokenRequest, StateInfo? stateInfo = null)
         {
@@ -158,6 +202,14 @@ namespace Authentication.DomainService.OAuth
             // the cloud user matches none of the membership tests, and a single-organization tenant
             // short-circuits to "default", so both still resolve exactly as before.
             claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, organizationScope.ClaimValue));
+            // Only on the all-disabled "no-org" token (spec #668 D3), so apps show the disabled message rather
+            // than new-user onboarding. Absent on every other token.
+            var organizationStatus = tokenRequest.OrganizationDecision?.OrganizationStatus;
+            if (!string.IsNullOrWhiteSpace(organizationStatus))
+            {
+                claimsIdentity.AddClaim(new Claim(OrganizationStatusClaim, organizationStatus));
+            }
+
             claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));
             claimsIdentity.AddClaim(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
 

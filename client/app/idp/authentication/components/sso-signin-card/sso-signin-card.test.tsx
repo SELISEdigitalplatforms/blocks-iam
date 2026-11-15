@@ -60,6 +60,22 @@ describe("SSOSigninCard", () => {
     expect(screen.getByText("Sign in with Google")).toBeInTheDocument();
   });
 
+  it("cannot be clicked while disabled", () => {
+    render(
+      <SSOSigninCard
+        providerConfig={provider}
+        mode="oidc"
+        oidcContext={{ clientId: "c", redirectUri: "r", tenantId: "t1" }}
+        disabled
+      />,
+    );
+    const button = screen.getByRole("button");
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(h.signinByOidcEmail).not.toHaveBeenCalled();
+    expect(h.hrefSpy).not.toHaveBeenCalled();
+  });
+
   it("sends the user to IAM's sign-in when there is no OIDC request to attach to", async () => {
     render(<SSOSigninCard providerConfig={provider} />);
     fireEvent.click(screen.getByRole("button"));

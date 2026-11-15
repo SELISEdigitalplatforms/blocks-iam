@@ -42,6 +42,8 @@ export const useCaptcha = ({ siteKey, type, generator }: UseCaptchaProps): UseCa
     setCode("");
   }, []);
 
+  const clearCode = useCallback(() => setCode(""), []);
+
   return {
     code,
     reset,
@@ -53,8 +55,8 @@ export const useCaptcha = ({ siteKey, type, generator }: UseCaptchaProps): UseCa
       siteKey,
       theme: theme === "dark" ? "dark" : "light",
       onVerify: setCode,
-      onExpired: () => setCode(""),
-      onError: () => setCode(""),
+      onExpired: clearCode,
+      onError: clearCode,
     },
   };
 };

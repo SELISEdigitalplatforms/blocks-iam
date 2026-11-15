@@ -80,7 +80,10 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            request.OrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
+            // The mint writes the organization it actually issued for back to request.OrganizationId (it is the
+            // refresh token's hint); last-used keeps following the sign-in pre-fill, as before (spec #668 Q1).
+            var signInOrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
+            request.OrganizationId = signInOrganizationId;
             var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
 
             if (tokenResponse != null && string.IsNullOrWhiteSpace(tokenResponse.Error))
@@ -90,14 +93,14 @@ namespace Authentication.DomainService.OAuth
 
             if (tokenResponse != null
                 && string.IsNullOrWhiteSpace(tokenResponse.Error)
-                && !string.IsNullOrWhiteSpace(request.OrganizationId)
-                && !string.Equals(user.LastUsedOrganizationId, request.OrganizationId, StringComparison.OrdinalIgnoreCase))
+                && !string.IsNullOrWhiteSpace(signInOrganizationId)
+                && !string.Equals(user.LastUsedOrganizationId, signInOrganizationId, StringComparison.OrdinalIgnoreCase))
             {
                 await _oAuthRepository.UpdatePartialAsync<User>(
                     user.ItemId,
                     new Dictionary<string, object>
                     {
-                        { nameof(User.LastUsedOrganizationId), request.OrganizationId },
+                        { nameof(User.LastUsedOrganizationId), signInOrganizationId },
                         { nameof(User.LastUpdatedDate), DateTime.UtcNow },
                         { nameof(User.LastUpdatedBy), user.ItemId }
                     });

@@ -18,16 +18,19 @@ vi.mock("@blocks-idp/authentication/components/sso-signin-card", () => ({
     providerConfig,
     mode,
     oidcContext,
+    disabled,
   }: {
     providerConfig: { provider: string };
     mode?: string;
     oidcContext?: { clientId?: string; state?: string };
+    disabled?: boolean;
   }) => (
     <div
       data-testid="sso-card"
       data-mode={mode}
       data-client={oidcContext?.clientId ?? ""}
       data-state={oidcContext?.state ?? ""}
+      data-disabled={String(!!disabled)}
     >
       {providerConfig.provider}
     </div>
@@ -80,6 +83,14 @@ describe("SsoSignin", () => {
     expect(card).toHaveAttribute("data-mode", "oidc");
     expect(card).toHaveAttribute("data-client", "app-1");
     expect(card).toHaveAttribute("data-state", "s1");
+  });
+
+  it("passes disabled to every provider button, and leaves them usable by default", () => {
+    const { unmount } = render(<SsoSignin loginOption={loginOption} disabled />);
+    expect(screen.getByTestId("sso-card")).toHaveAttribute("data-disabled", "true");
+    unmount();
+    render(<SsoSignin loginOption={loginOption} />);
+    expect(screen.getByTestId("sso-card")).toHaveAttribute("data-disabled", "false");
   });
 
   it("keeps the default mode when neither the page nor the URL has a client", () => {

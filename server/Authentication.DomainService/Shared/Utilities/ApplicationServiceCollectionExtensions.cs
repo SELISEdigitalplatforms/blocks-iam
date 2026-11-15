@@ -65,6 +65,7 @@ namespace Authentication.DomainService.Utilities
             // tenant's default OIDC client but cannot reference this assembly.
             serviceCollection.AddSingleton<IDefaultOidcClientResolver, DefaultOidcClientResolver>();
             serviceCollection.AddSingleton<IUserSessionTerminator, UserSessionTerminator>();
+            serviceCollection.AddSingleton<IAccessStampWriter, AccessStampWriter>();
             serviceCollection.AddSingleton<IFailedLoginTracker, FailedLoginTracker>();
             serviceCollection.AddSingleton<IOidcClientRegistrationLookup, OidcClientRegistrationLookup>();
 

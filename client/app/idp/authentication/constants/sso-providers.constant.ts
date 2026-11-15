@@ -1,3 +1,4 @@
+import { tStatic } from "@seliseblocks/genesis-os/i18n";
 const Google = "/assets/images/social-media-google.png";
 const Microsoft = "/assets/images/social-media-ms.png";
 const GithubDark = "/assets/images/github-dark-mode.png";
@@ -121,11 +122,17 @@ export const SOCIAL_AUTH_PROVIDERS_CONFIG: Record<
     isAvailable: false,
     isConfigured: false,
   }),
-  ownsso: createProviderConfig(SSO_PROVIDERS.ownsso, {
-    label: "Bring your own SSO",
-    description: "Bring your own SSO provider",
-    imageSrc: Selise,
-    isAvailable: true,
-    isConfigured: false,
-  }),
+  ownsso: {
+    ...createProviderConfig(SSO_PROVIDERS.ownsso, {
+      label: "",
+      description: "Bring your own SSO provider",
+      imageSrc: Selise,
+      isAvailable: true,
+      isConfigured: false,
+    }),
+    // Rendered as the provider's button text, so it is translated; read at render time.
+    get label() {
+      return tStatic("iam.shared", "SSO_PROVIDERS.OWN_SSO_LABEL");
+    },
+  },
 };

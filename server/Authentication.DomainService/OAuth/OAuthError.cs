@@ -38,6 +38,20 @@ namespace Authentication.DomainService.OAuth
         public const string InvalidClient = "invalid_client";
 
         /// <summary>
+        /// No token is issued because the organization it would be scoped to is disabled (or missing), or
+        /// because every organization the user belongs to is (spec #668 D2/D3). Answered with 403.
+        /// </summary>
+        public const string OrganizationDisabled = "organization_disabled";
+        public const string OrganizationDisabledDescription = "Your organization is disabled. Please contact your administrator or support.";
+
+        /// <summary>
+        /// The organization status could not be read, so no token is issued (fail closed, spec #668 D6).
+        /// Answered with 503. Same value as the OIDC client-secret resolver's unavailable error.
+        /// </summary>
+        public const string TemporarilyUnavailable = "temporarily_unavailable";
+        public const string OrganizationStatusUnavailableDescription = "Organization status could not be checked. Please try again.";
+
+        /// <summary>
         /// The one description for every failed password login: unknown user, pending, disabled and
         /// wrong password alike, so the text never tells which it was.
         /// </summary>

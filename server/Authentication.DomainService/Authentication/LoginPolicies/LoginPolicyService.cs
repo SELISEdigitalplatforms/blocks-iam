@@ -17,6 +17,12 @@ namespace Authentication.DomainService.Authentication.LoginPolicies
         /// <summary>What a login page may offer for the current tenant (and OIDC client, when given).</summary>
         Task<LoginOptions> GetOptionsAsync(LoginChannel channel, OidcClientRegistration? client);
 
+        /// <summary>
+        /// What a login page may offer in both places (embedded and OIDC) for the current tenant and
+        /// OIDC client, when given: the policy and the providers are read once for the two.
+        /// </summary>
+        Task<LoginOptionsByPlace> GetOptionsByPlaceAsync(OidcClientRegistration? client);
+
         /// <summary>Whether the place (embedded or OIDC) is on for the current tenant.</summary>
         Task<LoginPolicyDecision> CheckChannelAsync(LoginChannel channel);
 
@@ -57,17 +63,27 @@ namespace Authentication.DomainService.Authentication.LoginPolicies
             return LoginPolicyRules.Check(tenantPolicy, channel, method, client?.LoginPolicy, provider);
         }
 
-        public async Task<LoginOptions> GetOptionsAsync(LoginChannel channel, OidcClientRegistration? client)
+        // One calculation for both: the place a page asks about and the other place it is told about can
+        // never disagree.
+        public async Task<LoginOptions> GetOptionsAsync(LoginChannel channel, OidcClientRegistration? client) =>
+            (await GetOptionsByPlaceAsync(client)).For(channel);
+
+        public async Task<LoginOptionsByPlace> GetOptionsByPlaceAsync(OidcClientRegistration? client)
         {
             var socialProviders = (await _authenticationRepository.GetIdentityProvidersAsync())
                 .Where(p => p.IsActive && p.ProviderType == "social")
                 .ToList();
 
             if (IsRootTenant())
-                return new LoginOptions(true, socialProviders.Count > 0, socialProviders);
+            {
+                var unlimited = new LoginOptions(true, socialProviders.Count > 0, socialProviders);
+                return new LoginOptionsByPlace(unlimited, unlimited);
+            }
 
             var tenantPolicy = (await _resourceRepository.GetTenantConfigurationAsync())?.LoginPolicy;
-            return LoginPolicyRules.Options(tenantPolicy, channel, client?.LoginPolicy, socialProviders);
+            return new LoginOptionsByPlace(
+                LoginPolicyRules.Options(tenantPolicy, LoginChannel.Embedded, client?.LoginPolicy, socialProviders),
+                LoginPolicyRules.Options(tenantPolicy, LoginChannel.Oidc, client?.LoginPolicy, socialProviders));
         }
 
         public async Task<LoginPolicyDecision> CheckChannelAsync(LoginChannel channel)

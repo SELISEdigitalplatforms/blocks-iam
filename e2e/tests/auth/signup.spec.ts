@@ -620,6 +620,7 @@ type OrgConfig = {
   consentForMultiOrgEnable: boolean;
   isSignupAutoJoinEnabled?: boolean;
   signupAutoJoinOrganizationId?: string | null;
+  allowNoOrgSignInForDisabledOrganizations?: boolean;
 };
 type SaveResult = { isSuccess?: boolean; errors?: Record<string, string> | null };
 
@@ -778,6 +779,31 @@ test.describe("Signup auto-join — organization config API, read-only (blocks-i
       }
     }
     expect(changed, "rejected saves left the stored config unchanged").toBe(false);
+  });
+});
+
+// blocks-iam#668 (disabled organizations): the all-disabled sign-in setting is readable by admins only.
+// Read-only: saving it would change the shared tenant's configuration (H6 save and C8 are unit-tested).
+test.describe("Disabled organizations — organization config API, read-only (blocks-iam#668)", () => {
+  test.beforeEach(async ({ page }) => {
+    await ensureAuthenticated(page);
+  });
+
+  test("H6 admin read carries the setting, C7 anonymous read never does", async ({ page }) => {
+    test.setTimeout(90_000);
+    const tenant = await resolveTenantId(page);
+
+    await test.step("[Positive] H6: the admin read returns allowNoOrgSignInForDisabledOrganizations as a boolean", async () => {
+      const admin = await readAdminConfig(page);
+      expect(typeof admin.allowNoOrgSignInForDisabledOrganizations).toBe("boolean");
+    });
+
+    await test.step("[Security] C7: the anonymous read has no allowNoOrgSignInForDisabledOrganizations", async () => {
+      const anonymous = await anonymousApi("GET", CONFIG_PATH, tenant);
+      expect(anonymous.status).toBe(200);
+      expect(anonymous.json).not.toHaveProperty("allowNoOrgSignInForDisabledOrganizations");
+      expect(anonymous.raw.toLowerCase()).not.toContain("allownoorgsigninfordisabledorganizations");
+    });
   });
 });
 

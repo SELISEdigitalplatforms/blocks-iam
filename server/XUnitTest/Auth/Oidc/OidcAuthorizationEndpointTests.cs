@@ -1,4 +1,5 @@
-﻿using Authentication.DomainService.Authentication.LoginPolicies;
+﻿using XUnitTest.TestDoubles;
+using Authentication.DomainService.Authentication.LoginPolicies;
 using XUnitTest.TestSupport;
 using System.Security.Claims;
 using Authentication.DomainService.Authentication;
@@ -48,6 +49,8 @@ namespace XUnitTest.Auth.Oidc
 
         public OidcAuthorizationEndpointTests()
         {
+            // The issuance gate (spec #668) reads organization status; these tests assume enabled organizations.
+            _resourceRepo.WithActiveOrganizations();
             BlocksContext.IsTestMode = true;
             BlocksContext.SetContext(BlocksContext.Create(
                 tenantId: "tenant-1", roles: null, userId: "actor-1", impersonated: false,

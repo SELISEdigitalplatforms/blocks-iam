@@ -22,6 +22,12 @@ namespace Authentication.DomainService.OAuth.ResponseModel
                 ["cookie_set"] = cookiesSet
             };
 
+            // Present only for the all-disabled "no-org" token, so apps can show the disabled message.
+            if (!string.IsNullOrWhiteSpace(response.OrganizationStatus))
+            {
+                payload["org_status"] = response.OrganizationStatus;
+            }
+
             if (!cookiesSet)
             {
                 payload["access_token"] = response.AccessToken;

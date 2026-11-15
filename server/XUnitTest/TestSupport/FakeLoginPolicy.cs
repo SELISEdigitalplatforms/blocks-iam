@@ -11,6 +11,8 @@ namespace XUnitTest.TestSupport
             (_, _, _, _) => LoginPolicyDecision.Allowed;
         public Func<IdpSessionAccount, bool> SessionAccountAllowed { get; set; } = _ => true;
         public LoginOptions Options { get; set; } = new(true, false, []);
+        /// <summary>Per-place answer; when unset, both places answer <see cref="Options"/>.</summary>
+        public LoginOptionsByPlace? OptionsByPlace { get; set; }
         public List<(LoginChannel Channel, string Method)> Checks { get; } = [];
 
         public Task<LoginPolicyDecision> CheckAsync(LoginChannel channel, string method, OidcClientRegistration? client = null, IdentityProvider? provider = null)
@@ -20,6 +22,9 @@ namespace XUnitTest.TestSupport
         }
 
         public Task<LoginOptions> GetOptionsAsync(LoginChannel channel, OidcClientRegistration? client) => Task.FromResult(Options);
+
+        public Task<LoginOptionsByPlace> GetOptionsByPlaceAsync(OidcClientRegistration? client) =>
+            Task.FromResult(OptionsByPlace ?? new LoginOptionsByPlace(Options, Options));
 
         public Task<LoginPolicyDecision> CheckChannelAsync(LoginChannel channel) => Task.FromResult(ChannelDecision);
 

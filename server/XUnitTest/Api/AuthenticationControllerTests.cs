@@ -625,6 +625,51 @@ namespace XUnitTest.ApiTests
             result.Should().BeOfType<OkObjectResult>();
         }
 
+        // ---------- GetOidcUserInfo (standard OIDC UserInfo) ----------
+
+        [Fact]
+        public async Task GetOidcUserInfo_Valid_ReturnsOkWithTheStandardClaims()
+        {
+            var claims = new Dictionary<string, object> { ["sub"] = "u-1", ["preferred_username"] = "u@x.com" };
+            _authService.Setup(s => s.BuildStandardOidcUserInfoAsync(It.IsAny<System.Security.Claims.ClaimsPrincipal>()))
+                .ReturnsAsync(claims);
+
+            var result = await CreateController().GetOidcUserInfo();
+
+            result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeSameAs(claims);
+            _authService.Verify(s => s.BuildOidcUserInfoAsync(It.IsAny<System.Security.Claims.ClaimsPrincipal>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetOidcUserInfo_NoUser_ReturnsUnauthorizedWithBearerChallenge()
+        {
+            _authService.Setup(s => s.BuildStandardOidcUserInfoAsync(It.IsAny<System.Security.Claims.ClaimsPrincipal>()))
+                .ReturnsAsync((Dictionary<string, object>?)null);
+            var controller = CreateController();
+
+            var result = await controller.GetOidcUserInfo();
+
+            result.Should().BeOfType<UnauthorizedObjectResult>();
+            controller.Response.Headers.WWWAuthenticate.ToString().Should().StartWith("Bearer error=\"invalid_token\"");
+        }
+
+        [Fact]
+        public void UserInfoRoutes_UserinfoServesGetAndPost_AndMeStaysGet()
+        {
+            // Discovery advertises {api}/auth/userinfo (OidcServices.ResolveEndpoints); OIDC Core 5.3
+            // requires GET and POST there. auth/me is the Blocks shape and must keep its own route.
+            var userInfo = typeof(AuthenticationController).GetMethod(nameof(AuthenticationController.GetOidcUserInfo))!;
+            var me = typeof(AuthenticationController).GetMethod(nameof(AuthenticationController.RetrieveUserInformation))!;
+
+            userInfo.GetCustomAttributes(typeof(HttpGetAttribute), false).Cast<HttpGetAttribute>()
+                .Select(a => a.Template).Should().Equal("userinfo");
+            userInfo.GetCustomAttributes(typeof(HttpPostAttribute), false).Cast<HttpPostAttribute>()
+                .Select(a => a.Template).Should().Equal("userinfo");
+            userInfo.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), false).Should().NotBeEmpty();
+            me.GetCustomAttributes(typeof(HttpGetAttribute), false).Cast<HttpGetAttribute>()
+                .Select(a => a.Template).Should().Equal("me");
+        }
+
         // ---------- CreateIdentityProvider ----------
 
         [Fact]

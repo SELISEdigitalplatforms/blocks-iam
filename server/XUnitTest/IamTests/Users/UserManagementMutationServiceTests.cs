@@ -899,6 +899,112 @@ namespace XUnitTest.IamTests.Users
             user.Roles["default"].Should().Contain("admin");
         }
 
+        private static User MemberOfDefault(List<string> roles, List<string> permissions) => new()
+        {
+            ItemId = "u1",
+            OrganizationIds = ["default"],
+            Roles = new Dictionary<string, List<string>> { ["default"] = roles },
+            Permissions = new Dictionary<string, List<string>> { ["default"] = permissions }
+        };
+
+        [Fact]
+        public async Task UpdateAccessControl_LastPermissionSentEmpty_IsRemoved()
+        {
+            // The OS console sends the whole list, so unticking the last permission sends [].
+            var user = MemberOfDefault(["admin"], ["read"]);
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "u1", OrganizationId = "default", Roles = ["admin"], Permissions = []
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            user.Roles["default"].Should().Equal("admin");
+            user.Permissions["default"].Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task UpdateAccessControl_RolesSentEmptyAlongsidePermissions_ClearsTheRoles()
+        {
+            var user = MemberOfDefault(["admin"], ["read"]);
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "u1", OrganizationId = "default", Roles = [], Permissions = ["write"]
+            });
+
+            user.Roles["default"].Should().BeEmpty();
+            user.Permissions["default"].Should().Equal("write");
+        }
+
+        [Fact]
+        public async Task UpdateAccessControl_OmittedList_IsKept()
+        {
+            // blocks-cli `users access-grant --roles editor` sends no permissions field at all.
+            var user = MemberOfDefault(["admin"], ["read"]);
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "u1", OrganizationId = "default", Roles = ["editor"]
+            });
+
+            user.Roles["default"].Should().Equal("editor");
+            user.Permissions["default"].Should().Equal("read");
+        }
+
+        [Fact]
+        public async Task UpdateAccessControl_BothListsEmpty_OnAMember_ClearsAccessAndKeepsMembership()
+        {
+            // The console sends the whole lists; taking away a user's last role and last permission
+            // sends roles [] and permissions []. The user stays in the organization with no access.
+            var user = MemberOfDefault(["admin"], ["read"]);
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "u1", OrganizationId = "default", Roles = [], Permissions = []
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            user.Roles["default"].Should().BeEmpty();
+            user.Permissions["default"].Should().BeEmpty();
+            user.OrganizationIds.Should().Contain("default");
+        }
+
+        [Fact]
+        public async Task UpdateAccessControl_LastRoleSentEmpty_WithNoPermissions_IsRemoved()
+        {
+            var user = MemberOfDefault(["admin"], []);
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "u1", OrganizationId = "default", Roles = [], Permissions = []
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            user.Roles["default"].Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task UpdateAccessControl_BothListsOmitted_OnAMember_KeepsEverything()
+        {
+            var user = MemberOfDefault(["admin"], ["read"]);
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "u1", OrganizationId = "default"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            user.Roles["default"].Should().Equal("admin");
+            user.Permissions["default"].Should().Equal("read");
+        }
+
         // ---------- RevokeUserAccessControlAsync ----------
 
         [Fact]
