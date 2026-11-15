@@ -956,16 +956,48 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
-        public async Task UpdateAccessControl_BothListsEmpty_KeepsEverything()
+        public async Task UpdateAccessControl_BothListsEmpty_OnAMember_ClearsAccessAndKeepsMembership()
         {
-            // The invite dialogs add an existing account with roles [] and permissions []; reaching an
-            // organization the user already belongs to must not strip what they hold there.
+            // The console sends the whole lists; taking away a user's last role and last permission
+            // sends roles [] and permissions []. The user stays in the organization with no access.
             var user = MemberOfDefault(["admin"], ["read"]);
             _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
 
             var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
             {
                 UserId = "u1", OrganizationId = "default", Roles = [], Permissions = []
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            user.Roles["default"].Should().BeEmpty();
+            user.Permissions["default"].Should().BeEmpty();
+            user.OrganizationIds.Should().Contain("default");
+        }
+
+        [Fact]
+        public async Task UpdateAccessControl_LastRoleSentEmpty_WithNoPermissions_IsRemoved()
+        {
+            var user = MemberOfDefault(["admin"], []);
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "u1", OrganizationId = "default", Roles = [], Permissions = []
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            user.Roles["default"].Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task UpdateAccessControl_BothListsOmitted_OnAMember_KeepsEverything()
+        {
+            var user = MemberOfDefault(["admin"], ["read"]);
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            var result = await Create().UpdateUserAccessControlAsync(new UpdateUserAccessControlRequest
+            {
+                UserId = "u1", OrganizationId = "default"
             });
 
             result.IsSuccess.Should().BeTrue();

@@ -5,7 +5,7 @@
         public required string UserId { get; set; }
 
         // Null when the field is omitted, so "omitted" (keep the stored list) stays distinguishable
-        // from "sent empty" (clear it). See UserManagementMutationService.EditsAccess for the rule.
+        // from "sent empty" (clear it, for an existing member). See UserManagementMutationService.UpdateUserAccessControlAsync.
         public List<string>? Roles { get; set; }
         public List<string>? Permissions { get; set; }
         public string? OrganizationId { get; set; }
