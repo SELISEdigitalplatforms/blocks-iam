@@ -53,7 +53,7 @@ namespace XUnitTest.ApiTests
             _resourceMutation.Setup(s => s.ArchiveRoleAsync(It.IsAny<string>(), It.IsAny<bool>())).ReturnsAsync(Refused());
             _resourceMutation.Setup(s => s.SetRolesAsync(It.IsAny<SetRolesRequest>()))
                 .ReturnsAsync(new SetRolesResponse { Errors = AccessGrantErrors.Create() });
-            _userMutation.Setup(s => s.CreateUserAsync(It.IsAny<CreateUserRequest>())).ReturnsAsync(Refused());
+            _userMutation.Setup(s => s.CreateUserByAdminAsync(It.IsAny<CreateUserRequest>())).ReturnsAsync(Refused());
             _userMutation.Setup(s => s.UpdateUserAsync(It.IsAny<UpdateUserRequest>())).ReturnsAsync(Refused());
             _userMutation.Setup(s => s.DeactivateUserAsync(It.IsAny<DeactivateUserRequest>())).ReturnsAsync(Refused());
             _userMutation.Setup(s => s.ActivateUserAsync(It.IsAny<ActivateUserByAdminRequest>())).ReturnsAsync(Refused());
@@ -107,6 +107,38 @@ namespace XUnitTest.ApiTests
                 .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
             (await controller.SaveSignUpSetting(new SaveSignUpSettingRequest())).Result
                 .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        }
+
+        [Fact]
+        public async Task DeactivateAndActivateFromAnOrganizationAnswer403WithTheNamedError()
+        {
+            _userMutation.Setup(s => s.DeactivateUserAsync(It.IsAny<DeactivateUserRequest>()))
+                .ReturnsAsync(new BaseResponse { Errors = AccessGrantErrors.CreateDefaultOrganizationRequired() });
+            _userMutation.Setup(s => s.ActivateUserAsync(It.IsAny<ActivateUserByAdminRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { Errors = AccessGrantErrors.CreateDefaultOrganizationRequired() });
+            var controller = CreateController();
+
+            var deactivate = await controller.DeactivateUser(new DeactivateUserRequest { UserId = "u1" });
+            var activate = await controller.ActivateUser(new ActivateUserByAdminRequest { UserId = "u1", Reason = "reinstate" });
+
+            Forbidden(deactivate);
+            Forbidden(activate);
+            ((BaseResponse)((ObjectResult)deactivate).Value!).Errors
+                .Should().ContainKey(AccessGrantErrors.DefaultOrganizationRequired);
+        }
+
+        [Fact]
+        public async Task CreatingAnExistingMemberKeepsItsBadRequest()
+        {
+            _userMutation.Setup(s => s.CreateUserByAdminAsync(It.IsAny<CreateUserRequest>()))
+                .ReturnsAsync(new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string> { { UserManagementMutationService.UserAlreadyMemberError, "x" } }
+                });
+
+            var result = await CreateController().CreateUser(new CreateUserRequest { Email = "member@example.com" });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
         }
 
         [Fact]
