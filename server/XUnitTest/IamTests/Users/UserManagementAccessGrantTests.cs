@@ -198,6 +198,52 @@ namespace XUnitTest.IamTests.Users
             _kit.Terminator.Verify(t => t.EndAllSessionsAsync("member", "access_replaced"), Times.Once);
         }
 
+        [Fact]
+        public async Task AdminCreateForAnExistingMemberIsRefusedAndChangesNothing()
+        {
+            _kit.WithUser("member", ["viewer", "contractor"]);
+
+            var result = await Create().CreateUserByAdminAsync(new CreateUserRequest { Email = "member@example.com", OrganizationId = Org, Roles = ["viewer"] });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey(UserManagementMutationService.UserAlreadyMemberError);
+            _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+            _kit.Terminator.Verify(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task AdminCreateForAnExistingMemberIsRefusedForADefaultOrganizationCallerToo()
+        {
+            var member = _kit.WithUser("member", ["viewer"]);
+            AccessGrantTestKit.SignIn("caller", organizationId: "default");
+
+            var result = await Create().CreateUserByAdminAsync(new CreateUserRequest { Email = "member@example.com", OrganizationId = Org, Roles = ["owner"] });
+
+            result.Errors.Should().ContainKey(UserManagementMutationService.UserAlreadyMemberError);
+            member.Roles[Org].Should().Equal("viewer");
+        }
+
+        [Fact]
+        public async Task AdminCreateStillAddsAnExistingAccountThatIsNotYetAMember()
+        {
+            var outsider = _kit.WithUser("outsider", ["viewer"], organizationId: "org-other");
+
+            var result = await Create().CreateUserByAdminAsync(new CreateUserRequest { Email = "outsider@example.com", OrganizationId = Org, Roles = ["viewer"] });
+
+            result.IsSuccess.Should().BeTrue();
+            outsider.OrganizationIds.Should().Contain(Org);
+            outsider.Roles[Org].Should().Equal("viewer");
+        }
+
+        [Fact]
+        public async Task AdminCreateStillCreatesANewAccount()
+        {
+            var result = await Create().CreateUserByAdminAsync(new CreateUserRequest { Email = "new@example.com", OrganizationId = Org, Roles = ["viewer"] });
+
+            result.IsSuccess.Should().BeTrue();
+            _created.Should().ContainSingle();
+        }
+
         // ---------- users/{id} and me ----------
 
         [Fact]
@@ -237,15 +283,51 @@ namespace XUnitTest.IamTests.Users
 
         // ---------- activate / deactivate ----------
 
-        [Fact]
-        public async Task ActivateAndDeactivateAreManagingTheUser()
+        [Theory]
+        [InlineData("viewer")]
+        [InlineData("owner")]
+        public async Task ActivateAndDeactivateAreRefusedForAnOrganizationCaller(string targetRole)
         {
-            var boss = _kit.WithUser("boss", ["owner"]);
-            boss.Active = false;
+            // Even a user well below the caller: the account spans every organization, so an
+            // organization admin removes the user from its organization instead.
+            var target = _kit.WithUser("target", [targetRole]);
 
-            ShouldBeRefused(await Create().DeactivateUserAsync(new DeactivateUserRequest { UserId = "boss" }));
-            ShouldBeRefused(await Create().ActivateUserAsync(new ActivateUserByAdminRequest { UserId = "boss", Reason = "back" }));
+            var deactivate = await Create().DeactivateUserAsync(new DeactivateUserRequest { UserId = "target" });
+            target.Active = false;
+            var activate = await Create().ActivateUserAsync(new ActivateUserByAdminRequest { UserId = "target", Reason = "back" });
+
+            deactivate.Errors.Should().ContainKey(AccessGrantErrors.DefaultOrganizationRequired);
+            activate.Errors.Should().ContainKey(AccessGrantErrors.DefaultOrganizationRequired);
+            AccessGrantErrors.IsForbidden(deactivate.Errors).Should().BeTrue();
             _userRepo.Verify(r => r.UpdateUserAsync(It.IsAny<User>()), Times.Never);
+            _kit.Terminator.Verify(t => t.EndAllSessionsAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ActivateAndDeactivateAreRefusedForAnOrganizationClientCredential()
+        {
+            _kit.WithUser("target", ["viewer"]);
+            AccessGrantTestKit.SignInClient("client-1");
+
+            (await Create().DeactivateUserAsync(new DeactivateUserRequest { UserId = "target" })).Errors
+                .Should().ContainKey(AccessGrantErrors.DefaultOrganizationRequired);
+        }
+
+        [Fact]
+        public async Task ActivateAndDeactivateAreAllowedForADefaultOrganizationCaller()
+        {
+            // The permission is the only gate in the default organization: no role tree, so even
+            // an owner of another organization may be switched off and on again.
+            var target = _kit.WithUser("target", ["owner"]);
+            AccessGrantTestKit.SignIn("caller", organizationId: "default");
+
+            var deactivate = await Create().DeactivateUserAsync(new DeactivateUserRequest { UserId = "target" });
+            target.Active.Should().BeFalse();
+            var activate = await Create().ActivateUserAsync(new ActivateUserByAdminRequest { UserId = "target", Reason = "back" });
+
+            deactivate.IsSuccess.Should().BeTrue();
+            activate.IsSuccess.Should().BeTrue();
+            target.Active.Should().BeTrue();
         }
 
         // ---------- users/access ----------
