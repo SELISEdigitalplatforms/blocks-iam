@@ -61,6 +61,14 @@ export default defineConfig(({ mode }) => {
       environment: "jsdom",
       globals: true,
       setupFiles: ["./app/test-utils/vitest.setup.ts"],
+      // Since genesis-os 4.5.0 the real i18n runtime (aliased below) reads its settings through
+      // `import.meta.env`, which is only defined for modules Vite transforms. Inline the package so
+      // that read works under Vitest instead of raising unhandled TypeErrors that fail the run.
+      server: {
+        deps: {
+          inline: ["@seliseblocks/genesis-os"],
+        },
+      },
       coverage: {
         all: true,
         provider: "v8",

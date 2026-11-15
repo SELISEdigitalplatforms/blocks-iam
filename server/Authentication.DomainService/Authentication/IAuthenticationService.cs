@@ -31,6 +31,8 @@ namespace Authentication.DomainService.Authentication
         Task<object> HandleTokenResponseConditionallyAsync(TokenResponse response, HttpResponse httpResponse, bool useTokensCookie, string? clientId = null);
         Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false);
         Task<(bool IsValid, Dictionary<string, object> UserInfo)> BuildOidcUserInfoAsync(ClaimsPrincipal principal);
+        /// <summary>Standard OIDC UserInfo claims for the token's user, or null when the token names no user.</summary>
+        Task<Dictionary<string, object>?> BuildStandardOidcUserInfoAsync(ClaimsPrincipal principal);
         Task<bool> TriggerBackchannelLogoutAllAsync(HttpRequest httpRequest);
         Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId);
         Task<BaseResponse> CreateIdentityProviderAsync(SaveIdentityProviderRequest request);

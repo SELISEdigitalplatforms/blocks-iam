@@ -113,6 +113,74 @@ namespace XUnitTest.Auth.LoginPolicies
         }
 
         [Fact]
+        public async Task GetOptionsByPlaceAsync_AnswersEachPlace_FromOneRead()
+        {
+            TenantPolicy(new TenantLoginPolicy { AllowEmbedded = false, AllowPassword = false });
+
+            var byPlace = await Create().GetOptionsByPlaceAsync(null);
+
+            byPlace.Embedded.Password.Should().BeFalse();
+            byPlace.Embedded.Social.Should().BeFalse();
+            byPlace.Oidc.Password.Should().BeFalse();
+            byPlace.Oidc.Social.Should().BeTrue();
+            byPlace.Oidc.Providers.Select(p => p.ItemId).Should().Equal("p1");
+            _resources.Verify(r => r.GetTenantConfigurationAsync(), Times.Once);
+            _auth.Verify(a => a.GetIdentityProvidersAsync(), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetOptionsByPlaceAsync_NarrowsBothPlaces_ByTheClient()
+        {
+            TenantPolicy(null);
+            var client = new OidcClientRegistration { LoginPolicy = new OidcClientLoginPolicy { Method = OidcClientLoginMethods.Password } };
+
+            var byPlace = await Create().GetOptionsByPlaceAsync(client);
+
+            byPlace.Embedded.Should().BeEquivalentTo(new { Password = true, Social = false });
+            byPlace.Oidc.Should().BeEquivalentTo(new { Password = true, Social = false });
+        }
+
+        [Fact]
+        public async Task GetOptionsByPlaceAsync_SocialOnWithoutAnActiveProvider_IsNoSocial()
+        {
+            TenantPolicy(null);
+            _auth.Setup(a => a.GetIdentityProvidersAsync()).ReturnsAsync([Provider("p2", "social", false)]);
+
+            var byPlace = await Create().GetOptionsByPlaceAsync(null);
+
+            byPlace.Embedded.Social.Should().BeFalse();
+            byPlace.Oidc.Social.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task GetOptionsByPlaceAsync_RootTenant_IsUnlimitedInBothPlaces()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(Tenant(isRoot: true));
+            TenantPolicy(new TenantLoginPolicy { AllowEmbedded = false, AllowPassword = false });
+
+            var byPlace = await Create().GetOptionsByPlaceAsync(null);
+
+            byPlace.Embedded.Password.Should().BeTrue();
+            byPlace.Oidc.Password.Should().BeTrue();
+            byPlace.Oidc.Social.Should().BeTrue();
+            _resources.Verify(r => r.GetTenantConfigurationAsync(), Times.Never);
+        }
+
+        [Theory]
+        [InlineData(LoginChannel.Embedded)]
+        [InlineData(LoginChannel.Oidc)]
+        public async Task GetOptionsAsync_IsThePlacesOwnAnswer(LoginChannel channel)
+        {
+            TenantPolicy(new TenantLoginPolicy { AllowEmbedded = false });
+            var service = Create();
+
+            var single = await service.GetOptionsAsync(channel, null);
+            var byPlace = await service.GetOptionsByPlaceAsync(null);
+
+            single.Should().BeEquivalentTo(byPlace.For(channel));
+        }
+
+        [Fact]
         public async Task SessionAccountFilter_FollowsTheClientMethod()
         {
             TenantPolicy(null);

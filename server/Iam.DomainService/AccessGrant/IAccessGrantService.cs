@@ -57,14 +57,15 @@ namespace Iam.DomainService.AccessGrant
         Task WarnOnPolicyPowerAsync(GrantScope scope, IEnumerable<string>? roles);
 
         /// <summary>
-        /// Users holding <paramref name="slug"/> in the scope's organization, read before a removal
-        /// so R12 knows whose sessions to end. Empty for the system user, to whom R12 does not apply.
+        /// Users holding <paramref name="slug"/> in <paramref name="organizationId"/>, read before a
+        /// removal so their access tokens are stamped and, for a non-system caller, R12 ends their sessions.
         /// </summary>
-        Task<IReadOnlyList<string>> GetRoleHoldersAsync(GrantScope scope, string slug);
+        Task<IReadOnlyList<string>> GetRoleHoldersAsync(GrantScope scope, string slug, string organizationId);
 
         /// <summary>
-        /// R12: a non-system caller removed at least one role or permission from these users, so
-        /// every session they hold ends. Never throws.
+        /// A caller removed at least one role or permission from these users: their access tokens are
+        /// stamped so the change applies on the next request, and for a non-system caller (R12) every
+        /// session they hold ends. Never throws.
         /// </summary>
         Task EndSessionsAfterRemovalAsync(GrantScope scope, IEnumerable<string> userIds, string reason);
 

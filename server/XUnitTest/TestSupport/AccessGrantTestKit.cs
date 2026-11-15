@@ -48,6 +48,8 @@ namespace XUnitTest.TestSupport
 
         public Mock<IUserSessionTerminator> Terminator { get; } = new();
 
+        public Mock<IAccessStampWriter> Stamps { get; } = new();
+
         /// <summary>What the system user's unchanged, pre-existing grant check reads.</summary>
         public Mock<IResourceRepository> LegacyResources { get; } = new();
 
@@ -61,7 +63,7 @@ namespace XUnitTest.TestSupport
 
         public AccessGrantService Service() =>
             new(Repository.Object, Tenants.Object, Iam.Object, Logger,
-                new GrantAuthorizationService(LegacyResources.Object), Terminator.Object);
+                new GrantAuthorizationService(LegacyResources.Object), Terminator.Object, Stamps.Object);
 
         public AccessGrantTestKit WithRole(string slug, string? parent = null, string organizationId = Org)
         {

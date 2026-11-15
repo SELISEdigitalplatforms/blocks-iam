@@ -733,6 +733,36 @@ namespace Iam.DomainService.Resources
             return await _dataAccess.FindListAsync(collection, IamSchemas.Organization, filter, "ResourceRepository.GetOrganizationsByIdsAsync");
         }
 
+        public async Task<IReadOnlyDictionary<string, bool>> GetOrganizationStatusesAsync(IReadOnlyCollection<string> organizationIds)
+        {
+            var ids = (organizationIds ?? [])
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            if (ids.Count == 0)
+            {
+                return new Dictionary<string, bool>(StringComparer.Ordinal);
+            }
+
+            // Deliberately not through _dataAccess: the token-issuance gate reads the user's own memberships, and
+            // a row policy that denies the read would come back as an empty list -- indistinguishable from "no such
+            // organization", which the gate treats as disabled. Only the id and the status are read.
+            var collection = _identityAccessManagementRepository.GetCollection<Organization>();
+            var statuses = await collection
+                .Find(Builders<Organization>.Filter.In(x => x.ItemId, ids))
+                .Project<Organization>(Builders<Organization>.Projection.Include(x => x.ItemId).Include(x => x.IsDisabled))
+                .ToListAsync();
+
+            var result = new Dictionary<string, bool>(StringComparer.Ordinal);
+            foreach (var organization in statuses.Where(o => !string.IsNullOrWhiteSpace(o.ItemId)))
+            {
+                result[organization.ItemId] = organization.IsDisabled;
+            }
+
+            return result;
+        }
+
         public async Task SaveOrganizationAsync(Organization organization)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Organization>();

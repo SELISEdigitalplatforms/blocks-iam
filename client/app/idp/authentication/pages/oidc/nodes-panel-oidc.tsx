@@ -10,7 +10,7 @@ import {
   Code2,
   type LucideIcon,
 } from "lucide-react";
-import { useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
+import { tStatic, useT, type TFunction } from "@seliseblocks/genesis-os/i18n";
 
 export type OidcAnimPhase = "idle" | "submitting" | "succeeded" | "failed";
 
@@ -281,9 +281,14 @@ type SetTerminalLines = React.Dispatch<React.SetStateAction<TerminalLine[]>>;
 
 function buildFailureLines(config: OidcPanelConfig, errorMessage: string | null | undefined): TerminalLine[] {
   return [
-    ...(config.errorTerminalPrefix ?? [{ text: "$ verifying...", color: "var(--fg)" }]),
-    { text: `  > error: ${errorMessage ?? "request failed"}`, color: "var(--danger)" },
-    { text: "  > status: aborted", color: "var(--muted)" },
+    ...(config.errorTerminalPrefix ?? [
+      { text: `$ ${tStatic("iam.oidc", "NODES_PANEL.TERMINAL_VERIFYING")}`, color: "var(--fg)" },
+    ]),
+    {
+      text: `  > error: ${errorMessage ?? tStatic("iam.oidc", "NODES_PANEL.TERMINAL_REQUEST_FAILED")}`,
+      color: "var(--danger)",
+    },
+    { text: `  > status: ${tStatic("iam.oidc", "NODES_PANEL.TERMINAL_STATUS_ABORTED")}`, color: "var(--muted)" },
   ];
 }
 

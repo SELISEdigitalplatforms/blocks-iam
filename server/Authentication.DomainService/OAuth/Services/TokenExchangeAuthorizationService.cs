@@ -287,8 +287,19 @@ namespace Authentication.DomainService.OAuth.Services
             {
                 GrantType = GrantTypes.TokenExchange,
                 OrganizationId = record.OrganizationId ?? string.Empty,
+                // The grant's organization is explicit: once disabled, the grant is refused with 403 rather than
+                // redeemed into another organization (spec #668 D2). The nonce above stays consumed.
+                OrganizationSource = OrganizationRequestSource.Explicit,
                 Request = request?.Request
             };
+
+            var organizationRefusal = await _jwtAccessTokenProvider
+                .ResolveOrganizationAsync(delegatedUser, tokenRequest)
+                .ConfigureAwait(false);
+            if (organizationRefusal != null)
+            {
+                return organizationRefusal;
+            }
 
             var jwtAccessToken = await _jwtAccessTokenProvider
                 .GetJwtAccessToken(authenticationConfiguration, tenant, delegatedUser, tokenRequest)

@@ -12,6 +12,7 @@ using Authentication.DomainService.Shared.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
+using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -34,6 +35,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IRefreshSessionResolver _refreshSessionResolver;
         private readonly IUnknownUserLoginGuard _unknownUserLoginGuard;
         private readonly ILoginPolicyService _loginPolicy;
+        private readonly IAccessStampWriter? _accessStampWriter;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
@@ -46,7 +48,9 @@ namespace Authentication.DomainService.Authentication
             IRefreshTokenRepository refreshTokenRepository,
             IRefreshSessionResolver refreshSessionResolver,
             IUnknownUserLoginGuard unknownUserLoginGuard,
-            ILoginPolicyService loginPolicy)
+            ILoginPolicyService loginPolicy,
+            // Trailing and optional so existing fixtures keep compiling; DI always supplies it.
+            IAccessStampWriter? accessStampWriter = null)
         {
             _authenticationRepository = authenticationRepository;
             _authStrategy = authStrategy;
@@ -59,6 +63,7 @@ namespace Authentication.DomainService.Authentication
             _refreshSessionResolver = refreshSessionResolver;
             _unknownUserLoginGuard = unknownUserLoginGuard;
             _loginPolicy = loginPolicy;
+            _accessStampWriter = accessStampWriter;
         }
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
@@ -494,12 +499,22 @@ namespace Authentication.DomainService.Authentication
             {
                 GrantType = GrantTypes.SwitchOrganization,
                 OrganizationId = request.OrganizationId,
+                // The switch target is explicit: a disabled one is refused with 403, never replaced (spec #668 D2).
+                OrganizationSource = OrganizationRequestSource.Explicit,
                 // The lineage keeps its OIDC client across the switch, as /oidc/token does. Without it the
                 // successor was stored client-less and the next /oidc/token refresh failed invalid_client.
                 ClientId = refreshCache.ClientId,
                 RefreshToken = refreshToken,
                 Request = httpRequest
             };
+
+            // One organization at a time: every access token this session holds for the previous
+            // organization stops on its next request. Stamped before the mint, so the new token is
+            // never older than the stamp.
+            if (_accessStampWriter != null)
+            {
+                await _accessStampWriter.StampSessionAsync(refreshCache.SessionId);
+            }
 
             var tokenResponse = await _tokenRefresher.AuthenticateAsync(tokenRequest, configuration, user!);
 
@@ -667,6 +682,9 @@ namespace Authentication.DomainService.Authentication
                 // organization into the tenant-wide scope for any user who holds "default", now that
                 // a requested "default" is honoured for its members.
                 OrganizationId = tokenCache.OrganizationId ?? string.Empty,
+                // The hint is explicit (spec #668 D2): a hint naming a now-disabled membership is refused with
+                // 403 and the lineage is neither rotated nor revoked; a blank hint is treated as none.
+                OrganizationSource = OrganizationRequestSource.Explicit,
                 // Keep the lineage's OIDC client on the successor (empty stays empty: nothing is repaired).
                 ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,

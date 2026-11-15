@@ -1,6 +1,7 @@
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 using Blocks.Genesis.Entities.Iam;
+using Iam.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth.RequestModel
 {
@@ -15,6 +16,28 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? Nonce { get; init; }
         public string? Ts { get; init; }
         public string? Signature { get; init; }
+    }
+
+    /// <summary>
+    /// How <see cref="TokenRequest.OrganizationId"/> was chosen, which decides what a disabled organization
+    /// does to the issuance (spec #668 D1/D2).
+    /// </summary>
+    public enum OrganizationRequestSource
+    {
+        /// <summary>
+        /// The server filled it in (the password, social and MFA sign-in pre-fill): only a preference, honoured
+        /// while it is an active membership, so a disabled organization falls back to an active one.
+        /// </summary>
+        ServerFilled = 0,
+
+        /// <summary>
+        /// Carried in explicitly (client-sent sign-in organization, refresh hint, switch target, token-exchange
+        /// grant): a disabled membership is refused, never replaced.
+        /// </summary>
+        Explicit,
+
+        /// <summary>A signup-link organization: link handling as before, plus the status check.</summary>
+        Link
     }
 
     public sealed class TokenRequest
@@ -37,6 +60,15 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? ClientId { get; set; }
         public string? ClientSecret { get; set; }
         public string? OrganizationId { get; set; }
+
+        /// <summary>How <see cref="OrganizationId"/> was chosen. A blank id is treated as none whatever this says.</summary>
+        public OrganizationRequestSource OrganizationSource { get; set; }
+
+        /// <summary>
+        /// The issuance-time organization decision, set by <see cref="IJwtAccessTokenProvider.ResolveOrganizationAsync"/>
+        /// before anything is issued and read by the mint, so one issuance reads organization status at most once.
+        /// </summary>
+        public OrganizationIssuanceDecision? OrganizationDecision { get; set; }
         public bool IsImpersonation { get; set; }
         public string? ImpersonatorUserId { get; set; }
         public string? TargetTenantId { get; set; }

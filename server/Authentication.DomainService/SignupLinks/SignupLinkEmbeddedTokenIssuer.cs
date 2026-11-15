@@ -71,6 +71,8 @@ public sealed class SignupLinkEmbeddedTokenIssuer : ISignupLinkEmbeddedTokenIssu
         {
             GrantType = GrantTypes.SignupLink,
             OrganizationId = link.OrganizationId,
+            // Link handling as before plus the status check: a disabled or missing link organization is refused.
+            OrganizationSource = OrganizationRequestSource.Link,
             Request = request,
             IsLinkAuthentication = true,
             RestrictedRoles = link.Roles?.ToList() ?? [],

@@ -29,6 +29,13 @@
         /// value, blank included, is validated against the state the save would produce.
         /// </summary>
         public string? SignupAutoJoinOrganizationId { get; set; }
+
+        /// <summary>
+        /// Whether users whose organizations are all disabled may still sign in, without an organization
+        /// (<c>"no-org"</c> token carrying <c>org_status = "disabled"</c>). Nullable for the same reason as
+        /// <see cref="IsOrgNameUniquenessEnabled"/>: null keeps the stored value.
+        /// </summary>
+        public bool? AllowNoOrgSignInForDisabledOrganizations { get; set; }
     }
 
 }

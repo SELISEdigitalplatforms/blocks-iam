@@ -196,7 +196,11 @@ namespace Authentication.DomainService.Authentication
                 return approverError;
             }
 
-            var (ok, newStatus) = await ApplyDecisionAsync(entity, approverUserId!, decision, ct);
+            var (ok, newStatus, refusal) = await ApplyDecisionAsync(entity, approverUserId!, decision, ct);
+            if (refusal != null)
+            {
+                return refusal;
+            }
 
             if (!ok)
             {
@@ -265,7 +269,7 @@ namespace Authentication.DomainService.Authentication
             return (null, approver.UserId);
         }
 
-        private async Task<(bool Ok, string NewStatus)> ApplyDecisionAsync(DeviceAuthorizationRequestModel entity, string approverUserId, string decision, CancellationToken ct)
+        private async Task<(bool Ok, string NewStatus, IActionResult? Refusal)> ApplyDecisionAsync(DeviceAuthorizationRequestModel entity, string approverUserId, string decision, CancellationToken ct)
         {
             var now = DateTime.UtcNow;
             bool ok;
@@ -277,11 +281,33 @@ namespace Authentication.DomainService.Authentication
                 // actually has access to instead of minting with no OrganizationId at all.
                 var approvingUser = await _authenticationRepository.GetUserByIdAsync(approverUserId);
                 var tenantConfiguration = await _resourceRepository.GetTenantConfigurationAsync();
-                var organizationId = approvingUser != null
-                    ? OrganizationAccessResolver.ResolveEffectiveOrganizationId(
+                string? organizationId = null;
+                if (approvingUser != null)
+                {
+                    var organizationDecision = await OrganizationAccessResolver.ResolveForIssuanceAsync(
+                        _resourceRepository,
+                        _logger,
                         approvingUser,
-                        tenantConfiguration?.IsMultiOrgEnabled ?? false)
-                    : null;
+                        requestedOrganizationId: null,
+                        isExplicit: false,
+                        isLinkOrganization: false,
+                        new OrganizationIssuanceSettings(
+                            tenantConfiguration?.IsMultiOrgEnabled ?? false,
+                            tenantConfiguration?.AllowNoOrgSignInForDisabledOrganizations ?? false));
+
+                    // Refused (spec #668 §6.2): no approval is recorded, so the request stays pending -- neither
+                    // approved nor denied.
+                    if (!organizationDecision.IsIssued)
+                    {
+                        var refusal = OAuth.JwtAccessTokenProvider.OrganizationRefusal(organizationDecision.Outcome);
+                        return (false, DeviceAuthorizationStatus.Pending, new ObjectResult(new { error = refusal.Error, error_description = refusal.ErrorDescription })
+                        {
+                            StatusCode = refusal.StatusCode
+                        });
+                    }
+
+                    organizationId = organizationDecision.Scope.ClaimValue;
+                }
 
                 ok = await _repository.MarkApprovedAsync(entity.Id, approverUserId, now, ct, organizationId);
                 newStatus = DeviceAuthorizationStatus.Approved;
@@ -292,7 +318,7 @@ namespace Authentication.DomainService.Authentication
                 newStatus = DeviceAuthorizationStatus.Denied;
             }
 
-            return (ok, newStatus);
+            return (ok, newStatus, null);
         }
 
         public IActionResult EntryAsync(HttpRequest request)

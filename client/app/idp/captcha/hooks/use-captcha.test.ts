@@ -80,6 +80,20 @@ describe("useCaptcha", () => {
     expect(result.current.code).toBe("");
   });
 
+  it("should keep onVerify/onExpired/onError identity stable across rerenders", () => {
+    const { result, rerender } = renderHook(() =>
+      useCaptcha({ siteKey: "test-site-key", type: "reCaptcha-v2-checkbox" }),
+    );
+
+    const { onVerify, onExpired, onError } = result.current.captcha;
+
+    rerender();
+
+    expect(result.current.captcha.onVerify).toBe(onVerify);
+    expect(result.current.captcha.onExpired).toBe(onExpired);
+    expect(result.current.captcha.onError).toBe(onError);
+  });
+
   it("should provide a ref", () => {
     const { result } = renderHook(() =>
       useCaptcha({ siteKey: "test-site-key", type: "reCaptcha-v2-checkbox" }),

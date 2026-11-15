@@ -718,16 +718,18 @@ namespace XUnitTest.Auth
             var appClient = new OidcClientRegistration { ItemId = "app-1", ClientId = "app-1" };
             _repo.Setup(r => r.GetOidcClientRegistrationAsync("app-1")).ReturnsAsync(appClient);
             var policy = new Mock<ILoginPolicyService>();
-            policy.Setup(p => p.GetOptionsAsync(LoginChannel.Oidc, appClient)).ReturnsAsync(new LoginOptions(true, false, []));
+            policy.Setup(p => p.GetOptionsByPlaceAsync(appClient)).ReturnsAsync(
+                new LoginOptionsByPlace(Embedded: new LoginOptions(false, false, []), Oidc: new LoginOptions(true, false, [])));
             var service = new AuthenticationService(NullLogger<AuthenticationService>.Instance, _cache.Object, _repo.Object, _domain.Object,
                 _session.Object, _tenants.Object, _activity.Object, _refresh.Object, policy.Object);
 
             var result = await service.GetLoginOptionsAsync("app-1");
 
+            // The existing fields describe the OIDC place, the one client_id asks about.
             var json = JsonSerializer.Serialize(result.Should().BeOfType<OkObjectResult>().Subject.Value);
             json.Should().Contain("\"password\"");
             json.Should().Contain("\"SsoInfo\":null");
-            policy.Verify(p => p.GetOptionsAsync(LoginChannel.Oidc, appClient), Times.Once);
+            policy.Verify(p => p.GetOptionsByPlaceAsync(appClient), Times.Once);
         }
 
         [Fact]
@@ -736,15 +738,74 @@ namespace XUnitTest.Auth
             var appClient = new OidcClientRegistration { ItemId = "app-1", ClientId = "app-1" };
             _repo.Setup(r => r.GetOidcClientRegistrationAsync("app-1")).ReturnsAsync(appClient);
             var policy = new Mock<ILoginPolicyService>();
-            policy.Setup(p => p.GetOptionsAsync(LoginChannel.Embedded, appClient)).ReturnsAsync(new LoginOptions(false, true, [SocialProvider()]));
+            policy.Setup(p => p.GetOptionsByPlaceAsync(appClient)).ReturnsAsync(
+                new LoginOptionsByPlace(Embedded: new LoginOptions(false, true, [SocialProvider()]), Oidc: new LoginOptions(true, false, [])));
             var service = new AuthenticationService(NullLogger<AuthenticationService>.Instance, _cache.Object, _repo.Object, _domain.Object,
                 _session.Object, _tenants.Object, _activity.Object, _refresh.Object, policy.Object);
 
             var result = await service.GetLoginOptionsAsync(appClientId: "app-1");
 
-            JsonSerializer.Serialize(result.Should().BeOfType<OkObjectResult>().Subject.Value).Should().Contain("\"clientId\":\"cid\"");
-            policy.Verify(p => p.GetOptionsAsync(LoginChannel.Embedded, appClient), Times.Once);
-            policy.Verify(p => p.GetOptionsAsync(LoginChannel.Oidc, It.IsAny<OidcClientRegistration?>()), Times.Never);
+            // The existing fields describe the embedded place: social with its provider, no password.
+            var json = JsonSerializer.Serialize(result.Should().BeOfType<OkObjectResult>().Subject.Value, WebJson);
+            json.Should().StartWith(
+                "{\"allowedGrantTypes\":[\"authorization_code\",\"client_credentials\",\"refresh_token\",\"social\"]," +
+                "\"ssoInfo\":[{\"provider\":\"google\",");
+            json.Should().Contain("\"clientId\":\"cid\"");
+            policy.Verify(p => p.GetOptionsByPlaceAsync(appClient), Times.Once);
+        }
+
+        // ---------- GetLoginOptionsAsync: the added signIn block ----------
+
+        /// <summary>What ASP.NET writes on the wire (camelCase, nulls kept).</summary>
+        private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
+
+        [Fact]
+        public async Task GetLoginOptions_KeepsTheExistingFieldsExactly_AndAddsSignInAfterThem()
+        {
+            LoginPolicy.Options = new LoginOptions(true, false, []);
+
+            var result = await Create().GetLoginOptionsAsync();
+
+            // Pinned byte for byte: apps built on allowedGrantTypes / ssoInfo must see what they always saw.
+            JsonSerializer.Serialize(result.Should().BeOfType<OkObjectResult>().Subject.Value, WebJson).Should().Be(
+                "{\"allowedGrantTypes\":[\"authorization_code\",\"client_credentials\",\"refresh_token\",\"password\"]," +
+                "\"ssoInfo\":null," +
+                "\"signIn\":{\"embedded\":{\"password\":true,\"social\":false},\"oidc\":{\"password\":true,\"social\":false}}}");
+        }
+
+        [Fact]
+        public async Task GetLoginOptions_SignIn_ReportsBothPlaces_WhileTheExistingFieldsDescribeTheAskedPlace()
+        {
+            // Embedded off, OIDC on, password off, social on: what an app's own login page has to work with.
+            LoginPolicy.OptionsByPlace = new LoginOptionsByPlace(
+                Embedded: new LoginOptions(false, false, []),
+                Oidc: new LoginOptions(false, true, [SocialProvider()]));
+
+            var result = await Create().GetLoginOptionsAsync();
+
+            JsonSerializer.Serialize(result.Should().BeOfType<OkObjectResult>().Subject.Value, WebJson).Should().Be(
+                "{\"allowedGrantTypes\":[\"authorization_code\",\"client_credentials\",\"refresh_token\"]," +
+                "\"ssoInfo\":null," +
+                "\"signIn\":{\"embedded\":{\"password\":false,\"social\":false},\"oidc\":{\"password\":false,\"social\":true}}}");
+        }
+
+        [Fact]
+        public async Task GetLoginOptions_SignIn_IsWorkedOutForTheNamedClient_InBothPlaces()
+        {
+            var appClient = new OidcClientRegistration { ItemId = "app-1", ClientId = "app-1" };
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("app-1")).ReturnsAsync(appClient);
+            var policy = new Mock<ILoginPolicyService>();
+            policy.Setup(p => p.GetOptionsByPlaceAsync(appClient)).ReturnsAsync(
+                new LoginOptionsByPlace(new LoginOptions(true, false, []), new LoginOptions(false, true, [SocialProvider()])));
+            var service = new AuthenticationService(NullLogger<AuthenticationService>.Instance, _cache.Object, _repo.Object, _domain.Object,
+                _session.Object, _tenants.Object, _activity.Object, _refresh.Object, policy.Object);
+
+            var result = await service.GetLoginOptionsAsync(appClientId: "app-1");
+
+            JsonSerializer.Serialize(result.Should().BeOfType<OkObjectResult>().Subject.Value, WebJson).Should().EndWith(
+                "\"signIn\":{\"embedded\":{\"password\":true,\"social\":false},\"oidc\":{\"password\":false,\"social\":true}}}");
+            policy.Verify(p => p.GetOptionsByPlaceAsync(appClient), Times.Once);
+            policy.Verify(p => p.GetOptionsAsync(It.IsAny<LoginChannel>(), It.IsAny<OidcClientRegistration?>()), Times.Never);
         }
 
         [Theory]
@@ -1014,6 +1075,88 @@ namespace XUnitTest.Auth
             info["sub"].Should().Be("user-9");
             info["name"].Should().Be("Jane Doe");
             info["email"].Should().Be("jane@x.com");
+        }
+
+        // ---------- BuildStandardOidcUserInfoAsync ----------
+
+        [Fact]
+        public async Task BuildStandardOidcUserInfo_NoSub_ReturnsNull()
+        {
+            var info = await Create().BuildStandardOidcUserInfoAsync(new ClaimsPrincipal());
+
+            info.Should().BeNull();
+            _repo.Verify(r => r.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task BuildStandardOidcUserInfo_UnknownUser_ReturnsNull()
+        {
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("sub", "client-1") }));
+            _repo.Setup(r => r.GetUserByIdAsync("client-1")).ReturnsAsync((User)null!);
+
+            var info = await Create().BuildStandardOidcUserInfoAsync(principal);
+
+            info.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task BuildStandardOidcUserInfo_TokenWithoutScopeClaim_ReturnsProfileAndEmailOnly()
+        {
+            // IAM access tokens carry no scope claim, and they do carry Blocks claims that must stay out.
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim("sub", "user-9"),
+                new Claim(BlocksContext.TENANT_ID_CLAIM, TenantId),
+                new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, "default"),
+                new Claim(BlocksContext.ROLES_CLAIM, "admin"),
+                new Claim(BlocksContext.PERMISSION_CLAIM, "p1")
+            }));
+            _repo.Setup(r => r.GetUserByIdAsync("user-9")).ReturnsAsync(new User
+            {
+                ItemId = "user-9", UserName = "jane@x.com", Email = "jane@x.com", PhoneNumber = "+8801700000000"
+            });
+
+            var info = await Create().BuildStandardOidcUserInfoAsync(principal);
+
+            info.Should().BeEquivalentTo(new Dictionary<string, object>
+            {
+                ["sub"] = "user-9",
+                ["preferred_username"] = "jane@x.com",
+                ["email"] = "jane@x.com"
+            });
+        }
+
+        [Fact]
+        public async Task BuildStandardOidcUserInfo_TokenWithScopeClaim_HonoursIt()
+        {
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim("sub", "user-9"),
+                new Claim("scope", "openid phone")
+            }));
+            _repo.Setup(r => r.GetUserByIdAsync("user-9")).ReturnsAsync(new User
+            {
+                ItemId = "user-9", FirstName = "Jane", UserName = "jane", Email = "jane@x.com", PhoneNumber = "+8801700000000"
+            });
+
+            var info = await Create().BuildStandardOidcUserInfoAsync(principal);
+
+            info.Should().BeEquivalentTo(new Dictionary<string, object>
+            {
+                ["sub"] = "user-9",
+                ["phone_number"] = "+8801700000000"
+            });
+        }
+
+        [Fact]
+        public async Task BuildStandardOidcUserInfo_UserIdClaimFallback_IsUsedAsSub()
+        {
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(BlocksContext.USER_ID_CLAIM, "user-9") }));
+            _repo.Setup(r => r.GetUserByIdAsync("user-9")).ReturnsAsync(new User { ItemId = "user-9", UserName = "jane" });
+
+            var info = await Create().BuildStandardOidcUserInfoAsync(principal);
+
+            info!["sub"].Should().Be("user-9");
         }
 
         // ---------- Identity provider pass-throughs ----------

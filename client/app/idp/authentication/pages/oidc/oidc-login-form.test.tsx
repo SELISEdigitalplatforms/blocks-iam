@@ -8,12 +8,15 @@ const h = vi.hoisted(() => ({
   resetCaptcha: vi.fn(),
   selectOidcAccount: vi.fn(),
   loginOption: undefined as unknown,
+  loginOptionLoading: false,
+  signUpSettingLoading: false,
   oidcUiConfig: undefined as unknown,
   captchaEnabled: false,
   signUpSetting: { isSignUpEnable: false } as unknown,
   captchaCode: "",
   animCtx: null as Record<string, unknown> | null,
   accountSelectorProps: null as Record<string, unknown> | null,
+  startSso: vi.fn(),
 }));
 
 vi.mock("react-router", async (importOriginal) => {
@@ -44,19 +47,24 @@ vi.mock("./oidc-account-selector", () => ({
 }));
 vi.mock("./oidc-auth-shell", () => ({ useOidcAuthAnimation: vi.fn(() => h.animCtx) }));
 vi.mock("@blocks-idp/authentication/pages/login/sso-signin", () => ({
-  SsoSignin: () => <div data-testid="sso-signin" />,
+  SsoSignin: ({ disabled }: { disabled?: boolean }) => (
+    <div data-testid="sso-signin" data-disabled={String(!!disabled)} />
+  ),
 }));
 vi.mock("@blocks-idp/authentication/services/auth.service", () => ({
   authService: { selectOidcAccount: (...args: unknown[]) => h.selectOidcAccount(...args) },
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-auth", () => ({
-  useGetLoginOptions: vi.fn(() => ({ data: h.loginOption })),
+  useGetLoginOptions: vi.fn(() => ({ data: h.loginOption, isLoading: h.loginOptionLoading })),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
   useOidcUiConfig: vi.fn(() => ({ data: h.oidcUiConfig, captchaEnabled: h.captchaEnabled })),
 }));
 vi.mock("@blocks-idp/iam/hooks/use-user", () => ({
-  useGetSignUpSetting: vi.fn(() => ({ data: h.signUpSetting })),
+  useGetSignUpSetting: vi.fn(() => ({ data: h.signUpSetting, isLoading: h.signUpSettingLoading })),
+}));
+vi.mock("@blocks-idp/authentication/utils/start-oidc-social-sign-in", () => ({
+  startOidcSocialSignIn: (...args: unknown[]) => h.startSso(...args),
 }));
 vi.mock("@blocks-idp/captcha/hooks/use-captcha", () => ({
   useCaptcha: vi.fn(() => ({ captcha: {}, code: h.captchaCode, reset: h.resetCaptcha })),
@@ -81,6 +89,8 @@ const renderForm = (props: Partial<React.ComponentProps<typeof OidcLoginForm>> =
         state={props.state}
         nonce={props.nonce}
         initialError={props.initialError}
+        returnUrl={props.returnUrl}
+        autoStartSingleProvider={props.autoStartSingleProvider}
       />
     </MemoryRouter>,
   );
@@ -110,12 +120,15 @@ const originalLocation = window.location;
 beforeEach(() => {
   vi.clearAllMocks();
   h.loginOption = undefined;
+  h.loginOptionLoading = false;
+  h.signUpSettingLoading = false;
   h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
   h.captchaEnabled = false;
   h.signUpSetting = { isSignUpEnable: false };
   h.captchaCode = "";
   h.animCtx = null;
   h.accountSelectorProps = null;
+  h.startSso.mockResolvedValue(true);
   sessionStorage.clear();
   Object.defineProperty(window, "location", {
     configurable: true,
@@ -436,6 +449,43 @@ describe("OidcLoginForm", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the organization disabled message in the alert slot for organization_disabled", async () => {
+    h.animCtx = {
+      phase: "idle",
+      startAnimation: vi.fn(),
+      succeedAnimation: vi.fn().mockResolvedValue(undefined),
+      failAnimation: vi.fn().mockResolvedValue(undefined),
+      resetAnimation: vi.fn(),
+    };
+    const message = "Your organization is disabled. Please contact your administrator or support.";
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(403, { error: "organization_disabled", error_description: "Server text" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderForm();
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.queryByText("Server text")).not.toBeInTheDocument();
+    expect(h.animCtx.failAnimation).toHaveBeenCalledWith(message);
+    expect(window.location.href).toBe("");
+  });
+
+  it("still follows the redirect when a successful login carries org_status disabled", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, { redirect_uri: "https://app.example.com/next", org_status: "disabled" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderForm();
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    await waitFor(() => expect(window.location.href).toBe("https://app.example.com/next"));
+  });
+
   it("shows the activation screen for account_not_verified and can return to login", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, { error: "account_not_verified" }));
     vi.stubGlobal("fetch", fetchMock);
@@ -553,6 +603,52 @@ describe("OidcLoginForm", () => {
     expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
   });
 
+  describe("before the server has said which methods are allowed", () => {
+    it("draws a skeleton, not the password form, while the login options load", () => {
+      h.loginOptionLoading = true;
+      renderForm();
+      expect(screen.getByTestId("oidc-login-form-skeleton")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("Loading sign-in options…");
+      expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("sso-signin")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("no-sign-in-method")).not.toBeInTheDocument();
+    });
+
+    it("draws a skeleton, not a late sign-up link, while the sign-up setting loads", () => {
+      h.signUpSettingLoading = true;
+      h.loginOption = { allowedGrantTypes: ["social"], ssoInfo: [{ provider: "google" }] };
+      renderForm();
+      expect(screen.getByTestId("oidc-login-form-skeleton")).toBeInTheDocument();
+      expect(screen.queryByTestId("sso-signin")).not.toBeInTheDocument();
+      expect(screen.queryByText("Create an account")).not.toBeInTheDocument();
+    });
+
+    it("goes straight to the configured methods once both answers are in", () => {
+      h.loginOption = { allowedGrantTypes: ["social"], ssoInfo: [{ provider: "google" }] };
+      h.signUpSetting = { isSignUpEnable: true };
+      renderForm();
+      expect(screen.queryByTestId("oidc-login-form-skeleton")).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
+      expect(screen.getByTestId("sso-signin")).toBeInTheDocument();
+      expect(screen.getByText("Create an account")).toBeInTheDocument();
+    });
+
+    it("does not start a provider before both answers are in", () => {
+      h.loginOptionLoading = true;
+      h.loginOption = undefined;
+      renderForm({ autoStartSingleProvider: true });
+      expect(h.startSso).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the password form when the options fail to load", () => {
+      // Settled with no data (the request failed): the server still refuses a disabled method.
+      h.loginOption = undefined;
+      renderForm();
+      expect(screen.queryByTestId("oidc-login-form-skeleton")).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+    });
+  });
+
   it("says so when no sign-in method is available", () => {
     h.loginOption = { allowedGrantTypes: ["authorization_code"], ssoInfo: null };
     renderForm();
@@ -566,6 +662,109 @@ describe("OidcLoginForm", () => {
     h.signUpSetting = { isSignUpEnable: true };
     renderForm();
     expect(screen.getByText("Create an account")).toBeInTheDocument();
+  });
+
+  describe("starting the only sign-in method for the user", () => {
+    const onlyProvider = (provider: string) => ({
+      allowedGrantTypes: ["authorization_code", "social"],
+      ssoInfo: [{ provider, clientId: `${provider}-cid` }],
+    });
+
+    it.each([
+      ["microsoft", "Redirecting to Microsoft…"],
+      ["google", "Redirecting to Google…"],
+      ["github", "Redirecting to GitHub…"],
+      ["linkedin", "Redirecting to LinkedIn…"],
+      ["apple", "Redirecting to Apple…"],
+      ["ownsso", "Redirecting to your organization's sign-in…"],
+    ])("starts %s when it is the only option, keeping its button as a fallback", async (provider, status) => {
+      h.loginOption = onlyProvider(provider);
+      renderForm({ autoStartSingleProvider: true, state: "st-1", nonce: "n-1", scope: "openid" });
+
+      await waitFor(() => expect(h.startSso).toHaveBeenCalledTimes(1));
+      expect(h.startSso).toHaveBeenCalledWith({
+        provider,
+        providerClientId: `${provider}-cid`,
+        replace: true,
+        oidcContext: expect.objectContaining({
+          clientId: "client-1",
+          redirectUri: "https://app.example.com/callback",
+          tenantId: "tenant-1",
+          state: "st-1",
+          nonce: "n-1",
+          scope: "openid",
+        }),
+      });
+      expect(screen.getByTestId("oidc-auto-start")).toHaveTextContent(status);
+      // The button stays in view but cannot start a second sign-in while this one leaves.
+      expect(screen.getByTestId("sso-signin")).toHaveAttribute("data-disabled", "true");
+    });
+
+    it("leaves the provider buttons usable when nothing is started", () => {
+      h.loginOption = onlyProvider("google");
+      renderForm({ autoStartSingleProvider: false });
+      expect(screen.getByTestId("sso-signin")).toHaveAttribute("data-disabled", "false");
+    });
+
+    it.each([
+      ["the password form is allowed", { allowedGrantTypes: ["password", "social"], ssoInfo: [{ provider: "google", clientId: "g" }] }, {}],
+      ["the grant list is missing (password stays)", { ssoInfo: [{ provider: "google", clientId: "g" }] }, {}],
+      [
+        "there are two providers",
+        { allowedGrantTypes: ["social"], ssoInfo: [{ provider: "google", clientId: "g" }, { provider: "microsoft", clientId: "m" }] },
+        {},
+      ],
+      ["the only provider is one this page cannot show", { allowedGrantTypes: ["social"], ssoInfo: [{ provider: "facebook", clientId: "f" }] }, {}],
+      ["no provider is offered", { allowedGrantTypes: ["authorization_code"], ssoInfo: [] }, {}],
+      ["the sign-up link is shown", onlyProvider("google"), { signUp: true }],
+      ["the user came back with an error", onlyProvider("google"), { initialError: "Sign-in failed at Google." }],
+      ["it is a device-flow sign-in", onlyProvider("google"), { returnUrl: "/oidc/device/entry" }],
+      ["the caller did not opt in", onlyProvider("google"), { optOut: true }],
+    ] as const)("does not start anything when %s", async (_case, loginOption, opts) => {
+      h.loginOption = loginOption;
+      if ("signUp" in opts) h.signUpSetting = { isSignUpEnable: true };
+      renderForm({
+        autoStartSingleProvider: !("optOut" in opts),
+        initialError: "initialError" in opts ? opts.initialError : undefined,
+        returnUrl: "returnUrl" in opts ? opts.returnUrl : undefined,
+      });
+      // Give a would-be effect its turn before asserting nothing happened.
+      await Promise.resolve();
+      expect(h.startSso).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("oidc-auto-start")).not.toBeInTheDocument();
+    });
+
+    it("starts only once per sign-in request, then waits for the click", async () => {
+      h.loginOption = onlyProvider("google");
+      const first = renderForm({ autoStartSingleProvider: true, state: "st-1", nonce: "n-1" });
+      await waitFor(() => expect(h.startSso).toHaveBeenCalledTimes(1));
+      first.unmount();
+
+      // Back on the page for the same request (e.g. returned from the provider unfinished).
+      renderForm({ autoStartSingleProvider: true, state: "st-1", nonce: "n-1" });
+      await Promise.resolve();
+      expect(h.startSso).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("sso-signin")).toBeInTheDocument();
+    });
+
+    it("starts again for a new sign-in request", async () => {
+      h.loginOption = onlyProvider("google");
+      const first = renderForm({ autoStartSingleProvider: true, state: "st-1" });
+      await waitFor(() => expect(h.startSso).toHaveBeenCalledTimes(1));
+      first.unmount();
+
+      renderForm({ autoStartSingleProvider: true, state: "st-2" });
+      await waitFor(() => expect(h.startSso).toHaveBeenCalledTimes(2));
+    });
+
+    it("drops the status line and leaves the button when the start fails", async () => {
+      h.startSso.mockResolvedValue(false);
+      h.loginOption = onlyProvider("google");
+      renderForm({ autoStartSingleProvider: true, state: "st-1" });
+      await waitFor(() => expect(h.startSso).toHaveBeenCalled());
+      await waitFor(() => expect(screen.queryByTestId("oidc-auto-start")).not.toBeInTheDocument());
+      expect(screen.getByTestId("sso-signin")).toHaveAttribute("data-disabled", "false");
+    });
   });
 
   describe("an error carried back from a failed SSO round trip", () => {

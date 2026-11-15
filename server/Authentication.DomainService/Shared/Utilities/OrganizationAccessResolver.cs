@@ -3,9 +3,17 @@ using Authentication.DomainService.Utilities;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
 using Blocks.Genesis.Entities.Iam;
+using Iam.DomainService.Resources;
+using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.Utilities
 {
+    /// <summary>The tenant settings an issuance-time organization decision reads.</summary>
+    public sealed record OrganizationIssuanceSettings(bool IsMultiOrgEnabled, bool AllowNoOrgSignInForDisabledOrganizations)
+    {
+        public static readonly OrganizationIssuanceSettings SingleOrganization = new(false, false);
+    }
+
     /// <summary>
     /// Resolves which organization a user should be signed into.
     ///
@@ -68,6 +76,154 @@ namespace Authentication.DomainService.Utilities
         /// </summary>
         public static OrganizationScope Resolve(User user, string? requestedOrganizationId, bool isMultiOrgEnabled) =>
             OrganizationScopeResolver.Resolve(isMultiOrgEnabled, user, requestedOrganizationId, HasOrganizationAccess);
+
+        /// <summary>
+        /// The tenant settings an issuance decision needs, from the one tenant-configuration read every mint
+        /// already does. A configuration that cannot be read is treated as multi-org disabled (the existing rule),
+        /// so the all-disabled setting does not apply either.
+        /// </summary>
+        public static async Task<OrganizationIssuanceSettings> ReadIssuanceSettingsAsync(
+            IResourceRepository resourceRepository,
+            ILogger logger,
+            string? userId)
+        {
+            try
+            {
+                var tenantConfiguration = await resourceRepository.GetTenantConfigurationAsync();
+                return new OrganizationIssuanceSettings(
+                    tenantConfiguration?.IsMultiOrgEnabled ?? false,
+                    tenantConfiguration?.AllowNoOrgSignInForDisabledOrganizations ?? false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Could not read the tenant configuration while minting a token for user {UserId}; treating multi-organization mode as disabled.", userId);
+                return OrganizationIssuanceSettings.SingleOrganization;
+            }
+        }
+
+        /// <summary>
+        /// The issuance-time organization decision with organization status (spec #668 §6.1): multi-org off is
+        /// always <c>"default"</c> with no lookup; otherwise one status read covers every candidate id, and a
+        /// failed read refuses with <see cref="OrganizationIssuanceOutcome.StatusUnavailable"/> (fail closed).
+        /// </summary>
+        /// <param name="requestedOrganizationId">The organization the request names, if any.</param>
+        /// <param name="isExplicit">See <see cref="OrganizationScopeResolver.ResolveIssuance"/>: explicit or a server-filled preference.</param>
+        /// <param name="isLinkOrganization">The requested organization comes from a signup link.</param>
+        public static async Task<OrganizationIssuanceDecision> ResolveForIssuanceAsync(
+            IResourceRepository resourceRepository,
+            ILogger logger,
+            User user,
+            string? requestedOrganizationId,
+            bool isExplicit,
+            bool isLinkOrganization,
+            OrganizationIssuanceSettings settings)
+        {
+            if (!settings.IsMultiOrgEnabled)
+            {
+                return OrganizationScopeResolver.Issued(Resolve(user, requestedOrganizationId, isMultiOrgEnabled: false));
+            }
+
+            // Only the user's own memberships are looked up (Q3); a requested id the user does not belong to is
+            // ignored anyway, except a link organization, whose status is the only check links get.
+            var lookedUpRequest = isLinkOrganization || HasOrganizationAccess(user, requestedOrganizationId)
+                ? requestedOrganizationId
+                : null;
+            var candidates = OrganizationScopeResolver.CollectStatusCandidates(user, lookedUpRequest);
+            IReadOnlyDictionary<string, bool> statuses = new Dictionary<string, bool>();
+            if (candidates.Count > 0)
+            {
+                try
+                {
+                    statuses = await resourceRepository.GetOrganizationStatusesAsync(candidates);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Organization status could not be read while issuing a token for user {UserId}; nothing is issued.", user.ItemId);
+                    return OrganizationScopeResolver.Refused(OrganizationIssuanceOutcome.StatusUnavailable);
+                }
+            }
+
+            var decision = OrganizationScopeResolver.ResolveIssuance(
+                user,
+                requestedOrganizationId,
+                isExplicit,
+                isLinkOrganization,
+                statuses,
+                settings.AllowNoOrgSignInForDisabledOrganizations,
+                HasOrganizationAccess);
+
+            if (decision.Outcome == OrganizationIssuanceOutcome.OrganizationDisabled)
+            {
+                // Ids only: never organization names (spec #668 C10).
+                logger.LogInformation("Token refused for user {UserId}: organization {OrganizationId} is disabled or no membership is active.", user.ItemId, LogSafe(requestedOrganizationId ?? user.LastUsedOrganizationId));
+            }
+
+            return decision;
+        }
+
+        /// <summary>
+        /// The re-check of an organization stored at authorize or approval, at OIDC code and device-code exchange
+        /// (spec #668 C6); also the status-only check of an OIDC link session's organization at authorize (Q10). A stored organization is minted as before unless it is now disabled or missing, which
+        /// refuses the exchange. A stored "no-org" is decided again from the user's current memberships
+        /// and the setting, so a status that changed in between applies (Q2). One status read at most.
+        /// </summary>
+        public static async Task<OrganizationIssuanceDecision> RecheckStoredOrganizationAsync(
+            IResourceRepository resourceRepository,
+            ILogger logger,
+            User user,
+            string? storedOrganizationId,
+            OrganizationIssuanceSettings settings)
+        {
+            var stored = OrganizationScopeResolver.ForStoredOrganization(storedOrganizationId);
+            if (!settings.IsMultiOrgEnabled
+                || string.Equals(storedOrganizationId, IdpConstants.DefaultOrganizationId, StringComparison.Ordinal))
+            {
+                return OrganizationScopeResolver.Issued(stored);
+            }
+
+            // A blank one (only from codes issued before the organization claim was always set) is minted as stored.
+            if (string.IsNullOrWhiteSpace(storedOrganizationId))
+            {
+                return OrganizationScopeResolver.Issued(stored);
+            }
+
+            if (string.Equals(storedOrganizationId, IdpConstants.NoOrganizationId, StringComparison.Ordinal))
+            {
+                return await ResolveForIssuanceAsync(resourceRepository, logger, user, requestedOrganizationId: null, isExplicit: false, isLinkOrganization: false, settings);
+            }
+
+            IReadOnlyDictionary<string, bool> statuses;
+            try
+            {
+                statuses = await resourceRepository.GetOrganizationStatusesAsync([storedOrganizationId]);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Organization status could not be read while issuing a token for user {UserId}; nothing is issued.", user.ItemId);
+                return OrganizationScopeResolver.Refused(OrganizationIssuanceOutcome.StatusUnavailable);
+            }
+
+            if (statuses.TryGetValue(storedOrganizationId, out var isDisabled) && !isDisabled)
+            {
+                return OrganizationScopeResolver.Issued(stored);
+            }
+
+            logger.LogInformation("Token refused for user {UserId}: organization {OrganizationId} is disabled or no membership is active.", user.ItemId, LogSafe(storedOrganizationId));
+            return OrganizationScopeResolver.Refused(OrganizationIssuanceOutcome.OrganizationDisabled);
+        }
+
+        /// <summary>
+        /// The organization id to mint after <see cref="RecheckStoredOrganizationAsync"/>: the stored value itself
+        /// (blank included, exactly as before) while the decision kept it, else the re-decided one.
+        /// </summary>
+        public static string? MintedOrganizationId(string? storedOrganizationId, OrganizationIssuanceDecision decision) =>
+            decision.Scope == OrganizationScopeResolver.ForStoredOrganization(storedOrganizationId)
+                ? storedOrganizationId
+                : decision.Scope.ClaimValue;
+
+        // Organization ids can come from requests, so line breaks are removed before they reach a log entry.
+        private static string? LogSafe(string? value) =>
+            value?.Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", string.Empty, StringComparison.Ordinal);
 
         /// <summary>
         /// Membership is a three-way test -- OrganizationIds, Roles keys, or Permissions keys --

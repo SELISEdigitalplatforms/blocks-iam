@@ -23,6 +23,12 @@ namespace Authentication.DomainService.OAuth.ResponseModel
         public string? MfaMethods { get; set; }
         public bool MfaRequired { get; set; }
 
+        /// <summary>
+        /// <c>"disabled"</c> when the token is a <c>"no-org"</c> token issued because every organization of the
+        /// user is disabled; null otherwise (spec #668 §6.4).
+        /// </summary>
+        public string? OrganizationStatus { get; set; }
+
         public string? SsoUserRedirectUrl { get; set; }
     }
 }

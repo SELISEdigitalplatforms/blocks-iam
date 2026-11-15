@@ -32,6 +32,8 @@ namespace Authentication.DomainService.OAuth.Services
 
             if (user == null || !user.Active) return new TokenResponse { Error = "", ErrorDescription = "The biometricId or biometricKey is not valid" };
 
+            // An organization the client sent is explicit: a disabled one is refused, never replaced (spec #668 D2).
+            request.OrganizationSource = OrganizationRequestSource.Explicit;
             return await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
         }
     }
