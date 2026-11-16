@@ -98,7 +98,16 @@ namespace Iam.DomainService.Users
             _accessGrant = accessGrant;
         }
 
-        public async Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command)
+        public Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command) =>
+            CreateUserCoreAsync(command, refuseExistingMember: false);
+
+        public Task<BaseMutationResponse> CreateUserByAdminAsync(CreateUserRequest command) =>
+            CreateUserCoreAsync(command, refuseExistingMember: true);
+
+        /// <summary>The refusal users/create answers for an email that is already a member of the organization.</summary>
+        public const string UserAlreadyMemberError = "user_already_member";
+
+        private async Task<BaseMutationResponse> CreateUserCoreAsync(CreateUserRequest command, bool refuseExistingMember)
         {
             _logger.LogInformation("User creation start");
 
@@ -129,6 +138,29 @@ namespace Iam.DomainService.Users
             {
                 _logger.LogInformation("User creation end -- Permission Count Error");
                 return permissionCountFailure;
+            }
+
+            // Inviting someone who is already in the organization used to replace their roles there,
+            // which made the invite permission a role-change permission. The admin endpoint refuses it;
+            // gRPC, queue and signup callers keep the old behaviour.
+            if (refuseExistingMember)
+            {
+                var existing = await _userRepository.GetUserByEmailAsync(command.Email);
+                if (existing != null && IsOrganizationMember(existing, organizationId))
+                {
+                    _logger.LogInformation(
+                        "User creation end -- email already belongs to organization {OrganizationId}", organizationId);
+                    return new BaseMutationResponse
+                    {
+                        Errors = new Dictionary<string, string>
+                        {
+                            {
+                                UserAlreadyMemberError,
+                                "This user is already a member of the organization. Change their roles with users/access."
+                            }
+                        }
+                    };
+                }
             }
 
             var grantScope = await _accessGrant.GetScopeIfWiredAsync().ConfigureAwait(false);
@@ -533,6 +565,16 @@ namespace Iam.DomainService.Users
         /// <summary>The access grant refusal; the controller answers it with 403.</summary>
         private static BaseMutationResponse GrantNotAllowed() =>
             new() { IsSuccess = false, Errors = AccessGrantErrors.Create() };
+
+        /// <summary>
+        /// Deactivate and activate switch the whole account off or on, in every organization it
+        /// belongs to, so only a tenant-wide caller may run them: the default organization or a
+        /// platform call, which the access grant reads as the system user. There the endpoint
+        /// permission is the only gate, as for every other default-organization action. An
+        /// organization caller removes the user from its organization (users/revoke-access) instead.
+        /// </summary>
+        private bool CallerMayChangeAccountStatus() =>
+            _accessGrant is null || _accessGrant.CurrentCaller().IsSystem;
 
         /// <summary>
         /// True when writing these lists through <see cref="GrantOrganization"/> would take at least
@@ -1057,15 +1099,15 @@ namespace Iam.DomainService.Users
 
         public async Task<BaseResponse> DeactivateUserAsync(DeactivateUserRequest request)
         {
+            if (!CallerMayChangeAccountStatus())
+            {
+                return new BaseResponse { IsSuccess = false, Errors = AccessGrantErrors.CreateDefaultOrganizationRequired() };
+            }
+
             var user = await _userRepository.GetUserByIdAsync(request.UserId);
             if (user == null)
             {
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "user_not_found", $"No user found with id {request.UserId}" } } };
-            }
-
-            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckManageUser(scope, user)).ConfigureAwait(false))
-            {
-                return GrantNotAllowed();
             }
 
             user.Active = false;
@@ -1147,6 +1189,11 @@ namespace Iam.DomainService.Users
 
         public async Task<BaseMutationResponse> ActivateUserAsync(ActivateUserByAdminRequest request)
         {
+            if (!CallerMayChangeAccountStatus())
+            {
+                return new BaseMutationResponse { Errors = AccessGrantErrors.CreateDefaultOrganizationRequired() };
+            }
+
             if (string.IsNullOrWhiteSpace(request.UserId))
             {
                 return new BaseMutationResponse
@@ -1190,11 +1237,6 @@ namespace Iam.DomainService.Users
                         { nameof(request.UserId), "User is already active" }
                     }
                 };
-            }
-
-            if (!await _accessGrant.AuthorizeCurrentCallerIfWiredAsync(scope => AccessGrantRules.CheckManageUser(scope, user)).ConfigureAwait(false))
-            {
-                return GrantNotAllowed();
             }
 
             var blocksContext = BlocksContext.GetContext();

@@ -1,6 +1,7 @@
 using Blocks.Genesis.Entities.Iam;
 using FluentAssertions;
 using Iam.DomainService.AccessGrant;
+using Iam.DomainService.Users;
 using XUnitTest.TestSupport;
 
 namespace XUnitTest.IamTests.AccessGrant
@@ -68,6 +69,44 @@ namespace XUnitTest.IamTests.AccessGrant
         public void ADirectManagePermissionMakesATopUser()
         {
             ScopeOf("c", roles: ["viewer"], permissions: [AccessGrantRules.MutateUsersPermission]).IsTop.Should().BeTrue();
+        }
+
+        [Theory]
+        [InlineData(UserPermissions.CreateUsers)]
+        [InlineData(UserPermissions.UpdateUserProfiles)]
+        [InlineData(UserPermissions.ManageUserRoles)]
+        [InlineData(UserPermissions.RevokeUserAccess)]
+        [InlineData(UserPermissions.DeactivateUsers)]
+        [InlineData(UserPermissions.ActivateUsers)]
+        [InlineData(AccessGrantRules.MutateUsersPermission)]
+        [InlineData(AccessGrantRules.MutateRolesPermission)]
+        public void EveryUserManagementPermissionIsManagePower(string permission)
+        {
+            AccessGrantRules.IsManagePermission(permission).Should().BeTrue();
+            AccessGrantRules.IsManagePermission(permission.ToUpperInvariant()).Should().BeTrue();
+        }
+
+        [Theory]
+        [InlineData("blocks-iam::iam::users")]
+        [InlineData("read")]
+        [InlineData("")]
+        [InlineData(null)]
+        public void OtherPermissionsAreNotManagePower(string? permission)
+        {
+            AccessGrantRules.IsManagePermission(permission).Should().BeFalse();
+        }
+
+        [Fact]
+        public void ARoleCarryingOnlyANewUserPermissionManagesTheRolesBelowIt()
+        {
+            // A tree that never had mutate-users: "lead" invites, "member" sits below it.
+            _kit.WithRole("lead").WithRole("member", "lead");
+            _kit.WithPermission(UserPermissions.CreateUsers, Org, "lead");
+
+            var scope = ScopeOf("c", roles: ["lead"]);
+
+            scope.PowerRoles.Should().BeEquivalentTo("lead");
+            scope.ManagedRoles.Should().Contain("member");
         }
 
         [Fact]
