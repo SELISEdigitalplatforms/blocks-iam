@@ -9,7 +9,8 @@ namespace Authentication.DomainService.Oidc.Repositories;
 
 /// <summary>
 /// Signup-link sessions in Redis: key <c>iam:&lt;tenantId&gt;:linksession:&lt;sha256hex(sessionId)&gt;</c>,
-/// value + 30 min TTL in one command. Read many times; deleted on password login or logout.
+/// value + 30 min TTL in one command. Single use: deleted by the authorize request that issues a code
+/// from it, and also on password login or logout.
 /// Sessions of older pods are still read from MongoDB during the rollout. A Redis error is never read
 /// as "not found": it fails the request.
 /// </summary>
