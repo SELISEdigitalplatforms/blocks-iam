@@ -459,6 +459,20 @@ namespace Authentication.DomainService.Authentication
 
                 _logger.LogInformation("Authorization code issued for user {UserId}, client {ClientId}", resolvedUserId, client_id);
 
+                // A link session carries one redemption into its application and is spent by the code
+                // it produces. Left alive for its 30 minutes, it outlived the application's own logout --
+                // which goes to the API host and never carries this IAM-host cookie -- so the next
+                // "Sign in" on the same browser came straight back here and was handed the invitee
+                // again, without the login page, whoever was signing in. The code already carries the
+                // link's organization, roles and amr, and refresh keeps them, so nothing needs the
+                // session after this point. Spent only once a code exists, so a refusal above leaves it
+                // for a retry. A match implies a non-blank tenant and cookie (see the lookup above).
+                if (matchedLinkSession != null)
+                {
+                    await _linkSessionRepo.DeleteAsync(tenant_id!, linkCookieId!);
+                    ClearLinkSessionCookie(request, response, tenant_id);
+                }
+
                 var callbackParams = new Dictionary<string, string>
                 {
                     { "code", authCode },

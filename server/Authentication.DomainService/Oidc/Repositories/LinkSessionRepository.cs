@@ -6,7 +6,7 @@ namespace Authentication.DomainService.Oidc.Repositories;
 
 /// <summary>
 /// MongoDB fallback for link sessions written by older pods during a rolling deploy: read, and delete
-/// on logout / password login. New sessions live in Redis (<see cref="RedisLinkSessionStore"/>).
+/// on use (code issued) / logout / password login. New sessions live in Redis (<see cref="RedisLinkSessionStore"/>).
 /// A delete on a dropped collection does not create it.
 /// </summary>
 public sealed class LinkSessionRepository

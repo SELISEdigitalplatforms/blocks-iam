@@ -178,21 +178,44 @@ namespace XUnitTest.Auth.Oidc
         };
 
         [Fact]
-        public async Task AuthorizeAsync_LinkCookie_ReadsTheTenantsSession_ManyTimes_NeverDeletes()
+        public async Task AuthorizeAsync_LinkCookie_IssuesOneLinkCode_ThenTheSessionIsSpent_AndClearsTheCookie()
         {
             ClientExists();
             _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser("link-user"));
+            var stored = true;
+            _linkSessions.Setup(l => l.GetBySessionIdAsync("t1", "LS")).ReturnsAsync(() => stored ? LinkSession() : null);
+            _linkSessions.Setup(l => l.DeleteAsync("t1", "LS")).Callback(() => stored = false).Returns(Task.CompletedTask);
+            var first = Ctx("blocks-link-session-t1=LS");
+
+            var handOff = await Authorize(tenant_id: "t1", ctx: first);
+
+            handOff.Should().BeOfType<RedirectResult>().Subject.Url.Should().Contain("code=authcode123");
+            _linkSessions.Verify(l => l.DeleteAsync("t1", "LS"), Times.Once);
+            first.Response.Headers.SetCookie.ToString().Should().Contain("blocks-link-session-t1=;");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.IsLinkAuthentication && m.UserId == "link-user")), Times.Once);
+
+            // The app's logout never reaches the IAM-host cookie, so the browser may still send it. The
+            // next sign-in for the same client must show the login page, not the invitee again.
+            var nextSignIn = await Authorize(tenant_id: "t1", ctx: Ctx("blocks-link-session-t1=LS"));
+
+            nextSignIn.Should().BeOfType<RedirectResult>().Subject.Url.Should().StartWith("/oidc/login?");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_LinkCookie_NoCodeIssued_SessionKeptForARetry()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync((User)null!);
             _linkSessions.Setup(l => l.GetBySessionIdAsync("t1", "LS")).ReturnsAsync(LinkSession());
+            var ctx = Ctx("blocks-link-session-t1=LS");
 
-            for (var i = 0; i < 3; i++)
-            {
-                var result = await Authorize(tenant_id: "t1", ctx: Ctx("blocks-link-session-t1=LS"));
-                result.Should().BeOfType<RedirectResult>().Subject.Url.Should().Contain("code=authcode123");
-            }
+            var result = await Authorize(tenant_id: "t1", ctx: ctx);
 
-            _linkSessions.Verify(l => l.GetBySessionIdAsync("t1", "LS"), Times.Exactly(3));
+            result.Should().BeOfType<RedirectResult>().Subject.Url.Should().Contain("error=access_denied");
+            _authCodeRepo.Verify(a => a.CreateAsync(It.IsAny<AuthorizationCodeModel>()), Times.Never);
             _linkSessions.Verify(l => l.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m => m.IsLinkAuthentication && m.UserId == "link-user")), Times.Exactly(3));
+            ctx.Response.Headers.SetCookie.ToString().Should().NotContain("blocks-link-session-t1");
         }
 
         [Theory]
