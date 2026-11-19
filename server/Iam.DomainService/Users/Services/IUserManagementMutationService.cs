@@ -65,6 +65,16 @@ namespace Iam.DomainService.Users
         /// and swallowed so one bad id cannot cause the whole chunk to be redelivered.
         /// </summary>
         Task ApplyBulkRoleChangeAsync(BulkUserRoleChangeEvent command);
+
+        /// <summary>
+        /// The side effects users/create sends for a new account, for an account the batch upsert
+        /// inserted: the create <see cref="UserMutationEvent"/> (activation mail when
+        /// <paramref name="sendMail"/>) and the user created action.
+        /// </summary>
+        Task PublishBatchUserCreatedAsync(User user, string organizationId, bool sendMail, string? invitedBy);
+
+        /// <summary>The "added to organization" mail users/create sends for an existing account. Best effort.</summary>
+        Task NotifyOrganizationMemberAddedAsync(User user, string organizationId);
         Task<TenantConfiguration> GetTenantConfigurationAsync();
     }
 }

@@ -123,9 +123,108 @@ public static class IamDataAccessExtensions
         await collection.InsertManyAsync(list);
     }
 
+    /// <summary>
+    /// One unordered bulk write of inserts and updates, each gated like its single-document helper:
+    /// inserts by the WRITE gate and the schema's defaults and rules, updates by the EDIT filter and the
+    /// <c>$set</c> rules. An operation that is denied, breaks a rule or fails on the server fails alone;
+    /// the others are still written. Indexes in the result count inserts first, then updates.
+    /// </summary>
+    public static async Task<BulkWriteOutcome> BulkWriteAsync<T>(this IIamDataAccess access, IMongoCollection<T> collection, string schema,
+        IReadOnlyList<T> inserts, IReadOnlyList<(FilterDefinition<T> Filter, UpdateDefinition<T> Update)> updates, string callSite)
+    {
+        var failed = new HashSet<int>();
+        var duplicates = new HashSet<int>();
+        var models = new List<WriteModel<T>>();
+        var modelIndexes = new List<int>();
+
+        await AddInsertModelsAsync(access, schema, inserts, callSite, models, modelIndexes, failed);
+        for (var i = 0; i < updates.Count; i++)
+        {
+            var index = inserts.Count + i;
+            var model = await GovernedUpdateModelAsync(access, schema, updates[i].Filter, updates[i].Update, callSite);
+            if (model is null)
+            {
+                failed.Add(index);
+                continue;
+            }
+            models.Add(model);
+            modelIndexes.Add(index);
+        }
+
+        if (models.Count == 0)
+            return new BulkWriteOutcome(failed, duplicates);
+
+        try
+        {
+            await collection.BulkWriteAsync(models, new BulkWriteOptions { IsOrdered = false });
+        }
+        catch (MongoBulkWriteException<T> ex)
+        {
+            foreach (var error in ex.WriteErrors)
+            {
+                var index = modelIndexes[error.Index];
+                (error.Category == ServerErrorCategory.DuplicateKey ? duplicates : failed).Add(index);
+            }
+        }
+
+        return new BulkWriteOutcome(failed, duplicates);
+    }
+
+    private static async Task AddInsertModelsAsync<T>(IIamDataAccess access, string schema, IReadOnlyList<T> inserts, string callSite,
+        List<WriteModel<T>> models, List<int> modelIndexes, HashSet<int> failed)
+    {
+        if (inserts.Count == 0)
+            return;
+
+        if (!await access.InsertAllowedAsync(schema, callSite))
+        {
+            for (var i = 0; i < inserts.Count; i++)
+                failed.Add(i);
+            return;
+        }
+
+        for (var i = 0; i < inserts.Count; i++)
+        {
+            try
+            {
+                await access.PrepareWriteAsync(schema, inserts[i], isInsert: true, callSite);
+                models.Add(new InsertOneModel<T>(inserts[i]));
+                modelIndexes.Add(i);
+            }
+            catch (Blocks.Genesis.DataAccess.Rules.DataValidationException)
+            {
+                failed.Add(i);
+            }
+        }
+    }
+
+    /// <summary>The update as a bulk model with the EDIT filter applied; null when it is denied or breaks a rule.</summary>
+    private static async Task<WriteModel<T>?> GovernedUpdateModelAsync<T>(IIamDataAccess access, string schema,
+        FilterDefinition<T> filter, UpdateDefinition<T> update, string callSite)
+    {
+        var edit = await access.EditFilterAsync(schema, filter, callSite);
+        if (edit is null)
+            return null;
+        try
+        {
+            await access.CheckUpdateAsync(schema, update, callSite);
+        }
+        catch (Blocks.Genesis.DataAccess.Rules.DataValidationException)
+        {
+            return null;
+        }
+        return new UpdateOneModel<T>(edit, update);
+    }
+
     public static async Task EnsureInsertAllowedAsync(this IIamDataAccess access, string schema, string callSite, string? tenantId = null)
     {
         if (!await access.InsertAllowedAsync(schema, callSite, tenantId))
             throw new UnauthorizedAccessException($"Data access policy denied writing {schema} ({callSite}).");
     }
 }
+
+/// <summary>
+/// What a governed bulk write could not write, by operation index (inserts first, then updates).
+/// <see cref="DuplicateKeys"/> are refused by a unique index; <see cref="Failed"/> covers every other reason.
+/// </summary>
+public sealed record BulkWriteOutcome(IReadOnlySet<int> Failed, IReadOnlySet<int> DuplicateKeys);
