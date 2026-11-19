@@ -28,7 +28,7 @@ namespace Iam.DomainService.Users
         private const string NotFoundMessage = "Not found";
         private const string OrganizationIdKey = "organizationId";
         private const string RolesKey = "Roles";
-        private const int MaxPermissionsPerUser = 5;
+        private const int MaxPermissionsPerUser = UserIdentityRules.MaxPermissionsPerUser;
         private const string ActionByAdmin = "admin";
 
         /// <summary>The log target for a user that has no id yet; the email is kept out of the log.</summary>
@@ -301,14 +301,41 @@ namespace Iam.DomainService.Users
             _actionPublisher is null ? Task.CompletedTask : _actionPublisher.PublishAsync(action, data, organizationId);
 
         private Task PublishUserCreatedAsync(string userId, CreateUserRequest command) =>
+            PublishUserCreatedAsync(userId, command.Roles, command.Permissions, command.UserCreationType, command.MfaEnabled);
+
+        private Task PublishUserCreatedAsync(
+            string userId, List<string> roles, List<string> permissions, UserCreationType creationType, bool mfaEnabled) =>
             PublishActionAsync(IamActionNames.UserCreated, new
             {
                 userId,
-                roles = command.Roles,
-                permissions = command.Permissions,
-                creationType = command.UserCreationType.ToString(),
-                mfaEnabled = command.MfaEnabled
+                roles,
+                permissions,
+                creationType = creationType.ToString(),
+                mfaEnabled
             });
+
+        public Task PublishBatchUserCreatedAsync(User user, string organizationId, bool sendMail, string? invitedBy)
+        {
+            ArgumentNullException.ThrowIfNull(user);
+            return PublishBatchUserCreatedCoreAsync(user, organizationId, sendMail, invitedBy);
+        }
+
+        private async Task PublishBatchUserCreatedCoreAsync(User user, string organizationId, bool sendMail, string? invitedBy)
+        {
+            await SendEvent(user.ItemId, MutationEventType.Create, sendMail: sendMail, invitedBy: invitedBy, organizationId: organizationId);
+            await PublishUserCreatedAsync(
+                user.ItemId,
+                AccessGrantRules.GrantsIn(user.Roles, organizationId).ToList(),
+                AccessGrantRules.GrantsIn(user.Permissions, organizationId).ToList(),
+                user.UserCreationType,
+                user.MfaEnabled);
+        }
+
+        public Task NotifyOrganizationMemberAddedAsync(User user, string organizationId)
+        {
+            ArgumentNullException.ThrowIfNull(user);
+            return NotifyOrganizationMembershipChangedAsync(user, organizationId, null, IdpConstants.OrganizationMemberAddedMailPurpose);
+        }
 
         /// <summary>
         /// Anonymous signup has no organization in <c>BlocksContext</c>, so the organization the user joined is

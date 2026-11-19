@@ -28,6 +28,12 @@ public static class IamSchemas
     public const string BiometricCredential = "BiometricCredential";
     public const string BlocksClientConfig = "BlocksClientConfig";
 
+    /// <summary>
+    /// Batch jobs (iam/batch/users). Not a Genesis system entity, so it is not in <see cref="Governed"/>:
+    /// calls still go through <see cref="IIamDataAccess"/>, which allows them when the schema is unknown.
+    /// </summary>
+    public const string BatchJob = "BatchJob";
+
     private static readonly HashSet<string> Governed =
     [
         User, Role, Permission, Organization, UserKeyMap, IdentityConfiguration, IdentityProvider, ClientCredential,

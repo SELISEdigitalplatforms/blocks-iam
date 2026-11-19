@@ -15,6 +15,10 @@ namespace Iam.DomainService.Utilities
         // A dedicated queue rather than IamUserQueue: a 5000-user batch on the shared user queue
         // would head-of-line-block ordinary per-user mutation events behind it.
         public const string IamBulkRoleQueue = "blocks_iam_listener_bulk_role";
+
+        // Batch user upsert jobs: dedicated for the same reason as IamBulkRoleQueue. The message
+        // carries only the job id and tenant; the items live in the job document.
+        public const string IamBatchQueue = "blocks_iam_listener_batch";
         public const string MailQueue = "blocks_email_listener";
         public const string MfaQueueName = "blocks_mfa_listener";
         public const string UserActivityQueue = "blocks_user_activity_listener";
@@ -268,6 +272,7 @@ namespace Iam.DomainService.Utilities
                     ConsumerSubscriptions = [ConsumerSubscription.BindToQueue(AuthenticationQueue),
                                              ConsumerSubscription.BindToQueue(IamUserQueue),
                                              ConsumerSubscription.BindToQueue(IamBulkRoleQueue),
+                                             ConsumerSubscription.BindToQueue(IamBatchQueue),
                                              ConsumerSubscription.BindToQueue(IamResourceQueue),
                                              ConsumerSubscription.BindToQueue(MfaQueueName),
                                              ConsumerSubscription.BindToQueue(IamOrgQueue),
@@ -283,7 +288,7 @@ namespace Iam.DomainService.Utilities
             {
                 AzureServiceBusConfiguration = new AzureServiceBusConfiguration
                 {
-                    Queues = [AuthenticationQueue, IamUserQueue, IamBulkRoleQueue, IamResourceQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue, UserActivityQueue],
+                    Queues = [AuthenticationQueue, IamUserQueue, IamBulkRoleQueue, IamBatchQueue, IamResourceQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue, UserActivityQueue],
                     Topics = []
                 }
             };
