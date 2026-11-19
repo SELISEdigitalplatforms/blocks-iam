@@ -201,7 +201,7 @@ namespace Iam.DomainService.Batch
             Rejected = job.Summary.Failed
         };
 
-        /// <summary>Fields outside the contract are ignored; their names (never their values) are logged.</summary>
+        /// <summary>Fields outside the contract are ignored; how many an item carried is logged, never their names or values.</summary>
         private void WarnOnUnmappedFields(List<BatchUserItem> items)
         {
             for (var index = 0; index < items.Count; index++)
@@ -380,21 +380,25 @@ namespace Iam.DomainService.Batch
         /// <summary>One item; an unexpected error fails only that user, never the job.</summary>
         private async Task<BatchItemPlan> PlanItemAsync(BatchJob job, BatchJobItem item, BatchPreload preload)
         {
+            string failureType;
             try
             {
                 return await _planner.PlanAsync(job, item, preload);
             }
             catch (Exception ex)
             {
-                // The exception type only: its message could carry the item's values.
-                _logger.LogError("Batch job {JobId}: item {Index} could not be validated ({ExceptionType})", job.ItemId, item.Index, ex.GetType().Name);
-                return new BatchItemPlan
-                {
-                    Item = item,
-                    Outcome = BatchItemOutcome.Failed,
-                    Errors = [BatchErrorCodes.Error("data", BatchErrorCodes.WriteFailed)]
-                };
+                failureType = ex.GetType().Name;
             }
+
+            // Only the exception type is logged, outside the catch: the exception's message could carry the item's
+            // email or names (C20).
+            _logger.LogError("Batch job {JobId}: item {Index} could not be validated ({ExceptionType})", job.ItemId, item.Index, failureType);
+            return new BatchItemPlan
+            {
+                Item = item,
+                Outcome = BatchItemOutcome.Failed,
+                Errors = [BatchErrorCodes.Error("data", BatchErrorCodes.WriteFailed)]
+            };
         }
 
         /// <summary>
