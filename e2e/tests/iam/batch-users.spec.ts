@@ -108,7 +108,7 @@ async function findUser(
     page,
     "POST",
     "/api/iam/users",
-    { page: 1, pageSize: 10, filter: { email: address, name: "" } },
+    { page: 0, pageSize: 10, filter: { email: address, name: "" } },
     tenant,
   );
   expect(list.status, list.raw).toBe(200);
@@ -134,7 +134,8 @@ async function runUserIds(
   prefix = `iam-batch-${runId}-`,
 ): Promise<string[]> {
   const ids: string[] = [];
-  for (let pageNo = 1; ; pageNo++) {
+  // The users list pages from 0 (Skip = PageSize * Page).
+  for (let pageNo = 0; ; pageNo++) {
     const list = await iamApi<{ data?: UserData[] }>(
       page,
       "POST",
@@ -176,33 +177,57 @@ async function createFixture(page: Page, address: string, tenant: string): Promi
   return String(user!.itemId);
 }
 
-/** Cleanup (spec section 10): the fixture keeps only its base role; every user of this run is deactivated. */
-async function cleanUp(page: Page, tenant: string, fixtureId: string | undefined, prefix?: string) {
-  if (fixtureId) {
-    await iamApi(
-      page,
-      "POST",
-      "/api/iam/users/access",
-      {
-        userId: fixtureId,
-        organizationId: "default",
-        roles: [BASE_ROLE],
-        permissions: [],
-        notifyUser: false,
-      },
-      tenant,
-    );
+/**
+ * Cleanup (spec section 10): the fixture keeps only its base role; every user of this run is deactivated.
+ * Never throws: it returns what failed, so a cleanup problem cannot hide the test's own failure.
+ */
+async function cleanUp(
+  page: Page,
+  tenant: string,
+  fixtureId: string | undefined,
+  prefix?: string,
+): Promise<string[]> {
+  const problems: string[] = [];
+  try {
+    if (fixtureId) {
+      const reset = await iamApi(
+        page,
+        "POST",
+        "/api/iam/users/access",
+        {
+          userId: fixtureId,
+          organizationId: "default",
+          roles: [BASE_ROLE],
+          permissions: [],
+          notifyUser: false,
+        },
+        tenant,
+      );
+      if (reset.status !== 200)
+        problems.push(`users/access ${fixtureId}: ${reset.status} ${reset.raw}`);
+    }
+    for (const id of await runUserIds(page, tenant, prefix)) {
+      const res = await iamApi(page, "POST", "/api/iam/users/deactivate", { userId: id }, tenant);
+      if (res.status !== 200) problems.push(`deactivate ${id}: ${res.status} ${res.raw}`);
+    }
+  } catch (error) {
+    problems.push(`cleanup: ${String(error)}`);
   }
-  for (const id of await runUserIds(page, tenant, prefix)) {
-    const res = await iamApi<{ isSuccess?: boolean }>(
-      page,
-      "POST",
-      "/api/iam/users/deactivate",
-      { userId: id },
-      tenant,
-    );
-    expect(res.status, `deactivate ${id}: ${res.raw}`).toBe(200);
-  }
+  return problems;
+}
+
+/** Runs the cleanup after a test body; fails the test on a cleanup problem only when the body passed. */
+async function finish(
+  bodyPassed: boolean,
+  page: Page,
+  tenant: string,
+  fixtureId: string | undefined,
+  prefix?: string,
+) {
+  const problems = await cleanUp(page, tenant, fixtureId, prefix);
+  if (problems.length === 0) return;
+  test.info().annotations.push({ type: "cleanup", description: problems.join("; ") });
+  if (bodyPassed) throw new Error(`Cleanup failed: ${problems.join("; ")}`);
 }
 
 /** Prerequisites the spec author owns (A9 and the fixture role). Reads only. */
@@ -291,6 +316,7 @@ test.describe("Batch user upsert (#683)", () => {
 
     const existingEmail = email("existing");
     let fixtureId: string | undefined;
+    let passed = false;
     try {
       fixtureId = await createFixture(page, existingEmail, tenant);
 
@@ -394,8 +420,9 @@ test.describe("Batch user upsert (#683)", () => {
         expect(after?.firstName).toBe("Renamed");
         expect(rolesOf(after)).toEqual([BASE_ROLE, BATCH_ROLE].sort());
       });
+      passed = true;
     } finally {
-      await cleanUp(page, tenant, fixtureId);
+      await finish(passed, page, tenant, fixtureId);
     }
   });
 
@@ -419,6 +446,7 @@ test.describe("Batch user upsert (#683)", () => {
     const fixtureEmail = `${prefix}existing@yopmail.com`;
     let fixtureId: string | undefined;
     const context = await browser.newContext();
+    let passed = false;
     try {
       fixtureId = await createFixture(page, fixtureEmail, tenant);
       const other = await context.newPage();
@@ -434,9 +462,10 @@ test.describe("Batch user upsert (#683)", () => {
       expect(job.summary).toEqual({ created: 0, updated: 0, unchanged: 0, failed: 1 });
       expect(job.failures[0].errors.map((e) => e.code)).toContain("manage_user_roles_required");
       expect(rolesOf(await findUser(page, fixtureEmail, tenant))).toEqual([BASE_ROLE]);
+      passed = true;
     } finally {
       await context.close();
-      await cleanUp(page, tenant, fixtureId, prefix);
+      await finish(passed, page, tenant, fixtureId, prefix);
     }
   });
 
@@ -452,6 +481,7 @@ test.describe("Batch user upsert (#683)", () => {
     const prefix = `iam-batch-${runId}-perf-`;
     const submitMs: number[] = [];
     const jobMs: number[] = [];
+    let passed = false;
     try {
       for (let run = 0; run < 10; run++) {
         const items = Array.from({ length: 100 }, (_, i) =>
@@ -474,8 +504,9 @@ test.describe("Batch user upsert (#683)", () => {
       test.info().annotations.push({ type: "H15", description: JSON.stringify(result) });
       expect(result.submitP95, "submit p95 ≤ 1 s").toBeLessThanOrEqual(1_000);
       expect(result.jobP95, "job p95 ≤ 10 s").toBeLessThanOrEqual(10_000);
+      passed = true;
     } finally {
-      await cleanUp(page, tenant, undefined, prefix);
+      await finish(passed, page, tenant, undefined, prefix);
     }
   });
 });
