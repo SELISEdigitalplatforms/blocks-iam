@@ -23,8 +23,15 @@ async function waitForProfile(page: Page) {
   await expect(profileReady(page)).toBeVisible({ timeout: 20_000 });
 }
 
-export async function loginThroughOidc(page: Page, options?: { loginPath?: string }) {
-  const { email, password } = e2eCredentials();
+/**
+ * Signs in through the hosted OIDC page. `credentials` signs in another identity than the E2E account
+ * (for example a second, less privileged test identity); it defaults to E2E_USERNAME / E2E_PASSWORD.
+ */
+export async function loginThroughOidc(
+  page: Page,
+  options?: { loginPath?: string; credentials?: { email: string; password: string } },
+) {
+  const { email, password } = options?.credentials ?? e2eCredentials();
   const loginPath = options?.loginPath ?? "/login";
 
   await page.goto(loginPath, { waitUntil: "domcontentloaded" });
