@@ -80,6 +80,18 @@ public class ContentSecurityPolicyTests
         connect.Should().Contain("wss://logic.example.com");
     }
 
+    [Fact]
+    public void Build_EmitsTheWebSocketFormOfTheOsHost()
+    {
+        // Logic and its NotificationHub are served by the os host once BLOCKS_LOGIC_BASE_URL is gone.
+        var policy = ContentSecurityPolicy.Build(Config(new()
+        {
+            ["FrontendRuntime:BLOCKS_OS_BASE_URL"] = "https://os.example.com",
+        }));
+
+        Directive(policy, "connect-src").Should().Contain("wss://os.example.com");
+    }
+
     [Theory]
     [InlineData("https://logic.example.com/hub", "wss://logic.example.com")]
     [InlineData("wss://logic.example.com", "wss://logic.example.com")]
