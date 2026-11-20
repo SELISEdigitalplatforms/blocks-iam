@@ -1,3 +1,4 @@
+using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.AccessGrant;
@@ -49,6 +50,19 @@ namespace XUnitTest.IamTests.Batch
 
             services.Should().Contain(d => d.ServiceType == typeof(IBatchJobRepository) && d.ImplementationType == typeof(BatchJobRepository) && d.Lifetime == ServiceLifetime.Singleton);
             services.Should().Contain(d => d.ServiceType == typeof(IBatchUserService) && d.ImplementationType == typeof(BatchUserService) && d.Lifetime == ServiceLifetime.Singleton);
+        }
+
+        [Fact]
+        public void BatchServices_AreRegisteredByRegisterAllServices_TheApiAndWorkerRoot()
+        {
+            // The Api (BatchController) and the Worker (BatchJobConsumer) both build their graph from
+            // RegisterAllServices; RegisterSharedServices alone left every batch route answering 500 on dev.
+            var services = new ServiceCollection();
+            services.RegisterAllServices();
+
+            services.Should().ContainSingle(d => d.ServiceType == typeof(IBatchJobRepository) && d.ImplementationType == typeof(BatchJobRepository) && d.Lifetime == ServiceLifetime.Singleton);
+            services.Should().ContainSingle(d => d.ServiceType == typeof(BatchUserStores) && d.Lifetime == ServiceLifetime.Singleton);
+            services.Should().ContainSingle(d => d.ServiceType == typeof(IBatchUserService) && d.ImplementationType == typeof(BatchUserService) && d.Lifetime == ServiceLifetime.Singleton);
         }
 
         [Theory]
