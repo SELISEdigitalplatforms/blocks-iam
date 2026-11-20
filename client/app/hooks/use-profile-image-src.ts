@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { serviceInstances } from "@/lib/http-client";
-import { getRuntimeEnv } from "@/lib/runtime-env";
+import { getMergedAreaBaseUrl } from "@seliseblocks/genesis-os/lib";
 
 const getLogicHostname = () => {
-  const base =
-    getRuntimeEnv("BLOCKS_LOGIC_BASE_URL");
+  const base = getMergedAreaBaseUrl("BLOCKS_LOGIC_BASE_URL");
   try {
     return new URL(base).hostname;
   } catch {

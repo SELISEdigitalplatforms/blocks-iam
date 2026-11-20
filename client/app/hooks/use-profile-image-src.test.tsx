@@ -66,4 +66,20 @@ describe("useProfileImageSrc", () => {
     unmount();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
   });
+
+  it("treats the os host as the logic host once BLOCKS_LOGIC_BASE_URL is gone", async () => {
+    const w = window as unknown as { __BLOCKS_ENV__?: Record<string, string> };
+    const saved = w.__BLOCKS_ENV__;
+    w.__BLOCKS_ENV__ = { BLOCKS_OS_BASE_URL: "https://os.example.test" };
+    try {
+      httpGet.mockResolvedValue(new Blob(["x"], { type: "image/png" }));
+      const url = "https://os.example.test/api/profile/image";
+      const { result } = renderHook(() => useProfileImageSrc(url));
+
+      await waitFor(() => expect(result.current).toBe("blob:mock-url"));
+      expect(httpGet).toHaveBeenCalledWith(url, undefined, { absoluteUrl: true });
+    } finally {
+      w.__BLOCKS_ENV__ = saved;
+    }
+  });
 });

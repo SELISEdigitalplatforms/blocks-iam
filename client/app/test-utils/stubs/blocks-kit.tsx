@@ -12,9 +12,21 @@
  * intercept them.
  */
 import React from "react";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 
 export { useProjectStore } from "@/store/useProjectStore";
 export { useAuthStore } from "@/store/useAuthStore";
+
+/**
+ * Same rule as genesis-os 4.5.1 `getMergedAreaBaseUrl`: the merged area's own key while it is set, else the os host.
+ */
+export const getMergedAreaBaseUrl = (
+  key:
+    | "BLOCKS_LOGIC_BASE_URL"
+    | "BLOCKS_LOCALIZATION_BASE_URL"
+    | "BLOCKS_DATA_BASE_URL"
+    | "BLOCKS_MONITOR_BASE_URL",
+): string => getRuntimeEnv(key) || getRuntimeEnv("BLOCKS_OS_BASE_URL");
 
 type HttpClientOptions = { baseURL?: string; blocksKey?: string };
 
