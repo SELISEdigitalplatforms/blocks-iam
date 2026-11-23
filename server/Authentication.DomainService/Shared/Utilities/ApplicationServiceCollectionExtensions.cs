@@ -21,6 +21,7 @@ using Iam.DomainService.Accounts;
 using Iam.DomainService.Activity.Services;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.AccessGrant;
+using Iam.DomainService.Batch;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
@@ -228,6 +229,9 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
             serviceCollection.AddSingleton<ISignupLinkSummaryService, SignupLinkSummaryService>();
             serviceCollection.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
+            serviceCollection.AddSingleton<IBatchJobRepository, BatchJobRepository>();
+            serviceCollection.AddSingleton<BatchUserStores>();
+            serviceCollection.AddSingleton<IBatchUserService, BatchUserService>();
             serviceCollection.AddAccessGrant();
             serviceCollection.AddSingleton<IClientCredentialGrantGuard, ClientCredentialGrantGuard>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
