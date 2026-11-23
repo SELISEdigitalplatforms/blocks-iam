@@ -232,6 +232,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IBatchJobRepository, BatchJobRepository>();
             serviceCollection.AddSingleton<BatchUserStores>();
             serviceCollection.AddSingleton<IBatchUserService, BatchUserService>();
+            serviceCollection.AddSingleton<IBatchMailTemplateRepository, BatchMailTemplateRepository>();
+            serviceCollection.AddSingleton<IBatchMailService, BatchMailService>();
             serviceCollection.AddAccessGrant();
             serviceCollection.AddSingleton<IClientCredentialGrantGuard, ClientCredentialGrantGuard>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();

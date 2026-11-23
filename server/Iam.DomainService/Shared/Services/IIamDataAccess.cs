@@ -29,10 +29,18 @@ public static class IamSchemas
     public const string BlocksClientConfig = "BlocksClientConfig";
 
     /// <summary>
-    /// Batch jobs (iam/batch/users). Not a Genesis system entity, so it is not in <see cref="Governed"/>:
-    /// calls still go through <see cref="IIamDataAccess"/>, which allows them when the schema is unknown.
+    /// Batch jobs (iam/batch/users). Not a Genesis system entity, so it is not in <see cref="Governed"/> and has no
+    /// data access schema: <see cref="IIamDataAccess"/> allows its calls without asking the resolver (see
+    /// <see cref="HasNoSchema"/>).
     /// </summary>
     public const string BatchJob = "BatchJob";
+
+    /// <summary>
+    /// IAM-internal stores that never have a data access schema. The resolver would only answer "not found" for
+    /// them, so it is not asked: same outcome (allowed, original filter), without a thrown and logged exception
+    /// on every call.
+    /// </summary>
+    public static bool HasNoSchema(string schema) => string.Equals(schema, BatchJob, StringComparison.Ordinal);
 
     private static readonly HashSet<string> Governed =
     [

@@ -1,26 +1,30 @@
+using System.Diagnostics;
 using Blocks.Genesis;
 using Blocks.Genesis.Entities.Iam;
 using Iam.DomainService.AccessGrant;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Notifications;
 using Iam.DomainService.Resources;
+using Iam.DomainService.Services;
 using Iam.DomainService.Users;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Iam.DomainService.Batch
 {
-    /// <summary>The user and organization stores the batch reads and writes; one dependency for the service.</summary>
+    /// <summary>The user, organization and activity stores the batch reads and writes; one dependency for the service.</summary>
     public sealed class BatchUserStores
     {
-        public BatchUserStores(IUserRepository users, IResourceRepository resources)
+        public BatchUserStores(IUserRepository users, IResourceRepository resources, IUserActivityRepository activities)
         {
             Users = users;
             Resources = resources;
+            Activities = activities;
         }
 
         public IUserRepository Users { get; }
         public IResourceRepository Resources { get; }
+        public IUserActivityRepository Activities { get; }
     }
 
     public interface IBatchUserService
@@ -53,8 +57,14 @@ namespace Iam.DomainService.Batch
         /// <summary>How often a job that cannot start yet looks again while it waits for the running one.</summary>
         public static readonly TimeSpan StartPollInterval = TimeSpan.FromSeconds(5);
 
-        /// <summary>Side effects sent between two heartbeats, so a long side-effect phase does not look abandoned.</summary>
-        private const int SideEffectsPerHeartbeat = 10;
+        /// <summary>
+        /// User created actions published at the same time. They are sent in chunks of this size with a heartbeat
+        /// between chunks, so a long side-effect phase never looks abandoned.
+        /// </summary>
+        public const int MaxParallelSideEffects = 16;
+
+        /// <summary>The timeline entry the batch writes for a created account, as the user mutation consumer writes it.</summary>
+        public const string UserCreatedTimelineEvent = "USER_CREATED";
 
         private static readonly string[] OpenStatuses = [BatchJobStatus.Queued, BatchJobStatus.Running];
         private static readonly string[] RunningStatus = [BatchJobStatus.Running];
@@ -62,6 +72,7 @@ namespace Iam.DomainService.Batch
         private readonly IBatchJobRepository _jobs;
         private readonly IUserRepository _users;
         private readonly IResourceRepository _resources;
+        private readonly IUserActivityRepository _activities;
         private readonly IAccessGrantService _accessGrant;
         private readonly IUserManagementMutationService _userMutations;
         private readonly IMessageClient _messageClient;
@@ -82,6 +93,7 @@ namespace Iam.DomainService.Batch
             _jobs = jobs;
             _users = stores.Users;
             _resources = stores.Resources;
+            _activities = stores.Activities;
             _accessGrant = accessGrant;
             _userMutations = userMutations;
             _messageClient = messageClient;
@@ -179,7 +191,6 @@ namespace Iam.DomainService.Batch
                 RequestedByOrganizationId = caller.OrganizationId,
                 RequestedBySystemCaller = caller.IsSystem,
                 RequestedByClientId = clientId,
-                Options = new BatchJobOptions { SendEmail = request.Options?.SendEmail ?? false },
                 Items = allRejected ? null : validation.Accepted,
                 Total = request.Items!.Count,
                 Summary = new BatchJobSummary { Failed = validation.Rejected.Count },
@@ -206,7 +217,7 @@ namespace Iam.DomainService.Batch
         {
             for (var index = 0; index < items.Count; index++)
             {
-                var unmapped = items[index]?.Data?.UnmappedFields;
+                var unmapped = items[index]?.UnmappedFields;
                 if (unmapped is { Count: > 0 })
                 {
                     // A count only: the names are caller-controlled text.
@@ -324,21 +335,27 @@ namespace Iam.DomainService.Batch
         private async Task RunAsync(BatchJob job, string tenantId)
         {
             _logger.LogInformation("Batch job {JobId} started -- attempt {Attempt}, {Count} items", job.ItemId, job.Attempt, job.Items?.Count ?? 0);
+            var timings = new BatchTimings();
             WriteResult? result = null;
+            BatchMailPlan? mail = null;
             try
             {
                 if (job.PendingSideEffects.Count > 0)
                 {
                     await ReplaySideEffectsAsync(job, tenantId);
+                    timings.Mark("replay");
                 }
 
-                var plans = await PlanAsync(job, tenantId);
+                var (plans, organizations) = await PlanAsync(job, tenantId, timings);
                 var written = await WriteAsync(job, tenantId, plans);
                 result = written.Result;
+                mail = BatchMailPlanner.Build(plans, written.UsersById.Keys.ToHashSet(StringComparer.Ordinal), organizations);
+                timings.Mark("write");
 
                 await SendSideEffectsAsync(job, tenantId, written.SideEffects, written.UsersById);
-                await _jobs.SetPendingSideEffectsAsync(job.ItemId, tenantId, [], UtcNow(), job.Attempt);
-                await FinishAsync(job, tenantId, result);
+                timings.Mark("side-effects");
+                await FinishAsync(job, tenantId, result, mail);
+                timings.Mark("finish");
             }
             catch (Exception ex) when (result is null)
             {
@@ -347,10 +364,12 @@ namespace Iam.DomainService.Batch
             }
             catch (Exception ex)
             {
-                // The users are written: the job ends with what was written, not as failed.
+                // The users are written: the job ends with what was written, not as failed, and still owes its mails.
                 _logger.LogError(ex, "Batch job {JobId} failed after its users were written; finishing with the write result", job.ItemId);
-                await FinishAsync(job, tenantId, result!);
+                await FinishAsync(job, tenantId, result!, mail);
             }
+
+            _logger.LogInformation("Batch job {JobId} timings -- {Timings}", job.ItemId, timings);
         }
 
         /// <summary>A resumed job first sends what its previous attempt planned and may not have sent (at least once).</summary>
@@ -362,11 +381,13 @@ namespace Iam.DomainService.Batch
             await _jobs.SetPendingSideEffectsAsync(job.ItemId, tenantId, [], UtcNow(), job.Attempt);
         }
 
-        private async Task<List<BatchItemPlan>> PlanAsync(BatchJob job, string tenantId)
+        private async Task<(List<BatchItemPlan> Plans, IReadOnlyDictionary<string, Organization> Organizations)> PlanAsync(
+            BatchJob job, string tenantId, BatchTimings timings)
         {
             var items = job.Items ?? [];
             var preload = await PreloadAsync(job, items);
             await _jobs.HeartbeatAsync(job.ItemId, tenantId, UtcNow(), job.Attempt);
+            timings.Mark("preload");
 
             var plans = new List<BatchItemPlan>(items.Count);
             foreach (var item in items)
@@ -374,7 +395,8 @@ namespace Iam.DomainService.Batch
                 plans.Add(await PlanItemAsync(job, item, preload));
             }
 
-            return plans;
+            timings.Mark("validate");
+            return (plans, preload.Organizations);
         }
 
         /// <summary>One item; an unexpected error fails only that user, never the job.</summary>
@@ -397,7 +419,7 @@ namespace Iam.DomainService.Batch
             {
                 Item = item,
                 Outcome = BatchItemOutcome.Failed,
-                Errors = [BatchErrorCodes.Error("data", BatchErrorCodes.WriteFailed)]
+                Errors = [BatchErrorCodes.Error("item", BatchErrorCodes.WriteFailed)]
             };
         }
 
@@ -583,50 +605,141 @@ namespace Iam.DomainService.Batch
             return written.FailedUserIds.Contains(userId) ? BatchErrorCodes.WriteFailed : null;
         }
 
-        /// <summary>Per user and best effort: a side effect that fails is logged and never fails the job.</summary>
+        /// <summary>
+        /// Best effort, and never failing the job: the timeline entries of the created accounts in one bulk insert,
+        /// then their user created actions, <see cref="MaxParallelSideEffects"/> at a time with a heartbeat between
+        /// chunks. No per-user queue message: the create event's only effect without a mail is the timeline entry.
+        /// </summary>
         private async Task SendSideEffectsAsync(
             BatchJob job, string tenantId, List<BatchPendingSideEffect> sideEffects, IReadOnlyDictionary<string, User> usersById)
         {
-            for (var i = 0; i < sideEffects.Count; i++)
+            var created = new List<(BatchPendingSideEffect SideEffect, User User)>(sideEffects.Count);
+            foreach (var sideEffect in sideEffects.Where(s => s.Kind == BatchSideEffectKinds.Created))
             {
-                if (i > 0 && i % SideEffectsPerHeartbeat == 0)
+                if (usersById.TryGetValue(sideEffect.UserId, out var user))
                 {
-                    await _jobs.HeartbeatAsync(job.ItemId, tenantId, UtcNow(), job.Attempt);
+                    created.Add((sideEffect, user));
                 }
-
-                var sideEffect = sideEffects[i];
-                if (!usersById.TryGetValue(sideEffect.UserId, out var user))
+                else
                 {
                     _logger.LogWarning("Batch job {JobId}: user {UserId} of a pending side effect was not found", job.ItemId, sideEffect.UserId);
-                    continue;
                 }
+            }
 
-                try
-                {
-                    if (sideEffect.Kind == BatchSideEffectKinds.Created)
-                    {
-                        await _userMutations.PublishBatchUserCreatedAsync(user, sideEffect.OrganizationId, sideEffect.SendEmail, job.RequestedBy);
-                    }
-                    else if (sideEffect.Kind == BatchSideEffectKinds.MemberAdded && sideEffect.SendEmail)
-                    {
-                        await _userMutations.NotifyOrganizationMemberAddedAsync(user, sideEffect.OrganizationId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Batch job {JobId}: side effect {Kind} for user {UserId} failed", job.ItemId, sideEffect.Kind, sideEffect.UserId);
-                }
+            if (created.Count == 0)
+            {
+                return;
+            }
+
+            await WriteTimelineAsync(job, created.Select(c => c.User).ToList());
+
+            var failed = 0;
+            foreach (var chunk in created.Chunk(MaxParallelSideEffects))
+            {
+                var outcomes = await Task.WhenAll(chunk.Select(c => PublishCreatedActionAsync(job, c.User, c.SideEffect.OrganizationId)));
+                failed += outcomes.Count(ok => !ok);
+                await _jobs.HeartbeatAsync(job.ItemId, tenantId, UtcNow(), job.Attempt);
+            }
+
+            if (failed > 0)
+            {
+                _logger.LogWarning("Batch job {JobId}: {Failed} of {Count} user created actions failed", job.ItemId, failed, created.Count);
             }
         }
 
-        private async Task FinishAsync(BatchJob job, string tenantId, WriteResult result)
+        private async Task<bool> PublishCreatedActionAsync(BatchJob job, User user, string organizationId)
+        {
+            try
+            {
+                await _userMutations.PublishBatchUserCreatedActionAsync(user, organizationId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Batch job {JobId}: user created action for user {UserId} failed ({ExceptionType})", job.ItemId, user.ItemId, ex.GetType().Name); // NOSONAR S6667 - type only, by design
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// The "user created" timeline entries, as the user mutation consumer writes them for users/create. The
+        /// MessageId is per job and user, so a resumed job writes no entry twice.
+        /// </summary>
+        private async Task WriteTimelineAsync(BatchJob job, List<User> users)
+        {
+            var now = UtcNow();
+            var actor = job.RequestedBy ?? job.RequestedByClientId;
+            var activities = users.Select(user => new UserActivity
+            {
+                ItemId = Guid.NewGuid().ToString(),
+                UserId = user.ItemId,
+                ActorUserId = job.RequestedBy ?? user.ItemId,
+                Category = UserActivityCategory.Resource,
+                Event = UserCreatedTimelineEvent,
+                Source = "iam-user-mutation",
+                MessageId = $"batch:{job.ItemId}:{user.ItemId}",
+                Entity = "User",
+                EntityId = user.ItemId,
+                OrganizationId = job.RequestedByOrganizationId,
+                TenantId = job.TenantId,
+                CreatedDate = now,
+                CreatedBy = actor ?? user.ItemId
+            }).ToList();
+
+            try
+            {
+                await _activities.InsertManyAsync(activities, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Batch job {JobId}: {Count} timeline entries could not be written ({ExceptionType})", job.ItemId, activities.Count, ex.GetType().Name); // NOSONAR S6667 - type only, by design
+            }
+        }
+
+        /// <summary>
+        /// Writes the final import state and, in the same update, the mail phase it owes; then queues the mail phase.
+        /// The users are usable from here on, whatever the mails do.
+        /// </summary>
+        private async Task FinishAsync(BatchJob job, string tenantId, WriteResult result, BatchMailPlan? mail)
         {
             var status = result.Failures.Count == 0 ? BatchJobStatus.Completed : BatchJobStatus.CompletedWithErrors;
-            var finish = new BatchJobFinish(status, result.Summary, result.Failures, null, UtcNow());
-            if (await _jobs.FinishAsync(job.ItemId, tenantId, finish, RunningStatus, job.Attempt))
+            var finish = new BatchJobFinish(status, result.Summary, result.Failures, null, UtcNow(), mail?.Mail, mail?.Entries);
+            if (!await _jobs.FinishAsync(job.ItemId, tenantId, finish, RunningStatus, job.Attempt))
             {
-                _logger.LogInformation("Batch job {JobId} finished -- {Status}", job.ItemId, status);
-                await NotifyFinishedAsync(job, status, result.Summary);
+                return;
+            }
+
+            _logger.LogInformation("Batch job {JobId} finished -- {Status}", job.ItemId, status);
+            await NotifyFinishedAsync(job, status, result.Summary);
+            if (mail is { Mail.Status: BatchJobStatus.Queued })
+            {
+                await QueueMailAsync(job, tenantId, mail.Mail);
+            }
+        }
+
+        /// <summary>Queues the job's mail phase. When that fails the mail phase is failed, never the import.</summary>
+        private async Task QueueMailAsync(BatchJob job, string tenantId, BatchJobMail mail)
+        {
+            try
+            {
+                await _messageClient.SendToConsumerAsync(new ConsumerMessage<BatchMailQueuedEvent>
+                {
+                    ConsumerName = IdpConstants.IamBatchMailQueue,
+                    Payload = new BatchMailQueuedEvent { JobId = job.ItemId, TenantId = tenantId }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Batch job {JobId}: the mail phase could not be queued", job.ItemId);
+                await _jobs.FinishMailAsync(job.ItemId, tenantId, new BatchJobMail
+                {
+                    Status = BatchJobStatus.Failed,
+                    Requested = mail.Requested,
+                    Skipped = mail.Skipped,
+                    Results = mail.Results,
+                    Error = BatchErrorCodes.QueueUnavailable,
+                    CompletedAt = UtcNow()
+                }, [BatchJobStatus.Queued]);
             }
         }
 
@@ -676,5 +789,22 @@ namespace Iam.DomainService.Batch
         }
 
         #endregion
+    }
+
+    /// <summary>How long each phase of a job took, logged once per job (milliseconds, no personal data).</summary>
+    internal sealed class BatchTimings
+    {
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private readonly List<string> _marks = [];
+        private long _last;
+
+        public void Mark(string phase)
+        {
+            var now = _clock.ElapsedMilliseconds;
+            _marks.Add($"{phase}={now - _last}ms");
+            _last = now;
+        }
+
+        public override string ToString() => $"{string.Join(", ", _marks)}, total={_clock.ElapsedMilliseconds}ms";
     }
 }

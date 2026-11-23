@@ -9,24 +9,52 @@ namespace Iam.DomainService.Batch
     public class BatchUsersRequest
     {
         public string? ClientReference { get; set; }
-        public BatchRequestOptions? Options { get; set; }
         public List<BatchUserItem>? Items { get; set; }
     }
 
-    public class BatchRequestOptions
-    {
-        /// <summary>Default for items that do not set <c>data.sendEmail</c>; false when absent.</summary>
-        public bool? SendEmail { get; set; }
-    }
-
+    /// <summary>
+    /// One user of a request. Every item is an upsert keyed by its email: created when no account has the
+    /// email, otherwise added to (organizations added, roles and permissions merged, profile fields set).
+    /// </summary>
     public class BatchUserItem
     {
+        /// <summary>Optional caller id of the row (e.g. a legacy user id), echoed in failures and mail results.</summary>
         public string? Ref { get; set; }
-        public string? Operation { get; set; }
-        public BatchUserData? Data { get; set; }
+        public string? Email { get; set; }
+        public string? Salutation { get; set; }
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? Language { get; set; }
+        public Dictionary<string, object>? Attributes { get; set; }
+        public List<BatchMembership>? Memberships { get; set; }
+
+        /// <summary>The mail to send after the import; none when absent.</summary>
+        public BatchItemMail? Mail { get; set; }
+
+        /// <summary>Fields outside the contract (password, active, operation, data, ...): ignored, and counted in the log.</summary>
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? UnmappedFields { get; set; }
     }
 
-    /// <summary>One user of a batch. Also stored on the job, so it holds no unbound JSON values.</summary>
+    /// <summary>The mail of one item, sent by the mail phase after the users are written.</summary>
+    [BsonIgnoreExtraElements]
+    public class BatchItemMail
+    {
+        public bool Send { get; set; }
+
+        /// <summary>Template (mail purpose) for a user this job creates.</summary>
+        public string? Template { get; set; }
+
+        /// <summary>Template for a user that already existed and that this job added to a new organization.</summary>
+        public string? ExistingUserTemplate { get; set; }
+
+        /// <summary>Template language; en-US when absent.</summary>
+        public string? Language { get; set; }
+    }
+
+    /// <summary>One user as the job stores it. Holds no unbound JSON values.</summary>
+    [BsonIgnoreExtraElements]
     public class BatchUserData
     {
         public string? Email { get; set; }
@@ -35,19 +63,17 @@ namespace Iam.DomainService.Batch
         public string? LastName { get; set; }
         public string? PhoneNumber { get; set; }
         public string? Language { get; set; }
-        public bool? SendEmail { get; set; }
 
         /// <summary>Stored on the job as plain BSON values (no type wrappers), like the user's own attributes.</summary>
         [BsonSerializer(typeof(AttributeBagSerializer))]
         public Dictionary<string, object>? Attributes { get; set; }
         public List<BatchMembership>? Memberships { get; set; }
 
-        /// <summary>Fields outside the contract (password, active, ...): ignored, and their names logged.</summary>
-        [JsonExtensionData]
-        [BsonIgnore]
-        public Dictionary<string, JsonElement>? UnmappedFields { get; set; }
+        [BsonIgnoreIfNull]
+        public BatchItemMail? Mail { get; set; }
     }
 
+    [BsonIgnoreExtraElements]
     public class BatchMembership
     {
         public string? OrganizationId { get; set; }
@@ -78,6 +104,9 @@ namespace Iam.DomainService.Batch
         public BatchJobSummary Summary { get; set; } = new();
         public List<BatchItemFailure> Failures { get; set; } = [];
         public string? Error { get; set; }
+
+        /// <summary>The mail phase; null when no item asked for a mail.</summary>
+        public BatchJobMailResponse? Mail { get; set; }
         public DateTime CreatedDate { get; set; }
         public DateTime? StartedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
@@ -96,10 +125,42 @@ namespace Iam.DomainService.Batch
                 Summary = job.Summary,
                 Failures = job.Failures.OrderBy(f => f.Index).ToList(),
                 Error = job.Error,
+                Mail = BatchJobMailResponse.From(job.Mail),
                 CreatedDate = job.CreatedDate,
                 StartedAt = job.StartedAt,
                 CompletedAt = job.CompletedAt
             };
         }
+    }
+
+    /// <summary>The mail phase of a job as GET iam/batch/jobs/{jobId} returns it.</summary>
+    public class BatchJobMailResponse
+    {
+        public string Status { get; set; } = string.Empty;
+        public int Requested { get; set; }
+        public int Queued { get; set; }
+        public int Skipped { get; set; }
+        public int Failed { get; set; }
+
+        /// <summary>The mails that were not queued, by index. Queued mails are only counted.</summary>
+        public List<BatchMailResult> Results { get; set; } = [];
+        public string? Error { get; set; }
+        public DateTime? StartedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+
+        public static BatchJobMailResponse? From(BatchJobMail? mail) => mail is null
+            ? null
+            : new BatchJobMailResponse
+            {
+                Status = mail.Status,
+                Requested = mail.Requested,
+                Queued = mail.Queued,
+                Skipped = mail.Skipped,
+                Failed = mail.Failed,
+                Results = mail.Results.OrderBy(r => r.Index).ToList(),
+                Error = mail.Error,
+                StartedAt = mail.StartedAt,
+                CompletedAt = mail.CompletedAt
+            };
     }
 }

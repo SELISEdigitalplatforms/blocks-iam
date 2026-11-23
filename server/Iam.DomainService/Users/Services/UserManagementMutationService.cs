@@ -314,27 +314,15 @@ namespace Iam.DomainService.Users
                 mfaEnabled
             });
 
-        public Task PublishBatchUserCreatedAsync(User user, string organizationId, bool sendMail, string? invitedBy)
+        public Task PublishBatchUserCreatedActionAsync(User user, string organizationId)
         {
             ArgumentNullException.ThrowIfNull(user);
-            return PublishBatchUserCreatedCoreAsync(user, organizationId, sendMail, invitedBy);
-        }
-
-        private async Task PublishBatchUserCreatedCoreAsync(User user, string organizationId, bool sendMail, string? invitedBy)
-        {
-            await SendEvent(user.ItemId, MutationEventType.Create, sendMail: sendMail, invitedBy: invitedBy, organizationId: organizationId);
-            await PublishUserCreatedAsync(
+            return PublishUserCreatedAsync(
                 user.ItemId,
                 AccessGrantRules.GrantsIn(user.Roles, organizationId).ToList(),
                 AccessGrantRules.GrantsIn(user.Permissions, organizationId).ToList(),
                 user.UserCreationType,
                 user.MfaEnabled);
-        }
-
-        public Task NotifyOrganizationMemberAddedAsync(User user, string organizationId)
-        {
-            ArgumentNullException.ThrowIfNull(user);
-            return NotifyOrganizationMembershipChangedAsync(user, organizationId, null, IdpConstants.OrganizationMemberAddedMailPurpose);
         }
 
         /// <summary>

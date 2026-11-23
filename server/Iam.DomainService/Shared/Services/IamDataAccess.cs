@@ -33,7 +33,7 @@ public sealed class IamDataAccess : IIamDataAccess
 
     public async Task<ReadScope<T>> ReadAsync<T>(string schema, FilterDefinition<T> filter, string callSite, string? tenantId = null, bool useProjection = true)
     {
-        if (ShouldSkipResolver(callSite, tenantId))
+        if (ShouldSkipResolver(schema, callSite, tenantId))
             return new ReadScope<T>(true, filter, null);
 
         try
@@ -63,7 +63,7 @@ public sealed class IamDataAccess : IIamDataAccess
 
     public async Task<bool> InsertAllowedAsync(string schema, string callSite, string? tenantId = null)
     {
-        if (ShouldSkipResolver(callSite, tenantId))
+        if (ShouldSkipResolver(schema, callSite, tenantId))
             return true;
 
         try
@@ -82,7 +82,7 @@ public sealed class IamDataAccess : IIamDataAccess
     public async Task<T> PrepareWriteAsync<T>(string schema, T entity, bool isInsert, string callSite, string? tenantId = null)
     {
         ArgumentNullException.ThrowIfNull(entity);
-        if (ShouldSkipResolver(callSite, tenantId))
+        if (ShouldSkipResolver(schema, callSite, tenantId))
             return entity;
 
         if (TakesRules(schema))
@@ -99,7 +99,7 @@ public sealed class IamDataAccess : IIamDataAccess
 
     public async Task<T> PrepareUpsertAsync<T>(string schema, T entity, IMongoCollection<T> collection, FilterDefinition<T> filter, string callSite, string? tenantId = null)
     {
-        if (ShouldSkipResolver(callSite, tenantId))
+        if (ShouldSkipResolver(schema, callSite, tenantId))
             return entity;
 
         var stored = await collection.Find(filter).Limit(1).FirstOrDefaultAsync();
@@ -112,7 +112,7 @@ public sealed class IamDataAccess : IIamDataAccess
     public async Task<T> PrepareReplaceAsync<T>(string schema, T entity, IMongoCollection<T> collection, FilterDefinition<T> filter, string callSite, string? tenantId = null)
     {
         ArgumentNullException.ThrowIfNull(entity);
-        if (ShouldSkipResolver(callSite, tenantId))
+        if (ShouldSkipResolver(schema, callSite, tenantId))
             return entity;
 
         var stored = await collection.Find(filter).Limit(1).FirstOrDefaultAsync();
@@ -135,7 +135,7 @@ public sealed class IamDataAccess : IIamDataAccess
 
     public async Task CheckUpdateAsync<T>(string schema, UpdateDefinition<T> update, string callSite, string? tenantId = null)
     {
-        if (!TakesRules(schema) || ShouldSkipResolver(callSite, tenantId))
+        if (!TakesRules(schema) || ShouldSkipResolver(schema, callSite, tenantId))
             return;
 
         var rendered = update.Render(new RenderArgs<T>(BsonSerializer.LookupSerializer<T>(), BsonSerializer.SerializerRegistry));
@@ -231,7 +231,7 @@ public sealed class IamDataAccess : IIamDataAccess
 
     private async Task<FilterDefinition<T>?> MutationFilterAsync<T>(string schema, PolicyOperation operation, FilterDefinition<T> filter, string callSite, string? tenantId)
     {
-        if (ShouldSkipResolver(callSite, tenantId))
+        if (ShouldSkipResolver(schema, callSite, tenantId))
             return filter;
 
         try
@@ -253,11 +253,17 @@ public sealed class IamDataAccess : IIamDataAccess
     /// <summary>
     /// THE skip path. True when the resolver must not run, so the caller uses its original filter:
     /// (1) no authenticated user in BlocksContext (pre-login auth flows: login, token, refresh, device, signup, reset, OIDC, MFA verify; consumers; workers), or
-    /// (2) the call targets another tenant's DB - the resolver loads policies from the caller's own tenant DB only.
+    /// (2) the call targets another tenant's DB - the resolver loads policies from the caller's own tenant DB only, or
+    /// (3) the store has no data access schema (<see cref="IamSchemas.HasNoSchema"/>).
     /// Replace this with a Genesis system principal when one exists.
     /// </summary>
-    private bool ShouldSkipResolver(string callSite, string? tenantId)
+    private bool ShouldSkipResolver(string schema, string callSite, string? tenantId)
     {
+        if (IamSchemas.HasNoSchema(schema))
+        {
+            return true;
+        }
+
         var context = BlocksContext.GetContext();
         if (context is null || !context.IsAuthenticated)
         {

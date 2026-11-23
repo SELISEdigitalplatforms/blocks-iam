@@ -40,7 +40,7 @@ namespace XUnitTest.IamTests.Batch
             TenantId = Tenant,
             Status = BatchJobStatus.Queued,
             CreatedDate = created ?? DateTime.UtcNow,
-            Items = [new BatchJobItem { Index = 0, Ref = "r", Operation = "upsert", Data = new BatchUserData { Email = "a@example.com" } }],
+            Items = [new BatchJobItem { Index = 0, Ref = "r", Data = new BatchUserData { Email = "a@example.com" } }],
             Total = 1
         };
 

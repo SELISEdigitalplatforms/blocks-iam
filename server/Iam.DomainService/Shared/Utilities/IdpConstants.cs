@@ -19,6 +19,10 @@ namespace Iam.DomainService.Utilities
         // Batch user upsert jobs: dedicated for the same reason as IamBulkRoleQueue. The message
         // carries only the job id and tenant; the items live in the job document.
         public const string IamBatchQueue = "blocks_iam_listener_batch";
+
+        // The mail phase of batch jobs, after their users are written: its own queue so a job's mails never
+        // hold up the next import job of the tenant.
+        public const string IamBatchMailQueue = "blocks_iam_listener_batch_mail";
         public const string MailQueue = "blocks_email_listener";
         public const string MfaQueueName = "blocks_mfa_listener";
         public const string UserActivityQueue = "blocks_user_activity_listener";
@@ -273,6 +277,7 @@ namespace Iam.DomainService.Utilities
                                              ConsumerSubscription.BindToQueue(IamUserQueue),
                                              ConsumerSubscription.BindToQueue(IamBulkRoleQueue),
                                              ConsumerSubscription.BindToQueue(IamBatchQueue),
+                                             ConsumerSubscription.BindToQueue(IamBatchMailQueue),
                                              ConsumerSubscription.BindToQueue(IamResourceQueue),
                                              ConsumerSubscription.BindToQueue(MfaQueueName),
                                              ConsumerSubscription.BindToQueue(IamOrgQueue),
@@ -288,7 +293,7 @@ namespace Iam.DomainService.Utilities
             {
                 AzureServiceBusConfiguration = new AzureServiceBusConfiguration
                 {
-                    Queues = [AuthenticationQueue, IamUserQueue, IamBulkRoleQueue, IamBatchQueue, IamResourceQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue, UserActivityQueue],
+                    Queues = [AuthenticationQueue, IamUserQueue, IamBulkRoleQueue, IamBatchQueue, IamBatchMailQueue, IamResourceQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue, UserActivityQueue],
                     Topics = []
                 }
             };

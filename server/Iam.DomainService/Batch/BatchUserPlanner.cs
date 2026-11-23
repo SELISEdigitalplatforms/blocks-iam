@@ -60,6 +60,12 @@ namespace Iam.DomainService.Batch
         public UpdateDefinition<User>? Update { get; init; }
         public List<BatchPendingSideEffect> SideEffects { get; init; } = [];
 
+        /// <summary>
+        /// The organization whose template a mail to this user uses: a new user's first membership, or the first
+        /// organization this job adds an existing user to. Null when the job adds the user to no organization.
+        /// </summary>
+        public string? MailOrganizationId { get; init; }
+
         public BatchItemFailure ToFailure() => new()
         {
             Ref = Item.Ref,
@@ -78,7 +84,7 @@ namespace Iam.DomainService.Batch
     public sealed class BatchUserPlanner
     {
         private const string DefaultOrganizationId = IdpConstants.DefaultOrganizationId;
-        private const string DataField = "data";
+        private const string ItemField = "item";
 
         /// <summary>The log target for a user that has no id yet; the email is kept out of the log.</summary>
         private const string NewUserTarget = "(new user)";
@@ -126,11 +132,10 @@ namespace Iam.DomainService.Batch
                 return Failed(item, [denial]);
             }
 
-            var sendEmail = data.SendEmail ?? job.Options.SendEmail;
             var actor = job.RequestedBy ?? job.RequestedByClientId;
             return existing is null
-                ? PlanCreate(item, memberships, sendEmail, actor)
-                : PlanUpdate(item, existing, memberships, changedFields, sendEmail, actor);
+                ? PlanCreate(item, memberships, actor)
+                : PlanUpdate(item, existing, memberships, changedFields, actor);
         }
 
         private static BatchItemPlan Failed(BatchJobItem item, List<BatchItemError> errors) =>
@@ -146,7 +151,7 @@ namespace Iam.DomainService.Batch
             {
                 if (preload.MultiOrgEnabled)
                 {
-                    errors.Add(BatchErrorCodes.Error("data.memberships", BatchErrorCodes.OrganizationRequired));
+                    errors.Add(BatchErrorCodes.Error("memberships", BatchErrorCodes.OrganizationRequired));
                     return [];
                 }
 
@@ -168,7 +173,7 @@ namespace Iam.DomainService.Batch
                 // ordinal check cannot see that two of them name the same one.
                 if (planned.Any(m => m.OrganizationId == organizationId))
                 {
-                    errors.Add(BatchErrorCodes.Error($"data.memberships[{i}].organizationId", BatchErrorCodes.OrganizationDuplicate));
+                    errors.Add(BatchErrorCodes.Error($"memberships[{i}].organizationId", BatchErrorCodes.OrganizationDuplicate));
                     continue;
                 }
 
@@ -176,7 +181,7 @@ namespace Iam.DomainService.Batch
                 var permissionCount = AccessGrantRules.Clean(GrantsOf(existing?.Permissions, organizationId).Concat(membership.AddedPermissions)).Count();
                 if (permissionCount > UserIdentityRules.MaxPermissionsPerUser)
                 {
-                    errors.Add(BatchErrorCodes.Error($"data.memberships[{i}].permissions", BatchErrorCodes.TooManyPermissions));
+                    errors.Add(BatchErrorCodes.Error($"memberships[{i}].permissions", BatchErrorCodes.TooManyPermissions));
                     continue;
                 }
 
@@ -189,7 +194,7 @@ namespace Iam.DomainService.Batch
         /// <summary>The organization a membership names, or null with its error.</summary>
         private static string? ResolveOrganization(BatchMembership membership, int index, BatchPreload preload, List<BatchItemError> errors)
         {
-            var field = $"data.memberships[{index}].organizationId";
+            var field = $"memberships[{index}].organizationId";
             var code = OrganizationError(membership.OrganizationId, preload);
             if (code is not null)
             {
@@ -245,7 +250,7 @@ namespace Iam.DomainService.Batch
             {
                 if (live is null || !live.Contains(roles[j]))
                 {
-                    errors.Add(BatchErrorCodes.Error($"data.memberships[{index}].roles[{j}]", BatchErrorCodes.RoleNotFound));
+                    errors.Add(BatchErrorCodes.Error($"memberships[{index}].roles[{j}]", BatchErrorCodes.RoleNotFound));
                     valid = false;
                 }
             }
@@ -340,7 +345,7 @@ namespace Iam.DomainService.Batch
 
             if (!caller.Holds(UserPermissions.UpdateUserProfiles))
             {
-                return BatchErrorCodes.Error(DataField, BatchErrorCodes.UpdateUserProfilesRequired);
+                return BatchErrorCodes.Error(ItemField, BatchErrorCodes.UpdateUserProfilesRequired);
             }
 
             return scope is null || _accessGrant.Authorize(scope,
@@ -354,7 +359,7 @@ namespace Iam.DomainService.Batch
         {
             if (membership.IsMember && !caller.Holds(UserPermissions.ManageUserRoles))
             {
-                return BatchErrorCodes.Error(DataField, BatchErrorCodes.ManageUserRolesRequired);
+                return BatchErrorCodes.Error(ItemField, BatchErrorCodes.ManageUserRolesRequired);
             }
 
             var scope = caller.Scope;
@@ -372,7 +377,7 @@ namespace Iam.DomainService.Batch
                 : GrantNotAllowed();
         }
 
-        private static BatchItemError GrantNotAllowed() => BatchErrorCodes.Error(DataField, BatchErrorCodes.GrantNotAllowed);
+        private static BatchItemError GrantNotAllowed() => BatchErrorCodes.Error(ItemField, BatchErrorCodes.GrantNotAllowed);
 
         #endregion
 
@@ -422,7 +427,7 @@ namespace Iam.DomainService.Batch
 
         #region Write plan
 
-        private BatchItemPlan PlanCreate(BatchJobItem item, List<PlannedMembership> memberships, bool sendEmail, string? actor)
+        private BatchItemPlan PlanCreate(BatchJobItem item, List<PlannedMembership> memberships, string? actor)
         {
             var data = item.Data;
             var first = memberships[0];
@@ -468,26 +473,28 @@ namespace Iam.DomainService.Batch
                 Item = item,
                 Outcome = BatchItemOutcome.Created,
                 User = user,
+                MailOrganizationId = first.OrganizationId,
                 SideEffects =
                 [
                     new BatchPendingSideEffect
                     {
                         UserId = user.ItemId,
                         Kind = BatchSideEffectKinds.Created,
-                        OrganizationId = first.OrganizationId,
-                        SendEmail = sendEmail
+                        OrganizationId = first.OrganizationId
                     }
                 ]
             };
         }
 
         private static BatchItemPlan PlanUpdate(
-            BatchJobItem item, User existing, List<PlannedMembership> memberships, List<string> changedFields, bool sendEmail, string? actor)
+            BatchJobItem item, User existing, List<PlannedMembership> memberships, List<string> changedFields, string? actor)
         {
             var updates = new List<UpdateDefinition<User>>();
             var builder = Builders<User>.Update;
-            var sideEffects = new List<BatchPendingSideEffect>();
             var adding = memberships.Where(m => m.Adds).ToList();
+
+            // The organization of an existing user's mail: the first one, in request order, this job adds them to.
+            var firstAdded = adding.FirstOrDefault(m => !m.IsMember)?.OrganizationId;
 
             // An old document may hold null instead of a list or map, which $addToSet and dotted paths cannot
             // extend: such a user gets the merged membership fields written whole.
@@ -501,17 +508,6 @@ namespace Iam.DomainService.Batch
                 if (existing.OrganizationIds is not null && existing.Roles is not null && existing.Permissions is not null)
                 {
                     updates.AddRange(MembershipUpdates(existing, membership));
-                }
-
-                if (!membership.IsMember && sendEmail)
-                {
-                    sideEffects.Add(new BatchPendingSideEffect
-                    {
-                        UserId = existing.ItemId,
-                        Kind = BatchSideEffectKinds.MemberAdded,
-                        OrganizationId = membership.OrganizationId,
-                        SendEmail = true
-                    });
                 }
             }
 
@@ -530,7 +526,7 @@ namespace Iam.DomainService.Batch
                 Outcome = BatchItemOutcome.Updated,
                 User = existing,
                 Update = builder.Combine(updates),
-                SideEffects = sideEffects
+                MailOrganizationId = firstAdded
             };
         }
 

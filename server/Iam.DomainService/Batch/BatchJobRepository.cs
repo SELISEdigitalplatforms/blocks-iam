@@ -10,13 +10,18 @@ namespace Iam.DomainService.Batch
     /// <param name="Conflict">True when another job of the resource is running (the unique index refused).</param>
     public sealed record BatchJobStart(BatchJob? Job, bool Conflict);
 
-    /// <summary>The final state written in one update when a job finishes.</summary>
+    /// <summary>
+    /// The final state written in one update when a job finishes. With <paramref name="Mail"/>, the mail phase and
+    /// its plan are written in the same update, so a job never ends without the mails it owes.
+    /// </summary>
     public sealed record BatchJobFinish(
         string Status,
         BatchJobSummary Summary,
         List<BatchItemFailure> Failures,
         string? Error,
-        DateTime CompletedAt);
+        DateTime CompletedAt,
+        BatchJobMail? Mail = null,
+        List<BatchMailEntry>? MailPlan = null);
 
     public interface IBatchJobRepository
     {
@@ -50,6 +55,18 @@ namespace Iam.DomainService.Batch
         Task<bool> FinishAsync(string jobId, string tenantId, BatchJobFinish finish, IReadOnlyCollection<string> fromStatuses, int? attempt = null);
 
         Task<BatchJob?> GetOldestQueuedAsync(string resource, string tenantId);
+
+        /// <summary>
+        /// Atomically sets the mail phase <c>Running</c> when it is <c>Queued</c>, or <c>Running</c> and started
+        /// before <paramref name="staleBefore"/> (a worker that died). Counts the attempt. Null when not startable.
+        /// </summary>
+        Task<BatchJob?> TryStartMailAsync(string jobId, string tenantId, DateTime now, DateTime staleBefore);
+
+        /// <summary>
+        /// Writes the final mail phase and removes the mail plan, only when the mail phase is in one of
+        /// <paramref name="fromStatuses"/> (and, when given, still <paramref name="attempt"/>). True when it moved.
+        /// </summary>
+        Task<bool> FinishMailAsync(string jobId, string tenantId, BatchJobMail mail, IReadOnlyCollection<string> fromStatuses, int? attempt = null);
     }
 
     /// <summary>
@@ -224,6 +241,14 @@ namespace Iam.DomainService.Batch
                 .Set(x => x.LastUpdatedDate, finish.CompletedAt)
                 .Set(x => x.PendingSideEffects, new List<BatchPendingSideEffect>())
                 .Unset(x => x.Items);
+            if (finish.Mail is not null)
+            {
+                update = update.Set(x => x.Mail, finish.Mail);
+                update = finish.MailPlan is { Count: > 0 }
+                    ? update.Set(x => x.MailPlan, finish.MailPlan)
+                    : update.Unset(x => x.MailPlan);
+            }
+
             var result = await _dataAccess.UpdateOneAsync(
                 Collection(tenantId), IamSchemas.BatchJob, ByAttempt(jobId, attempt) & Filter.In(x => x.Status, fromStatuses),
                 update, "BatchJobRepository.FinishAsync");
@@ -240,6 +265,45 @@ namespace Iam.DomainService.Batch
             }
 
             return await Collection(tenantId).Find(scope.Filter).SortBy(x => x.CreatedDate).Limit(1).FirstOrDefaultAsync();
+        }
+
+        public Task<BatchJob?> TryStartMailAsync(string jobId, string tenantId, DateTime now, DateTime staleBefore)
+        {
+            var startable = Filter.Eq(x => x.Mail!.Status, BatchJobStatus.Queued)
+                | (Filter.Eq(x => x.Mail!.Status, BatchJobStatus.Running) & Filter.Lt(x => x.Mail!.StartedAt, staleBefore));
+            var update = Builders<BatchJob>.Update
+                .Set(x => x.Mail!.Status, BatchJobStatus.Running)
+                .Set(x => x.Mail!.StartedAt, now)
+                .Set(x => x.LastUpdatedDate, now)
+                .Inc(x => x.Mail!.Attempt, 1);
+            return _dataAccess.FindOneAndUpdateAsync(
+                Collection(tenantId), IamSchemas.BatchJob, ById(jobId) & startable, update,
+                "BatchJobRepository.TryStartMailAsync",
+                new FindOneAndUpdateOptions<BatchJob> { ReturnDocument = ReturnDocument.After });
+        }
+
+        public Task<bool> FinishMailAsync(string jobId, string tenantId, BatchJobMail mail, IReadOnlyCollection<string> fromStatuses, int? attempt = null)
+        {
+            ArgumentNullException.ThrowIfNull(mail);
+            return FinishMailCoreAsync(jobId, tenantId, mail, fromStatuses, attempt);
+        }
+
+        private async Task<bool> FinishMailCoreAsync(string jobId, string tenantId, BatchJobMail mail, IReadOnlyCollection<string> fromStatuses, int? attempt)
+        {
+            var filter = ById(jobId) & Filter.In(x => x.Mail!.Status, fromStatuses);
+            if (attempt is not null)
+            {
+                filter &= Filter.Eq(x => x.Mail!.Attempt, attempt.Value);
+            }
+
+            mail.Results = mail.Results.OrderBy(r => r.Index).ToList();
+            var update = Builders<BatchJob>.Update
+                .Set(x => x.Mail, mail)
+                .Set(x => x.LastUpdatedDate, mail.CompletedAt ?? DateTime.UtcNow)
+                .Unset(x => x.MailPlan);
+            var result = await _dataAccess.UpdateOneAsync(
+                Collection(tenantId), IamSchemas.BatchJob, filter, update, "BatchJobRepository.FinishMailAsync");
+            return result is { ModifiedCount: 1 };
         }
 
         private static bool IsDuplicateKey(MongoException ex) =>
