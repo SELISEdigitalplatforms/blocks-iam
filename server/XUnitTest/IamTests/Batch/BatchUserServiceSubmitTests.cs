@@ -26,11 +26,11 @@ namespace XUnitTest.IamTests.Batch
             GC.SuppressFinalize(this);
         }
 
-        private static BatchUserItem Item(string reference, string email) => new()
+        private static BatchUserItem Item(string? reference, string email) => new()
         {
             Ref = reference,
-            Operation = "upsert",
-            Data = new BatchUserData { Email = email, Memberships = [new BatchMembership { OrganizationId = BatchHarness.OrgA }] }
+            Email = email,
+            Memberships = [new BatchMembership { OrganizationId = BatchHarness.OrgA }]
         };
 
         [Fact]
@@ -39,8 +39,7 @@ namespace XUnitTest.IamTests.Batch
             var request = new BatchUsersRequest
             {
                 ClientReference = "migration-007",
-                Options = new BatchRequestOptions { SendEmail = true },
-                Items = [Item("u1", "A@Example.com"), Item("u2", "bad")]
+                Items = [Item("u1", "A@Example.com"), Item(null, "bad")]
             };
 
             var response = await _h.Service().SubmitAsync(request);
@@ -57,9 +56,10 @@ namespace XUnitTest.IamTests.Batch
             job.TenantId.Should().Be(BatchHarness.Tenant);
             job.Resource.Should().Be(BatchResources.Users);
             job.ClientReference.Should().Be("migration-007");
-            job.Options.SendEmail.Should().BeTrue();
             job.Items.Should().ContainSingle().Which.Data.Email.Should().Be("a@example.com");
+            job.Items![0].Ref.Should().Be("u1");
             job.Failures.Should().ContainSingle().Which.Index.Should().Be(1);
+            job.Failures[0].Ref.Should().BeNull();
             job.Summary.Failed.Should().Be(1);
             job.RequestedBy.Should().Be(BatchHarness.Caller);
             job.RequestedByOrganizationId.Should().Be("default");
@@ -150,11 +150,11 @@ namespace XUnitTest.IamTests.Batch
         [Fact]
         public async Task UnsupportedFields_AreIgnoredAndOnlyTheirNamesLogged()
         {
-            var data = JsonSerializer.Deserialize<BatchUserData>(
-                """{"email":"a@example.com","password":"Sup3rSecret!","active":true,"memberships":[{"organizationId":"org-a"}]}""",
+            var item = JsonSerializer.Deserialize<BatchUserItem>(
+                """{"ref":"u1","email":"a@example.com","password":"Sup3rSecret!","active":true,"memberships":[{"organizationId":"org-a"}]}""",
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
 
-            await _h.Service().SubmitAsync(new BatchUsersRequest { Items = [new BatchUserItem { Ref = "u1", Operation = "upsert", Data = data }] });
+            await _h.Service().SubmitAsync(new BatchUsersRequest { Items = [item] });
 
             _h.Logger.Messages.Should().Contain(m => m.Contains("Batch item 0 carried 2 unsupported field(s)", StringComparison.Ordinal));
             string.Join("\n", _h.Logger.Messages).Should().NotContain("Sup3rSecret!").And.NotContain("a@example.com").And.NotContain("password");

@@ -67,14 +67,12 @@ namespace Iam.DomainService.Users
         Task ApplyBulkRoleChangeAsync(BulkUserRoleChangeEvent command);
 
         /// <summary>
-        /// The side effects users/create sends for a new account, for an account the batch upsert
-        /// inserted: the create <see cref="UserMutationEvent"/> (activation mail when
-        /// <paramref name="sendMail"/>) and the user created action.
+        /// The user created action users/create publishes for a new account, for an account the batch upsert
+        /// inserted, with the roles and permissions of <paramref name="organizationId"/>. The batch writes the
+        /// account's timeline entry itself, in bulk, and sends no create <see cref="UserMutationEvent"/>: its only
+        /// effect without the activation mail is that entry, and batch mails go through the job's mail phase.
         /// </summary>
-        Task PublishBatchUserCreatedAsync(User user, string organizationId, bool sendMail, string? invitedBy);
-
-        /// <summary>The "added to organization" mail users/create sends for an existing account. Best effort.</summary>
-        Task NotifyOrganizationMemberAddedAsync(User user, string organizationId);
+        Task PublishBatchUserCreatedActionAsync(User user, string organizationId);
         Task<TenantConfiguration> GetTenantConfigurationAsync();
     }
 }

@@ -50,6 +50,8 @@ namespace Iam.DomainService.Utilities
             services.AddSingleton<IBatchJobRepository, BatchJobRepository>();
             services.AddSingleton<BatchUserStores>();
             services.AddSingleton<IBatchUserService, BatchUserService>();
+            services.AddSingleton<IBatchMailTemplateRepository, BatchMailTemplateRepository>();
+            services.AddSingleton<IBatchMailService, BatchMailService>();
             services.AddAccessGrant();
             services.AddHttpContextAccessor();
 

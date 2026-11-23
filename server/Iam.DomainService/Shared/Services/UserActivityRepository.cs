@@ -25,6 +25,32 @@ namespace Iam.DomainService.Services
             _logger = logger;
         }
 
+        public async Task InsertManyAsync(IReadOnlyCollection<UserActivity> activities, CancellationToken ct)
+        {
+            ArgumentNullException.ThrowIfNull(activities);
+            if (activities.Count == 0)
+            {
+                return;
+            }
+
+            const string callSite = "UserActivityRepository.InsertManyAsync";
+            var collection = GetCollection<UserActivity>();
+            await _dataAccess.EnsureInsertAllowedAsync(IamSchemas.UserActivity, callSite);
+            foreach (var activity in activities)
+            {
+                await _dataAccess.PrepareWriteAsync(IamSchemas.UserActivity, activity, isInsert: true, callSite);
+            }
+
+            try
+            {
+                await collection.InsertManyAsync(activities, new InsertManyOptions { IsOrdered = false }, ct);
+            }
+            catch (MongoBulkWriteException ex) when (ex.WriteErrors.All(e => e.Category == ServerErrorCategory.DuplicateKey))
+            {
+                _logger.LogDebug("{Count} duplicate UserActivity entries skipped (idempotent).", ex.WriteErrors.Count);
+            }
+        }
+
         public async Task InsertAsync(UserActivity activity, CancellationToken ct)
         {
             var collection = GetCollection<UserActivity>();

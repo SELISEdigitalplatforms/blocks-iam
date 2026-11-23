@@ -19,7 +19,7 @@ namespace Iam.DomainService.Batch
     public static class BatchRequestValidator
     {
         /// <summary>The field of an item's email in failures.</summary>
-        public const string EmailField = "data.email";
+        public const string EmailField = "email";
 
         public static BatchValidation Validate(BatchUsersRequest? request)
         {
@@ -40,9 +40,9 @@ namespace Iam.DomainService.Batch
                 {
                     rejected.Add(new BatchItemFailure
                     {
-                        Ref = item?.Ref ?? string.Empty,
+                        Ref = RefOrNull(item?.Ref),
                         Index = index,
-                        Email = NormalizedEmailOrNull(item?.Data?.Email),
+                        Email = NormalizedEmailOrNull(item?.Email),
                         Errors = errors
                     });
                     continue;
@@ -51,9 +51,8 @@ namespace Iam.DomainService.Batch
                 accepted.Add(new BatchJobItem
                 {
                     Index = index,
-                    Ref = item!.Ref!,
-                    Operation = BatchLimits.UpsertOperation,
-                    Data = Normalized(item.Data!)
+                    Ref = RefOrNull(item!.Ref),
+                    Data = Normalized(item)
                 });
             }
 
@@ -87,7 +86,7 @@ namespace Iam.DomainService.Batch
             }
 
             var duplicateEmail = items
-                .Select((item, index) => (Email: UserIdentityRules.NormalizeEmail(item?.Data?.Email), Index: index))
+                .Select((item, index) => (Email: UserIdentityRules.NormalizeEmail(item?.Email), Index: index))
                 .Where(e => e.Email.Length > 0)
                 .GroupBy(e => e.Email, StringComparer.Ordinal)
                 .FirstOrDefault(g => g.Count() > 1);
@@ -111,45 +110,63 @@ namespace Iam.DomainService.Batch
         {
             var errors = new List<BatchItemError>();
 
-            if (string.IsNullOrWhiteSpace(item?.Ref))
-            {
-                errors.Add(BatchErrorCodes.Error("ref", BatchErrorCodes.RefRequired));
-            }
-            else if (item.Ref.Length > BatchLimits.MaxRefLength)
+            if (item?.Ref is { Length: > BatchLimits.MaxRefLength })
             {
                 errors.Add(BatchErrorCodes.Error("ref", BatchErrorCodes.RefTooLong));
             }
 
-            if (!string.Equals(item?.Operation, BatchLimits.UpsertOperation, StringComparison.OrdinalIgnoreCase))
-            {
-                errors.Add(BatchErrorCodes.Error("operation", BatchErrorCodes.OperationNotSupported));
-            }
-
-            var data = item?.Data;
-            AddEmailError(errors, data?.Email);
-            if (data is null)
+            AddEmailError(errors, item?.Email);
+            if (item is null)
             {
                 return errors;
             }
 
-            if (data.FirstName is { Length: > BatchLimits.MaxNameLength })
+            if (item.FirstName is { Length: > BatchLimits.MaxNameLength })
             {
-                errors.Add(BatchErrorCodes.Error("data.firstName", BatchErrorCodes.FirstNameTooLong));
+                errors.Add(BatchErrorCodes.Error("firstName", BatchErrorCodes.FirstNameTooLong));
             }
 
-            if (data.LastName is { Length: > BatchLimits.MaxNameLength })
+            if (item.LastName is { Length: > BatchLimits.MaxNameLength })
             {
-                errors.Add(BatchErrorCodes.Error("data.lastName", BatchErrorCodes.LastNameTooLong));
+                errors.Add(BatchErrorCodes.Error("lastName", BatchErrorCodes.LastNameTooLong));
             }
 
-            if (!string.IsNullOrWhiteSpace(data.PhoneNumber)
-                && (!data.PhoneNumber.StartsWith('+') || data.PhoneNumber.Length > BatchLimits.MaxPhoneLength))
+            if (!string.IsNullOrWhiteSpace(item.PhoneNumber)
+                && (!item.PhoneNumber.StartsWith('+') || item.PhoneNumber.Length > BatchLimits.MaxPhoneLength))
             {
-                errors.Add(BatchErrorCodes.Error("data.phoneNumber", BatchErrorCodes.PhoneInvalid));
+                errors.Add(BatchErrorCodes.Error("phoneNumber", BatchErrorCodes.PhoneInvalid));
             }
 
-            AddMembershipErrors(errors, data.Memberships);
+            AddMembershipErrors(errors, item.Memberships);
+            AddMailErrors(errors, item.Mail);
             return errors;
+        }
+
+        /// <summary>
+        /// Only lengths: whether the template exists, and whether the user is new, is decided by the mail phase,
+        /// which skips the mail and never fails the user for it.
+        /// </summary>
+        private static void AddMailErrors(List<BatchItemError> errors, BatchItemMail? mail)
+        {
+            if (mail is null)
+            {
+                return;
+            }
+
+            if (mail.Template is { Length: > BatchLimits.MaxMailTemplateLength })
+            {
+                errors.Add(BatchErrorCodes.Error("mail.template", BatchErrorCodes.MailTemplateTooLong));
+            }
+
+            if (mail.ExistingUserTemplate is { Length: > BatchLimits.MaxMailTemplateLength })
+            {
+                errors.Add(BatchErrorCodes.Error("mail.existingUserTemplate", BatchErrorCodes.MailTemplateTooLong));
+            }
+
+            if (mail.Language is { Length: > BatchLimits.MaxMailLanguageLength })
+            {
+                errors.Add(BatchErrorCodes.Error("mail.language", BatchErrorCodes.MailLanguageTooLong));
+            }
         }
 
         private static void AddEmailError(List<BatchItemError> errors, string? email)
@@ -178,7 +195,7 @@ namespace Iam.DomainService.Batch
 
             if (memberships.Count > BatchLimits.MaxMemberships)
             {
-                errors.Add(BatchErrorCodes.Error("data.memberships", BatchErrorCodes.MembershipsLimitExceeded));
+                errors.Add(BatchErrorCodes.Error("memberships", BatchErrorCodes.MembershipsLimitExceeded));
                 return;
             }
 
@@ -188,37 +205,49 @@ namespace Iam.DomainService.Batch
                 var membership = memberships[i];
                 if (!seen.Add(membership?.OrganizationId ?? string.Empty))
                 {
-                    errors.Add(BatchErrorCodes.Error($"data.memberships[{i}].organizationId", BatchErrorCodes.OrganizationDuplicate));
+                    errors.Add(BatchErrorCodes.Error($"memberships[{i}].organizationId", BatchErrorCodes.OrganizationDuplicate));
                 }
 
                 if (membership?.Permissions is { Count: > UserIdentityRules.MaxPermissionsPerUser })
                 {
-                    errors.Add(BatchErrorCodes.Error($"data.memberships[{i}].permissions", BatchErrorCodes.TooManyPermissions));
+                    errors.Add(BatchErrorCodes.Error($"memberships[{i}].permissions", BatchErrorCodes.TooManyPermissions));
                 }
             }
         }
 
         /// <summary>The item as the job stores it: normalised email, attributes as plain values, no unbound fields.</summary>
-        private static BatchUserData Normalized(BatchUserData data) => new()
+        private static BatchUserData Normalized(BatchUserItem item) => new()
         {
-            Email = UserIdentityRules.NormalizeEmail(data.Email),
-            Salutation = data.Salutation,
-            FirstName = data.FirstName,
-            LastName = data.LastName,
-            PhoneNumber = data.PhoneNumber,
-            Language = data.Language,
-            SendEmail = data.SendEmail,
-            Attributes = data.Attributes is null ? null : AttributeNormalizer.Normalize(data.Attributes, AttributePolicy.Internal),
+            Email = UserIdentityRules.NormalizeEmail(item.Email),
+            Salutation = item.Salutation,
+            FirstName = item.FirstName,
+            LastName = item.LastName,
+            PhoneNumber = item.PhoneNumber,
+            Language = item.Language,
+            Attributes = item.Attributes is null ? null : AttributeNormalizer.Normalize(item.Attributes, AttributePolicy.Internal),
             // A null entry stays in place as an empty membership, so indexes in error fields keep matching the request.
-            Memberships = data.Memberships?
+            Memberships = item.Memberships?
                 .Select(m => new BatchMembership
                 {
                     OrganizationId = m?.OrganizationId,
                     Roles = m?.Roles?.Where(r => !string.IsNullOrWhiteSpace(r)).ToList(),
                     Permissions = m?.Permissions?.Where(p => !string.IsNullOrWhiteSpace(p)).ToList()
                 })
-                .ToList()
+                .ToList(),
+            Mail = item.Mail is { Send: true } mail
+                ? new BatchItemMail
+                {
+                    Send = true,
+                    Template = BlankToNull(mail.Template),
+                    ExistingUserTemplate = BlankToNull(mail.ExistingUserTemplate),
+                    Language = BlankToNull(mail.Language)
+                }
+                : null
         };
+
+        private static string? BlankToNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        private static string? RefOrNull(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
         private static string? NormalizedEmailOrNull(string? email)
         {

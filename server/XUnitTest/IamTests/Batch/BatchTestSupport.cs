@@ -83,8 +83,16 @@ namespace XUnitTest.IamTests.Batch
         /// <summary>Thrown by the next <see cref="SetPendingSideEffectsAsync"/> call that clears the list, once.</summary>
         public Exception? FailNextClear { get; set; }
 
+        /// <summary>When set, every heartbeat throws it (a database blip after the write).</summary>
+        public Exception? FailHeartbeats { get; set; }
+
         public Task HeartbeatAsync(string jobId, string tenantId, DateTime now, int? attempt = null)
         {
+            if (FailHeartbeats is { } failure)
+            {
+                throw failure;
+            }
+
             if (attempt is null || Jobs[jobId].Attempt == attempt)
             {
                 Heartbeats++;
@@ -126,6 +134,43 @@ namespace XUnitTest.IamTests.Batch
             job.CompletedAt = finish.CompletedAt;
             job.Items = null;
             job.PendingSideEffects = [];
+            if (finish.Mail is not null)
+            {
+                job.Mail = finish.Mail;
+                job.MailPlan = finish.MailPlan is { Count: > 0 } ? finish.MailPlan.ToList() : null;
+            }
+
+            return Task.FromResult(true);
+        }
+
+        public Task<BatchJob?> TryStartMailAsync(string jobId, string tenantId, DateTime now, DateTime staleBefore)
+        {
+            var job = Jobs.GetValueOrDefault(jobId);
+            var mail = job?.Mail;
+            var startable = mail is not null
+                && (mail.Status == BatchJobStatus.Queued || (mail.Status == BatchJobStatus.Running && mail.StartedAt < staleBefore));
+            if (!startable)
+            {
+                return Task.FromResult<BatchJob?>(null);
+            }
+
+            mail!.Status = BatchJobStatus.Running;
+            mail.StartedAt = now;
+            mail.Attempt++;
+            return Task.FromResult(job);
+        }
+
+        public Task<bool> FinishMailAsync(string jobId, string tenantId, BatchJobMail mail, IReadOnlyCollection<string> fromStatuses, int? attempt = null)
+        {
+            var job = Jobs[jobId];
+            if (job.Mail is null || !fromStatuses.Contains(job.Mail.Status) || (attempt is not null && job.Mail.Attempt != attempt))
+            {
+                return Task.FromResult(false);
+            }
+
+            mail.Results = mail.Results.OrderBy(r => r.Index).ToList();
+            job.Mail = mail;
+            job.MailPlan = null;
             return Task.FromResult(true);
         }
 
@@ -165,6 +210,8 @@ namespace XUnitTest.IamTests.Batch
         public Mock<IUserRepository> Users { get; } = new();
         public Mock<IResourceRepository> Resources { get; } = new();
         public Mock<IUserManagementMutationService> Mutations { get; } = new();
+        public Mock<IUserActivityRepository> Activities { get; } = new();
+        public List<UserActivity> WrittenActivities { get; } = [];
         public Mock<IMessageClient> Messages { get; } = new();
         public Mock<IBuiltInNotificationSender> Notifications { get; } = new();
         public CapturingLogger<BatchUserService> Logger { get; } = new();
@@ -178,6 +225,7 @@ namespace XUnitTest.IamTests.Batch
         public UserBulkWriteResult WriteResult { get; set; } = new(new HashSet<string>(), new HashSet<string>());
         public List<BuiltInNotification> SentNotifications { get; } = [];
         public List<ConsumerMessage<BatchJobQueuedEvent>> Published { get; } = [];
+        public List<ConsumerMessage<BatchMailQueuedEvent>> PublishedMail { get; } = [];
 
         public BatchHarness()
         {
@@ -207,6 +255,12 @@ namespace XUnitTest.IamTests.Batch
                 .ReturnsAsync(true);
             Messages.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<BatchJobQueuedEvent>>()))
                 .Callback<ConsumerMessage<BatchJobQueuedEvent>>(Published.Add)
+                .Returns(Task.CompletedTask);
+            Messages.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<BatchMailQueuedEvent>>()))
+                .Callback<ConsumerMessage<BatchMailQueuedEvent>>(PublishedMail.Add)
+                .Returns(Task.CompletedTask);
+            Activities.Setup(a => a.InsertManyAsync(It.IsAny<IReadOnlyCollection<UserActivity>>(), It.IsAny<CancellationToken>()))
+                .Callback<IReadOnlyCollection<UserActivity>, CancellationToken>((activities, _) => WrittenActivities.AddRange(activities))
                 .Returns(Task.CompletedTask);
 
             WithOrganization(OrgA).WithOrganization(OrgB);
@@ -243,7 +297,7 @@ namespace XUnitTest.IamTests.Batch
         public int Delays { get; private set; }
 
         public BatchUserService Service() =>
-            new(Jobs, new BatchUserStores(Users.Object, Resources.Object), Kit.Service(), Mutations.Object, Messages.Object, Logger, Notifications.Object)
+            new(Jobs, new BatchUserStores(Users.Object, Resources.Object, Activities.Object), Kit.Service(), Mutations.Object, Messages.Object, Logger, Notifications.Object)
             {
                 UtcNow = () => Now,
                 Delay = interval =>
@@ -296,7 +350,6 @@ namespace XUnitTest.IamTests.Batch
         {
             Index = index,
             Ref = $"ref-{index}",
-            Operation = "upsert",
             Data = new BatchUserData { Email = email, Memberships = memberships.ToList() }
         };
 

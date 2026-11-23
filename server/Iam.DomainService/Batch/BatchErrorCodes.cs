@@ -11,9 +11,7 @@ namespace Iam.DomainService.Batch
         public const string ClientReferenceTooLong = "client_reference_too_long";
 
         // Item level, API stage.
-        public const string RefRequired = "ref_required";
         public const string RefTooLong = "ref_too_long";
-        public const string OperationNotSupported = "operation_not_supported";
         public const string EmailRequired = "email_required";
         public const string EmailInvalid = "email_invalid";
         public const string EmailTooLong = "email_too_long";
@@ -23,6 +21,8 @@ namespace Iam.DomainService.Batch
         public const string MembershipsLimitExceeded = "memberships_limit_exceeded";
         public const string OrganizationDuplicate = "organization_duplicate";
         public const string TooManyPermissions = "too_many_permissions";
+        public const string MailTemplateTooLong = "mail_template_too_long";
+        public const string MailLanguageTooLong = "mail_language_too_long";
 
         // Item level, worker stage.
         public const string OrganizationRequired = "organization_required";
@@ -42,11 +42,17 @@ namespace Iam.DomainService.Batch
         public const string TenantMismatch = "tenant_mismatch";
         public const string ProcessingFailed = "processing_failed";
 
+        // Mail phase, per mail (BatchMailResult.Code).
+        public const string UserExists = "user_exists";
+        public const string NoNewMembership = "no_new_membership";
+        public const string TemplateRequired = "template_required";
+        public const string TemplateNotFound = "template_not_found";
+        public const string QueueError = "queue_error";
+        public const string ImportFailed = "import_failed";
+
         private static readonly Dictionary<string, string> Messages = new(StringComparer.Ordinal)
         {
-            [RefRequired] = "Ref is required",
             [RefTooLong] = $"Ref can have at most {BatchLimits.MaxRefLength} characters",
-            [OperationNotSupported] = "Only the upsert operation is supported",
             [EmailRequired] = "Email is required",
             [EmailInvalid] = "Email is invalid",
             [EmailTooLong] = $"Email can have at most {BatchLimits.MaxEmailLength} characters",
@@ -56,6 +62,8 @@ namespace Iam.DomainService.Batch
             [MembershipsLimitExceeded] = $"A user can have at most {BatchLimits.MaxMemberships} memberships",
             [OrganizationDuplicate] = "The organization is listed more than once",
             [TooManyPermissions] = $"A maximum of {Users.UserIdentityRules.MaxPermissionsPerUser} permissions can be held in one organization",
+            [MailTemplateTooLong] = $"A mail template name can have at most {BatchLimits.MaxMailTemplateLength} characters",
+            [MailLanguageTooLong] = $"A mail language can have at most {BatchLimits.MaxMailLanguageLength} characters",
             [OrganizationRequired] = "Organization is required when multi organization is enabled",
             [OrganizationNotSupported] = "Only the default organization can be used when multi organization is disabled",
             [OrganizationNotFound] = "Organization does not exist",
@@ -66,7 +74,13 @@ namespace Iam.DomainService.Batch
             [UpdateUserProfilesRequired] = "Changing a user's profile requires the update-user-profiles permission",
             [GrantNotAllowed] = "You are not allowed to grant this access",
             [EmailConflict] = "The user could not be saved because another record already has the same key",
-            [WriteFailed] = "The user could not be saved"
+            [WriteFailed] = "The user could not be saved",
+            [UserExists] = "The user already existed and no existing-user template was given",
+            [NoNewMembership] = "The existing user was not added to a new organization",
+            [TemplateRequired] = "A mail was requested without a template",
+            [TemplateNotFound] = "The template does not exist for the organization or the default organization in this language",
+            [QueueError] = "The mail could not be queued",
+            [ImportFailed] = "The user was not imported"
         };
 
         /// <summary>The English message of an item error code.</summary>
@@ -86,6 +100,10 @@ namespace Iam.DomainService.Batch
         public const int MaxClientReferenceLength = 200;
         public const int MaxNameLength = 150;
         public const int MaxPhoneLength = 20;
-        public const string UpsertOperation = "upsert";
+        public const int MaxMailTemplateLength = 200;
+        public const int MaxMailLanguageLength = 20;
+
+        /// <summary>The mail language when an item does not set one.</summary>
+        public const string DefaultMailLanguage = "en-US";
     }
 }
