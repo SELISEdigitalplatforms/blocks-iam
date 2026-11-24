@@ -25,6 +25,7 @@ import OidcErrorPage from "./routes/oidc/error";
 import OidcIndexPage from "./routes/oidc/index";
 import OidcLoginPage from "./routes/oidc/login";
 import OidcPermissionPage from "./routes/oidc/permission";
+import { OidcRouteErrorScreen } from "@blocks-idp/authentication/pages/oidc/oidc-route-error-screen";
 
 // Device flow routes (RFC 8628)
 import DeviceEntryRoute from "./routes/device";
@@ -53,6 +54,8 @@ export const router = createBrowserRouter([
       {
         path: "/oidc",
         element: <OidcLayout />,
+        // A render error on any OIDC page shows a recovery screen instead of a blank page.
+        errorElement: <OidcRouteErrorScreen />,
         children: [
           { index: true, element: <OidcIndexPage /> },
           { path: "login", element: <OidcLoginPage /> },

@@ -70,13 +70,13 @@ const fillValidPasswords = (container: HTMLElement) => {
 
 describe("ActivationForm", () => {
   it("mounts one inline checker when hidden and gates submit on matching compliant passwords", async () => {
-    const setPanelIdleSlot = vi.fn();
-    h.animCtx = { animationPanelVisible: false, setPanelIdleSlot };
+    const setPanelPasswordState = vi.fn();
+    h.animCtx = { animationPanelVisible: false, setPanelPasswordState };
     const { container } = render(<ActivationForm code="activation-code" tenantId="tenant-1" />);
     const checker = screen.getByRole("heading", { name: "Password Strength" });
     expect(screen.getAllByRole("heading", { name: "Password Strength" })).toHaveLength(1);
     expect(checker.closest("form")).toBeInTheDocument();
-    expect(setPanelIdleSlot).not.toHaveBeenCalled();
+    expect(setPanelPasswordState).not.toHaveBeenCalled();
     const [password, confirm] = passwordInputs(container);
     fireEvent.change(password, { target: { value: "abc" } });
     fireEvent.change(confirm, { target: { value: "abc" } });
@@ -86,7 +86,7 @@ describe("ActivationForm", () => {
     expect(confirm.compareDocumentPosition(checker) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.change(confirm, { target: { value: "Different1!" } });
     await vi.waitFor(() => expect(screen.getByRole("button", { name: /activate/i })).toBeDisabled());
-    expect(setPanelIdleSlot).not.toHaveBeenCalled();
+    expect(setPanelPasswordState).not.toHaveBeenCalled();
   });
 
   it("shows a rejected activation inline when the panel is hidden", async () => {
@@ -101,12 +101,12 @@ describe("ActivationForm", () => {
   });
 
   it("automatically activates without a checker or requirement gate when no password is collected", async () => {
-    const setPanelIdleSlot = vi.fn();
-    h.animCtx = { animationPanelVisible: false, setPanelIdleSlot, startAnimation: vi.fn(), succeedAnimation: vi.fn() };
+    const setPanelPasswordState = vi.fn();
+    h.animCtx = { animationPanelVisible: false, setPanelPasswordState, startAnimation: vi.fn(), succeedAnimation: vi.fn() };
     render(<ActivationForm code="activation-code" collectPassword={false} />);
     await vi.waitFor(() => expect(h.mutateAsync).toHaveBeenCalledOnce());
     expect(screen.queryByRole("heading", { name: "Password Strength" })).not.toBeInTheDocument();
-    expect(setPanelIdleSlot).not.toHaveBeenCalled();
+    expect(setPanelPasswordState).not.toHaveBeenCalled();
   });
   it("renders the name and password fields and a disabled activate button", () => {
     const { container } = render(<ActivationForm code="activation-code" tenantId="tenant-1" />);
@@ -121,18 +121,18 @@ describe("ActivationForm", () => {
 
   it("passes the same compiled tenant policy to the activation checker", () => {
     h.passwordPolicy = { test: () => true, message: "Tenant rule" };
-    const setPanelIdleSlot = vi.fn();
-    h.animCtx = { setPanelIdleSlot };
+    const setPanelPasswordState = vi.fn();
+    h.animCtx = { setPanelPasswordState };
     render(<ActivationForm code="activation-code" tenantId="tenant-1" />);
-    const checker = setPanelIdleSlot.mock.calls.find(([value]) => value)?.[0];
-    expect(checker.props.policy).toBe(h.passwordPolicy);
+    const state = setPanelPasswordState.mock.calls.find(([value]) => value)?.[0];
+    expect(state.policy).toBe(h.passwordPolicy);
   });
 
   it("keeps activation disabled while policy configuration is loading", async () => {
     h.configLoading = true;
     h.requirementsPass = true;
     h.animCtx = {
-      setPanelIdleSlot: vi.fn((checker) => checker?.props.onRequirementsMet(true)),
+      setPanelPasswordState: vi.fn((state) => state?.onRequirementsMet(true)),
     };
     const { container } = render(<ActivationForm code="activation-code" tenantId="tenant-1" />);
     fillValidPasswords(container);
@@ -354,7 +354,7 @@ describe("ActivationForm", () => {
       succeedAnimation: vi.fn(),
       failAnimation,
       resetAnimation: vi.fn(),
-      setPanelIdleSlot: vi.fn(),
+      setPanelPasswordState: vi.fn(),
     };
     h.mutateAsync.mockResolvedValue({ isSuccess: false, errors: { password: "Bad code" } });
     const { container } = render(<ActivationForm code="activation-code" />);

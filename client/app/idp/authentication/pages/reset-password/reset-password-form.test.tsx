@@ -62,13 +62,13 @@ beforeEach(() => {
 
 describe("ResetPasswordForm", () => {
   it("mounts exactly one inline checker when hidden and gates submit on matching compliant passwords", async () => {
-    const setPanelIdleSlot = vi.fn();
-    h.animCtx = { animationPanelVisible: false, setPanelIdleSlot };
+    const setPanelPasswordState = vi.fn();
+    h.animCtx = { animationPanelVisible: false, setPanelPasswordState };
     const { container } = renderForm();
     const checker = screen.getByRole("heading", { name: "Password Strength" });
     expect(screen.getAllByRole("heading", { name: "Password Strength" })).toHaveLength(1);
     expect(checker.closest("form")).toBeInTheDocument();
-    expect(setPanelIdleSlot).not.toHaveBeenCalled();
+    expect(setPanelPasswordState).not.toHaveBeenCalled();
     const [password, confirm] = passwordInputs(container);
     fireEvent.change(password, { target: { value: "abc" } });
     fireEvent.change(confirm, { target: { value: "abc" } });
@@ -78,7 +78,7 @@ describe("ResetPasswordForm", () => {
     expect(confirm.compareDocumentPosition(checker) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.change(confirm, { target: { value: "Different1!" } });
     await vi.waitFor(() => expect(screen.getByRole("button", { name: /set password/i })).toBeDisabled());
-    expect(setPanelIdleSlot).not.toHaveBeenCalled();
+    expect(setPanelPasswordState).not.toHaveBeenCalled();
   });
 
   it("keeps the hidden-panel form disabled while configuration loads", async () => {
@@ -114,11 +114,11 @@ describe("ResetPasswordForm", () => {
 
   it("passes the compiled tenant policy to the checker", () => {
     h.passwordPolicy = { test: () => true, message: "Tenant rule" };
-    const setPanelIdleSlot = vi.fn();
-    h.animCtx = { setPanelIdleSlot };
+    const setPanelPasswordState = vi.fn();
+    h.animCtx = { setPanelPasswordState };
     renderForm();
-    const checker = setPanelIdleSlot.mock.calls.find(([value]) => value)?.[0];
-    expect(checker.props.policy).toBe(h.passwordPolicy);
+    const state = setPanelPasswordState.mock.calls.find(([value]) => value)?.[0];
+    expect(state.policy).toBe(h.passwordPolicy);
   });
 
   // TEMPORARY: while the submit button is unconditionally enabled, config loading no longer
@@ -127,7 +127,7 @@ describe("ResetPasswordForm", () => {
     h.configLoading = true;
     h.requirementsPass = true;
     h.animCtx = {
-      setPanelIdleSlot: vi.fn((checker) => checker?.props.onRequirementsMet(true)),
+      setPanelPasswordState: vi.fn((state) => state?.onRequirementsMet(true)),
     };
     const { container } = renderForm();
     fillValidPasswords(container);
@@ -201,7 +201,7 @@ describe("ResetPasswordForm", () => {
       succeedAnimation: vi.fn(),
       failAnimation: vi.fn(),
       resetAnimation: vi.fn(),
-      setPanelIdleSlot: vi.fn(),
+      setPanelPasswordState: vi.fn(),
     };
     renderForm();
     expect(screen.getByText("Resetting...")).toBeInTheDocument();
@@ -217,7 +217,7 @@ describe("ResetPasswordForm", () => {
       succeedAnimation: vi.fn(),
       failAnimation: vi.fn(),
       resetAnimation,
-      setPanelIdleSlot: vi.fn(),
+      setPanelPasswordState: vi.fn(),
     };
     const { container } = renderForm();
     const [password] = passwordInputs(container);
@@ -225,18 +225,20 @@ describe("ResetPasswordForm", () => {
     expect(resetAnimation).toHaveBeenCalled();
   });
 
-  it("injects the password strength checker into the animation panel slot", () => {
-    const setPanelIdleSlot = vi.fn();
+  it("hands the password checker inputs to the animation panel as data", () => {
+    const setPanelPasswordState = vi.fn();
     h.animCtx = {
       phase: "idle",
       startAnimation: vi.fn(),
       succeedAnimation: vi.fn(),
       failAnimation: vi.fn(),
       resetAnimation: vi.fn(),
-      setPanelIdleSlot,
+      setPanelPasswordState,
     };
     renderForm();
-    expect(setPanelIdleSlot).toHaveBeenCalled();
+    expect(setPanelPasswordState).toHaveBeenCalledWith(
+      expect.objectContaining({ password: "", confirmPassword: "", onRequirementsMet: expect.any(Function) }),
+    );
   });
 
   const fillValidPasswords = (container: HTMLElement) => {
