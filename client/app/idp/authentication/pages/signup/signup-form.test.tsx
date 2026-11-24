@@ -182,6 +182,21 @@ describe("SignupForm", () => {
     await waitFor(() => expect(screen.getByText("Something went wrong")).toBeInTheDocument());
   });
 
+  it("shows the translated generic error, not the browser text, when the request never gets an answer", async () => {
+    h.mutateAsync.mockRejectedValue({
+      status: 500,
+      errors: { general: "Failed to fetch", message: "Failed to fetch" },
+    });
+    renderForm();
+    fillForm();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Create Account/ })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Create Account/ }));
+    await waitFor(() => expect(screen.getByText("Something went wrong")).toBeInTheDocument());
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+  });
+
   // ---------- Create-organization opt-in ----------
 
   describe("organization choice", () => {

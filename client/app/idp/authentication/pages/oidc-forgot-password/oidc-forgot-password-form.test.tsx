@@ -136,4 +136,19 @@ describe("OIDCForgotPasswordForm", () => {
     fireEvent.submit(screen.getByRole("button", { name: /Send Recovery Link/ }).closest("form")!);
     await waitFor(() => expect(screen.getByText("No account")).toBeInTheDocument());
   });
+
+  it("shows the translated generic error, not the browser text, when the request never gets an answer", async () => {
+    h.mutateAsync.mockRejectedValue({
+      status: 500,
+      errors: { general: "Failed to fetch", message: "Failed to fetch" },
+    });
+    renderForm();
+    fillEmail();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Send Recovery Link/ })).toBeEnabled(),
+    );
+    fireEvent.submit(screen.getByRole("button", { name: /Send Recovery Link/ }).closest("form")!);
+    await waitFor(() => expect(screen.getByText("Something went wrong")).toBeInTheDocument());
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+  });
 });

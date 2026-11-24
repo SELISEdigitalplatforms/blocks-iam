@@ -73,6 +73,20 @@ describe("OidcAccountSelector", () => {
     await waitFor(() => expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "no access" }));
   });
 
+  it("shows the fallback message, not the browser text, for a network error", async () => {
+    const networkError = Object.assign(new Error("{}"), {
+      status: 500,
+      errors: { general: "Failed to fetch", message: "Failed to fetch" },
+    });
+    const onAccountSelect = vi.fn().mockRejectedValue(networkError);
+    render(<OidcAccountSelector accounts={accounts} onAccountSelect={onAccountSelect} />);
+
+    fireEvent.click(screen.getByText("a@x.com"));
+    await waitFor(() =>
+      expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "Failed to select account" }),
+    );
+  });
+
   it("shows a fallback error message for a non-Error rejection", async () => {
     const onAccountSelect = vi.fn().mockRejectedValue("nope");
     render(<OidcAccountSelector accounts={accounts} onAccountSelect={onAccountSelect} />);

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { showErrorToast } from "@/hooks/use-toast";
+import { isNetworkError } from "@/lib/error";
 import { Loader } from "lucide-react";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { buildOidcThemeStyle, OidcBrand, OidcFooter, useOidcResolvedTheme } from "./oidc-auth-shell";
@@ -39,7 +40,7 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
     } catch (error) {
       setIsSubmitting(false);
       setSelectedAccount(null);
-      if (error instanceof Error) {
+      if (error instanceof Error && !isNetworkError(error)) {
         showErrorToast({ errors: error.message });
       } else {
         showErrorToast({ errors: t("OIDC_ACCOUNT_SELECTOR.SELECT_FAILED") });
