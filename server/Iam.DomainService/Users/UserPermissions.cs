@@ -25,6 +25,9 @@ namespace Iam.DomainService.Users
         /// <summary>users/activate: switch the whole account back on. Default organization callers only.</summary>
         public const string ActivateUsers = "blocks-iam::iam::activate-users";
 
+        /// <summary>iam/batch/users and iam/batch/jobs/{jobId}: submit an asynchronous batch user upsert and read its job.</summary>
+        public const string ImportUsers = "blocks-iam::iam::import-users";
+
         /// <summary>Every user-management permission above.</summary>
         public static readonly IReadOnlyList<string> All =
         [
@@ -33,7 +36,8 @@ namespace Iam.DomainService.Users
             ManageUserRoles,
             RevokeUserAccess,
             DeactivateUsers,
-            ActivateUsers
+            ActivateUsers,
+            ImportUsers
         ];
     }
 }

@@ -22,5 +22,6 @@ namespace Iam.DomainService.Notifications
         public const string AccountLocked = "iam-account-locked";
         public const string AccountUnlocked = "iam-account-unlocked";
         public const string InvitationMailFailed = "iam-invitation-mail-failed";
+        public const string BatchJobFinished = "iam-batch-job-finished";
     }
 }

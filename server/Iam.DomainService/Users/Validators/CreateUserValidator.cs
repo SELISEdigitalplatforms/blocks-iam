@@ -2,7 +2,6 @@
 using FluentValidation;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Resources;
-using System.Text.RegularExpressions;
 
 namespace Iam.DomainService.Users
 {
@@ -113,15 +112,7 @@ namespace Iam.DomainService.Users
             return !isExist;
         }
 
-        private static bool BeAValidEmail(string email)
-        {
-            string emailValidatorExpression =
-                @"\A(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\Z";
-
-            var emailValid = Regex.IsMatch(email, emailValidatorExpression, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(500));
-
-            return emailValid;
-        }
+        private static bool BeAValidEmail(string email) => UserIdentityRules.IsValidEmail(email);
 
         private static string ResolveOrganizationId(CreateUserRequest model)
         {

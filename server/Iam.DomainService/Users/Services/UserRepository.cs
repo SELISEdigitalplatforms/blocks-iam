@@ -336,6 +336,54 @@ namespace Iam.DomainService.Users
             return (await collection.FindAsync(filter)).FirstOrDefault()?.TenantId ?? string.Empty;
         }
 
+        public async Task<List<User>> GetUsersByEmailsAsync(IReadOnlyCollection<string> emails)
+        {
+            var normalized = emails.Select(NormalizeEmail).Where(e => e.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+            if (normalized.Count == 0) return [];
+
+            var collection = _identityAccessManagementRepository.GetCollection<User>();
+            var filter = Builders<User>.Filter.In(x => x.Email, normalized);
+            var scope = await _dataAccess.ReadAsync(IamSchemas.User, filter, "UserRepository.GetUsersByEmailsAsync", useProjection: false);
+
+            // Fails closed: an empty answer here would read as "no such accounts", and the batch would insert a
+            // second account for every email it could not see.
+            if (!scope.Granted) throw new UnauthorizedAccessException("Data access policy denied reading users by email (UserRepository.GetUsersByEmailsAsync).");
+
+            // The same collation as GetUserByEmailAsync, so the batch finds exactly the accounts users/create would.
+            var options = new FindOptions<User> { Collation = new Collation("en", strength: CollationStrength.Secondary) };
+            return await (await collection.FindAsync(scope.Filter, options)).ToListAsync();
+        }
+
+        public async Task<List<User>> GetUsersByIdsAsync(IReadOnlyCollection<string> userIds)
+        {
+            var ids = userIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
+            if (ids.Count == 0) return [];
+
+            var collection = _identityAccessManagementRepository.GetCollection<User>();
+            return await _dataAccess.FindListAsync(collection, IamSchemas.User, Builders<User>.Filter.In(x => x.ItemId, ids), "UserRepository.GetUsersByIdsAsync");
+        }
+
+        public async Task<UserBulkWriteResult> BulkWriteUsersAsync(IReadOnlyList<User> inserts, IReadOnlyList<UserBulkUpdate> updates)
+        {
+            foreach (var user in inserts)
+            {
+                NormalizeUserIdentity(user);
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<User>();
+            var outcome = await _dataAccess.BulkWriteAsync(
+                collection,
+                IamSchemas.User,
+                inserts,
+                updates.Select(u => (Builders<User>.Filter.Eq(x => x.ItemId, u.UserId), u.Update)).ToList(),
+                "UserRepository.BulkWriteUsersAsync");
+
+            string IdAt(int index) => index < inserts.Count ? inserts[index].ItemId : updates[index - inserts.Count].UserId;
+            return new UserBulkWriteResult(
+                outcome.DuplicateKeys.Select(IdAt).ToHashSet(StringComparer.Ordinal),
+                outcome.Failed.Select(IdAt).ToHashSet(StringComparer.Ordinal));
+        }
+
         private static List<string> GetOrgSpecficRoles(User user)
         {
             var orgId = BlocksContext.GetContext()?.OrganizationId;

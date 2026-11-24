@@ -4,7 +4,6 @@ using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Users;
-using SeliseBlocks.ConfigurationDriver;
 using Worker;
 using Worker.Configuration;
 using Worker.Consumers;
@@ -28,13 +27,7 @@ IHostBuilder CreateHostBuilder(string[] args) =>
     Host.CreateDefaultBuilder(args)
     .ConfigureAppConfiguration((context, builder) =>
     {
-        builder.AddMongoDbConfiguration(options =>
-        {
-            options.ConnectionString = secret.DatabaseConnectionString;
-            options.DatabaseName = secret.RootDatabaseName;
-            options.CollectionName = "Secrets";
-            options.SecretKey = "blocks-secret-iam";
-        });
+        builder.AddKeyValueConfiguration(secret, "blocks-secret-iam");
     })
     .ConfigureServices((services) =>
     {
@@ -53,6 +46,8 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         services.AddSingleton<IConsumer<OrganizationProvisioningEvent>, OrganizationProvisioningConsumer>();
         services.AddSingleton<IConsumer<UpdateOrganizationUserEvent>, UpdateOrganizationUserConsumer>();
         services.AddSingleton<IConsumer<BulkUserRoleChangeEvent>, BulkUserRoleChangeConsumer>();
+        services.AddSingleton<IConsumer<BatchJobQueuedEvent>, BatchJobConsumer>();
+        services.AddSingleton<IConsumer<BatchMailQueuedEvent>, BatchMailConsumer>();
         services.AddSingleton<IConsumer<PermissionMutationForTenantsEvent>, PermissionMutationForTenantsConsumer>();
         services.AddSingleton<IConsumer<PropagationRolePermissionUpdateEvent>, PropagationRolePermissionUpdateConsumer>();
         // Password reset / change publish LogoutAllEvent; without this registration the event is dropped

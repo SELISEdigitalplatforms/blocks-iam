@@ -6,7 +6,6 @@ using Blocks.Genesis;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Text.Json.Serialization.Metadata;
-using SeliseBlocks.ConfigurationDriver;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,13 +24,7 @@ Console.WriteLine(secret.AllowedCorsOrigins);
 var messageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
 messageConfiguration.ServiceName = serviceName;
 ApplicationConfigurations.ConfigureServices(builder.Services, messageConfiguration);
-builder.Configuration.AddMongoDbConfiguration(options =>
-{
-    options.ConnectionString = secret.DatabaseConnectionString;
-    options.DatabaseName = secret.RootDatabaseName;
-    options.CollectionName = "Secrets";
-    options.SecretKey = "blocks-secret-iam";
-});
+builder.Configuration.AddKeyValueConfiguration(secret, "blocks-secret-iam");
 builder.Services.Configure<FormOptions>(options =>
 {
     options.MultipartBodyLengthLimit = 15 * 1024 * 1024; // 15 MB
@@ -187,6 +180,7 @@ static void ApplyFrontendRuntimeSettings(IConfiguration configuration, string we
         ["__BLOCKS_ALLOWED_SERVICES__"] = section["BLOCKS_ALLOWED_SERVICES"],
         ["__BLOCKS_ROLLBAR_CLIENT_TOKEN__"] = section["BLOCKS_ROLLBAR_CLIENT_TOKEN"],
         ["__BLOCKS_ROLLBAR_ENV__"] = section["BLOCKS_ROLLBAR_ENV"],
+        ["__BLOCKS_ALLOWED_SERVICES__"] = section["BLOCKS_ALLOWED_SERVICES"],
     };
 
     var files = Directory.EnumerateFiles(webRootPath, "*", SearchOption.AllDirectories)

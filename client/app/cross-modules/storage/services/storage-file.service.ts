@@ -1,5 +1,5 @@
 import { serviceInstances } from "@/lib/http-client";
-import { getRuntimeEnv } from "@/lib/runtime-env";
+import { getMergedAreaBaseUrl } from "@seliseblocks/genesis-os/lib";
 import {
   ICompleteUploadPayload,
   ICompleteUploadResponse,
@@ -18,7 +18,7 @@ import {
 import { STORAGE_FILE_ENDPOINTS } from "../constants/endpoint.constant";
 
 const toLogicUrl = (path: string) =>
-  `${getRuntimeEnv("BLOCKS_LOGIC_BASE_URL")}${path}`;
+  `${getMergedAreaBaseUrl("BLOCKS_LOGIC_BASE_URL")}${path}`;
 
 export class StorageFile {
   getFileByFileId(payload: IGetFileByFileIDPayload): Promise<IGetFileByFileIDResponse> {
