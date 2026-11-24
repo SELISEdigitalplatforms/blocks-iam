@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { firstErrorText, getErrorMessage, isErrorWithErrors, handleErrorMessages } from "./error";
+import {
+  firstErrorText,
+  getErrorMessage,
+  isErrorWithErrors,
+  isNetworkError,
+  handleErrorMessages,
+} from "./error";
+
+/** What genesis-os 4.5.1 throws when fetch itself fails (see `isNetworkError`). */
+const networkError = (text: string) =>
+  Object.assign(new Error(JSON.stringify({ general: text, message: text })), {
+    status: 500,
+    errors: { general: text, message: text },
+  });
 
 describe("getErrorMessage", () => {
   it("returns a fallback for empty error maps", () => {
@@ -36,6 +49,44 @@ describe("isErrorWithErrors", () => {
     expect(isErrorWithErrors(null)).toBe(false);
     expect(isErrorWithErrors("oops")).toBe(false);
     expect(isErrorWithErrors({ message: "x" })).toBe(false);
+  });
+  it("returns false for a network error, so callers show their translated fallback", () => {
+    expect(isErrorWithErrors(networkError("Failed to fetch"))).toBe(false);
+  });
+});
+
+describe("isNetworkError", () => {
+  it.each([
+    "Failed to fetch",
+    "NetworkError when attempting to fetch resource.",
+    "Load failed",
+    "Network request failed",
+  ])("recognises the genesis-os transport error for %s", (text) => {
+    expect(isNetworkError(networkError(text))).toBe(true);
+  });
+
+  it("recognises the shape without a status", () => {
+    expect(isNetworkError({ errors: { general: "Failed to fetch", message: "Failed to fetch" } })).toBe(
+      true,
+    );
+  });
+
+  it("does not take a server answer for a network error", () => {
+    // Another status, other fields, extra fields, or general and message that differ.
+    expect(isNetworkError({ status: 400, errors: { general: "x", message: "x" } })).toBe(false);
+    expect(isNetworkError({ status: 500, errors: { general: "Request failed" } })).toBe(false);
+    expect(isNetworkError({ status: 500, errors: { email: "taken" } })).toBe(false);
+    expect(isNetworkError({ status: 500, errors: { general: "a", message: "a", code: "c" } })).toBe(
+      false,
+    );
+    expect(isNetworkError({ status: 500, errors: { general: "a", message: "b" } })).toBe(false);
+    expect(isNetworkError({ errors: ["Failed to fetch", "Failed to fetch"] })).toBe(false);
+  });
+
+  it("returns false for plain values and errors without errors", () => {
+    expect(isNetworkError(null)).toBe(false);
+    expect(isNetworkError("Failed to fetch")).toBe(false);
+    expect(isNetworkError(new TypeError("Failed to fetch"))).toBe(false);
   });
 });
 

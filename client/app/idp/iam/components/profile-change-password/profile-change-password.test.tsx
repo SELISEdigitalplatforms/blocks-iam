@@ -112,6 +112,25 @@ describe("ProfileChangePassword", () => {
       ),
     );
   });
+
+  it("shows update failed, not the browser text or a password hint, when the request never gets an answer", async () => {
+    h.mutateAsync.mockRejectedValue({
+      status: 500,
+      errors: { general: "Failed to fetch", message: "Failed to fetch" },
+    });
+    openDialog();
+    await waitFor(() => expect(screen.getByPlaceholderText("Enter your current password")).toBeInTheDocument());
+    fillForm();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save Changes" })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    await waitFor(() =>
+      expect(h.showError).toHaveBeenCalledWith(
+        expect.objectContaining({ errors: "Update failed" }),
+      ),
+    );
+  });
 });
 
 describe("iam.profile language", () => {

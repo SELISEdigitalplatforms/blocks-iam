@@ -25,7 +25,7 @@ import { PasswordInput } from "@/components/password-input/password-input";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
 import { useChangePassword } from "@blocks-idp/iam/hooks/use-account";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { firstErrorText, isErrorWithErrors } from "@/lib/error";
+import { firstErrorText, isErrorWithErrors, isNetworkError } from "@/lib/error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import {
@@ -79,9 +79,15 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
       showSuccessToast({ title: t("PROFILE_CHANGE_PASSWORD.PASSWORD_UPDATED"), description: t("PROFILE_CHANGE_PASSWORD.PASSWORD_CHANGED") });
       onClose();
     } catch (error) {
-      const message = isErrorWithErrors(error)
-        ? firstErrorText(error.errors, t("PROFILE_CHANGE_PASSWORD.UPDATE_FAILED"))
-        : t("PROFILE_CHANGE_PASSWORD.CHECK_CURRENT_PASSWORD");
+      let message: string;
+      if (isErrorWithErrors(error)) {
+        message = firstErrorText(error.errors, t("PROFILE_CHANGE_PASSWORD.UPDATE_FAILED"));
+      } else if (isNetworkError(error)) {
+        // The request never reached the server, so the current password was not checked.
+        message = t("PROFILE_CHANGE_PASSWORD.UPDATE_FAILED");
+      } else {
+        message = t("PROFILE_CHANGE_PASSWORD.CHECK_CURRENT_PASSWORD");
+      }
       showErrorToast({ title: t("PROFILE_CHANGE_PASSWORD.UPDATE_FAILED"), errors: message });
     }
   };
