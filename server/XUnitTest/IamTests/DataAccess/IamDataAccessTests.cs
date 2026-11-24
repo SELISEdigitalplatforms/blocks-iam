@@ -155,6 +155,24 @@ public class IamDataAccessTests : IDisposable
         VerifyLogged(LogLevel.Warning, "User");
     }
 
+    [Fact]
+    public async Task BatchJobStore_HasNoSchema_TheResolverIsNotAsked_AndNothingIsLogged()
+    {
+        var filter = Builders<Iam.DomainService.Batch.BatchJob>.Filter.Eq(j => j.ItemId, "j1");
+
+        var scope = await _sut.ReadAsync(IamSchemas.BatchJob, filter, "test");
+        (await _sut.EditFilterAsync(IamSchemas.BatchJob, filter, "test")).Should().BeSameAs(filter);
+        (await _sut.InsertAllowedAsync(IamSchemas.BatchJob, "test")).Should().BeTrue();
+
+        scope.Granted.Should().BeTrue();
+        scope.Filter.Should().BeSameAs(filter);
+        _resolver.VerifyNoOtherCalls();
+        _logger.Invocations.Should().NotContain(i => i.Method.Name == "Log" && (LogLevel)i.Arguments[0] == LogLevel.Warning);
+        IamSchemas.HasNoSchema(IamSchemas.BatchJob).Should().BeTrue();
+        IamSchemas.HasNoSchema(IamSchemas.User).Should().BeFalse();
+        IamSchemas.HasNoSchema("SomeTenantSchema").Should().BeFalse();
+    }
+
     [Theory]
     [InlineData(false, null)]   // no authenticated user
     [InlineData(true, "other")] // another tenant's DB

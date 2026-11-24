@@ -1,6 +1,7 @@
 ﻿using Iam.DomainService.Accounts;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.AccessGrant;
+using Iam.DomainService.Batch;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.SignupLinks;
@@ -46,6 +47,11 @@ namespace Iam.DomainService.Utilities
             services.AddSingleton<ISignupLinkGenerationService, SignupLinkGenerationService>();
             services.AddSingleton<ISignupLinkSummaryService, SignupLinkSummaryService>();
             services.AddSingleton<IGrantAuthorizationService, GrantAuthorizationService>();
+            services.AddSingleton<IBatchJobRepository, BatchJobRepository>();
+            services.AddSingleton<BatchUserStores>();
+            services.AddSingleton<IBatchUserService, BatchUserService>();
+            services.AddSingleton<IBatchMailTemplateRepository, BatchMailTemplateRepository>();
+            services.AddSingleton<IBatchMailService, BatchMailService>();
             services.AddAccessGrant();
             services.AddHttpContextAccessor();
 

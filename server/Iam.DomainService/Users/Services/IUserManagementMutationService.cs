@@ -65,6 +65,14 @@ namespace Iam.DomainService.Users
         /// and swallowed so one bad id cannot cause the whole chunk to be redelivered.
         /// </summary>
         Task ApplyBulkRoleChangeAsync(BulkUserRoleChangeEvent command);
+
+        /// <summary>
+        /// The user created action users/create publishes for a new account, for an account the batch upsert
+        /// inserted, with the roles and permissions of <paramref name="organizationId"/>. The batch writes the
+        /// account's timeline entry itself, in bulk, and sends no create <see cref="UserMutationEvent"/>: its only
+        /// effect without the activation mail is that entry, and batch mails go through the job's mail phase.
+        /// </summary>
+        Task PublishBatchUserCreatedActionAsync(User user, string organizationId);
         Task<TenantConfiguration> GetTenantConfigurationAsync();
     }
 }

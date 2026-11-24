@@ -12,5 +12,14 @@
         public IEnumerable<string> Attachments { get; set; } = Enumerable.Empty<string>();
         public Dictionary<string, string> BodyDataContext { get; set; } = new Dictionary<string, string>();
         public bool SendPhoneNumberAsEmail { get; set; } = false;
+
+        /// <summary>
+        /// The organization whose template the mail service picks (its own, else the default organization's).
+        /// Null keeps the mail service's choice for queued mails, the default organization. Set by batch mails.
+        /// </summary>
+        public string? OrganizationId { get; set; }
+
+        /// <summary>Echoed back by the mail service on its sent event, so a sender can match the outcome.</summary>
+        public string? CorrelationId { get; set; }
     }
 }

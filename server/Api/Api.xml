@@ -204,6 +204,21 @@
             the endpoint always returns.
             </summary>
         </member>
+        <member name="T:Api.Controllers.BatchController">
+            <summary>
+            Asynchronous batch operations. A batch is checked and stored here, processed by the worker, and
+            its result read from the job.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.BatchController.SubmitUsers(Iam.DomainService.Batch.BatchUsersRequest)">
+            <summary>
+            Create or update up to 100 users. 202 with the job id: the users are written by the worker,
+            and the result is read from <c>batch/jobs/{jobId}</c>.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.BatchController.GetJob(System.String)">
+            <summary>A batch job of the caller's tenant: status, summary and failed users.</summary>
+        </member>
         <member name="T:Api.Controllers.DeviceController">
             <summary>
             Browser-facing RFC 8628 device flow endpoints. The SPA already owns /oidc/* so it ships /device/*

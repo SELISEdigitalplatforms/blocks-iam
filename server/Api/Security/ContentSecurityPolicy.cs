@@ -44,6 +44,8 @@ public static class ContentSecurityPolicy
     internal static readonly string[] WebSocketOriginKeys =
     [
         "BLOCKS_LOGIC_BASE_URL",
+        // Logic (and its NotificationHub) is served by the os host since blocks-os-net-react.
+        "BLOCKS_OS_BASE_URL",
     ];
 
     /// <summary>Where a login POST may be sent: the identity host and the portal.</summary>

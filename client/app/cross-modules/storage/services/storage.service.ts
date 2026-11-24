@@ -1,5 +1,5 @@
 import { serviceInstances } from "@/lib/http-client";
-import { getRuntimeEnv } from "@/lib/runtime-env";
+import { getMergedAreaBaseUrl } from "@seliseblocks/genesis-os/lib";
 import { StorageConfiguration } from "./storage-configuration.service";
 import { StorageFile } from "./storage-file.service";
 import { STORAGE_FILE_ENDPOINTS } from "../constants/endpoint.constant";
@@ -15,7 +15,7 @@ import {
 } from "../models/storage.model";
 
 const toLogicUrl = (path: string) =>
-  `${getRuntimeEnv("BLOCKS_LOGIC_BASE_URL")}${path}`;
+  `${getMergedAreaBaseUrl("BLOCKS_LOGIC_BASE_URL")}${path}`;
 
 export class StorageService {
   constructor(
