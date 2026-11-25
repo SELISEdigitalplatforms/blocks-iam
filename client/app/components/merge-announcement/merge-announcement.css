@@ -3,8 +3,10 @@
    they own the full viewport are moved down or shortened by its height (--merge-banner-height).
    Unlayered on purpose: it must win over the Tailwind utilities it adjusts. */
 
-/* Console header (fixed, top-0) and the small-screen toaster: start below the banner. */
-html[data-merge-banner] .fixed.top-0 {
+/* genesis-os console header ("fixed left-0 right-0 top-0"): start below the banner. Matched on all
+   four classes so the toast viewport ("fixed top-0 ... sm:top-auto") is left alone; a bare
+   .fixed.top-0 overrode its sm:top-auto and stretched it down the right side on desktop. */
+html[data-merge-banner] .fixed.left-0.right-0.top-0 {
   top: var(--merge-banner-height, 0px);
 }
 
