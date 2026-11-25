@@ -154,4 +154,44 @@ describe("PasswordStrengthChecker", () => {
     expect(meter).toHaveAttribute("aria-valuenow", "66");
     expect(meter).toHaveAttribute("aria-valuetext", "Good password, 66 percent");
   });
+
+  describe("onRequirementsMet only on change (H3, blocks-iam#682)", () => {
+    const renderChecker = (password: string, confirmPassword: string, onMet: (met: boolean) => void) => (
+      <PasswordStrengthChecker
+        password={password}
+        confirmPassword={confirmPassword}
+        policy={policy}
+        onRequirementsMet={onMet}
+      />
+    );
+
+    it("reports the first result once and stays silent while it does not change", () => {
+      const onMet = vi.fn();
+      const { rerender } = render(renderChecker("Secret1", "other", onMet));
+      rerender(renderChecker("Secret12", "other", onMet));
+      rerender(renderChecker("Secret12", "other2", onMet));
+
+      expect(onMet.mock.calls).toEqual([[false]]);
+    });
+
+    it("reports each change of the result", () => {
+      const onMet = vi.fn();
+      const { rerender } = render(renderChecker("Secret1", "other", onMet));
+      rerender(renderChecker("Secret1", "Secret1", onMet));
+      rerender(renderChecker("Secret1", "Secret1", onMet));
+      rerender(renderChecker("Secret1", "Secret", onMet));
+
+      expect(onMet.mock.calls).toEqual([[false], [true], [false]]);
+    });
+
+    it("tells a new receiver the current result", () => {
+      const first = vi.fn();
+      const second = vi.fn();
+      const { rerender } = render(renderChecker("Secret1", "Secret1", first));
+      rerender(renderChecker("Secret1", "Secret1", second));
+
+      expect(first.mock.calls).toEqual([[true]]);
+      expect(second.mock.calls).toEqual([[true]]);
+    });
+  });
 });

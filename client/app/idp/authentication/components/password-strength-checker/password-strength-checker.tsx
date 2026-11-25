@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { Check, X } from "lucide-react";
 import { usePasswordStrength } from "@blocks-idp/authentication/hooks/use-password-strength";
 import type { IOidcPasswordPolicy } from "@blocks-idp/authentication/utils/password-policy.util";
@@ -54,19 +54,17 @@ export const PasswordStrengthChecker: React.FC<PasswordStrengthCheckerProps> = (
   const isDifferentFromExcluded =
     !excludePassword || password === "" || password !== excludePassword;
 
+  const allMet = allRequirementsMet && passwordsMatch && isDifferentFromExcluded;
+
+  // Reports the first result, and after that only a change of it (or a new receiver). Calling the
+  // parent's setter on every keystroke fed an extra render into each one (blocks-iam#682).
+  const reportedRef = useRef<{ met: boolean; to: (met: boolean) => void } | null>(null);
   useEffect(() => {
-    const allMet =
-      allRequirementsMet && passwordsMatch && isDifferentFromExcluded;
+    const last = reportedRef.current;
+    if (last?.met === allMet && last.to === onRequirementsMet) return;
+    reportedRef.current = { met: allMet, to: onRequirementsMet };
     onRequirementsMet(allMet);
-  }, [
-    password,
-    confirmPassword,
-    allRequirementsMet,
-    passwordsMatch,
-    excludePassword,
-    isDifferentFromExcluded,
-    onRequirementsMet,
-  ]);
+  }, [allMet, onRequirementsMet]);
 
   const filledSegments = getFilledSegments(strength);
   const strengthLabel = getStrengthLabel();

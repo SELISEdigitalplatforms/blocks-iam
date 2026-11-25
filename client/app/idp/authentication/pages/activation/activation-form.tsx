@@ -226,28 +226,36 @@ export const ActivationForm = ({
   const passwordRequirementsMet = !collectPassword || requirementsMet;
   const canSubmit = isValid && passwordRequirementsMet;
 
-  /* Inject PasswordStrengthChecker into the right panel's idle slot */
-  const setPanelIdleSlot = animCtx?.setPanelIdleSlot;
+  /* Show the password checker in the right panel, its inputs handed over as data. The values are
+     pushed from the form's own change notification, so they land in the same render as the
+     keystroke. Pushing them from an effect instead added a nested shell commit per keystroke,
+     and a fast input stream (a password manager, a paste burst) piled those past React's limit
+     of 50 nested updates: error #185 and a blank page (blocks-iam#682). */
+  const setPanelPasswordState = animCtx?.setPanelPasswordState;
   useEffect(() => {
-    if (inlineRequirements) return;
+    if (inlineRequirements || !setPanelPasswordState) return;
     if (!collectPassword) {
-      setPanelIdleSlot?.(null);
+      setPanelPasswordState(null);
       return;
     }
-
-    setPanelIdleSlot?.(
-      <PasswordStrengthChecker
-        password={password}
-        confirmPassword={confirmPassword}
-        policy={passwordPolicy}
-        onRequirementsMet={setRequirementsMet}
-      />,
-    );
+    const push = (values: { password?: string; confirmPassword?: string }) =>
+      setPanelPasswordState({
+        password: values.password ?? "",
+        confirmPassword: values.confirmPassword ?? "",
+        policy: passwordPolicy,
+        onRequirementsMet: setRequirementsMet,
+      });
+    push(form.getValues());
+    const unsubscribe = form.subscribe({
+      name: ["password", "confirmPassword"],
+      formState: { values: true },
+      callback: ({ values }) => push(values),
+    });
     return () => {
-      setPanelIdleSlot?.(null);
+      unsubscribe();
+      setPanelPasswordState(null);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [password, confirmPassword, passwordPolicy, setPanelIdleSlot, collectPassword, inlineRequirements]);
+  }, [form, passwordPolicy, setPanelPasswordState, collectPassword, inlineRequirements]);
 
   const activationCopy = oidcUiConfig?.template?.pages.activation;
 

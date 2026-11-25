@@ -22,7 +22,7 @@ type ErrorCopy = {
   tone: Tone;
 };
 
-const TONE_CLASSES: Record<Tone, { icon: string; ring: string }> = {
+export const TONE_CLASSES: Record<Tone, { icon: string; ring: string }> = {
   danger: { icon: "text-(--danger)", ring: "bg-(--danger-soft) border-(--danger-border)" },
   warn: { icon: "text-(--warn)", ring: "bg-(--warn-soft) border-(--warn-border)" },
   success: { icon: "text-(--success)", ring: "bg-(--success-soft) border-(--success-border)" },
@@ -90,14 +90,13 @@ const resolveCopy = (
 };
 
 /** Puts the side panel in its failed state, so it never says "enter your email and password" here. */
-const PanelFailure = ({ message }: Readonly<{ message: string }>) => {
+export const PanelFailure = ({ message }: Readonly<{ message: string }>) => {
   const failAnimation = useOidcAuthAnimation()?.failAnimation;
 
+  // Once per message: `failAnimation` only changes when the panel is switched on or off.
   useEffect(() => {
     void failAnimation?.(message, { instant: true });
-    // Run once per message: the context hands out a new function on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [message]);
+  }, [failAnimation, message]);
 
   return null;
 };

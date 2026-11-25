@@ -76,21 +76,31 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
     name: ["password", "confirmPassword", "logoutFromAllDevices"],
   });
 
-  /* Inject PasswordStrengthChecker into the right panel's idle slot */
-  const setPanelIdleSlot = animCtx?.setPanelIdleSlot;
+  /* Show the password checker in the right panel, its inputs handed over as data and pushed from
+     the form's own change notification, as on the activation page (blocks-iam#682): a push from
+     an effect added a nested shell commit per keystroke, which a fast input stream piled past
+     React's nested-update limit (error #185). */
+  const setPanelPasswordState = animCtx?.setPanelPasswordState;
   useEffect(() => {
-    if (inlineRequirements) return;
-    setPanelIdleSlot?.(
-      <PasswordStrengthChecker
-        password={password}
-        confirmPassword={confirmPassword}
-        policy={passwordPolicy}
-        onRequirementsMet={setRequirementsMet}
-      />
-    );
-    return () => { setPanelIdleSlot?.(null); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [password, confirmPassword, passwordPolicy, setPanelIdleSlot, inlineRequirements]);
+    if (inlineRequirements || !setPanelPasswordState) return;
+    const push = (values: { password?: string; confirmPassword?: string }) =>
+      setPanelPasswordState({
+        password: values.password ?? "",
+        confirmPassword: values.confirmPassword ?? "",
+        policy: passwordPolicy,
+        onRequirementsMet: setRequirementsMet,
+      });
+    push(form.getValues());
+    const unsubscribe = form.subscribe({
+      name: ["password", "confirmPassword"],
+      formState: { values: true },
+      callback: ({ values }) => push(values),
+    });
+    return () => {
+      unsubscribe();
+      setPanelPasswordState(null);
+    };
+  }, [form, passwordPolicy, setPanelPasswordState, inlineRequirements]);
 
   const isAuthenticating =
     isPending ||

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { SciFiBackgroundOidc } from "./sci-fi-background-oidc";
 import {
   NodesPanelOidc,
@@ -8,6 +8,8 @@ import {
   type OidcPanelConfig,
 } from "./nodes-panel-oidc";
 import { AppearanceControls } from "@/components/appearance-controls/appearance-controls";
+import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
+import type { IOidcPasswordPolicy } from "@blocks-idp/authentication/utils/password-policy.util";
 import { Separator } from "@/components/ui-kits/separator/separator";
 import type {
   IOidcUiTemplate,
@@ -17,6 +19,19 @@ import "./sci-fi-oidc.css";
 import { useT } from "@seliseblocks/genesis-os/i18n";
 
 /* ── Animation context ──────────────────────────────────────── */
+/**
+ * What the panel's password checker needs, handed over as plain data. The shell renders the one
+ * checker itself, so a keystroke updates its props instead of replacing a whole element
+ * through the context (blocks-iam#682).
+ */
+export interface OidcPanelPasswordState {
+  password: string;
+  confirmPassword: string;
+  policy: IOidcPasswordPolicy | null | undefined;
+  /** Must be stable (a state setter): the checker reports through it only when the result changes. */
+  onRequirementsMet: (met: boolean) => void;
+}
+
 export interface OidcAuthAnimContextValue {
   animationPanelVisible: boolean;
   phase: OidcAnimPhase;
@@ -24,7 +39,10 @@ export interface OidcAuthAnimContextValue {
   succeedAnimation: (opts?: { instant?: boolean }) => Promise<void>;
   failAnimation:    (message?: string, opts?: { instant?: boolean }) => Promise<void>;
   resetAnimation:   () => void;
+  /** Static panel content only; per-keystroke data goes through `setPanelPasswordState`. */
   setPanelIdleSlot?: (node: React.ReactNode) => void;
+  /** Shows the password checker in the panel; `null` removes it. */
+  setPanelPasswordState?: (state: OidcPanelPasswordState | null) => void;
 }
 
 const OidcAuthAnimContext = createContext<OidcAuthAnimContextValue | null>(null);
@@ -209,6 +227,8 @@ export function OidcAuthShell({
   const setPanelIdleSlot = useCallback((node: React.ReactNode) => {
     setPanelIdleSlotState(node);
   }, []);
+  // A state setter is stable, so it goes into the context as it is.
+  const [panelPasswordState, setPanelPasswordState] = useState<OidcPanelPasswordState | null>(null);
 
   /* Detect panel visibility (≥ md) and reduced-motion preference */
   const panelVisibleRef = useRef(showAnimationPanel);
@@ -222,51 +242,91 @@ export function OidcAuthShell({
     return () => { desktop.removeEventListener("change", update); reduce.removeEventListener("change", update); };
   }, [showAnimationPanel]);
 
-  const ctx: OidcAuthAnimContextValue = {
-    animationPanelVisible: showAnimationPanel,
-    phase,
-    startAnimation: () => {
-      setErrorMessage(null);
-      setCascadeDone(false);
-      setInstant(false);
-      setPhase("submitting");
-    },
-    succeedAnimation: (opts) => {
-      setErrorMessage(null);
-      setInstant(!!opts?.instant);
-      setPhase("succeeded");
-      if (opts?.instant) {
-        setCascadeDone(true);
-        return Promise.resolve();
-      }
-      setCascadeDone(false);
-      const duration = showAnimationPanel && panelVisibleRef.current
-        ? successDurationMs(panelConfig.successNodes.length)
-        : 400;
-      return new Promise<void>(resolve => {
-        setTimeout(() => { setCascadeDone(true); resolve(); }, duration);
-      });
-    },
-    failAnimation: (message, opts) => {
-      setErrorMessage(message ?? null);
-      setCascadeDone(false);
-      setInstant(!!opts?.instant);
-      setPhase("failed");
-      if (opts?.instant) return Promise.resolve();
-      const prefixLines = panelConfig.errorTerminalPrefix?.length ?? 1;
-      const duration = showAnimationPanel && panelVisibleRef.current
-        ? failureDurationMs(prefixLines)
-        : 150;
-      return new Promise<void>(resolve => setTimeout(resolve, duration));
-    },
-    resetAnimation: () => {
-      setErrorMessage(null);
-      setCascadeDone(false);
-      setInstant(false);
-      setPhase("idle");
-    },
-    setPanelIdleSlot,
-  };
+  // The animation callbacks read the panel config when they run, so a parent that passes a new
+  // (but equal) config object does not hand every consumer a new context value. Synced after
+  // commit, which is enough: each page passes one fixed config.
+  const panelConfigRef = useRef(panelConfig);
+  useEffect(() => {
+    panelConfigRef.current = panelConfig;
+  }, [panelConfig]);
+
+  const startAnimation = useCallback(() => {
+    setErrorMessage(null);
+    setCascadeDone(false);
+    setInstant(false);
+    setPhase("submitting");
+  }, []);
+
+  const succeedAnimation = useCallback((opts?: { instant?: boolean }) => {
+    setErrorMessage(null);
+    setInstant(!!opts?.instant);
+    setPhase("succeeded");
+    if (opts?.instant) {
+      setCascadeDone(true);
+      return Promise.resolve();
+    }
+    setCascadeDone(false);
+    const duration = showAnimationPanel && panelVisibleRef.current
+      ? successDurationMs(panelConfigRef.current.successNodes.length)
+      : 400;
+    return new Promise<void>(resolve => {
+      setTimeout(() => { setCascadeDone(true); resolve(); }, duration);
+    });
+  }, [showAnimationPanel]);
+
+  const failAnimation = useCallback((message?: string, opts?: { instant?: boolean }) => {
+    setErrorMessage(message ?? null);
+    setCascadeDone(false);
+    setInstant(!!opts?.instant);
+    setPhase("failed");
+    if (opts?.instant) return Promise.resolve();
+    const prefixLines = panelConfigRef.current.errorTerminalPrefix?.length ?? 1;
+    const duration = showAnimationPanel && panelVisibleRef.current
+      ? failureDurationMs(prefixLines)
+      : 150;
+    return new Promise<void>(resolve => setTimeout(resolve, duration));
+  }, [showAnimationPanel]);
+
+  const resetAnimation = useCallback(() => {
+    setErrorMessage(null);
+    setCascadeDone(false);
+    setInstant(false);
+    setPhase("idle");
+  }, []);
+
+  // Every form on the page consumes this value, so it only changes when what it carries does
+  // (blocks-iam#682: a new object per render re-rendered the form on every panel update).
+  const ctx = useMemo<OidcAuthAnimContextValue>(
+    () => ({
+      animationPanelVisible: showAnimationPanel,
+      phase,
+      startAnimation,
+      succeedAnimation,
+      failAnimation,
+      resetAnimation,
+      setPanelIdleSlot,
+      setPanelPasswordState,
+    }),
+    [
+      showAnimationPanel,
+      phase,
+      startAnimation,
+      succeedAnimation,
+      failAnimation,
+      resetAnimation,
+      setPanelIdleSlot,
+      setPanelPasswordState,
+    ],
+  );
+
+  const panelIdleContent = panelPasswordState ? (
+    <PasswordStrengthChecker
+      password={panelPasswordState.password}
+      confirmPassword={panelPasswordState.confirmPassword}
+      policy={panelPasswordState.policy}
+      onRequirementsMet={panelPasswordState.onRequirementsMet}
+    />
+  ) : panelIdleSlot;
 
   const formContainerClass =
     phase === "succeeded" && cascadeDone
@@ -330,7 +390,7 @@ export function OidcAuthShell({
                 config={panelConfig}
                 phase={phase}
                 errorMessage={errorMessage}
-                idleContent={panelIdleSlot}
+                idleContent={panelIdleContent}
                 instant={instant}
               />}
           </div>

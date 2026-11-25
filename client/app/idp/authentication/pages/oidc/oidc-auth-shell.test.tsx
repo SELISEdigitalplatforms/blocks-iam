@@ -279,4 +279,106 @@ describe("OidcAuthShell", () => {
     await waitFor(() => expect(root).toHaveAttribute("data-theme", "light"));
     expect(root.style.getPropertyValue("--bg")).toBe("#f7f8fa");
   });
+
+  describe("context value and panel password state (blocks-iam#682)", () => {
+    const seen: (ReturnType<typeof useOidcAuthAnimation>)[] = [];
+    function Recorder() {
+      seen.push(useOidcAuthAnimation());
+      return null;
+    }
+    const shellProps = {
+      panelConfig: OIDC_LOGIN_PANEL,
+      theme: OIDC_UI_TEMPLATE_FIXTURE.theme,
+      logoUrlLight: null,
+      logoUrlDark: null,
+      brandName: "Blocks IAM",
+      heading: "Sign in to Blocks",
+      footerNote: <span>footer</span>,
+      successTitle: "Access Granted",
+      successSubtitle: "Redirecting…",
+    };
+
+    beforeEach(() => {
+      seen.length = 0;
+    });
+
+    it("keeps the same context value when the shell re-renders with unchanged phase and props (H4)", () => {
+      const { rerender } = render(
+        <OidcAuthShell {...shellProps}>
+          <Recorder />
+        </OidcAuthShell>,
+      );
+      // A new (equal) panel config and new children must not hand consumers a new value.
+      rerender(
+        <OidcAuthShell {...shellProps} panelConfig={{ ...OIDC_LOGIN_PANEL }}>
+          <Recorder />
+        </OidcAuthShell>,
+      );
+
+      expect(seen.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(seen).size).toBe(1);
+    });
+
+    it("keeps the animation callbacks stable across a phase change and changes the value only then", () => {
+      render(
+        <OidcAuthShell {...shellProps}>
+          <Recorder />
+        </OidcAuthShell>,
+      );
+      const before = seen.at(-1)!;
+      act(() => before.startAnimation());
+      const after = seen.at(-1)!;
+
+      expect(after).not.toBe(before);
+      expect(after.phase).toBe("submitting");
+      for (const key of [
+        "startAnimation",
+        "succeedAnimation",
+        "failAnimation",
+        "resetAnimation",
+        "setPanelIdleSlot",
+        "setPanelPasswordState",
+      ] as const) {
+        expect(after[key]).toBe(before[key]);
+      }
+    });
+
+    it("renders one panel checker from password data, updates it in place and removes it on null", () => {
+      const onRequirementsMet = vi.fn();
+      render(
+        <OidcAuthShell {...shellProps}>
+          <Recorder />
+        </OidcAuthShell>,
+      );
+      const ctx = seen.at(-1)!;
+      const rendersBefore = seen.length;
+
+      act(() =>
+        ctx.setPanelPasswordState?.({ password: "a", confirmPassword: "", policy: null, onRequirementsMet }),
+      );
+      const heading = screen.getByRole("heading", { name: "Password Strength" });
+      act(() =>
+        ctx.setPanelPasswordState?.({ password: "Abcdef1!", confirmPassword: "Abcdef1!", policy: null, onRequirementsMet }),
+      );
+
+      expect(screen.getAllByRole("heading", { name: "Password Strength" })).toHaveLength(1);
+      expect(screen.getByRole("heading", { name: "Password Strength" })).toBe(heading);
+      // Panel updates re-render the shell, never its consumers.
+      expect(seen.length).toBe(rendersBefore);
+      expect(onRequirementsMet).toHaveBeenLastCalledWith(true);
+
+      act(() => ctx.setPanelPasswordState?.(null));
+      expect(screen.queryByRole("heading", { name: "Password Strength" })).not.toBeInTheDocument();
+    });
+
+    it("still shows static idle content set through setPanelIdleSlot", () => {
+      render(
+        <OidcAuthShell {...shellProps}>
+          <Recorder />
+        </OidcAuthShell>,
+      );
+      act(() => seen.at(-1)!.setPanelIdleSlot?.(<p>static panel note</p>));
+      expect(screen.getByText("static panel note")).toBeInTheDocument();
+    });
+  });
 });
