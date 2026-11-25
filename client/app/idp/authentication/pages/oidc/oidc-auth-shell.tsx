@@ -227,10 +227,8 @@ export function OidcAuthShell({
   const setPanelIdleSlot = useCallback((node: React.ReactNode) => {
     setPanelIdleSlotState(node);
   }, []);
-  const [panelPasswordState, setPanelPasswordStateValue] = useState<OidcPanelPasswordState | null>(null);
-  const setPanelPasswordState = useCallback((state: OidcPanelPasswordState | null) => {
-    setPanelPasswordStateValue(state);
-  }, []);
+  // A state setter is stable, so it goes into the context as it is.
+  const [panelPasswordState, setPanelPasswordState] = useState<OidcPanelPasswordState | null>(null);
 
   /* Detect panel visibility (≥ md) and reduced-motion preference */
   const panelVisibleRef = useRef(showAnimationPanel);

@@ -62,7 +62,7 @@ export const OidcRouteErrorScreen = () => {
         <div className="flex w-full flex-col gap-3">
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() => globalThis.location.reload()}
             className="oidc-sci-fi-btn flex w-full items-center justify-center"
           >
             {t("ROUTE_ERROR_SCREEN.TRY_AGAIN")}

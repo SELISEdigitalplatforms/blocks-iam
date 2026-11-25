@@ -36,13 +36,13 @@ export const captureDepthErrors = () => {
     }
     originalConsoleError(...args);
   });
-  window.addEventListener("error", onError);
+  globalThis.addEventListener("error", onError);
   process.on("uncaughtException", onProcess);
   process.on("unhandledRejection", onProcess);
   return {
     seen,
     stop: () => {
-      window.removeEventListener("error", onError);
+      globalThis.removeEventListener("error", onError);
       process.off("uncaughtException", onProcess);
       process.off("unhandledRejection", onProcess);
       consoleSpy.mockRestore();
