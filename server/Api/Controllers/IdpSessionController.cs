@@ -37,7 +37,7 @@ namespace Blocks.Api.Controllers
         /// </summary>
         [HttpGet]
         [ProducesResponseType(typeof(GetSessionResponse), 200)]
-        [ProducesResponseType(401)]
+        [ProducesResponseType(typeof(void), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(404)]
         public async Task<IActionResult> GetSession()
         {
@@ -98,7 +98,7 @@ namespace Blocks.Api.Controllers
         /// </summary>
         [HttpGet("accounts")]
         [ProducesResponseType(typeof(GetAccountsResponse), 200)]
-        [ProducesResponseType(401)]
+        [ProducesResponseType(typeof(void), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetAccounts()
         {
             try
@@ -148,7 +148,7 @@ namespace Blocks.Api.Controllers
         [HttpPost("account/add")]
         [ProducesResponseType(typeof(AddAccountResponse), 200)]
         [ProducesResponseType(400)]
-        [ProducesResponseType(401)]
+        [ProducesResponseType(typeof(void), StatusCodes.Status401Unauthorized)]
         public Task<IActionResult> AddAccount([FromBody] AddAccountRequest request)
         {
             // Disabled: the account to add came from the request body with no proof that this user
@@ -173,7 +173,7 @@ namespace Blocks.Api.Controllers
         [HttpPost("account/select")]
         [ProducesResponseType(typeof(SelectAccountResponse), 200)]
         [ProducesResponseType(400)]
-        [ProducesResponseType(401)]
+        [ProducesResponseType(typeof(void), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> SelectAccount([FromBody] SelectAccountRequest request)
         {
             try
@@ -222,7 +222,7 @@ namespace Blocks.Api.Controllers
         [HttpDelete("accounts/{userId}")]
         [ProducesResponseType(200)]
         [ProducesResponseType(400)]
-        [ProducesResponseType(401)]
+        [ProducesResponseType(typeof(void), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> RemoveAccount(string userId)
         {
             try
@@ -271,7 +271,7 @@ namespace Blocks.Api.Controllers
         /// </summary>
         [HttpPost("revoke")]
         [ProducesResponseType(200)]
-        [ProducesResponseType(401)]
+        [ProducesResponseType(typeof(void), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> RevokeSession([FromBody] RevokeSessionRequest request = null)
         {
             try
