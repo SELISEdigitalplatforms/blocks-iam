@@ -195,7 +195,7 @@ test.describe("OIDC password panel render loop and recovery screen (blocks-iam#6
 
     // Rollbar items are captured and answered here, so nothing reaches the real project.
     const rollbarItems: string[] = [];
-    await page.route(/rollbar\.com\/api\/1\/item/, async (route: Route) => {
+    await page.route(/^https:\/\/api\.rollbar\.com\/api\/1\/item\//, async (route: Route) => {
       rollbarItems.push(route.request().postData() ?? "");
       await route.fulfill({ json: { err: 0, result: { uuid: "e2e" } } });
     });
